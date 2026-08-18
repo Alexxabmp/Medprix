@@ -1,0 +1,195 @@
+Simple Pharmacy Reports Page
+┌─────────────────────────────────────────────────────────────┐
+│ Reports                                                     │
+│ View and generate pharmacy reports                          │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌─────────────────────┐  ┌─────────────────────┐           │
+│  │ 📊 Daily Sales      │  │ 📦 Inventory        │           │
+│  │                     │  │                     │           │
+│  │ View today's sales  │  │ View current stock  │           │
+│  │ performance         │  │ status              │           │
+│  │                     │  │                     │           │
+│  │ [View Report]       │  │ [View Report]       │           │
+│  └─────────────────────┘  └─────────────────────┘           │
+│                                                             │
+│  ┌─────────────────────┐  ┌─────────────────────┐           │
+│  │ 💰 Financial        │  │ 💊 Stock Valuation  │           │
+│  │    Summary          │  │                     │           │
+│  │                     │  │ Total value of      │           │
+│  │ Overall financial   │  │ current stock       │           │
+│  │ performance         │  │                     │           │
+│  │ [View Report]       │  │ [View Valuation]    │           │
+│  └─────────────────────┘  └─────────────────────┘           │
+│                                                             │
+│  ┌─────────────────────┐  ┌─────────────────────┐           │
+│  │ 🔄 Product Movement │  │ ⚠️ Cash Mismatch    │           │
+│  │                     │  │                     │           │
+│  │ Fast / slow-moving  │  │ Cash vs recorded    │           │
+│  │ products            │  │ sales discrepancies  │           │
+│  │                     │  │                     │           │
+│  │ [View List]         │  │ [View Alerts]       │           │
+│  └─────────────────────┘  └─────────────────────┘           │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+1. Daily Sales Report
+
+When admin clicks View Report:
+
+Daily Sales Report
+
+
+Date: [ August 18, 2026 ]
+
+
+Total Sales          ₱45,250
+Transactions             128
+Products Sold            356
+
+
+Payment Method
+Cash                 ₱25,000
+Card                 ₱12,500
+E-Wallet              ₱7,750
+
+
+                    [Export Report]
+
+This satisfies:
+
+Admin requests daily sales report
+Shows daily performance
+Can be generated/exported
+2. Inventory Report
+Inventory Report
+
+
+Total Products        850
+In Stock               720
+Low Stock               95
+Out of Stock            35
+
+
+Product          Stock       Status
+─────────────────────────────────────
+Paracetamol       120        Available
+Amoxicillin         8        Low Stock
+Vitamin C           0        Out of Stock
+
+
+                    [Export Report]
+3. Financial Summary
+Financial Summary
+
+
+Period: [ August 2026 ]
+
+
+Total Sales         ₱450,000
+Expenses             ₱85,000
+────────────────────────────
+Net Profit          ₱365,000
+
+
+                    [Export Report]
+
+You can optionally add a simple sales/expense chart, but it isn't necessary for the acceptance criteria.
+
+4. Stock Valuation
+
+This can be much simpler because the requirement only says the valuation must be displayed.
+
+Stock Valuation
+
+
+Current Stock Value
+
+
+        ₱825,450.00
+
+
+────────────────────────────────
+
+
+Product          Qty    Value
+Paracetamol      120    ₱600
+Amoxicillin       80    ₱960
+Vitamin C         50    ₱400
+
+
+Total Stock Value       ₱825,450
+
+No export button is required by the acceptance criteria.
+
+5. Fast/Slow-Moving Products
+
+Use tabs to keep it simple:
+
+Product Movement
+
+
+[ Fast Moving ] [ Slow Moving ]
+
+
+Product              Units Sold
+────────────────────────────────
+Paracetamol               250
+Vitamin C                  180
+Cough Syrup                145
+
+Click Slow Moving:
+
+Product Movement
+
+
+[ Fast Moving ] [ Slow Moving ]
+
+
+Product              Units Sold
+────────────────────────────────
+Antacid                    12
+Vitamin B Complex            8
+Skin Cream                   5
+
+This directly supports the requirement for performance analysis.
+
+6. Cash Mismatch — make this an alert
+
+This one is different from the other reports because the system should detect the problem automatically.
+
+On the Reports page:
+
+⚠ Cash Mismatch Alerts
+
+
+2 inconsistencies detected
+
+
+Date          Expected     Recorded     Difference
+──────────────────────────────────────────────────
+Aug 18        ₱25,450      ₱24,950       -₱500
+Aug 17        ₱31,200      ₱32,200      +₱1,000
+
+
+[View Details]
+
+Clicking View Details:
+
+Cash Mismatch Details
+
+
+Date: August 18, 2026
+Shift: Morning
+
+
+Recorded Sales       ₱25,450
+Expected Cash        ₱25,450
+Actual Cash          ₱24,950
+──────────────────────────────
+Difference              -₱500
+
+
+⚠ Cash is ₱500 short.
+
+
+[View Transactions]

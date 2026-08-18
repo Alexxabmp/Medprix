@@ -21,6 +21,7 @@ import {
   Moon,
   MoreHorizontal,
   Package,
+  Pill,
   Pencil,
   Plus,
   Receipt,
@@ -174,7 +175,7 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
   return (
     <main className="login-page">
       <form className="login-card" onSubmit={submit}>
-        <div className="brand"><span className="brand-mark">M</span><span>medprix</span></div>
+        <div className="brand"><span className="brand-mark"><Pill size={16} strokeWidth={2.4} /></span><span>Medprix</span></div>
         <div className="eyebrow">Pharmacy operations workspace</div>
         <h1>Hello, Admin!</h1>
         <p>Sign in to keep your pharmacy moving with a clear view of sales, stock, and people.</p>
@@ -201,7 +202,7 @@ function AppShell({ dark, setDark, onToast, onLogout, users, setUsers }: { dark:
     <div className="app-shell">
       <div className="main-wrap">
         <header className="topbar">
-          <div className="topbar-left"><Link href="/dashboard" className="brand" data-testid="link-medprix-home"><span className="brand-mark">M</span><span>medprix</span></Link></div>
+          <div className="topbar-left"><Link href="/dashboard" className="brand" data-testid="link-medprix-home"><span className="brand-mark"><Pill size={16} strokeWidth={2.4} /></span><span>Medprix</span></Link></div>
           <nav className="top-nav" aria-label="Primary navigation" data-testid="nav-primary">
             {navGroups.flatMap((group) => group.items).map(({ href, label }) => <Link key={href} href={href} data-testid={`link-${label.toLowerCase().replaceAll(' ', '-')}`} className={`top-nav-item ${location === href ? 'active' : ''}`}>{label}</Link>)}
           </nav>
