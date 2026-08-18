@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Medprix Pharmacy Dashboard"
+description = "A pharmacy operations dashboard for Medprix with sales reporting, inventory insights, product movement, cash mismatch alerts, dark mode, and user management with role controls."
+version = "1.0.0"
+id = "artifacts/medprix-dashboard"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24866
+
+[services.development]
+run = "pnpm --filter @workspace/medprix-dashboard run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/medprix-dashboard", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/medprix-dashboard/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24866"
+BASE_PATH = "/"

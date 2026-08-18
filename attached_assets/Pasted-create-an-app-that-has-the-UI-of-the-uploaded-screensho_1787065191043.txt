@@ -1,0 +1,94 @@
+create an app that has the UI of the uploaded screenshot. follow everything in the UI 100% exactly including the colors, without including the background of the page in the screenshot. rename the company to Medprix. change the notification button to dark mode button, make it work. rename it to Hello, Admin!. ┌─────────────────────────────────────────────────────────────┐
+│ Reports                                                     │
+│ View and generate pharmacy reports                          │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌─────────────────────┐  ┌─────────────────────┐           │
+│  │ 📊 Daily Sales      │  │ 📦 Inventory        │           │
+│  │                     │  │                     │           │
+│  │ View today's sales  │  │ View current stock  │           │
+│  │ performance         │  │ status              │           │
+│  │                     │  │                     │           │
+│  │ [View Report]       │  │ [View Report]       │           │
+│  └─────────────────────┘  └─────────────────────┘           │
+│                                                             │
+│  ┌─────────────────────┐  ┌─────────────────────┐           │
+│  │ 💰 Financial        │  │ 💊 Stock Valuation  │           │
+│  │    Summary          │  │                     │           │
+│  │                     │  │ Total value of      │           │
+│  │ Overall financial   │  │ current stock       │           │
+│  │ performance         │  │                     │           │
+│  │ [View Report]       │  │ [View Valuation]    │           │
+│  └─────────────────────┘  └─────────────────────┘           │
+│                                                             │
+│  ┌─────────────────────┐  ┌─────────────────────┐           │
+│  │ 🔄 Product Movement │  │ ⚠️ Cash Mismatch    │           │
+│  │                     │  │                     │           │
+│  │ Fast / slow-moving  │  │ Cash vs recorded    │           │
+│  │ products            │  │ sales discrepancies  │           │
+│  │                     │  │                     │           │
+│  │ [View List]         │  │ [View Alerts]       │           │
+│  └─────────────────────┘  └─────────────────────┘           │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘, when clicking the boxes, show a new box at the center which has color black background, behind the box is just blur. when clicking daily sales report, Daily Sales Report
+Date: [ August 18, 2026 ]
+Total Sales          ₱45,250
+Transactions             128
+Products Sold            356
+Payment Method
+Cash                 ₱25,000
+Card                 ₱12,500
+E-Wallet              ₱7,750
+                    [Export Report], Inventory Report
+Total Products        850
+In Stock               720
+Low Stock               95
+Out of Stock            35
+Product          Stock       Status
+─────────────────────────────────────
+Paracetamol       120        Available
+Amoxicillin         8        Low Stock
+Vitamin C           0        Out of Stock
+                    [Export Report], Financial Summary
+Period: [ August 2026 ]
+Total Sales         ₱450,000
+Expenses             ₱85,000
+────────────────────────────
+Net Profit          ₱365,000
+                    [Export Report], Stock Valuation
+Current Stock Value
+        ₱825,450.00
+────────────────────────────────
+Product          Qty    Value
+Paracetamol      120    ₱600
+Amoxicillin       80    ₱960
+Vitamin C         50    ₱400
+Total Stock Value       ₱825,450, Product Movement
+[ Fast Moving ] [ Slow Moving ]
+Product              Units Sold
+────────────────────────────────
+Paracetamol               250
+Vitamin C                  180
+Cough Syrup                145, when clicking slow moving, Product Movement
+[ Fast Moving ] [ Slow Moving ]
+Product              Units Sold
+────────────────────────────────
+Antacid                    12
+Vitamin B Complex            8
+Skin Cream                   5, ⚠ Cash Mismatch Alerts
+2 inconsistencies detected
+Date          Expected     Recorded     Difference
+──────────────────────────────────────────────────
+Aug 18        ₱25,450      ₱24,950       -₱500
+Aug 17        ₱31,200      ₱32,200      +₱1,000
+[View Details], when clicking view details, Cash Mismatch Details
+Date: August 18, 2026
+Shift: Morning
+Recorded Sales       ₱25,450
+Expected Cash        ₱25,450
+Actual Cash          ₱24,950
+──────────────────────────────
+Difference              -₱500
+⚠ Cash is ₱500 short.
+[View Transactions]. the menus are dashboard, inventory, supplier, procurement, wholesale, system ad, user mgt. create a page for the user management including View user accounts, Account creation, Update user profile information, Account password reset, Assign user roles & permissions. create a log in page which needs username and password.
+
