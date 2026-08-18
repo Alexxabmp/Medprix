@@ -235,3 +235,41 @@ a { color: inherit; text-decoration: none; }
   .modal { padding: 19px; border-radius: 18px; } .report-metrics { gap: 5px; } .report-metric { padding: 9px; } .report-metric strong { font-size: 14px; }
   .top-actions { gap: 6px; } .avatar { width: 33px; height: 33px; }
 }
+
+/* Reference composition: a centered workspace with one compact black navigation pill. */
+.app-shell { display: block; padding: 0 28px 42px; min-height: 100dvh; }
+.main-wrap { width: min(100%, 1260px); max-width: none; margin: 0 auto; }
+.topbar { height: 84px; margin-bottom: 18px; gap: 22px; }
+.topbar-left { flex: 0 0 auto; }
+.topbar .brand { padding: 0; font-size: 18px; color: hsl(var(--foreground)); gap: 8px; }
+.topbar .brand-mark { width: 30px; height: 30px; border-radius: 50%; background: #151519; color: #fff; font-size: 14px; }
+.top-nav { flex: 0 1 auto; min-width: 0; max-width: 780px; margin: 0 auto; display: flex; align-items: center; gap: 3px; padding: 4px; border-radius: 999px; background: #151519; overflow-x: auto; scrollbar-width: none; }
+.top-nav::-webkit-scrollbar { display: none; }
+.top-nav-item { flex: 0 0 auto; color: #aaa8b2; padding: 8px 12px; border-radius: 999px; font-size: 10px; font-weight: 600; white-space: nowrap; transition: color .2s, background .2s, transform .2s; }
+.top-nav-item:hover { color: #fff; transform: translateY(-1px); }
+.top-nav-item.active { background: #f7f6fa; color: #151519; }
+.top-actions { flex: 0 0 auto; }
+.top-actions .avatar { border: 0; box-shadow: none; cursor: pointer; }
+.content { max-width: 100%; }
+.page-heading { margin-top: 5px; margin-bottom: 20px; align-items: center; }
+.page-heading h1 { font-size: clamp(27px, 3vw, 34px); }
+.page-heading p { margin-top: 5px; }
+.date-control { position: relative; cursor: pointer; }
+.date-control input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.dashboard-lower { grid-template-columns: 1.48fr .9fr; }
+
+@media (max-width: 900px) {
+  .app-shell { padding-left: 16px; padding-right: 16px; }
+  .topbar { gap: 11px; }
+  .top-nav { order: 3; flex: 1 1 100%; max-width: none; }
+  .topbar { flex-wrap: wrap; height: auto; min-height: 78px; padding: 12px 0 10px; }
+  .topbar-left { order: 1; }
+  .top-actions { order: 2; margin-left: auto; }
+  .top-nav { order: 3; }
+}
+@media (max-width: 560px) {
+  .app-shell { padding: 0 11px 28px; }
+  .topbar { margin-bottom: 12px; }
+  .top-nav-item { padding-left: 10px; padding-right: 10px; }
+  .page-heading h1 { font-size: 28px; }
+}

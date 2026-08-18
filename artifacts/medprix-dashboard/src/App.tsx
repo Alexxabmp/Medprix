@@ -5,7 +5,6 @@ import {
   ArrowDownToLine,
   ArrowUpRight,
   BarChart3,
-  Bell,
   Boxes,
   Building2,
   CalendarDays,
@@ -17,11 +16,8 @@ import {
   Download,
   FileBarChart,
   FileText,
-  Home,
   KeyRound,
   LayoutDashboard,
-  LogOut,
-  Menu,
   Moon,
   MoreHorizontal,
   Package,
@@ -200,31 +196,23 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
 
 function AppShell({ dark, setDark, onToast, onLogout, users, setUsers }: { dark: boolean; setDark: (value: boolean) => void; onToast: ToastFn; onLogout: () => void; users: UserRecord[]; setUsers: (users: UserRecord[]) => void }) {
   const [location] = useLocation();
-  const [menuOpen, setMenuOpen] = useState(false);
   const pageName = location === '/dashboard' ? 'Dashboard' : navGroups.flatMap((group) => group.items).find((item) => item.href === location)?.label ?? 'Reports';
   return (
     <div className="app-shell">
-      <aside className={`sidebar ${menuOpen ? 'open' : ''}`}>
-        <div className="brand"><span className="brand-mark">M</span><span>medprix</span></div>
-        {navGroups.map((group) => <div key={group.label} style={{ marginBottom: 24 }}>
-          <div className="nav-label">{group.label}</div>
-          <nav className="nav-list">
-            {group.items.map(({ href, label, icon: Icon }) => <Link key={href} href={href} data-testid={`link-${label.toLowerCase().replaceAll(' ', '-')}`} className={`nav-item ${location === href ? 'active' : ''}`} onClick={() => setMenuOpen(false)}><Icon size={16} strokeWidth={1.8} /><span>{label}</span></Link>)}
-          </nav>
-        </div>)}
-        <div className="sidebar-footer"><strong>Medprix Pharmacy</strong>Central operations · v2.4.1<br /><button onClick={onLogout} data-testid="button-sign-out" style={{ color: '#aaa9b3', background: 'none', border: 0, padding: '12px 0 0', fontSize: 11, display: 'flex', gap: 7, alignItems: 'center' }}><LogOut size={13} /> Sign out</button></div>
-      </aside>
       <div className="main-wrap">
         <header className="topbar">
-          <div className="topbar-left"><button className="icon-button mobile-menu" data-testid="button-mobile-menu" onClick={() => setMenuOpen((value) => !value)}><Menu size={17} /></button><div><div className="eyebrow">Operations / {pageName}</div><div className="topbar-title">{pageName}</div></div></div>
+          <div className="topbar-left"><Link href="/dashboard" className="brand" data-testid="link-medprix-home"><span className="brand-mark">M</span><span>medprix</span></Link></div>
+          <nav className="top-nav" aria-label="Primary navigation" data-testid="nav-primary">
+            {navGroups.flatMap((group) => group.items).map(({ href, label }) => <Link key={href} href={href} data-testid={`link-${label.toLowerCase().replaceAll(' ', '-')}`} className={`top-nav-item ${location === href ? 'active' : ''}`}>{label}</Link>)}
+          </nav>
           <div className="top-actions">
-            <label className="date-control" data-testid="control-date"><CalendarDays size={14} /><span>Aug 18, 2026</span><input type="date" aria-label="Select date" style={{ position: 'absolute', opacity: 0, width: 1, height: 1 }} defaultValue="2026-08-18" /></label>
             <button className="icon-button" data-testid="button-theme-toggle" aria-label="Toggle dark mode" onClick={() => setDark(!dark)}>{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
-            <div className="avatar" data-testid="avatar-admin">AM</div>
+            <button className="avatar" data-testid="avatar-admin" aria-label="Sign out" title="Sign out" onClick={onLogout}>AM</button>
           </div>
         </header>
         <main className="content">
           <Switch>
+            <Route path="/"><DashboardPage onToast={onToast} /></Route>
             <Route path="/dashboard"><DashboardPage onToast={onToast} /></Route>
             <Route path="/reports"><ReportsPage onToast={onToast} /></Route>
             <Route path="/inventory"><InventoryPage onToast={onToast} /></Route>
@@ -249,7 +237,7 @@ function DashboardPage({ onToast }: { onToast: ToastFn }) {
   const hours = ['12AM', '1AM', '2AM', '3AM', '4AM', '5AM', '6AM', '7AM', '8AM', '9AM', '10AM', '11AM', '12PM', '1PM', '2PM', '3PM', '4PM', '5PM', '6PM'];
   const values = [42, 36, 61, 84, 39, 96, 63, 35, 42, 64, 52, 83, 37, 45, 58, 0, 43, 43, 32];
   return <div>
-    <PageHeading title="Hello, Admin!" description="Here’s the shape of your pharmacy today." action={<button className="button dark" data-testid="button-dashboard-export" onClick={() => onToast('Dashboard snapshot is ready to export')}><Download size={14} /> Export snapshot</button>} />
+    <PageHeading title="Hello, Admin!" description="Here’s the shape of your pharmacy today." action={<label className="date-control" data-testid="control-date"><CalendarDays size={14} /><span>Select date</span><input type="date" aria-label="Select date" defaultValue="2026-08-18" /></label>} />
     <section className="kpi-grid">
       <Kpi label="Sales" value="₱15,327" change="+12.8%" icon={CircleDollarSign} />
       <Kpi label="Tickets" value="3,500" change="+8.4%" icon={Receipt} />
