@@ -749,6 +749,10 @@ function UserManagementPage({ users, setUsers, onToast }: { users: UserRecord[];
   const [selected, setSelected] = useState<UserRecord | null>(null);
   const [draft, setDraft] = useState({ name: '', username: '', role: 'Pharmacist', phone: '' });
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [resetError, setResetError] = useState('');
 
   useEffect(() => {
     if (dialog) {
@@ -778,7 +782,24 @@ function UserManagementPage({ users, setUsers, onToast }: { users: UserRecord[];
     setDialog(null);
   };
   const remove = (user: UserRecord) => { if (window.confirm(`Remove ${user.name} from Medprix?`)) { setUsers(users.filter((item) => item.id !== user.id)); onToast('User account removed'); } };
-  const reset = (event: FormEvent) => { event.preventDefault(); setDialog(null); setPassword(''); onToast(`Temporary password created for ${selected?.name}`); };
+  const reset = (event: FormEvent) => {
+    event.preventDefault();
+    if (password.length < 6) {
+      setResetError('Password must be at least 6 characters.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setResetError('Passwords do not match.');
+      return;
+    }
+    setResetError('');
+    setDialog(null);
+    setPassword('');
+    setConfirmPassword('');
+    setShowPassword(false);
+    setShowConfirmPassword(false);
+    onToast(`Password successfully updated for ${selected?.name}`);
+  };
   const shown = users.filter((user) => `${user.name} ${user.username} ${user.role}`.toLowerCase().includes(search.toLowerCase()));
 
   return (
@@ -822,7 +843,7 @@ function UserManagementPage({ users, setUsers, onToast }: { users: UserRecord[];
                   <td>
                     <div style={{ display: 'flex', gap: 5 }}>
                       <button className="icon-button" data-testid={`button-edit-user-${user.id}`} aria-label={`Edit ${user.name}`} onClick={() => openEdit(user)}><Pencil size={13} /></button>
-                      <button className="icon-button" data-testid={`button-reset-user-${user.id}`} aria-label={`Reset password for ${user.name}`} onClick={() => { setSelected(user); setDialog('reset'); }}><KeyRound size={13} /></button>
+                      <button className="icon-button" data-testid={`button-reset-user-${user.id}`} aria-label={`Reset password for ${user.name}`} onClick={() => { setSelected(user); setPassword(''); setConfirmPassword(''); setShowPassword(false); setShowConfirmPassword(false); setResetError(''); setDialog('reset'); }}><KeyRound size={13} /></button>
                       <button className="icon-button" data-testid={`button-delete-user-${user.id}`} aria-label={`Delete ${user.name}`} onClick={() => remove(user)}><Trash2 size={13} /></button>
                     </div>
                   </td>
@@ -846,9 +867,27 @@ function UserManagementPage({ users, setUsers, onToast }: { users: UserRecord[];
       {dialog === 'reset' && createPortal(
         <div className="modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && setDialog(null)}>
           <form className="modal dialog" onSubmit={reset}>
-            <div className="modal-header"><div><h2>Reset password</h2><p className="modal-sub">Create a temporary password for {selected?.name}.</p></div><button type="button" className="modal-close" data-testid="button-close-reset" onClick={() => setDialog(null)}><X size={16} /></button></div>
-            <div className="field"><label htmlFor="temporary-password">Temporary password</label><input id="temporary-password" data-testid="input-temporary-password" type="password" minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" required /></div>
-            <div className="modal-actions"><button type="button" className="button soft" onClick={() => setDialog(null)}>Cancel</button><button className="button dark" data-testid="button-confirm-reset" type="submit">Reset password <KeyRound size={13} /></button></div>
+            <div className="modal-header">
+              <div><h2>Reset password</h2><p className="modal-sub">Set a new password for {selected?.name}.</p></div>
+              <button type="button" className="modal-close" data-testid="button-close-reset" onClick={() => setDialog(null)}><X size={16} /></button>
+            </div>
+            <div className="form-grid">
+              <div className="field" style={{ position: 'relative' }}>
+                <label htmlFor="reset-password">New password</label>
+                <input id="reset-password" data-testid="input-reset-password" type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 6 characters" style={{ paddingRight: 38 }} required />
+                <button type="button" onClick={() => setShowPassword((v) => !v)} style={{ position: 'absolute', right: 10, bottom: 9, background: 'none', border: 0, color: '#a9a6b1', cursor: 'pointer', padding: 2 }} aria-label={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? <EyeOff size={15} /> : <Eye size={15} />}</button>
+              </div>
+              <div className="field" style={{ position: 'relative' }}>
+                <label htmlFor="reset-confirm">Confirm password</label>
+                <input id="reset-confirm" data-testid="input-reset-confirm" type={showConfirmPassword ? 'text' : 'password'} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Re-enter new password" style={{ paddingRight: 38 }} required />
+                <button type="button" onClick={() => setShowConfirmPassword((v) => !v)} style={{ position: 'absolute', right: 10, bottom: 9, background: 'none', border: 0, color: '#a9a6b1', cursor: 'pointer', padding: 2 }} aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}>{showConfirmPassword ? <EyeOff size={15} /> : <Eye size={15} />}</button>
+              </div>
+            </div>
+            {resetError && <p style={{ color: '#FF453A', fontSize: 11, margin: '10px 0 0' }}>{resetError}</p>}
+            <div className="modal-actions">
+              <button type="button" className="button soft" onClick={() => setDialog(null)}>Cancel</button>
+              <button className="button dark" data-testid="button-confirm-reset" type="submit">Reset password <KeyRound size={13} /></button>
+            </div>
           </form>
         </div>,
         document.body
