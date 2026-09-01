@@ -2989,154 +2989,999 @@ function WholesalePage({ onToast }: { onToast: ToastFn }) {
   );
 }
 
+type TransactionItem = {
+  product: string;
+  quantity: number;
+  unitPrice: string;
+  subtotal: string;
+};
+
+type UserTransaction = {
+  id: number;
+  transactionNumber: string;
+  dateTime: string;
+  user: string;
+  businessType: 'Retail' | 'Wholesale';
+  customer: string;
+  total: string;
+  subtotal: string;
+  discount: string;
+  vat: string;
+  amountReceived: string;
+  change: string;
+  payment: string;
+  status: 'Completed' | 'Voided' | 'Refunded' | 'Pending';
+  items: TransactionItem[];
+};
+
+type SystemLog = {
+  id: number;
+  dateTime: string;
+  user: string;
+  role: string;
+  action: string;
+  module: string;
+  description: string;
+  status: 'Success' | 'Failed';
+  deviceIp: string;
+};
+
+type UserActivity = {
+  id: number;
+  dateTime: string;
+  user: string;
+  role: string;
+  activity: string;
+  module: string;
+  description: string;
+  flag: 'Normal' | 'Suspicious' | 'Flagged';
+};
+
+const initialTransactionsData: UserTransaction[] = [
+  {
+    id: 1,
+    transactionNumber: 'TRX-0001',
+    dateTime: 'Sept. 1, 2026 – 9:00 AM',
+    user: 'Maria Santos',
+    businessType: 'Retail',
+    customer: 'Walk-in Customer',
+    total: '₱450.00',
+    subtotal: '₱401.79',
+    discount: '₱0.00',
+    vat: '₱48.21',
+    amountReceived: '₱500.00',
+    change: '₱50.00',
+    payment: 'Cash',
+    status: 'Completed',
+    items: [
+      { product: 'Paracetamol 500mg', quantity: 2, unitPrice: '₱10.00', subtotal: '₱20.00' },
+      { product: 'Vitamin C 1000mg', quantity: 1, unitPrice: '₱150.00', subtotal: '₱150.00' },
+      { product: 'Cough Relief Syrup', quantity: 1, unitPrice: '₱280.00', subtotal: '₱280.00' },
+    ],
+  },
+  {
+    id: 2,
+    transactionNumber: 'TRX-0002',
+    dateTime: 'Sept. 1, 2026 – 9:15 AM',
+    user: 'John Cruz',
+    businessType: 'Wholesale',
+    customer: 'ABC Pharmacy',
+    total: '₱5,250.00',
+    subtotal: '₱4,687.50',
+    discount: '₱250.00',
+    vat: '₱562.50',
+    amountReceived: '₱5,250.00',
+    change: '₱0.00',
+    payment: 'GCash',
+    status: 'Completed',
+    items: [
+      { product: 'Amoxicillin 500mg (Box of 100s)', quantity: 5, unitPrice: '₱650.00', subtotal: '₱3,250.00' },
+      { product: 'Cetirizine 10mg (Box of 100s)', quantity: 4, unitPrice: '₱500.00', subtotal: '₱2,000.00' },
+    ],
+  },
+  {
+    id: 3,
+    transactionNumber: 'TRX-0003',
+    dateTime: 'Sept. 1, 2026 – 9:30 AM',
+    user: 'Maria Santos',
+    businessType: 'Retail',
+    customer: 'Walk-in Customer',
+    total: '₱320.00',
+    subtotal: '₱285.71',
+    discount: '₱0.00',
+    vat: '₱34.29',
+    amountReceived: '₱320.00',
+    change: '₱0.00',
+    payment: 'Cash',
+    status: 'Voided',
+    items: [
+      { product: 'Mefenamic Acid 500mg', quantity: 4, unitPrice: '₱30.00', subtotal: '₱120.00' },
+      { product: 'Antacid Chewables Bottle', quantity: 1, unitPrice: '₱200.00', subtotal: '₱200.00' },
+    ],
+  },
+  {
+    id: 4,
+    transactionNumber: 'TRX-0004',
+    dateTime: 'Sept. 1, 2026 – 10:05 AM',
+    user: 'Nadia Reyes',
+    businessType: 'Retail',
+    customer: 'Walk-in Customer',
+    total: '₱1,280.00',
+    subtotal: '₱1,142.86',
+    discount: '₱50.00',
+    vat: '₱137.14',
+    amountReceived: '₱1,500.00',
+    change: '₱220.00',
+    payment: 'Cash',
+    status: 'Completed',
+    items: [
+      { product: 'Multivitamins + Minerals (30s)', quantity: 2, unitPrice: '₱450.00', subtotal: '₱900.00' },
+      { product: 'Digital Thermometer', quantity: 1, unitPrice: '₱380.00', subtotal: '₱380.00' },
+    ],
+  },
+  {
+    id: 5,
+    transactionNumber: 'TRX-0005',
+    dateTime: 'Sept. 1, 2026 – 11:20 AM',
+    user: 'John Cruz',
+    businessType: 'Wholesale',
+    customer: 'St. Jude Medical Clinic',
+    total: '₱18,450.00',
+    subtotal: '₱16,473.21',
+    discount: '₱1,000.00',
+    vat: '₱1,976.79',
+    amountReceived: '₱18,450.00',
+    change: '₱0.00',
+    payment: '30-Day Terms',
+    status: 'Completed',
+    items: [
+      { product: 'Sterile Normal Saline 500ml Box (24s)', quantity: 5, unitPrice: '₱1,800.00', subtotal: '₱9,000.00' },
+      { product: 'Surgical Gloves Medium (100s)', quantity: 10, unitPrice: '₱350.00', subtotal: '₱3,500.00' },
+      { product: 'Disposable Syringes 5ml (100s)', quantity: 7, unitPrice: '₱850.00', subtotal: '₱5,950.00' },
+    ],
+  },
+];
+
+const initialSystemLogsData: SystemLog[] = [
+  {
+    id: 1,
+    dateTime: 'September 1, 2026, 8:45 PM',
+    user: 'Juan Dela Cruz',
+    role: 'Admin',
+    action: 'Added Product',
+    module: 'Inventory Management',
+    description: 'Added Paracetamol 500mg to inventory',
+    status: 'Success',
+    deviceIp: 'Desktop – 192.168.1.45',
+  },
+  {
+    id: 2,
+    dateTime: 'September 1, 2026, 8:50 AM',
+    user: 'Maria Santos',
+    role: 'Cashier',
+    action: 'Login',
+    module: 'Authentication',
+    description: 'User logged in to Retail POS Terminal 1',
+    status: 'Success',
+    deviceIp: 'POS Terminal 1 – 192.168.1.21',
+  },
+  {
+    id: 3,
+    dateTime: 'September 1, 2026, 9:15 AM',
+    user: 'John Cruz',
+    role: 'Front Desk',
+    action: 'Sales transactions',
+    module: 'Wholesale Management',
+    description: 'Processed Wholesale Purchase Order TRX-0002 for ABC Pharmacy (₱5,250.00)',
+    status: 'Success',
+    deviceIp: 'Front Desk PC – 192.168.1.15',
+  },
+  {
+    id: 4,
+    dateTime: 'September 1, 2026, 9:30 AM',
+    user: 'Maria Santos',
+    role: 'Cashier',
+    action: 'Voided/cancelled transactions',
+    module: 'Sales POS',
+    description: 'Voided retail receipt TRX-0003 upon customer cancellation request (₱320.00)',
+    status: 'Success',
+    deviceIp: 'POS Terminal 1 – 192.168.1.21',
+  },
+  {
+    id: 5,
+    dateTime: 'September 1, 2026, 10:15 AM',
+    user: 'Unknown',
+    role: 'Staff',
+    action: 'Failed login attempts',
+    module: 'Authentication',
+    description: 'Invalid credentials entered for account "admin" (Attempt 1 of 3)',
+    status: 'Failed',
+    deviceIp: 'Remote Desktop – 192.168.1.105',
+  },
+  {
+    id: 6,
+    dateTime: 'September 1, 2026, 11:00 AM',
+    user: 'Lena Santos',
+    role: 'Admin',
+    action: 'Stock adjustments',
+    module: 'Inventory Management',
+    description: 'Manual stock recount adjustment for Amoxicillin 500mg: adjusted from 12 to 8 units',
+    status: 'Success',
+    deviceIp: 'Admin Tablet – 192.168.1.45',
+  },
+  {
+    id: 7,
+    dateTime: 'September 1, 2026, 12:00 PM',
+    user: 'System Daemon',
+    role: 'Admin',
+    action: 'Backup and restore activities',
+    module: 'System Settings',
+    description: 'Automated database backup archive completed and verified (backup_20260901_1200.sql)',
+    status: 'Success',
+    deviceIp: 'Server – 127.0.0.1',
+  },
+];
+
+const initialUserActivitiesData: UserActivity[] = [
+  {
+    id: 1,
+    dateTime: 'Sept. 1, 2026 – 8:30 AM',
+    user: 'Juan Dela Cruz',
+    role: 'Admin',
+    activity: 'Login',
+    module: '🔐 Authentication',
+    description: 'User logged into system dashboard with full administrator privileges',
+    flag: 'Normal',
+  },
+  {
+    id: 2,
+    dateTime: 'Sept. 1, 2026 – 8:45 AM',
+    user: 'Juan Dela Cruz',
+    role: 'Admin',
+    activity: 'Product added',
+    module: '📦 Inventory Activity',
+    description: 'Added Paracetamol 500mg to inventory (120 units)',
+    flag: 'Normal',
+  },
+  {
+    id: 3,
+    dateTime: 'Sept. 1, 2026 – 8:50 AM',
+    user: 'Maria Santos',
+    role: 'Cashier',
+    activity: 'Login',
+    module: '🔐 Authentication',
+    description: 'Authenticated on POS Terminal 1',
+    flag: 'Normal',
+  },
+  {
+    id: 4,
+    dateTime: 'Sept. 1, 2026 – 9:00 AM',
+    user: 'Maria Santos',
+    role: 'Cashier',
+    activity: 'Transaction completed',
+    module: '💰 Sales & Wholesale Activity',
+    description: 'Processed retail cash receipt TRX-0001 (₱450.00)',
+    flag: 'Normal',
+  },
+  {
+    id: 5,
+    dateTime: 'Sept. 1, 2026 – 9:15 AM',
+    user: 'John Cruz',
+    role: 'Front Desk',
+    activity: 'Transaction completed',
+    module: '💰 Sales & Wholesale Activity',
+    description: 'Processed wholesale order TRX-0002 for ABC Pharmacy (₱5,250.00)',
+    flag: 'Normal',
+  },
+  {
+    id: 6,
+    dateTime: 'Sept. 1, 2026 – 9:30 AM',
+    user: 'Maria Santos',
+    role: 'Cashier',
+    activity: 'Transaction voided',
+    module: '💰 Sales & Wholesale Activity',
+    description: 'Voided retail receipt TRX-0003 after item calculation',
+    flag: 'Suspicious',
+  },
+  {
+    id: 7,
+    dateTime: 'Sept. 1, 2026 – 10:15 AM',
+    user: 'Unknown',
+    role: 'Staff',
+    activity: 'Failed login attempt',
+    module: '🔐 Authentication',
+    description: 'Failed login attempt for "admin" from unrecognized IP',
+    flag: 'Suspicious',
+  },
+  {
+    id: 8,
+    dateTime: 'Sept. 1, 2026 – 10:16 AM',
+    user: 'Unknown',
+    role: 'Staff',
+    activity: 'Multiple failed login attempts',
+    module: '🔐 Authentication',
+    description: '3 consecutive authentication failures within 60 seconds',
+    flag: 'Flagged',
+  },
+  {
+    id: 9,
+    dateTime: 'Sept. 1, 2026 – 11:00 AM',
+    user: 'Lena Santos',
+    role: 'Admin',
+    activity: 'Stock adjusted',
+    module: '📦 Inventory Activity',
+    description: 'Manual stock recount adjustment for Amoxicillin 500mg',
+    flag: 'Normal',
+  },
+  {
+    id: 10,
+    dateTime: 'Sept. 1, 2026 – 12:00 PM',
+    user: 'System Daemon',
+    role: 'Admin',
+    activity: 'Backup performed',
+    module: '⚙️ System Activity',
+    description: 'Automated midday database backup completed successfully',
+    flag: 'Normal',
+  },
+];
+
 function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
-  const [toggles, setToggles] = useState({
-    alerts: true,
-    lowStock: true,
-    autoReorder: false,
-    twoFactor: true,
-    audit: true,
+  const [activeTab, setActiveTab] = useState<'transactions' | 'systemLogs' | 'userActivity'>('transactions');
+
+  // Transactions state
+  const [transactions, setTransactions] = useState<UserTransaction[]>(initialTransactionsData);
+  const [trxFilterType, setTrxFilterType] = useState<'All' | 'Retail' | 'Wholesale'>('All');
+  const [trxFilterStatus, setTrxFilterStatus] = useState<string>('All');
+  const [trxSearch, setTrxSearch] = useState('');
+  const [selectedTrx, setSelectedTrx] = useState<UserTransaction | null>(null);
+
+  // System Logs state
+  const [systemLogs, setSystemLogs] = useState<SystemLog[]>(initialSystemLogsData);
+  const [logSearch, setLogSearch] = useState('');
+  const [logFilterStatus, setLogFilterStatus] = useState<string>('All');
+  const [selectedLog, setSelectedLog] = useState<SystemLog | null>(null);
+
+  // User Activity state
+  const [userActivities, setUserActivities] = useState<UserActivity[]>(initialUserActivitiesData);
+  const [activitySearch, setActivitySearch] = useState('');
+  const [activityModuleFilter, setActivityModuleFilter] = useState<string>('All');
+
+  // Modal body scroll lock
+  useEffect(() => {
+    if (selectedTrx || selectedLog) {
+      document.body.style.overflow = 'hidden';
+      return () => { document.body.style.overflow = ''; };
+    }
+  }, [selectedTrx, selectedLog]);
+
+  // Fetch from API backend if available
+  useEffect(() => {
+    fetch('http://localhost:5000/api/admin/transactions')
+      .then((res) => res.json())
+      .then((data) => { if (Array.isArray(data) && data.length > 0) setTransactions(data); })
+      .catch(() => {});
+
+    fetch('http://localhost:5000/api/admin/system-logs')
+      .then((res) => res.json())
+      .then((data) => { if (Array.isArray(data) && data.length > 0) setSystemLogs(data); })
+      .catch(() => {});
+
+    fetch('http://localhost:5000/api/admin/user-activities')
+      .then((res) => res.json())
+      .then((data) => { if (Array.isArray(data) && data.length > 0) setUserActivities(data); })
+      .catch(() => {});
+  }, []);
+
+  // Filtered transactions
+  const filteredTransactions = transactions.filter((trx) => {
+    const matchesType = trxFilterType === 'All' || trx.businessType === trxFilterType;
+    const matchesStatus = trxFilterStatus === 'All' || trx.status === trxFilterStatus;
+    const q = trxSearch.toLowerCase();
+    const matchesSearch = !q ||
+      trx.transactionNumber.toLowerCase().includes(q) ||
+      trx.user.toLowerCase().includes(q) ||
+      trx.customer.toLowerCase().includes(q) ||
+      trx.payment.toLowerCase().includes(q);
+    return matchesType && matchesStatus && matchesSearch;
   });
-  const flip = (key: keyof typeof toggles) =>
-    setToggles((current) => ({ ...current, [key]: !current[key] }));
+
+  // Filtered logs
+  const filteredLogs = systemLogs.filter((log) => {
+    const matchesStatus = logFilterStatus === 'All' || log.status === logFilterStatus;
+    const q = logSearch.toLowerCase();
+    const matchesSearch = !q ||
+      log.user.toLowerCase().includes(q) ||
+      log.action.toLowerCase().includes(q) ||
+      log.module.toLowerCase().includes(q) ||
+      log.description.toLowerCase().includes(q) ||
+      log.deviceIp.toLowerCase().includes(q);
+    return matchesStatus && matchesSearch;
+  });
+
+  // Filtered activities
+  const filteredActivities = userActivities.filter((act) => {
+    const matchesModule = activityModuleFilter === 'All' || act.module.includes(activityModuleFilter.replace(/[^\w\s]/g, '').trim()) || act.module === activityModuleFilter;
+    const q = activitySearch.toLowerCase();
+    const matchesSearch = !q ||
+      act.user.toLowerCase().includes(q) ||
+      act.activity.toLowerCase().includes(q) ||
+      act.module.toLowerCase().includes(q) ||
+      act.description.toLowerCase().includes(q);
+    return matchesModule && matchesSearch;
+  });
+
   return (
     <div>
       <PageHeading
-        title="System admin"
-        description="Set the operating rhythm and guardrails for your workspace."
-        action={
-          <button
-            className="button dark"
-            data-testid="button-save-settings"
-            onClick={() => onToast("System preferences saved")}>
-            <Check size={14} /> Save changes
-          </button>
-        }
+        title="System administration"
+        description="Monitor user sales transactions, audit system logs, and track user activities."
       />
-      <div className="dashboard-lower">
-        <section className="surface-card list-card">
-          <div className="card-header">
-            <div>
-              <h2 className="card-title">Workspace preferences</h2>
-              <p className="card-subtitle">
-                How Medprix keeps your team informed
-              </p>
-            </div>
-            <Settings2 size={17} />
-          </div>
-          <ToggleRow
-            label="Daily operations digest"
-            detail="Send a morning snapshot to administrators"
-            value={toggles.alerts}
-            onClick={() => flip("alerts")}
-            testId="toggle-digest"
-          />
-          <ToggleRow
-            label="Low stock alerts"
-            detail="Notify inventory leads when stock falls below reorder point"
-            value={toggles.lowStock}
-            onClick={() => flip("lowStock")}
-            testId="toggle-low-stock"
-          />
-          <ToggleRow
-            label="Automatic reorder drafts"
-            detail="Create suggested POs for critical stock"
-            value={toggles.autoReorder}
-            onClick={() => flip("autoReorder")}
-            testId="toggle-auto-reorder"
-          />
-        </section>
-        <section className="surface-card list-card">
-          <div className="card-header">
-            <div>
-              <h2 className="card-title">Security &amp; audit</h2>
-              <p className="card-subtitle">
-                Keep access accountable and easy to review
-              </p>
-            </div>
-            <ShieldCheck size={17} />
-          </div>
-          <ToggleRow
-            label="Two-step verification"
-            detail="Require a second factor for administrators"
-            value={toggles.twoFactor}
-            onClick={() => flip("twoFactor")}
-            testId="toggle-two-factor"
-          />
-          <ToggleRow
-            label="Audit trail"
-            detail="Record edits to products, users, and cash"
-            value={toggles.audit}
-            onClick={() => flip("audit")}
-            testId="toggle-audit"
-          />
-          <div className="list-row" style={{ marginTop: 8 }}>
-            <div className="row-icon">
-              <Clock3 size={15} />
-            </div>
-            <div className="row-main">
-              <strong>Last security review</strong>
-              <span>August 12, 2026 · No issues found</span>
-            </div>
-            <span className="pill success">Healthy</span>
-          </div>
-        </section>
+
+      {/* Feature selection tabs */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          className={`button ${activeTab === 'transactions' ? 'dark' : 'soft'}`}
+          onClick={() => setActiveTab('transactions')}
+          data-testid="tab-user-transactions"
+        >
+          <Receipt size={14} /> View user transactions
+        </button>
+        <button
+          type="button"
+          className={`button ${activeTab === 'systemLogs' ? 'dark' : 'soft'}`}
+          onClick={() => setActiveTab('systemLogs')}
+          data-testid="tab-system-logs"
+        >
+          <FileText size={14} /> View system logs
+        </button>
+        <button
+          type="button"
+          className={`button ${activeTab === 'userActivity' ? 'dark' : 'soft'}`}
+          onClick={() => setActiveTab('userActivity')}
+          data-testid="tab-user-activity"
+        >
+          <Activity size={14} /> View user activity
+        </button>
       </div>
-      <section className="surface-card list-card" style={{ marginTop: 13 }}>
-        <div className="card-header">
-          <div>
-            <h2 className="card-title">Connected tools</h2>
-            <p className="card-subtitle">
-              Services available to your workspace
-            </p>
+
+      {/* ========================================================================= */}
+      {/* 1. USER TRANSACTIONS FEATURE */}
+      {/* ========================================================================= */}
+      {activeTab === 'transactions' && (
+        <div>
+          <div className="summary-strip">
+            <Summary
+              label="Total transactions"
+              value={String(transactions.length)}
+              caption="Recorded across channels"
+            />
+            <Summary
+              label="Wholesale (Front desk)"
+              value={String(transactions.filter((t) => t.businessType === 'Wholesale').length)}
+              caption="Bulk clinic & pharmacy orders"
+            />
+            <Summary
+              label="Retail (Cashier)"
+              value={String(transactions.filter((t) => t.businessType === 'Retail').length)}
+              caption="Walk-in POS transactions"
+            />
           </div>
+
+          <section className="surface-card table-card">
+            <div className="table-tools">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <div className="search-wrap" style={{ minWidth: 260 }}>
+                  <Search size={15} />
+                  <input
+                    type="search"
+                    placeholder="Search TRX #, customer, user..."
+                    value={trxSearch}
+                    onChange={(e) => setTrxSearch(e.target.value)}
+                    data-testid="input-trx-search"
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {(['All', 'Retail', 'Wholesale'] as const).map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      className={`button ${trxFilterType === type ? 'dark' : 'soft'}`}
+                      style={{ padding: '6px 12px', fontSize: 11 }}
+                      onClick={() => setTrxFilterType(type)}
+                      data-testid={`filter-trx-type-${type.toLowerCase()}`}
+                    >
+                      {type === 'All' ? 'All channels' : type === 'Retail' ? 'Retail (Cashier)' : 'Wholesale (Front desk)'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <select
+                className="select"
+                value={trxFilterStatus}
+                onChange={(e) => setTrxFilterStatus(e.target.value)}
+                data-testid="select-trx-status"
+              >
+                <option value="All">All statuses</option>
+                <option value="Completed">Completed</option>
+                <option value="Voided">Voided</option>
+                <option value="Refunded">Refunded</option>
+                <option value="Pending">Pending</option>
+              </select>
+            </div>
+
+            <div className="table-scroll">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Transaction ID</th>
+                    <th>Date &amp; Time</th>
+                    <th>User</th>
+                    <th>Business Type</th>
+                    <th>Customer</th>
+                    <th style={{ textAlign: 'right' }}>Total</th>
+                    <th>Payment</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredTransactions.map((trx) => (
+                    <tr key={trx.id} data-testid={`row-trx-${trx.id}`}>
+                      <td><strong>{trx.transactionNumber}</strong></td>
+                      <td className="muted">{trx.dateTime}</td>
+                      <td>{trx.user}</td>
+                      <td>
+                        <span className={`pill ${trx.businessType === 'Wholesale' ? 'warning' : 'neutral'}`}>
+                          {trx.businessType}
+                        </span>
+                      </td>
+                      <td>{trx.customer}</td>
+                      <td style={{ textAlign: 'right' }}><strong>{trx.total}</strong></td>
+                      <td className="muted">{trx.payment}</td>
+                      <td>
+                        <span className={`pill ${trx.status === 'Completed' ? 'success' : trx.status === 'Voided' ? 'danger' : 'neutral'}`}>
+                          {trx.status}
+                        </span>
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="button soft"
+                          style={{ padding: '5px 12px', fontSize: 11 }}
+                          onClick={() => setSelectedTrx(trx)}
+                          data-testid={`button-view-trx-${trx.id}`}
+                        >
+                          <Eye size={12} /> View
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {filteredTransactions.length === 0 && (
+                <div className="empty-state">
+                  <Receipt size={28} />
+                  <div>No user transactions found matching criteria.</div>
+                </div>
+              )}
+            </div>
+          </section>
         </div>
-        {[
-          ["Cash register", "Medprix POS · Connected", Check],
-          ["Supplier catalog", "PharmaLink · Synced 18 min ago", RefreshCw],
-          ["Backup archive", "Daily backup · Last run 04:00 AM", Archive],
-        ].map(([name, detail, Icon]) => (
-          <div className="list-row" key={name as string}>
-            <div className="row-icon">
-              <Icon size={15} />
-            </div>
-            <div className="row-main">
-              <strong>{name as string}</strong>
-              <span>{detail as string}</span>
-            </div>
-            <span className="pill success">Connected</span>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 2. SYSTEM LOGS FEATURE */}
+      {/* ========================================================================= */}
+      {activeTab === 'systemLogs' && (
+        <div>
+          <div className="summary-strip">
+            <Summary
+              label="Total audit logs"
+              value={String(systemLogs.length)}
+              caption="System & security events"
+            />
+            <Summary
+              label="Successful events"
+              value={String(systemLogs.filter((l) => l.status === 'Success').length)}
+              caption="Executed normally"
+            />
+            <Summary
+              label="Failed / Alerts"
+              value={String(systemLogs.filter((l) => l.status === 'Failed').length)}
+              caption="Requires attention"
+              tone={systemLogs.filter((l) => l.status === 'Failed').length > 0 ? 'warning' : 'neutral'}
+            />
           </div>
-        ))}
-      </section>
-    </div>
-  );
-}
-function ToggleRow({
-  label,
-  detail,
-  value,
-  onClick,
-  testId,
-}: {
-  label: string;
-  detail: string;
-  value: boolean;
-  onClick: () => void;
-  testId: string;
-}) {
-  return (
-    <div className="toggle-row">
-      <div className="row-main">
-        <strong>{label}</strong>
-        <span>{detail}</span>
-      </div>
-      <button
-        className={`toggle ${value ? "on" : ""}`}
-        data-testid={testId}
-        aria-pressed={value}
-        onClick={onClick}>
-        <span />
-      </button>
+
+          <section className="surface-card table-card">
+            <div className="table-tools">
+              <div className="search-wrap" style={{ minWidth: 320 }}>
+                <Search size={15} />
+                <input
+                  type="search"
+                  placeholder="Search user, action, module, or IP..."
+                  value={logSearch}
+                  onChange={(e) => setLogSearch(e.target.value)}
+                  data-testid="input-log-search"
+                />
+              </div>
+
+              <select
+                className="select"
+                value={logFilterStatus}
+                onChange={(e) => setLogFilterStatus(e.target.value)}
+                data-testid="select-log-status"
+              >
+                <option value="All">All statuses</option>
+                <option value="Success">Success</option>
+                <option value="Failed">Failed</option>
+              </select>
+            </div>
+
+            <div className="table-scroll">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Date &amp; Time</th>
+                    <th>User</th>
+                    <th>Action</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredLogs.map((log) => (
+                    <tr key={log.id} data-testid={`row-log-${log.id}`}>
+                      <td className="muted">{log.dateTime}</td>
+                      <td><strong>{log.user}</strong> <span className="muted" style={{ fontSize: 10 }}>({log.role})</span></td>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span>{log.action}</span>
+                          <span className={`pill ${log.status === 'Success' ? 'success' : 'danger'}`} style={{ fontSize: 9 }}>
+                            {log.status}
+                          </span>
+                        </div>
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="button soft"
+                          style={{ padding: '5px 12px', fontSize: 11 }}
+                          onClick={() => setSelectedLog(log)}
+                          data-testid={`button-see-details-${log.id}`}
+                        >
+                          See details <ArrowUpRight size={11} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {filteredLogs.length === 0 && (
+                <div className="empty-state">
+                  <FileText size={28} />
+                  <div>No system audit logs found.</div>
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 3. USER ACTIVITY FEATURE */}
+      {/* ========================================================================= */}
+      {activeTab === 'userActivity' && (
+        <div>
+          <div className="summary-strip">
+            <Summary
+              label="Tracked activities"
+              value={String(userActivities.length)}
+              caption="Recorded across workspace"
+            />
+            <Summary
+              label="Normal operations"
+              value={String(userActivities.filter((a) => a.flag === 'Normal').length)}
+              caption="Standard user usage"
+            />
+            <Summary
+              label="Suspicious / Flagged"
+              value={String(userActivities.filter((a) => a.flag !== 'Normal').length)}
+              caption="Detected security alerts"
+              tone={userActivities.filter((a) => a.flag !== 'Normal').length > 0 ? 'warning' : 'neutral'}
+            />
+          </div>
+
+          <section className="surface-card table-card">
+            <div className="table-tools">
+              <div className="search-wrap" style={{ minWidth: 280 }}>
+                <Search size={15} />
+                <input
+                  type="search"
+                  placeholder="Search user, activity, or description..."
+                  value={activitySearch}
+                  onChange={(e) => setActivitySearch(e.target.value)}
+                  data-testid="input-activity-search"
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
+                {[
+                  'All',
+                  '🔐 Authentication',
+                  '👤 Account Activity',
+                  '📦 Inventory Activity',
+                  '💰 Sales & Wholesale Activity',
+                  '⚙️ System Activity',
+                ].map((mod) => (
+                  <button
+                    key={mod}
+                    type="button"
+                    className={`button ${activityModuleFilter === mod ? 'dark' : 'soft'}`}
+                    style={{ padding: '6px 10px', fontSize: 10, whiteSpace: 'nowrap' }}
+                    onClick={() => setActivityModuleFilter(mod)}
+                    data-testid={`filter-mod-${mod.slice(0, 5)}`}
+                  >
+                    {mod === 'All' ? 'All modules' : mod}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="table-scroll">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Date &amp; Time</th>
+                    <th>User</th>
+                    <th>Role</th>
+                    <th>Activity</th>
+                    <th>Module</th>
+                    <th>Description</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredActivities.map((act) => (
+                    <tr key={act.id} data-testid={`row-activity-${act.id}`}>
+                      <td className="muted">{act.dateTime}</td>
+                      <td><strong>{act.user}</strong></td>
+                      <td><span className="pill neutral">{act.role}</span></td>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span>{act.activity}</span>
+                          {act.flag !== 'Normal' && (
+                            <span className={`pill ${act.flag === 'Flagged' ? 'danger' : 'warning'}`} style={{ fontSize: 9 }}>
+                              {act.flag}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td><span className="muted" style={{ fontSize: 11 }}>{act.module}</span></td>
+                      <td style={{ maxWidth: 360, whiteSpace: 'normal', fontSize: 11 }}>{act.description}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {filteredActivities.length === 0 && (
+                <div className="empty-state">
+                  <Activity size={28} />
+                  <div>No user activities match the filter.</div>
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TRANSACTION DETAILS MODAL */}
+      {/* ========================================================================= */}
+      {selectedTrx && createPortal(
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => event.currentTarget === event.target && setSelectedTrx(null)}
+        >
+          <div className="modal" style={{ width: 'min(680px, 100%)' }}>
+            <div className="modal-header">
+              <div>
+                <h2>Transaction details</h2>
+                <p className="modal-sub">Receipt &amp; payment summary for {selectedTrx.transactionNumber}</p>
+              </div>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setSelectedTrx(null)}
+                data-testid="button-close-trx-modal"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Transaction Information */}
+            <div style={{ background: 'hsl(var(--surface-soft))', padding: '14px 16px', borderRadius: 14, marginBottom: 18 }}>
+              <h4 style={{ margin: '0 0 10px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.08em', color: 'hsl(var(--muted))' }}>
+                Transaction Information
+              </h4>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, fontSize: 12 }}>
+                <div><span className="muted">Transaction ID:</span> <strong>{selectedTrx.transactionNumber}</strong></div>
+                <div><span className="muted">Date &amp; time:</span> <strong>{selectedTrx.dateTime}</strong></div>
+                <div><span className="muted">Processed by:</span> <strong>{selectedTrx.user}</strong></div>
+                <div>
+                  <span className="muted">Business type:</span>{' '}
+                  <span className={`pill ${selectedTrx.businessType === 'Wholesale' ? 'warning' : 'neutral'}`} style={{ fontSize: 9 }}>
+                    {selectedTrx.businessType}
+                  </span>
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}><span className="muted">Customer:</span> <strong>{selectedTrx.customer}</strong></div>
+              </div>
+            </div>
+
+            {/* Items Purchased Table */}
+            <div style={{ marginBottom: 18 }}>
+              <h4 style={{ margin: '0 0 10px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.08em', color: 'hsl(var(--muted))' }}>
+                Items Purchased
+              </h4>
+              <div className="table-scroll" style={{ border: '1px solid hsl(var(--border))', borderRadius: 12 }}>
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Product</th>
+                      <th style={{ textAlign: 'center' }}>Quantity</th>
+                      <th style={{ textAlign: 'right' }}>Unit Price</th>
+                      <th style={{ textAlign: 'right' }}>Subtotal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedTrx.items.map((item, idx) => (
+                      <tr key={idx}>
+                        <td><strong>{item.product}</strong></td>
+                        <td style={{ textAlign: 'center' }}>{item.quantity}</td>
+                        <td style={{ textAlign: 'right' }} className="muted">{item.unitPrice}</td>
+                        <td style={{ textAlign: 'right' }}><strong>{item.subtotal}</strong></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Payment Summary */}
+            <div style={{ background: 'hsl(var(--surface-soft))', padding: '14px 16px', borderRadius: 14 }}>
+              <h4 style={{ margin: '0 0 10px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.08em', color: 'hsl(var(--muted))' }}>
+                Payment Summary
+              </h4>
+              <div style={{ display: 'grid', gap: 6, fontSize: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span className="muted">Subtotal:</span>
+                  <span>{selectedTrx.subtotal}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span className="muted">Discount:</span>
+                  <span style={{ color: '#FF3B30' }}>-{selectedTrx.discount}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span className="muted">VAT (12%):</span>
+                  <span>{selectedTrx.vat}</span>
+                </div>
+                <div style={{ height: 1, background: 'hsl(var(--border))', margin: '4px 0' }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
+                  <strong>Total Amount:</strong>
+                  <strong style={{ color: 'hsl(var(--foreground))' }}>{selectedTrx.total}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span className="muted">Amount Received:</span>
+                  <span>{selectedTrx.amountReceived}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span className="muted">Change:</span>
+                  <span>{selectedTrx.change}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span className="muted">Payment Method:</span>
+                  <strong>{selectedTrx.payment}</strong>
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-actions" style={{ marginTop: 20 }}>
+              <button
+                type="button"
+                className="button soft"
+                onClick={() => setSelectedTrx(null)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ========================================================================= */}
+      {/* SYSTEM LOG DETAILS MODAL */}
+      {/* ========================================================================= */}
+      {selectedLog && createPortal(
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => event.currentTarget === event.target && setSelectedLog(null)}
+        >
+          <div className="modal" style={{ width: 'min(580px, 100%)' }}>
+            <div className="modal-header">
+              <div>
+                <h2>System log details</h2>
+                <p className="modal-sub">Security and audit log inspection</p>
+              </div>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setSelectedLog(null)}
+                data-testid="button-close-log-modal"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div style={{ border: '1px solid hsl(var(--border))', borderRadius: 14, overflow: 'hidden' }}>
+              <table className="data-table">
+                <tbody>
+                  <tr>
+                    <td style={{ width: 140, fontWeight: 600, background: 'hsl(var(--surface-soft))' }}>Date &amp; Time</td>
+                    <td>{selectedLog.dateTime}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))' }}>User</td>
+                    <td><strong>{selectedLog.user}</strong></td>
+                  </tr>
+                  <tr>
+                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))' }}>Role</td>
+                    <td><span className="pill neutral">{selectedLog.role}</span></td>
+                  </tr>
+                  <tr>
+                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))' }}>Action</td>
+                    <td><strong>{selectedLog.action}</strong></td>
+                  </tr>
+                  <tr>
+                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))' }}>Module/Feature</td>
+                    <td>{selectedLog.module}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))' }}>Description</td>
+                    <td>{selectedLog.description}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))' }}>Status</td>
+                    <td>
+                      <span className={`pill ${selectedLog.status === 'Success' ? 'success' : 'danger'}`}>
+                        {selectedLog.status}
+                      </span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))' }}>Device/IP</td>
+                    <td className="muted">{selectedLog.deviceIp}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div className="modal-actions" style={{ marginTop: 20 }}>
+              <button
+                type="button"
+                className="button soft"
+                onClick={() => setSelectedLog(null)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
