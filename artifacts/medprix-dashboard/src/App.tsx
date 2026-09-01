@@ -1550,7 +1550,7 @@ function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
             </div>
 
             {/* Transaction Information */}
-            <div style={{ background: 'var(--card-bg, #fafafc)', border: '1px solid hsl(var(--border))', padding: '16px 18px', borderRadius: 14, marginBottom: 18 }}>
+            <div style={{ background: 'hsl(var(--surface-soft))', border: '1px solid hsl(var(--border))', padding: '16px 18px', borderRadius: 14, marginBottom: 18 }}>
               <h4 style={{ margin: '0 0 12px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.08em', color: 'hsl(var(--muted))', fontWeight: 700 }}>
                 Transaction Information
               </h4>
@@ -1598,7 +1598,7 @@ function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
             </div>
 
             {/* Payment Summary */}
-            <div style={{ background: 'var(--card-bg, #fafafc)', border: '1px solid hsl(var(--border))', padding: '16px 18px', borderRadius: 14 }}>
+            <div style={{ background: 'hsl(var(--surface-soft))', border: '1px solid hsl(var(--border))', padding: '16px 18px', borderRadius: 14 }}>
               <h4 style={{ margin: '0 0 12px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.08em', color: 'hsl(var(--muted))', fontWeight: 700 }}>
                 Payment Summary
               </h4>
@@ -1663,39 +1663,39 @@ function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
               </button>
             </div>
 
-            <div style={{ border: '1px solid hsl(var(--border))', borderRadius: 14, overflowX: 'auto', background: 'var(--card-bg, #fafafc)' }}>
+            <div style={{ border: '1px solid hsl(var(--border))', borderRadius: 14, overflowX: 'auto', background: 'hsl(var(--surface))' }}>
               <table className="data-table" style={{ width: '100%', minWidth: 480 }}>
                 <tbody>
                   <tr>
-                    <td style={{ width: 140, fontWeight: 600, background: 'hsl(var(--surface-soft))', whiteSpace: 'nowrap' }}>Date &amp; Time</td>
-                    <td>{selectedLog.dateTime}</td>
+                    <td style={{ width: 140, fontWeight: 600, background: 'hsl(var(--surface-soft))', color: 'hsl(var(--foreground))', whiteSpace: 'nowrap' }}>Date &amp; Time</td>
+                    <td style={{ color: 'hsl(var(--foreground))' }}>{selectedLog.dateTime}</td>
                   </tr>
                   <tr>
-                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', whiteSpace: 'nowrap' }}>User</td>
-                    <td><strong>{selectedLog.user}</strong></td>
+                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', color: 'hsl(var(--foreground))', whiteSpace: 'nowrap' }}>User</td>
+                    <td><strong style={{ color: 'hsl(var(--foreground))' }}>{selectedLog.user}</strong></td>
                   </tr>
                   <tr>
-                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', whiteSpace: 'nowrap' }}>Role</td>
+                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', color: 'hsl(var(--foreground))', whiteSpace: 'nowrap' }}>Role</td>
                     <td><span className="pill neutral">{selectedLog.role}</span></td>
                   </tr>
                   <tr>
-                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', whiteSpace: 'nowrap' }}>Action</td>
-                    <td><strong>{selectedLog.action}</strong></td>
+                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', color: 'hsl(var(--foreground))', whiteSpace: 'nowrap' }}>Action</td>
+                    <td><strong style={{ color: 'hsl(var(--foreground))' }}>{selectedLog.action}</strong></td>
                   </tr>
                   <tr>
-                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', whiteSpace: 'nowrap' }}>Module/Feature</td>
-                    <td>{selectedLog.module}</td>
+                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', color: 'hsl(var(--foreground))', whiteSpace: 'nowrap' }}>Module/Feature</td>
+                    <td style={{ color: 'hsl(var(--foreground))' }}>{selectedLog.module}</td>
                   </tr>
                   <tr>
-                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', whiteSpace: 'nowrap' }}>Description</td>
+                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', color: 'hsl(var(--foreground))', whiteSpace: 'nowrap' }}>Description</td>
                     <td>
-                      <div style={{ overflowX: 'auto', whiteSpace: 'nowrap', padding: '4px 0', maxWidth: 420 }}>
+                      <div style={{ overflowX: 'auto', whiteSpace: 'nowrap', padding: '4px 0', maxWidth: 420, color: 'hsl(var(--foreground))' }}>
                         {selectedLog.description}
                       </div>
                     </td>
                   </tr>
                   <tr>
-                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', whiteSpace: 'nowrap' }}>Status</td>
+                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', color: 'hsl(var(--foreground))', whiteSpace: 'nowrap' }}>Status</td>
                     <td>
                       <span className={`pill ${selectedLog.status === 'Success' ? 'success' : 'danger'}`}>
                         {selectedLog.status}
@@ -1703,7 +1703,7 @@ function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                     </td>
                   </tr>
                   <tr>
-                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', whiteSpace: 'nowrap' }}>Device/IP</td>
+                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', color: 'hsl(var(--foreground))', whiteSpace: 'nowrap' }}>Device/IP</td>
                     <td className="muted">{selectedLog.deviceIp}</td>
                   </tr>
                 </tbody>
