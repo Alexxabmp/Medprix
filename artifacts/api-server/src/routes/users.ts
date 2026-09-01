@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, usersTable } from "@workspace/db";
 import { hashPassword, validatePassword } from "../lib/password";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { eq } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -72,5 +73,32 @@ router.post("/users", async (req, res) => {
   }
 });
 
-export default router;
+router.patch("/users/:id", async (req, res) => {
+  const userId = Number(req.params.id);
+  const { role, fullName, contactNumber } = req.body ?? {};
 
+  if (!Number.isInteger(userId)) {
+    return res.status(400).json({ error: "Invalid user id." });
+  }
+  if (role && !["admin", "cashier", "frontdesk"].includes(role)) {
+    return res
+      .status(400)
+      .json({ error: "Role must be admin, cashier, or frontdesk." });
+  }
+
+  try {
+    await db
+      .update(usersTable)
+      .set({
+        ...(role ? { role } : {}),
+        ...(fullName ? { fullName } : {}),
+        ...(contactNumber !== undefined ? { contactNumber } : {}),
+      })
+      .where(eq(usersTable.id, userId));
+
+    return res.json({ id: userId, role, fullName, contactNumber });
+  } catch (err) {
+    return res.status(500).json({ error: "Failed to update user." });
+  }
+});
+export default router;

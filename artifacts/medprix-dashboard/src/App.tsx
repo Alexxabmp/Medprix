@@ -360,11 +360,11 @@ function AppContent() {
             status: "Active",
             lastActive: user.lastLogin
               ? new Date(user.lastLogin).toLocaleString([], {
-                month: "short",
-                day: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-              })
+                  month: "short",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
               : "Never",
             phone: user.contactNumber || "",
           };
@@ -379,7 +379,7 @@ function AppContent() {
   useEffect(() => {
     if (!session) return;
     fetchUsers();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
   useEffect(() => {
@@ -591,8 +591,8 @@ function AppShell({
     location === "/dashboard"
       ? "Dashboard"
       : (navGroups
-        .flatMap((group) => group.items)
-        .find((item) => item.href === location)?.label ?? "Dashboard");
+          .flatMap((group) => group.items)
+          .find((item) => item.href === location)?.label ?? "Dashboard");
 
   const storedFullName = localStorage.getItem("medprix-fullname");
   const storedUsername = localStorage.getItem("medprix-username");
@@ -609,7 +609,11 @@ function AppShell({
       : role === "frontdesk"
         ? "Front Desk"
         : "Cashier";
-  const currentUser = { initials: displayInitials, name: displayName, title: displayTitle };
+  const currentUser = {
+    initials: displayInitials,
+    name: displayName,
+    title: displayTitle,
+  };
 
   return (
     <div className="app-shell">
@@ -772,49 +776,49 @@ const reportCards: {
   action: string;
   icon: LucideIcon;
 }[] = [
-    {
-      type: "sales",
-      title: "Daily sales",
-      description: "View today's sales performance and payment mix.",
-      action: "View report",
-      icon: BarChart3,
-    },
-    {
-      type: "inventory",
-      title: "Inventory",
-      description: "View current stock levels and replenishment needs.",
-      action: "View report",
-      icon: Package,
-    },
-    {
-      type: "financial",
-      title: "Financial summary",
-      description: "Understand the month's financial performance.",
-      action: "View report",
-      icon: CircleDollarSign,
-    },
-    {
-      type: "valuation",
-      title: "Stock valuation",
-      description: "See the current value held in your inventory.",
-      action: "View valuation",
-      icon: Boxes,
-    },
-    {
-      type: "movement",
-      title: "Product movement",
-      description: "Compare fast and slow-moving products.",
-      action: "View list",
-      icon: RefreshCw,
-    },
-    {
-      type: "cash",
-      title: "Cash mismatch",
-      description: "Review cash versus recorded sales discrepancies.",
-      action: "View alerts",
-      icon: FileBarChart,
-    },
-  ];
+  {
+    type: "sales",
+    title: "Daily sales",
+    description: "View today's sales performance and payment mix.",
+    action: "View report",
+    icon: BarChart3,
+  },
+  {
+    type: "inventory",
+    title: "Inventory",
+    description: "View current stock levels and replenishment needs.",
+    action: "View report",
+    icon: Package,
+  },
+  {
+    type: "financial",
+    title: "Financial summary",
+    description: "Understand the month's financial performance.",
+    action: "View report",
+    icon: CircleDollarSign,
+  },
+  {
+    type: "valuation",
+    title: "Stock valuation",
+    description: "See the current value held in your inventory.",
+    action: "View valuation",
+    icon: Boxes,
+  },
+  {
+    type: "movement",
+    title: "Product movement",
+    description: "Compare fast and slow-moving products.",
+    action: "View list",
+    icon: RefreshCw,
+  },
+  {
+    type: "cash",
+    title: "Cash mismatch",
+    description: "Review cash versus recorded sales discrepancies.",
+    action: "View alerts",
+    icon: FileBarChart,
+  },
+];
 
 // Ã¢' Ã¢' Ã¢'  Dashboard (now contains all reports) Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢'
 
@@ -1000,11 +1004,27 @@ function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
   const [cart, setCart] = useState<
     { id: string; name: string; sku: string; price: number; qty: number }[]
   >([
-    { id: "p1", name: "Paracetamol 500mg", sku: "MED-0421", price: 5.0, qty: 10 },
-    { id: "p4", name: "Cough relief syrup", sku: "MED-0552", price: 145.0, qty: 1 },
+    {
+      id: "p1",
+      name: "Paracetamol 500mg",
+      sku: "MED-0421",
+      price: 5.0,
+      qty: 10,
+    },
+    {
+      id: "p4",
+      name: "Cough relief syrup",
+      sku: "MED-0552",
+      price: 145.0,
+      qty: 1,
+    },
   ]);
-  const [paymentMethod, setPaymentMethod] = useState<"Cash" | "GCash" | "Card">("Cash");
-  const [discountType, setDiscountType] = useState<"None" | "Senior" | "PWD">("None");
+  const [paymentMethod, setPaymentMethod] = useState<"Cash" | "GCash" | "Card">(
+    "Cash",
+  );
+  const [discountType, setDiscountType] = useState<"None" | "Senior" | "PWD">(
+    "None",
+  );
   const [cashTendered, setCashTendered] = useState<string>("200");
   const [searchReceipt, setSearchReceipt] = useState("");
   const [showShiftModal, setShowShiftModal] = useState(false);
@@ -1056,12 +1076,14 @@ function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
   const vat = isDiscountEligible ? 0 : subtotal * 0.12;
   const total = subtotal - discountAmount + vat;
   const tenderedNum = parseFloat(cashTendered) || 0;
-  const changeDue = paymentMethod === "Cash" ? Math.max(0, tenderedNum - total) : 0;
+  const changeDue =
+    paymentMethod === "Cash" ? Math.max(0, tenderedNum - total) : 0;
 
   const handleAddToCart = () => {
     const prod = products.find((p) => p.id === selectedProductId);
     if (!prod) return;
-    const numericPrice = parseFloat(prod.price.replace("₱", "").replace(",", "")) || 0;
+    const numericPrice =
+      parseFloat(prod.price.replace("₱", "").replace(",", "")) || 0;
 
     const existingIndex = cart.findIndex((item) => item.id === prod.id);
     if (existingIndex > -1) {
@@ -1071,7 +1093,13 @@ function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
     } else {
       setCart([
         ...cart,
-        { id: prod.id, name: prod.name, sku: prod.sku, price: numericPrice, qty },
+        {
+          id: prod.id,
+          name: prod.name,
+          sku: prod.sku,
+          price: numericPrice,
+          qty,
+        },
       ]);
     }
     onToast(`Added ${prod.name} (x${qty}) to cart`);
@@ -1150,12 +1178,17 @@ function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
             <span
               className="pill success"
               style={{ padding: "6px 12px", fontSize: 12 }}>
-              <ShieldCheck size={13} style={{ marginRight: 4 }} /> Register Active
+              <ShieldCheck size={13} style={{ marginRight: 4 }} /> Register
+              Active
             </span>
             <label className="date-control" data-testid="control-cashier-date">
               <CalendarDays size={14} />
               <span>Shift Date</span>
-              <input type="date" aria-label="Select date" defaultValue="2026-08-31" />
+              <input
+                type="date"
+                aria-label="Select date"
+                defaultValue="2026-08-31"
+              />
             </label>
           </div>
         }
@@ -1544,8 +1577,7 @@ function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
                       alignItems: "center",
                       padding: "0 10px",
                       fontWeight: 700,
-                      color:
-                        changeDue >= 0 ? "#34C759" : "hsl(var(--danger))",
+                      color: changeDue >= 0 ? "#34C759" : "hsl(var(--danger))",
                       background: "hsl(var(--surface))",
                       border: "1px solid hsl(var(--border))",
                       borderRadius: 10,
@@ -1590,7 +1622,9 @@ function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
               </div>
             </div>
 
-            <div className="table-scroll" style={{ minHeight: 450, maxHeight: 450 }}>
+            <div
+              className="table-scroll"
+              style={{ minHeight: 450, maxHeight: 450 }}>
               <table className="data-table">
                 <thead>
                   <tr>
@@ -1637,7 +1671,6 @@ function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
               </table>
             </div>
           </section>
-
         </div>
       </div>
 
@@ -1654,7 +1687,8 @@ function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
               <div>
                 <h2>Receipt Details ({selectedReceipt.id})</h2>
                 <p className="modal-sub">
-                  Processed at {selectedReceipt.time} by {selectedReceipt.cashier}
+                  Processed at {selectedReceipt.time} by{" "}
+                  {selectedReceipt.cashier}
                 </p>
               </div>
               <button
@@ -2033,19 +2067,19 @@ function Kpi({
       onMouseEnter={
         onClick
           ? (e) => {
-            (e.currentTarget as HTMLDivElement).style.transform =
-              "translateY(-3px)";
-            (e.currentTarget as HTMLDivElement).style.boxShadow =
-              "var(--shadow-lift)";
-          }
+              (e.currentTarget as HTMLDivElement).style.transform =
+                "translateY(-3px)";
+              (e.currentTarget as HTMLDivElement).style.boxShadow =
+                "var(--shadow-lift)";
+            }
           : undefined
       }
       onMouseLeave={
         onClick
           ? (e) => {
-            (e.currentTarget as HTMLDivElement).style.transform = "";
-            (e.currentTarget as HTMLDivElement).style.boxShadow = "";
-          }
+              (e.currentTarget as HTMLDivElement).style.transform = "";
+              (e.currentTarget as HTMLDivElement).style.boxShadow = "";
+            }
           : undefined
       }>
       <div className="kpi-top">
@@ -2424,7 +2458,7 @@ function ModalTable({
             {row.map((cell, cellIndex) => (
               <td key={`${cell}-${cellIndex}`}>
                 {cellIndex === row.length - 1 &&
-                  (cell.includes("stock") || cell.includes("Available")) ? (
+                (cell.includes("stock") || cell.includes("Available")) ? (
                   <span className="pill success">{cell}</span>
                 ) : (
                   cell
@@ -2701,14 +2735,14 @@ function ProcurementPage({ onToast }: { onToast: ToastFn }) {
       orders.map((order) =>
         order.id === id
           ? {
-            ...order,
-            status:
-              order.status === "Pending approval"
-                ? "In transit"
-                : order.status === "In transit"
-                  ? "Received"
-                  : "Received",
-          }
+              ...order,
+              status:
+                order.status === "Pending approval"
+                  ? "In transit"
+                  : order.status === "In transit"
+                    ? "Received"
+                    : "Received",
+            }
           : order,
       ),
     );
@@ -2848,12 +2882,12 @@ function WholesalePage({ onToast }: { onToast: ToastFn }) {
       orders.map((order) =>
         order.id === id
           ? {
-            ...order,
-            status:
-              order.status === "Processing"
-                ? "Ready to dispatch"
-                : "Completed",
-          }
+              ...order,
+              status:
+                order.status === "Processing"
+                  ? "Ready to dispatch"
+                  : "Completed",
+            }
           : order,
       ),
     );
@@ -3218,22 +3252,51 @@ function UserManagementPage({
         return;
       }
     } else if (selected) {
+      const dbRole =
+        draft.role === "Administrator"
+          ? "admin"
+          : draft.role === "Front Desk"
+            ? "frontdesk"
+            : "cashier";
+      try {
+        const response = await fetch(
+          `http://localhost:5000/api/users/${selected.id}`,
+          {
+            method: "PATCH",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              role: dbRole,
+              fullName: draft.name,
+              contactNumber: draft.phone,
+            }),
+          },
+        );
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          onToast(data.error ?? "Failed to update user");
+          return;
+        }
+      } catch {
+        onToast("Could not reach the server.");
+        return;
+      }
       setUsers(
         users.map((user) =>
           user.id === selected.id
             ? {
-              ...user,
-              name: draft.name,
-              username: draft.username,
-              role: draft.role,
-              phone: draft.phone,
-              initials: draft.name
-                .split(" ")
-                .map((part) => part[0])
-                .join("")
-                .slice(0, 2)
-                .toUpperCase(),
-            }
+                ...user,
+                name: draft.name,
+                username: draft.username,
+                role: draft.role,
+                phone: draft.phone,
+                initials: draft.name
+                  .split(" ")
+                  .map((part) => part[0])
+                  .join("")
+                  .slice(0, 2)
+                  .toUpperCase(),
+              }
             : user,
         ),
       );
@@ -3364,11 +3427,39 @@ function UserManagementPage({
                       style={{ height: 30, padding: "0 8px" }}
                       data-testid={`select-role-${user.id}`}
                       value={user.role}
-                      onChange={(e) => {
+                      onChange={async (e) => {
+                        const newRoleLabel = e.target.value;
+                        const dbRole =
+                          newRoleLabel === "Administrator"
+                            ? "admin"
+                            : newRoleLabel === "Front Desk"
+                              ? "frontdesk"
+                              : "cashier";
+                        try {
+                          const response = await fetch(
+                            `http://localhost:5000/api/users/${user.id}`,
+                            {
+                              method: "PATCH",
+                              credentials: "include",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ role: dbRole }),
+                            },
+                          );
+                          if (!response.ok) {
+                            const data = await response
+                              .json()
+                              .catch(() => ({}));
+                            onToast(data.error ?? "Failed to update role");
+                            return;
+                          }
+                        } catch {
+                          onToast("Could not reach the server.");
+                          return;
+                        }
                         setUsers(
                           users.map((item) =>
                             item.id === user.id
-                              ? { ...item, role: e.target.value }
+                              ? { ...item, role: newRoleLabel }
                               : item,
                           ),
                         );
