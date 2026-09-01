@@ -2691,34 +2691,46 @@ function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
             </div>
 
             {/* Shift Overview Metrics */}
-            <div className="summary-strip" style={{ marginBottom: 18 }}>
-              <Summary label="Total shift sales" value="₱19,395.00" caption="Across all payment modes" />
-              <Summary label="Total receipts" value="5" caption="Transactions completed" />
-              <Summary label="Average transaction" value="₱3,879.00" caption="Average basket size" />
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 18 }}>
+              <div style={{ background: "hsl(var(--surface-soft))", border: "1px solid hsl(var(--border))", borderRadius: 14, padding: "14px 16px" }}>
+                <span className="muted" style={{ fontSize: 11, display: "block" }}>Total shift sales</span>
+                <strong style={{ display: "block", fontSize: 20, marginTop: 4, color: "hsl(var(--foreground))", letterSpacing: "-.04em" }}>₱19,395.00</strong>
+                <span style={{ color: "#34C759", fontSize: 10, fontWeight: 600 }}>Across all payment modes</span>
+              </div>
+              <div style={{ background: "hsl(var(--surface-soft))", border: "1px solid hsl(var(--border))", borderRadius: 14, padding: "14px 16px" }}>
+                <span className="muted" style={{ fontSize: 11, display: "block" }}>Total receipts</span>
+                <strong style={{ display: "block", fontSize: 20, marginTop: 4, color: "hsl(var(--foreground))", letterSpacing: "-.04em" }}>5</strong>
+                <span style={{ color: "#34C759", fontSize: 10, fontWeight: 600 }}>Transactions completed</span>
+              </div>
+              <div style={{ background: "hsl(var(--surface-soft))", border: "1px solid hsl(var(--border))", borderRadius: 14, padding: "14px 16px" }}>
+                <span className="muted" style={{ fontSize: 11, display: "block" }}>Average transaction</span>
+                <strong style={{ display: "block", fontSize: 20, marginTop: 4, color: "hsl(var(--foreground))", letterSpacing: "-.04em" }}>₱3,879.00</strong>
+                <span style={{ color: "#34C759", fontSize: 10, fontWeight: 600 }}>Average basket size</span>
+              </div>
             </div>
 
             {/* Sales by Payment Method */}
-            <div style={{ background: "var(--card-bg, #fafafc)", border: "1px solid hsl(var(--border))", padding: "16px 18px", borderRadius: 14, marginBottom: 18 }}>
+            <div style={{ background: "hsl(var(--surface-soft))", border: "1px solid hsl(var(--border))", padding: "16px 18px", borderRadius: 14, marginBottom: 18 }}>
               <h4 style={{ margin: "0 0 12px", fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "hsl(var(--muted))", fontWeight: 700 }}>
                 Sales by Payment Method
               </h4>
               <div style={{ display: "grid", gap: 8, fontSize: 12 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span>💵 Cash</span>
+                  <span style={{ color: "hsl(var(--foreground))", fontWeight: 600 }}>💵 Cash</span>
                   <div style={{ display: "flex", gap: 12 }}>
                     <span className="muted">3 receipts (45.3%)</span>
                     <strong style={{ color: "hsl(var(--foreground))" }}>₱8,780.00</strong>
                   </div>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span>📱 GCash / E-Wallet</span>
+                  <span style={{ color: "hsl(var(--foreground))", fontWeight: 600 }}>📱 GCash / E-Wallet</span>
                   <div style={{ display: "flex", gap: 12 }}>
                     <span className="muted">1 receipt (28.2%)</span>
                     <strong style={{ color: "hsl(var(--foreground))" }}>₱5,475.00</strong>
                   </div>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span>💳 Credit / Debit Card</span>
+                  <span style={{ color: "hsl(var(--foreground))", fontWeight: 600 }}>💳 Credit / Debit Card</span>
                   <div style={{ display: "flex", gap: 12 }}>
                     <span className="muted">1 receipt (26.5%)</span>
                     <strong style={{ color: "hsl(var(--foreground))" }}>₱5,140.00</strong>
@@ -2789,26 +2801,26 @@ function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
             </div>
 
             {/* Expected Cash Card */}
-            <div style={{ background: "var(--card-bg, #fafafc)", border: "1px solid hsl(var(--border))", padding: "16px 18px", borderRadius: 14, marginBottom: 18 }}>
+            <div style={{ background: "hsl(var(--surface-soft))", border: "1px solid hsl(var(--border))", padding: "16px 18px", borderRadius: 14, marginBottom: 18 }}>
               <h4 style={{ margin: "0 0 12px", fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "hsl(var(--muted))", fontWeight: 700 }}>
                 Drawer Reconciliation Breakdown
               </h4>
               <div style={{ display: "grid", gap: 8, fontSize: 12 }}>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <span className="muted">Opening cash / float (08:00 AM):</span>
-                  <span>₱5,000.00</span>
+                  <strong style={{ color: "hsl(var(--foreground))" }}>₱5,000.00</strong>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <span className="muted">Cash received from transactions:</span>
-                  <span style={{ color: "#34C759", fontWeight: 600 }}>+₱8,780.00</span>
+                  <strong style={{ color: "#34C759" }}>+₱8,780.00</strong>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <span className="muted">Mid-day cash drop (Transferred to main safe):</span>
-                  <span style={{ color: "#FF3B30", fontWeight: 600 }}>-₱2,000.00</span>
+                  <strong style={{ color: "#FF3B30" }}>-₱2,000.00</strong>
                 </div>
                 <div style={{ height: 1, background: "hsl(var(--border))", margin: "4px 0" }} />
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15 }}>
-                  <strong>Current Expected Cash:</strong>
+                  <strong style={{ color: "hsl(var(--foreground))" }}>Current Expected Cash:</strong>
                   <strong style={{ color: "hsl(var(--foreground))" }}>₱11,780.00</strong>
                 </div>
               </div>
@@ -2929,7 +2941,7 @@ function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
             </div>
 
             {/* Current Till Status Card */}
-            <div style={{ background: "var(--card-bg, #fafafc)", border: "1px solid hsl(var(--border))", padding: "16px 18px", borderRadius: 14, marginBottom: 18 }}>
+            <div style={{ background: "hsl(var(--surface-soft))", border: "1px solid hsl(var(--border))", padding: "16px 18px", borderRadius: 14, marginBottom: 18 }}>
               <h4 style={{ margin: "0 0 12px", fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "hsl(var(--muted))", fontWeight: 700 }}>
                 Till Status Summary
               </h4>
@@ -2944,19 +2956,19 @@ function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                 </div>
                 <div>
                   <span className="muted" style={{ display: "block", fontSize: 11, marginBottom: 2 }}>Expected Cash:</span>
-                  <strong>₱11,780.00</strong>
+                  <strong style={{ color: "hsl(var(--foreground))" }}>₱11,780.00</strong>
                 </div>
                 <div>
                   <span className="muted" style={{ display: "block", fontSize: 11, marginBottom: 2 }}>Physical Count:</span>
-                  <strong>₱11,780.00</strong>
+                  <strong style={{ color: "hsl(var(--foreground))" }}>₱11,780.00</strong>
                 </div>
                 <div>
                   <span className="muted" style={{ display: "block", fontSize: 11, marginBottom: 2 }}>Last Verification Time:</span>
-                  <strong>September 1, 2026 – 2:00 PM</strong>
+                  <strong style={{ color: "hsl(var(--foreground))" }}>September 1, 2026 – 2:00 PM</strong>
                 </div>
                 <div>
                   <span className="muted" style={{ display: "block", fontSize: 11, marginBottom: 2 }}>Verified by Supervisor:</span>
-                  <strong>Juan Dela Cruz (Admin)</strong>
+                  <strong style={{ color: "hsl(var(--foreground))" }}>Juan Dela Cruz (Admin)</strong>
                 </div>
               </div>
             </div>
@@ -4340,7 +4352,7 @@ function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
             </div>
 
             {/* Transaction Information */}
-            <div style={{ background: 'var(--card-bg, #fafafc)', border: '1px solid hsl(var(--border))', padding: '16px 18px', borderRadius: 14, marginBottom: 18 }}>
+            <div style={{ background: 'hsl(var(--surface-soft))', border: '1px solid hsl(var(--border))', padding: '16px 18px', borderRadius: 14, marginBottom: 18 }}>
               <h4 style={{ margin: '0 0 12px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.08em', color: 'hsl(var(--muted))', fontWeight: 700 }}>
                 Transaction Information
               </h4>
@@ -4388,7 +4400,7 @@ function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
             </div>
 
             {/* Payment Summary */}
-            <div style={{ background: 'var(--card-bg, #fafafc)', border: '1px solid hsl(var(--border))', padding: '16px 18px', borderRadius: 14 }}>
+            <div style={{ background: 'hsl(var(--surface-soft))', border: '1px solid hsl(var(--border))', padding: '16px 18px', borderRadius: 14 }}>
               <h4 style={{ margin: '0 0 12px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.08em', color: 'hsl(var(--muted))', fontWeight: 700 }}>
                 Payment Summary
               </h4>
@@ -4453,39 +4465,39 @@ function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
               </button>
             </div>
 
-            <div style={{ border: '1px solid hsl(var(--border))', borderRadius: 14, overflowX: 'auto', background: 'var(--card-bg, #fafafc)' }}>
+            <div style={{ border: '1px solid hsl(var(--border))', borderRadius: 14, overflowX: 'auto', background: 'hsl(var(--surface))' }}>
               <table className="data-table" style={{ width: '100%', minWidth: 480 }}>
                 <tbody>
                   <tr>
-                    <td style={{ width: 140, fontWeight: 600, background: 'hsl(var(--surface-soft))', whiteSpace: 'nowrap' }}>Date &amp; Time</td>
-                    <td>{selectedLog.dateTime}</td>
+                    <td style={{ width: 140, fontWeight: 600, background: 'hsl(var(--surface-soft))', color: 'hsl(var(--foreground))', whiteSpace: 'nowrap' }}>Date &amp; Time</td>
+                    <td style={{ color: 'hsl(var(--foreground))' }}>{selectedLog.dateTime}</td>
                   </tr>
                   <tr>
-                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', whiteSpace: 'nowrap' }}>User</td>
-                    <td><strong>{selectedLog.user}</strong></td>
+                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', color: 'hsl(var(--foreground))', whiteSpace: 'nowrap' }}>User</td>
+                    <td><strong style={{ color: 'hsl(var(--foreground))' }}>{selectedLog.user}</strong></td>
                   </tr>
                   <tr>
-                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', whiteSpace: 'nowrap' }}>Role</td>
+                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', color: 'hsl(var(--foreground))', whiteSpace: 'nowrap' }}>Role</td>
                     <td><span className="pill neutral">{selectedLog.role}</span></td>
                   </tr>
                   <tr>
-                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', whiteSpace: 'nowrap' }}>Action</td>
-                    <td><strong>{selectedLog.action}</strong></td>
+                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', color: 'hsl(var(--foreground))', whiteSpace: 'nowrap' }}>Action</td>
+                    <td><strong style={{ color: 'hsl(var(--foreground))' }}>{selectedLog.action}</strong></td>
                   </tr>
                   <tr>
-                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', whiteSpace: 'nowrap' }}>Module/Feature</td>
-                    <td>{selectedLog.module}</td>
+                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', color: 'hsl(var(--foreground))', whiteSpace: 'nowrap' }}>Module/Feature</td>
+                    <td style={{ color: 'hsl(var(--foreground))' }}>{selectedLog.module}</td>
                   </tr>
                   <tr>
-                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', whiteSpace: 'nowrap' }}>Description</td>
+                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', color: 'hsl(var(--foreground))', whiteSpace: 'nowrap' }}>Description</td>
                     <td>
-                      <div style={{ overflowX: 'auto', whiteSpace: 'nowrap', padding: '4px 0', maxWidth: 420 }}>
+                      <div style={{ overflowX: 'auto', whiteSpace: 'nowrap', padding: '4px 0', maxWidth: 420, color: 'hsl(var(--foreground))' }}>
                         {selectedLog.description}
                       </div>
                     </td>
                   </tr>
                   <tr>
-                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', whiteSpace: 'nowrap' }}>Status</td>
+                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', color: 'hsl(var(--foreground))', whiteSpace: 'nowrap' }}>Status</td>
                     <td>
                       <span className={`pill ${selectedLog.status === 'Success' ? 'success' : 'danger'}`}>
                         {selectedLog.status}
@@ -4493,7 +4505,7 @@ function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                     </td>
                   </tr>
                   <tr>
-                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', whiteSpace: 'nowrap' }}>Device/IP</td>
+                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', color: 'hsl(var(--foreground))', whiteSpace: 'nowrap' }}>Device/IP</td>
                     <td className="muted">{selectedLog.deviceIp}</td>
                   </tr>
                 </tbody>
