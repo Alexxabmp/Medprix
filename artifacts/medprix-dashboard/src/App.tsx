@@ -3167,6 +3167,11 @@ function Summary({
 }
 
 function SupplierPage({ onToast }: { onToast: ToastFn }) {
+  const [filter, setFilter] = useState("All statuses");
+  const filtered = suppliers.filter(
+    (supplier) => filter === "All statuses" || supplier.status === filter,
+  );
+
   return (
     <div>
       <PageHeading
@@ -3206,12 +3211,17 @@ function SupplierPage({ onToast }: { onToast: ToastFn }) {
               Commercial partners and current standing
             </p>
           </div>
-          <button
-            className="button soft"
-            data-testid="button-supplier-filter"
-            onClick={() => onToast("Showing all supplier statuses")}>
-            <ChevronDown size={14} /> All statuses
-          </button>
+          <select
+            className="select"
+            data-testid="select-supplier-filter"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}>
+            <option>All statuses</option>
+            <option>Preferred</option>
+            <option>Active</option>
+            <option>Review</option>
+            <option>On hold</option>
+          </select>
         </div>
         <div className="table-scroll">
           <table className="data-table">
@@ -3226,7 +3236,7 @@ function SupplierPage({ onToast }: { onToast: ToastFn }) {
               </tr>
             </thead>
             <tbody>
-              {suppliers.map((supplier) => (
+              {filtered.map((supplier) => (
                 <tr key={supplier.code}>
                   <td>
                     <div className="product-cell">
@@ -3275,28 +3285,17 @@ function SupplierPage({ onToast }: { onToast: ToastFn }) {
 function ProcurementPage({ onToast }: { onToast: ToastFn }) {
   const [status, setStatus] = useState("All orders");
   const [orders, setOrders] = useState(purchaseOrders);
-  const statuses = ["All orders", "Pending approval", "In transit", "Received"];
+  const statuses = [
+    "All orders",
+    "Pending approval",
+    "Approved",
+    "In transit",
+    "Received",
+  ];
   const filtered = orders.filter(
     (order) => status === "All orders" || order.status === status,
   );
-  const advance = (id: string) => {
-    setOrders(
-      orders.map((order) =>
-        order.id === id
-          ? {
-              ...order,
-              status:
-                order.status === "Pending approval"
-                  ? "In transit"
-                  : order.status === "In transit"
-                    ? "Received"
-                    : "Received",
-            }
-          : order,
-      ),
-    );
-    onToast("Purchase order status updated");
-  };
+
   return (
     <div>
       <PageHeading
@@ -3351,42 +3350,74 @@ function ProcurementPage({ onToast }: { onToast: ToastFn }) {
                 <th>Items</th>
                 <th>Value</th>
                 <th>Status</th>
-                <th />
               </tr>
             </thead>
             <tbody>
-              {filtered.map((order) => (
-                <tr key={order.id}>
-                  <td>
-                    <strong>{order.id}</strong>
-                  </td>
-                  <td>{order.supplier}</td>
-                  <td className="muted">{order.date}</td>
-                  <td>{order.items}</td>
-                  <td>
-                    <strong>{order.value}</strong>
-                  </td>
-                  <td>
-                    <span
-                      className={`pill ${order.status === "Received" ? "success" : order.status === "Pending approval" ? "warning" : "neutral"}`}>
-                      {order.status}
-                    </span>
-                  </td>
-                  <td>
-                    <button
-                      className="button soft"
-                      data-testid={`button-advance-${order.id}`}
-                      onClick={() => advance(order.id)}
-                      disabled={order.status === "Received"}>
-                      {order.status === "Pending approval"
-                        ? "Approve"
-                        : order.status === "In transit"
-                          ? "Mark received"
-                          : "Received"}
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {filtered.map((order) => {
+                const isReceived = order.status === "Received";
+                const isPending = order.status === "Pending approval";
+                const isInTransit = order.status === "In transit";
+
+                return (
+                  <tr key={order.id}>
+                    <td>
+                      <strong>{order.id}</strong>
+                    </td>
+                    <td>{order.supplier}</td>
+                    <td className="muted">{order.date}</td>
+                    <td>{order.items}</td>
+                    <td>
+                      <strong>{order.value}</strong>
+                    </td>
+                    <td>
+                      <select
+                        className="select"
+                        data-testid={`select-status-${order.id}`}
+                        style={{
+                          height: 30,
+                          padding: "0 28px 0 12px",
+                          fontSize: 11,
+                          fontWeight: 600,
+                          borderRadius: 99,
+                          border: "1px solid hsl(var(--border))",
+                          background: isReceived
+                            ? "hsl(var(--mint))"
+                            : isPending
+                              ? "hsl(var(--peach))"
+                              : isInTransit
+                                ? "hsl(var(--yellow))"
+                                : "hsl(var(--surface-soft))",
+                          color: isReceived
+                            ? "#1B7A40"
+                            : isPending
+                              ? "#B02020"
+                              : isInTransit
+                                ? "#8B4500"
+                                : "hsl(var(--foreground))",
+                          cursor: "pointer",
+                          outline: "none",
+                        }}
+                        value={order.status}
+                        onChange={(e) => {
+                          const newStatus = e.target.value;
+                          setOrders(
+                            orders.map((o) =>
+                              o.id === order.id
+                                ? { ...o, status: newStatus }
+                                : o,
+                            ),
+                          );
+                          onToast(`PO ${order.id} status changed to ${newStatus}`);
+                        }}>
+                        <option value="Pending approval">Pending approval</option>
+                        <option value="Approved">Approved</option>
+                        <option value="In transit">In transit</option>
+                        <option value="Received">Received</option>
+                      </select>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -3396,13 +3427,14 @@ function ProcurementPage({ onToast }: { onToast: ToastFn }) {
 }
 
 function WholesalePage({ onToast }: { onToast: ToastFn }) {
+  const [statusFilter, setStatusFilter] = useState("All statuses");
   const [orders, setOrders] = useState([
     {
       id: "WS-1608",
       customer: "St. Luke\u2019s Clinic",
       items: 38,
       value: "₱18,450",
-      status: "Ready to dispatch",
+      status: "In transit",
     },
     {
       id: "WS-1607",
@@ -3426,22 +3458,12 @@ function WholesalePage({ onToast }: { onToast: ToastFn }) {
       status: "Completed",
     },
   ]);
-  const process = (id: string) => {
-    setOrders(
-      orders.map((order) =>
-        order.id === id
-          ? {
-              ...order,
-              status:
-                order.status === "Processing"
-                  ? "Ready to dispatch"
-                  : "Completed",
-            }
-          : order,
-      ),
-    );
-    onToast("Wholesale order updated");
-  };
+
+  const filtered = orders.filter(
+    (order) =>
+      statusFilter === "All statuses" || order.status === statusFilter,
+  );
+
   return (
     <div>
       <PageHeading
@@ -3479,12 +3501,24 @@ function WholesalePage({ onToast }: { onToast: ToastFn }) {
             <h2 className="card-title">Partner orders</h2>
             <p className="card-subtitle">Wholesale fulfillment queue</p>
           </div>
-          <button
-            className="button soft"
-            data-testid="button-wholesale-export"
-            onClick={() => onToast("Wholesale order list exported")}>
-            <ArrowDownToLine size={14} /> Export
-          </button>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <select
+              className="select"
+              data-testid="select-wholesale-status-filter"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}>
+              <option>All statuses</option>
+              <option>Processing</option>
+              <option>In transit</option>
+              <option>Completed</option>
+            </select>
+            <button
+              className="button soft"
+              data-testid="button-wholesale-export"
+              onClick={() => onToast("Wholesale order list exported")}>
+              <ArrowDownToLine size={14} /> Export
+            </button>
+          </div>
         </div>
         <div className="table-scroll">
           <table className="data-table">
@@ -3495,41 +3529,69 @@ function WholesalePage({ onToast }: { onToast: ToastFn }) {
                 <th>Items</th>
                 <th>Value</th>
                 <th>Status</th>
-                <th />
               </tr>
             </thead>
             <tbody>
-              {orders.map((order) => (
-                <tr key={order.id}>
-                  <td>
-                    <strong>{order.id}</strong>
-                  </td>
-                  <td>{order.customer}</td>
-                  <td>{order.items}</td>
-                  <td>
-                    <strong>{order.value}</strong>
-                  </td>
-                  <td>
-                    <span
-                      className={`pill ${order.status === "Completed" ? "success" : "warning"}`}>
-                      {order.status}
-                    </span>
-                  </td>
-                  <td>
-                    <button
-                      className="button soft"
-                      data-testid={`button-process-${order.id}`}
-                      onClick={() => process(order.id)}
-                      disabled={order.status === "Completed"}>
-                      {order.status === "Processing"
-                        ? "Prepare"
-                        : order.status === "Ready to dispatch"
-                          ? "Complete"
-                          : "Completed"}
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {filtered.map((order) => {
+                const isCompleted = order.status === "Completed";
+                const isProcessing = order.status === "Processing";
+
+                return (
+                  <tr key={order.id}>
+                    <td>
+                      <strong>{order.id}</strong>
+                    </td>
+                    <td>{order.customer}</td>
+                    <td>{order.items}</td>
+                    <td>
+                      <strong>{order.value}</strong>
+                    </td>
+                    <td>
+                      <select
+                        className="select"
+                        data-testid={`select-status-${order.id}`}
+                        style={{
+                          height: 30,
+                          padding: "0 28px 0 12px",
+                          fontSize: 11,
+                          fontWeight: 600,
+                          borderRadius: 99,
+                          border: "1px solid hsl(var(--border))",
+                          background: isCompleted
+                            ? "hsl(var(--mint))"
+                            : isProcessing
+                              ? "hsl(var(--yellow))"
+                              : "hsl(var(--accent-soft))",
+                          color: isCompleted
+                            ? "#1B7A40"
+                            : isProcessing
+                              ? "#8B4500"
+                              : "hsl(var(--accent))",
+                          cursor: "pointer",
+                          outline: "none",
+                        }}
+                        value={order.status}
+                        onChange={(e) => {
+                          const newStatus = e.target.value;
+                          setOrders(
+                            orders.map((o) =>
+                              o.id === order.id
+                                ? { ...o, status: newStatus }
+                                : o,
+                            ),
+                          );
+                          onToast(
+                            `Order ${order.id} status changed to ${newStatus}`,
+                          );
+                        }}>
+                        <option value="Processing">Processing</option>
+                        <option value="In transit">In transit</option>
+                        <option value="Completed">Completed</option>
+                      </select>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
