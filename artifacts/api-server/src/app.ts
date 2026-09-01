@@ -1,4 +1,4 @@
-import express, { type Express } from "express";
+﻿import express, { type Express } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
@@ -10,7 +10,6 @@ const allowedOrigins =
   process.env.CORS_ORIGIN?.split(",")
     .map((origin) => origin.trim())
     .filter(Boolean) ?? [];
-const developmentOrigins = ["http://localhost:5173", "http://127.0.0.1:5173"];
 
 app.use(
   pinoHttp({
@@ -31,6 +30,7 @@ app.use(
     },
   }),
 );
+
 app.use(
   cors({
     credentials: true,
@@ -41,8 +41,11 @@ app.use(
 
       if (
         allowedOrigins.includes(origin) ||
-        (process.env.NODE_ENV !== "production" &&
-          developmentOrigins.includes(origin))
+        origin.startsWith("http://localhost:") ||
+        origin.startsWith("http://127.0.0.1:") ||
+        origin.startsWith("http://192.168.") ||
+        origin.startsWith("http://10.") ||
+        process.env.NODE_ENV !== "production"
       ) {
         return callback(null, true);
       }
@@ -51,6 +54,7 @@ app.use(
     },
   }),
 );
+
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
