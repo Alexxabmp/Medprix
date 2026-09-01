@@ -1055,7 +1055,7 @@ function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
       items: 3,
       total: 195.0,
       method: "Cash",
-      cashier: "Nadia Reyes",
+      cashier: "Maria Santos",
       status: "Completed",
     },
     {
@@ -1064,7 +1064,7 @@ function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
       items: 1,
       total: 145.0,
       method: "GCash",
-      cashier: "Nadia Reyes",
+      cashier: "Maria Santos",
       status: "Completed",
     },
     {
@@ -1073,7 +1073,7 @@ function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
       items: 5,
       total: 520.0,
       method: "Card",
-      cashier: "Nadia Reyes",
+      cashier: "Maria Santos",
       status: "Completed",
     },
     {
@@ -1082,7 +1082,7 @@ function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
       items: 2,
       total: 85.0,
       method: "Cash",
-      cashier: "Nadia Reyes",
+      cashier: "Maria Santos",
       status: "Completed",
     },
   ]);
@@ -1168,7 +1168,7 @@ function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
       total: total,
       method: paymentMethod,
       discount: discountType,
-      cashier: "Nadia Reyes",
+      cashier: "Maria Santos",
       status: "Completed",
     };
 
