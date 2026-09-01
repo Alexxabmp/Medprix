@@ -126,7 +126,7 @@ Do not commit `.env`. Load the needed values into your shell before running work
 $env:DATABASE_URL="mysql://root:yourpassword@localhost:3306/medprix"
 $env:SESSION_SECRET="replace-with-a-long-random-secret"
 
-# Linux / macOS Bash
+# Linux / macOS Bash / Git Bash
 export DATABASE_URL="mysql://root:yourpassword@localhost:3306/medprix"
 export SESSION_SECRET="replace-with-a-long-random-secret"
 ```
