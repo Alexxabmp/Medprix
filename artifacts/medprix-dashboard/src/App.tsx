@@ -1550,30 +1550,30 @@ function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
             </div>
 
             {/* Transaction Information */}
-            <div style={{ background: 'hsl(var(--surface-soft))', padding: '14px 16px', borderRadius: 14, marginBottom: 18 }}>
-              <h4 style={{ margin: '0 0 10px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.08em', color: 'hsl(var(--muted))' }}>
+            <div style={{ background: 'var(--card-bg, #fafafc)', border: '1px solid hsl(var(--border))', padding: '16px 18px', borderRadius: 14, marginBottom: 18 }}>
+              <h4 style={{ margin: '0 0 12px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.08em', color: 'hsl(var(--muted))', fontWeight: 700 }}>
                 Transaction Information
               </h4>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, fontSize: 12 }}>
-                <div><span className="muted">Transaction ID:</span> <strong>{selectedTrx.transactionNumber}</strong></div>
-                <div><span className="muted">Date &amp; time:</span> <strong>{selectedTrx.dateTime}</strong></div>
-                <div><span className="muted">Processed by:</span> <strong>{selectedTrx.user}</strong></div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, fontSize: 12 }}>
+                <div><span className="muted" style={{ display: 'block', fontSize: 11, marginBottom: 2 }}>Transaction ID:</span> <strong style={{ color: 'hsl(var(--foreground))' }}>{selectedTrx.transactionNumber}</strong></div>
+                <div><span className="muted" style={{ display: 'block', fontSize: 11, marginBottom: 2 }}>Date &amp; time:</span> <strong style={{ color: 'hsl(var(--foreground))' }}>{selectedTrx.dateTime}</strong></div>
+                <div><span className="muted" style={{ display: 'block', fontSize: 11, marginBottom: 2 }}>Processed by:</span> <strong style={{ color: 'hsl(var(--foreground))' }}>{selectedTrx.user}</strong></div>
                 <div>
-                  <span className="muted">Business type:</span>{' '}
+                  <span className="muted" style={{ display: 'block', fontSize: 11, marginBottom: 2 }}>Business type:</span>{' '}
                   <span className={`pill ${selectedTrx.businessType === 'Wholesale' ? 'warning' : 'neutral'}`} style={{ fontSize: 9 }}>
                     {selectedTrx.businessType}
                   </span>
                 </div>
-                <div style={{ gridColumn: '1 / -1' }}><span className="muted">Customer:</span> <strong>{selectedTrx.customer}</strong></div>
+                <div style={{ gridColumn: '1 / -1' }}><span className="muted" style={{ display: 'block', fontSize: 11, marginBottom: 2 }}>Customer:</span> <strong style={{ color: 'hsl(var(--foreground))' }}>{selectedTrx.customer}</strong></div>
               </div>
             </div>
 
             {/* Items Purchased Table */}
             <div style={{ marginBottom: 18 }}>
-              <h4 style={{ margin: '0 0 10px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.08em', color: 'hsl(var(--muted))' }}>
+              <h4 style={{ margin: '0 0 10px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.08em', color: 'hsl(var(--muted))', fontWeight: 700 }}>
                 Items Purchased
               </h4>
-              <div className="table-scroll" style={{ border: '1px solid hsl(var(--border))', borderRadius: 12 }}>
+              <div className="table-scroll" style={{ border: '1px solid hsl(var(--border))', borderRadius: 12, overflowX: 'auto' }}>
                 <table className="data-table">
                   <thead>
                     <tr>
@@ -1598,14 +1598,14 @@ function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
             </div>
 
             {/* Payment Summary */}
-            <div style={{ background: 'hsl(var(--surface-soft))', padding: '14px 16px', borderRadius: 14 }}>
-              <h4 style={{ margin: '0 0 10px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.08em', color: 'hsl(var(--muted))' }}>
+            <div style={{ background: 'var(--card-bg, #fafafc)', border: '1px solid hsl(var(--border))', padding: '16px 18px', borderRadius: 14 }}>
+              <h4 style={{ margin: '0 0 12px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.08em', color: 'hsl(var(--muted))', fontWeight: 700 }}>
                 Payment Summary
               </h4>
-              <div style={{ display: 'grid', gap: 6, fontSize: 12 }}>
+              <div style={{ display: 'grid', gap: 7, fontSize: 12 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span className="muted">Subtotal:</span>
-                  <span>{selectedTrx.subtotal}</span>
+                  <span style={{ color: 'hsl(var(--foreground))' }}>{selectedTrx.subtotal}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span className="muted">Discount:</span>
@@ -1613,7 +1613,7 @@ function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span className="muted">VAT (12%):</span>
-                  <span>{selectedTrx.vat}</span>
+                  <span style={{ color: 'hsl(var(--foreground))' }}>{selectedTrx.vat}</span>
                 </div>
                 <div style={{ height: 1, background: 'hsl(var(--border))', margin: '4px 0' }} />
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
@@ -1622,27 +1622,17 @@ function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span className="muted">Amount Received:</span>
-                  <span>{selectedTrx.amountReceived}</span>
+                  <span style={{ color: 'hsl(var(--foreground))' }}>{selectedTrx.amountReceived}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span className="muted">Change:</span>
-                  <span>{selectedTrx.change}</span>
+                  <span style={{ color: 'hsl(var(--foreground))' }}>{selectedTrx.change}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span className="muted">Payment Method:</span>
-                  <strong>{selectedTrx.payment}</strong>
+                  <strong style={{ color: 'hsl(var(--foreground))' }}>{selectedTrx.payment}</strong>
                 </div>
               </div>
-            </div>
-
-            <div className="modal-actions" style={{ marginTop: 20 }}>
-              <button
-                type="button"
-                className="button soft"
-                onClick={() => setSelectedTrx(null)}
-              >
-                Close
-              </button>
             </div>
           </div>
         </div>,
@@ -1657,7 +1647,7 @@ function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
           className="modal-backdrop"
           onMouseDown={(event) => event.currentTarget === event.target && setSelectedLog(null)}
         >
-          <div className="modal" style={{ width: 'min(580px, 100%)' }}>
+          <div className="modal" style={{ width: 'min(620px, 100%)' }}>
             <div className="modal-header">
               <div>
                 <h2>System log details</h2>
@@ -1673,35 +1663,39 @@ function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
               </button>
             </div>
 
-            <div style={{ border: '1px solid hsl(var(--border))', borderRadius: 14, overflow: 'hidden' }}>
-              <table className="data-table">
+            <div style={{ border: '1px solid hsl(var(--border))', borderRadius: 14, overflowX: 'auto', background: 'var(--card-bg, #fafafc)' }}>
+              <table className="data-table" style={{ width: '100%', minWidth: 480 }}>
                 <tbody>
                   <tr>
-                    <td style={{ width: 140, fontWeight: 600, background: 'hsl(var(--surface-soft))' }}>Date &amp; Time</td>
+                    <td style={{ width: 140, fontWeight: 600, background: 'hsl(var(--surface-soft))', whiteSpace: 'nowrap' }}>Date &amp; Time</td>
                     <td>{selectedLog.dateTime}</td>
                   </tr>
                   <tr>
-                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))' }}>User</td>
+                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', whiteSpace: 'nowrap' }}>User</td>
                     <td><strong>{selectedLog.user}</strong></td>
                   </tr>
                   <tr>
-                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))' }}>Role</td>
+                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', whiteSpace: 'nowrap' }}>Role</td>
                     <td><span className="pill neutral">{selectedLog.role}</span></td>
                   </tr>
                   <tr>
-                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))' }}>Action</td>
+                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', whiteSpace: 'nowrap' }}>Action</td>
                     <td><strong>{selectedLog.action}</strong></td>
                   </tr>
                   <tr>
-                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))' }}>Module/Feature</td>
+                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', whiteSpace: 'nowrap' }}>Module/Feature</td>
                     <td>{selectedLog.module}</td>
                   </tr>
                   <tr>
-                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))' }}>Description</td>
-                    <td>{selectedLog.description}</td>
+                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', whiteSpace: 'nowrap' }}>Description</td>
+                    <td>
+                      <div style={{ overflowX: 'auto', whiteSpace: 'nowrap', padding: '4px 0', maxWidth: 420 }}>
+                        {selectedLog.description}
+                      </div>
+                    </td>
                   </tr>
                   <tr>
-                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))' }}>Status</td>
+                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', whiteSpace: 'nowrap' }}>Status</td>
                     <td>
                       <span className={`pill ${selectedLog.status === 'Success' ? 'success' : 'danger'}`}>
                         {selectedLog.status}
@@ -1709,21 +1703,11 @@ function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                     </td>
                   </tr>
                   <tr>
-                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))' }}>Device/IP</td>
+                    <td style={{ fontWeight: 600, background: 'hsl(var(--surface-soft))', whiteSpace: 'nowrap' }}>Device/IP</td>
                     <td className="muted">{selectedLog.deviceIp}</td>
                   </tr>
                 </tbody>
               </table>
-            </div>
-
-            <div className="modal-actions" style={{ marginTop: 20 }}>
-              <button
-                type="button"
-                className="button soft"
-                onClick={() => setSelectedLog(null)}
-              >
-                Close
-              </button>
             </div>
           </div>
         </div>,
