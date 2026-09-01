@@ -133,10 +133,9 @@ export SESSION_SECRET="replace-with-a-long-random-secret"
 
 ### 3. Initialize the Database
 
-Push the Drizzle ORM schema to your MySQL database and populate initial default user accounts:
+Push the Drizzle ORM schema to your MySQL database
 
 ```bash
-# 1. Push database schema
 npm run push --workspace=@workspace/db
 ```
 
