@@ -1,4 +1,4 @@
-﻿import {
+import {
   mysqlTable,
   int,
   varchar,
@@ -12,7 +12,7 @@ export const usersTable = mysqlTable("users", {
   password: varchar("password", { length: 255 }).notNull(),
   fullName: varchar("fullName", { length: 255 }).notNull(),
   contactNumber: varchar("contactNumber", { length: 20 }),
-  role: mysqlEnum("role", ["admin", "cashier", "frontdesk", "pharmacist", "inventory_lead"])
+  role: mysqlEnum("role", ["admin", "cashier", "frontdesk"])
     .notNull()
     .default("cashier"),
   createdAt: timestamp("created_at").defaultNow(),

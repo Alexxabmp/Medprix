@@ -1,17 +1,14 @@
-﻿import { drizzle } from "drizzle-orm/mysql2";
+import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import * as schema from "./schema";
 
-const dbUrl = process.env.DATABASE_URL || "mysql://root:@localhost:3306/medprix";
-
-let dbInstance: ReturnType<typeof drizzle> | null = null;
-
-try {
-  const poolConnection = mysql.createPool(dbUrl);
-  dbInstance = drizzle(poolConnection, { schema, mode: "default" });
-} catch (e) {
-  console.warn("MySQL pool initialization warning:", e);
+if (!process.env.DATABASE_URL) {
+  throw new Error(
+    "DATABASE_URL must be set. Did you forget to provision a database?",
+  );
 }
 
-export const db = dbInstance!;
+const poolConnection = mysql.createPool(process.env.DATABASE_URL);
+export const db = drizzle(poolConnection, { schema, mode: "default" });
+
 export * from "./schema";

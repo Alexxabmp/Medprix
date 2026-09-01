@@ -150,7 +150,7 @@ export const initialTransactions: UserTransaction[] = [
     status: "Completed",
     items: [
       { product: "Sterile Normal Saline 500ml Box (24s)", quantity: 5, unitPrice: "₱1,800.00", subtotal: "₱9,000.00" },
-      { product: "Surgical Gloves 100s Medium", quantity: 10, unitPrice: "₱350.00", subtotal: "₱3,500.00" },
+      { product: "Surgical Gloves Medium (100s)", quantity: 10, unitPrice: "₱350.00", subtotal: "₱3,500.00" },
       { product: "Disposable Syringes 5ml (100s)", quantity: 7, unitPrice: "₱850.00", subtotal: "₱5,950.00" },
     ],
   },
