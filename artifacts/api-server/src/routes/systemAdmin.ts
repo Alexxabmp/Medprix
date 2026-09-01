@@ -1,4 +1,4 @@
-﻿import { Router, type IRouter } from "express";
+import { Router, type IRouter } from "express";
 
 const router: IRouter = Router();
 
@@ -117,7 +117,7 @@ export const initialTransactions: UserTransaction[] = [
     id: 4,
     transactionNumber: "TRX-0004",
     dateTime: "Sept. 1, 2026 – 10:05 AM",
-    user: "Nadia Reyes",
+    user: "Maria Santos",
     businessType: "Retail",
     customer: "Walk-in Customer",
     total: "₱1,280.00",
@@ -204,8 +204,8 @@ export const initialSystemLogs: SystemLog[] = [
   {
     id: 5,
     dateTime: "September 1, 2026, 10:15 AM",
-    user: "Unknown",
-    role: "Staff",
+    user: "Juan Dela Cruz",
+    role: "Admin",
     action: "Failed Login Attempt",
     module: "Authentication",
     description: "Invalid password attempt for account 'admin' (Attempt 1 of 3)",
@@ -215,7 +215,7 @@ export const initialSystemLogs: SystemLog[] = [
   {
     id: 6,
     dateTime: "September 1, 2026, 11:00 AM",
-    user: "Lena Santos",
+    user: "Juan Dela Cruz",
     role: "Admin",
     action: "Stock Adjustment",
     module: "Inventory Management",
@@ -226,7 +226,7 @@ export const initialSystemLogs: SystemLog[] = [
   {
     id: 7,
     dateTime: "September 1, 2026, 12:00 PM",
-    user: "System Daemon",
+    user: "Juan Dela Cruz",
     role: "Admin",
     action: "Backup and Restore Activities",
     module: "System Settings",
@@ -300,27 +300,27 @@ export const initialUserActivities: UserActivity[] = [
   {
     id: 7,
     dateTime: "Sept. 1, 2026 – 10:15 AM",
-    user: "Unknown Client",
-    role: "Staff",
-    activity: "Failed login attempt",
-    module: "🔐 Authentication",
-    description: "Failed login for 'admin' with incorrect credentials from IP 192.168.1.105",
-    flag: "Suspicious",
+    user: "Maria Santos",
+    role: "Cashier",
+    activity: "Shift review opened",
+    module: "💰 Sales & Wholesale Activity",
+    description: "Opened Shift Sales and Cash Drawer reconciliation review on POS Terminal 1",
+    flag: "Normal",
   },
   {
     id: 8,
-    dateTime: "Sept. 1, 2026 – 10:16 AM",
-    user: "Unknown Client",
-    role: "Staff",
-    activity: "Multiple failed login attempts",
-    module: "🔐 Authentication",
-    description: "Repeated authentication failure (3 attempts detected within 60s)",
-    flag: "Flagged",
+    dateTime: "Sept. 1, 2026 – 10:30 AM",
+    user: "John Cruz",
+    role: "Front Desk",
+    activity: "Order dispatched",
+    module: "💰 Sales & Wholesale Activity",
+    description: "Processed wholesale shipment for Greenfield Care Home",
+    flag: "Normal",
   },
   {
     id: 9,
     dateTime: "Sept. 1, 2026 – 11:00 AM",
-    user: "Lena Santos",
+    user: "Juan Dela Cruz",
     role: "Admin",
     activity: "Stock adjusted",
     module: "📦 Inventory Activity",
@@ -330,7 +330,7 @@ export const initialUserActivities: UserActivity[] = [
   {
     id: 10,
     dateTime: "Sept. 1, 2026 – 12:00 PM",
-    user: "System Daemon",
+    user: "Juan Dela Cruz",
     role: "Admin",
     activity: "Backup performed",
     module: "⚙️ System Activity",
