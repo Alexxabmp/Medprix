@@ -125,13 +125,13 @@ const navGroups = [
     items: [
       {
         href: "/system-ad",
-        label: "System admin",
+        label: "System Administration",
         icon: Settings2,
         roles: ["admin"],
       },
       {
         href: "/user-management",
-        label: "User management",
+        label: "User Management",
         icon: Users,
         roles: ["admin"],
       },
@@ -4024,7 +4024,7 @@ function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
   return (
     <div>
       <PageHeading
-        title="System administration"
+        title="System Administration"
         description="Monitor user sales transactions, audit system logs, and track user activities."
       />
 
@@ -4779,7 +4779,7 @@ function UserManagementPage({
   return (
     <div>
       <PageHeading
-        title="User management"
+        title="User Management"
         description="Give the right people the right access, without the guesswork."
         action={
           <button
