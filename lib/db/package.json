@@ -9,14 +9,17 @@
   },
   "scripts": {
     "push": "drizzle-kit push --config ./drizzle.config.ts",
-    "push-force": "drizzle-kit push --force --config ./drizzle.config.ts"
+    "push-force": "drizzle-kit push --force --config ./drizzle.config.ts",
+    "seed": "tsx ./src/seed.ts"
   },
   "dependencies": {
+    "bcrypt": "^6.0.0",
     "drizzle-orm": "^0.45.2",
     "mysql2": "^3.11.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
     "@types/node": "^25.3.3",
     "drizzle-kit": "^0.31.10"
   }
