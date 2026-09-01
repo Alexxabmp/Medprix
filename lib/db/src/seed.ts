@@ -1,14 +1,30 @@
 import mysql from "mysql2/promise";
 import bcrypt from "bcrypt";
+import fs from "node:fs";
+import path from "node:path";
+
+// Auto-load .env file if available
+try {
+  if (typeof process.loadEnvFile === "function") {
+    if (fs.existsSync(".env")) {
+      process.loadEnvFile(".env");
+    } else if (fs.existsSync(path.resolve(process.cwd(), "../../.env"))) {
+      process.loadEnvFile(path.resolve(process.cwd(), "../../.env"));
+    }
+  }
+} catch {
+  // Ignore if no .env
+}
 
 async function seed() {
-  const conn = await mysql.createConnection({
-    host: "localhost",
-    port: 3306,
-    user: "root",
-    password: "root",
-    database: "medprix",
-  });
+  const databaseUrl =
+    process.env.DATABASE_URL || "mysql://root:root@localhost:3306/medprix";
+
+  console.log(
+    `Connecting to database: ${databaseUrl.replace(/:[^:@]+@/, ":****@")}`
+  );
+
+  const conn = await mysql.createConnection(databaseUrl);
 
   const hash = await bcrypt.hash("admin123", 10);
   const cashierHash = await bcrypt.hash("cashier123", 10);
