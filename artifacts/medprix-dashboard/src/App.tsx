@@ -138,49 +138,6 @@ function getDefaultRoute(role: string) {
   return getAllowedHrefs(role)[0] ?? "/login";
 }
 
-const initialUsers: UserRecord[] = [
-  {
-    id: 1,
-    initials: "AM",
-    name: "Avery Morgan",
-    username: "avery_morgan",
-    role: "Administrator",
-    status: "Active",
-    lastActive: "Just now",
-    phone: "+63 917 123 4567",
-  },
-  {
-    id: 2,
-    initials: "LS",
-    name: "Lena Santos",
-    username: "lena_santos",
-    role: "Pharmacist",
-    status: "Active",
-    lastActive: "8 min ago",
-    phone: "+63 918 234 5678",
-  },
-  {
-    id: 3,
-    initials: "JC",
-    name: "Jonas Cruz",
-    username: "jonas_cruz",
-    role: "Inventory lead",
-    status: "Active",
-    lastActive: "42 min ago",
-    phone: "+63 919 345 6789",
-  },
-  {
-    id: 4,
-    initials: "NR",
-    name: "Nadia Reyes",
-    username: "nadia_reyes",
-    role: "Cashier",
-    status: "Inactive",
-    lastActive: "Aug 15, 2026",
-    phone: "+63 920 456 7890",
-  },
-];
-
 const products = [
   {
     id: "p1",
@@ -363,18 +320,88 @@ function AppContent() {
     () => localStorage.getItem("medprix-session") === "active",
   );
   const [role, setRole] = useState(
-    () => localStorage.getItem("medprix-role") || "admin",
+    () => localStorage.getItem("medprix-role") || "",
   );
   const [dark, setDark] = useState(
     () => localStorage.getItem("medprix-theme") === "dark",
   );
   const [toast, setToast] = useState("");
-  const [users, setUsers] = useState<UserRecord[]>(initialUsers);
+  const [users, setUsers] = useState<UserRecord[]>([]);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
     localStorage.setItem("medprix-theme", dark ? "dark" : "light");
   }, [dark]);
+
+  const fetchUsers = () => {
+    fetch("http://localhost:5000/api/users", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data: any[]) => {
+        if (!Array.isArray(data)) return;
+        const mapped: UserRecord[] = data.map((user) => {
+          const name = user.fullName || user.username;
+          const initials = name
+            .split(" ")
+            .map((p: string) => p[0])
+            .join("")
+            .slice(0, 2)
+            .toUpperCase();
+          return {
+            id: user.id,
+            initials,
+            name,
+            username: user.username,
+            role:
+              user.role === "admin"
+                ? "Administrator"
+                : user.role === "frontdesk"
+                  ? "Front Desk"
+                  : "Cashier",
+            status: "Active",
+            lastActive: user.lastLogin
+              ? new Date(user.lastLogin).toLocaleString([], {
+                month: "short",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+              : "Never",
+            phone: user.contactNumber || "",
+          };
+        });
+        setUsers(mapped);
+      })
+      .catch(() => {
+        // Backend offline— users list stays empty
+      });
+  };
+
+  useEffect(() => {
+    if (!session) return;
+    fetchUsers();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
+
+  useEffect(() => {
+    if (!session) return;
+
+    fetch("http://localhost:5000/api/me", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data) => {
+        localStorage.setItem("medprix-role", data.role);
+        localStorage.setItem("medprix-username", data.username);
+        setRole(data.role);
+      })
+      .catch(() => {
+        localStorage.removeItem("medprix-session");
+        localStorage.removeItem("medprix-role");
+        localStorage.removeItem("medprix-username");
+        localStorage.removeItem("medprix-fullname");
+        setSession(false);
+        setRole("");
+        setLocation("/login");
+      });
+  }, [session, setLocation]);
 
   useEffect(() => {
     if (!session && location !== "/login") {
@@ -402,7 +429,7 @@ function AppContent() {
     return (
       <LoginPage
         onLogin={() => {
-          const loggedInRole = localStorage.getItem("medprix-role") || "admin";
+          const loggedInRole = localStorage.getItem("medprix-role") || "";
           localStorage.setItem("medprix-session", "active");
           setRole(loggedInRole);
           setSession(true);
@@ -421,13 +448,21 @@ function AppContent() {
           onToast={notify}
           role={role}
           onLogout={() => {
+            fetch("http://localhost:5000/api/logout", {
+              method: "POST",
+              credentials: "include",
+            }).catch(() => {});
             localStorage.removeItem("medprix-session");
             localStorage.removeItem("medprix-role");
+            localStorage.removeItem("medprix-username");
+            localStorage.removeItem("medprix-fullname");
             setSession(false);
+            setRole("");
             setLocation("/login");
           }}
           users={users}
           setUsers={setUsers}
+          refreshUsers={fetchUsers}
         />
       </ErrorBoundary>
       {toast && (
@@ -453,6 +488,7 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
     try {
       const response = await fetch("http://localhost:5000/api/login", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
       });
@@ -463,6 +499,8 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
       }
       const data = await response.json();
       localStorage.setItem("medprix-role", data.role);
+      localStorage.setItem("medprix-username", data.username ?? username);
+      localStorage.setItem("medprix-fullname", data.fullName ?? username);
       onLogin();
     } catch {
       setError("Could not reach the server. Is the backend running?");
@@ -478,7 +516,7 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
           <span>Medprix</span>
         </div>
         <div className="eyebrow">Pharmacy operations workspace</div>
-        <h1>Hello, Admin!</h1>
+        <h1>Hello, User!</h1>
         <p>
           Sign in to keep your pharmacy moving with a clear view of sales,
           stock, and people.
@@ -490,7 +528,7 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
             data-testid="input-username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            placeholder="username"
+            placeholder="Enter your username"
             autoComplete="username"
           />
         </div>
@@ -536,6 +574,7 @@ function AppShell({
   role,
   users,
   setUsers,
+  refreshUsers,
 }: {
   dark: boolean;
   setDark: (value: boolean) => void;
@@ -544,6 +583,7 @@ function AppShell({
   role: string;
   users: UserRecord[];
   setUsers: (users: UserRecord[]) => void;
+  refreshUsers: () => void;
 }) {
   const [location] = useLocation();
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -551,8 +591,26 @@ function AppShell({
     location === "/dashboard"
       ? "Dashboard"
       : (navGroups
-          .flatMap((group) => group.items)
-          .find((item) => item.href === location)?.label ?? "Dashboard");
+        .flatMap((group) => group.items)
+        .find((item) => item.href === location)?.label ?? "Dashboard");
+
+  const storedFullName = localStorage.getItem("medprix-fullname");
+  const storedUsername = localStorage.getItem("medprix-username");
+  const displayName = storedFullName || storedUsername || "User";
+  const displayInitials = displayName
+    .split(" ")
+    .map((p) => p[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+  const displayTitle =
+    role === "admin"
+      ? "Administrator"
+      : role === "frontdesk"
+        ? "Front Desk"
+        : "Cashier";
+  const currentUser = { initials: displayInitials, name: displayName, title: displayTitle };
+
   return (
     <div className="app-shell">
       <div className="main-wrap">
@@ -599,7 +657,7 @@ function AppShell({
                 data-testid="avatar-admin"
                 aria-label="User menu"
                 onClick={() => setShowUserMenu((v) => !v)}>
-                AM
+                {currentUser.initials}
               </button>
               {showUserMenu && (
                 <>
@@ -618,11 +676,11 @@ function AppShell({
                           boxShadow: "none",
                           fontSize: 13,
                         }}>
-                        AM
+                        {currentUser.initials}
                       </span>
                       <div>
-                        <strong>Avery Morgan</strong>
-                        <span>Administrator</span>
+                        <strong>{currentUser.name}</strong>
+                        <span>{currentUser.title}</span>
                       </div>
                     </div>
                     <div className="user-menu-divider" />
@@ -644,10 +702,18 @@ function AppShell({
         <main className="content">
           <Switch>
             <Route path="/">
-              <DashboardPage onToast={onToast} />
+              {role === "cashier" ? (
+                <CashierDashboardPage onToast={onToast} />
+              ) : (
+                <DashboardPage onToast={onToast} />
+              )}
             </Route>
             <Route path="/dashboard">
-              <DashboardPage onToast={onToast} />
+              {role === "cashier" ? (
+                <CashierDashboardPage onToast={onToast} />
+              ) : (
+                <DashboardPage onToast={onToast} />
+              )}
             </Route>
             <Route path="/inventory">
               <InventoryPage onToast={onToast} />
@@ -699,8 +765,6 @@ function PageHeading({
   );
 }
 
-// Ã¢' Ã¢' Ã¢'  Report data Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢'
-
 const reportCards: {
   type: ReportType;
   title: string;
@@ -708,49 +772,49 @@ const reportCards: {
   action: string;
   icon: LucideIcon;
 }[] = [
-  {
-    type: "sales",
-    title: "Daily sales",
-    description: "View today's sales performance and payment mix.",
-    action: "View report",
-    icon: BarChart3,
-  },
-  {
-    type: "inventory",
-    title: "Inventory",
-    description: "View current stock levels and replenishment needs.",
-    action: "View report",
-    icon: Package,
-  },
-  {
-    type: "financial",
-    title: "Financial summary",
-    description: "Understand the month's financial performance.",
-    action: "View report",
-    icon: CircleDollarSign,
-  },
-  {
-    type: "valuation",
-    title: "Stock valuation",
-    description: "See the current value held in your inventory.",
-    action: "View valuation",
-    icon: Boxes,
-  },
-  {
-    type: "movement",
-    title: "Product movement",
-    description: "Compare fast and slow-moving products.",
-    action: "View list",
-    icon: RefreshCw,
-  },
-  {
-    type: "cash",
-    title: "Cash mismatch",
-    description: "Review cash versus recorded sales discrepancies.",
-    action: "View alerts",
-    icon: FileBarChart,
-  },
-];
+    {
+      type: "sales",
+      title: "Daily sales",
+      description: "View today's sales performance and payment mix.",
+      action: "View report",
+      icon: BarChart3,
+    },
+    {
+      type: "inventory",
+      title: "Inventory",
+      description: "View current stock levels and replenishment needs.",
+      action: "View report",
+      icon: Package,
+    },
+    {
+      type: "financial",
+      title: "Financial summary",
+      description: "Understand the month's financial performance.",
+      action: "View report",
+      icon: CircleDollarSign,
+    },
+    {
+      type: "valuation",
+      title: "Stock valuation",
+      description: "See the current value held in your inventory.",
+      action: "View valuation",
+      icon: Boxes,
+    },
+    {
+      type: "movement",
+      title: "Product movement",
+      description: "Compare fast and slow-moving products.",
+      action: "View list",
+      icon: RefreshCw,
+    },
+    {
+      type: "cash",
+      title: "Cash mismatch",
+      description: "Review cash versus recorded sales discrepancies.",
+      action: "View alerts",
+      icon: FileBarChart,
+    },
+  ];
 
 // Ã¢' Ã¢' Ã¢'  Dashboard (now contains all reports) Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢'
 
@@ -930,7 +994,818 @@ function DashboardPage({ onToast }: { onToast: ToastFn }) {
   );
 }
 
-// Ã¢' Ã¢' Ã¢'  Kpi card Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢' Ã¢'
+function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
+  const [selectedProductId, setSelectedProductId] = useState(products[0].id);
+  const [qty, setQty] = useState(1);
+  const [cart, setCart] = useState<
+    { id: string; name: string; sku: string; price: number; qty: number }[]
+  >([
+    { id: "p1", name: "Paracetamol 500mg", sku: "MED-0421", price: 5.0, qty: 10 },
+    { id: "p4", name: "Cough relief syrup", sku: "MED-0552", price: 145.0, qty: 1 },
+  ]);
+  const [paymentMethod, setPaymentMethod] = useState<"Cash" | "GCash" | "Card">("Cash");
+  const [discountType, setDiscountType] = useState<"None" | "Senior" | "PWD">("None");
+  const [cashTendered, setCashTendered] = useState<string>("200");
+  const [searchReceipt, setSearchReceipt] = useState("");
+  const [showShiftModal, setShowShiftModal] = useState(false);
+  const [selectedReceipt, setSelectedReceipt] = useState<any | null>(null);
+
+  const [receipts, setReceipts] = useState([
+    {
+      id: "CS-9401",
+      time: "10:14 AM",
+      items: 3,
+      total: 195.0,
+      method: "Cash",
+      cashier: "Nadia Reyes",
+      status: "Completed",
+    },
+    {
+      id: "CS-9400",
+      time: "09:48 AM",
+      items: 1,
+      total: 145.0,
+      method: "GCash",
+      cashier: "Nadia Reyes",
+      status: "Completed",
+    },
+    {
+      id: "CS-9399",
+      time: "09:12 AM",
+      items: 5,
+      total: 520.0,
+      method: "Card",
+      cashier: "Nadia Reyes",
+      status: "Completed",
+    },
+    {
+      id: "CS-9398",
+      time: "08:35 AM",
+      items: 2,
+      total: 85.0,
+      method: "Cash",
+      cashier: "Nadia Reyes",
+      status: "Completed",
+    },
+  ]);
+
+  const subtotal = cart.reduce((acc, item) => acc + item.price * item.qty, 0);
+  const isDiscountEligible = discountType !== "None";
+  const discountRate = isDiscountEligible ? 0.2 : 0;
+  const discountAmount = subtotal * discountRate;
+  const vat = isDiscountEligible ? 0 : subtotal * 0.12;
+  const total = subtotal - discountAmount + vat;
+  const tenderedNum = parseFloat(cashTendered) || 0;
+  const changeDue = paymentMethod === "Cash" ? Math.max(0, tenderedNum - total) : 0;
+
+  const handleAddToCart = () => {
+    const prod = products.find((p) => p.id === selectedProductId);
+    if (!prod) return;
+    const numericPrice = parseFloat(prod.price.replace("₱", "").replace(",", "")) || 0;
+
+    const existingIndex = cart.findIndex((item) => item.id === prod.id);
+    if (existingIndex > -1) {
+      const updated = [...cart];
+      updated[existingIndex].qty += qty;
+      setCart(updated);
+    } else {
+      setCart([
+        ...cart,
+        { id: prod.id, name: prod.name, sku: prod.sku, price: numericPrice, qty },
+      ]);
+    }
+    onToast(`Added ${prod.name} (x${qty}) to cart`);
+    setQty(1);
+  };
+
+  const handleRemoveFromCart = (id: string) => {
+    setCart(cart.filter((item) => item.id !== id));
+  };
+
+  const handleUpdateCartQty = (id: string, delta: number) => {
+    setCart(
+      cart
+        .map((item) => {
+          if (item.id === id) {
+            const newQty = item.qty + delta;
+            return newQty > 0 ? { ...item, qty: newQty } : null;
+          }
+          return item;
+        })
+        .filter(Boolean) as typeof cart,
+    );
+  };
+
+  const handleCheckout = (e: FormEvent) => {
+    e.preventDefault();
+    if (cart.length === 0) {
+      onToast("Cannot checkout an empty cart");
+      return;
+    }
+    if (paymentMethod === "Cash" && tenderedNum < total) {
+      onToast("Cash tendered is less than total amount due");
+      return;
+    }
+
+    const nextNumber = 9402 + receipts.length - 4;
+    const newId = `CS-${nextNumber}`;
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    const newReceipt = {
+      id: newId,
+      time: timeStr,
+      items: cart.reduce((a, b) => a + b.qty, 0),
+      total: total,
+      method: paymentMethod,
+      discount: discountType,
+      cashier: "Nadia Reyes",
+      status: "Completed",
+    };
+
+    setReceipts([newReceipt, ...receipts]);
+    setCart([]);
+    setCashTendered("");
+    onToast(
+      `Sale completed! Receipt ${newId} printed.${isDiscountEligible ? ` ${discountType} discount applied.` : ""} Change: ₱${changeDue.toFixed(2)}`,
+    );
+  };
+
+  const filteredReceipts = receipts.filter(
+    (r) =>
+      r.id.toLowerCase().includes(searchReceipt.toLowerCase()) ||
+      r.method.toLowerCase().includes(searchReceipt.toLowerCase()),
+  );
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <PageHeading
+        title="Cashier Terminal & Register"
+        description="Shift 1 (08:00 AM – 04:00 PM) · Active Terminal #01"
+        action={
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <span
+              className="pill success"
+              style={{ padding: "6px 12px", fontSize: 12 }}>
+              <ShieldCheck size={13} style={{ marginRight: 4 }} /> Register Active
+            </span>
+            <label className="date-control" data-testid="control-cashier-date">
+              <CalendarDays size={14} />
+              <span>Shift Date</span>
+              <input type="date" aria-label="Select date" defaultValue="2026-08-31" />
+            </label>
+          </div>
+        }
+      />
+
+      {/* KPI Section */}
+      <section className="kpi-grid">
+        <Kpi
+          label="Today's Shift Sales"
+          value={`₱${(
+            18450 + receipts.slice(4).reduce((a, b) => a + b.total, 0)
+          ).toLocaleString("en-US", { minimumFractionDigits: 2 })}`}
+          change={`${receipts.length} receipts completed`}
+          icon={Receipt}
+          testId="card-kpi-shift-sales"
+        />
+        <Kpi
+          label="Cash in Drawer"
+          value="₱8,500.00"
+          change="₱3,500 float + ₱5,000 sales"
+          icon={CircleDollarSign}
+          testId="card-kpi-drawer"
+        />
+        <Kpi
+          label="Transactions Handled"
+          value={`${receipts.length} Total`}
+          change="Avg ₱439.28 / order"
+          icon={ShoppingCart}
+          testId="card-kpi-transactions"
+        />
+        <Kpi
+          label="Till Status"
+          value="Balanced"
+          change="Last verified 10:00 AM"
+          icon={ShieldCheck}
+          testId="card-kpi-till"
+        />
+      </section>
+
+      {/* Main 2-Column POS Layout */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1.1fr 0.9fr",
+          gap: 18,
+          alignItems: "start",
+        }}>
+        {/* Left Column: Register Terminal Checkout */}
+        <section className="surface-card" style={{ padding: 20 }}>
+          <div className="card-header" style={{ marginBottom: 16 }}>
+            <div>
+              <h2
+                className="card-title"
+                style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <ShoppingCart size={17} /> Counter Sale Checkout
+              </h2>
+              <p className="card-subtitle">
+                Scan or select products to process transaction
+              </p>
+            </div>
+            {cart.length > 0 && (
+              <button
+                type="button"
+                className="button soft"
+                style={{ fontSize: 12 }}
+                onClick={() => setCart([])}>
+                Clear Cart
+              </button>
+            )}
+          </div>
+
+          {/* Product Selection Form */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr auto auto",
+              gap: 10,
+              marginBottom: 16,
+            }}>
+            <select
+              className="select"
+              value={selectedProductId}
+              onChange={(e) => setSelectedProductId(e.target.value)}
+              style={{ width: "100%", height: 38 }}>
+              {products.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} ({p.sku}) — {p.price} [Stock: {p.stock}]
+                </option>
+              ))}
+            </select>
+            <input
+              type="number"
+              min="1"
+              max="99"
+              value={qty}
+              onChange={(e) =>
+                setQty(Math.max(1, parseInt(e.target.value) || 1))
+              }
+              style={{
+                width: 60,
+                height: 38,
+                borderRadius: 10,
+                border: "1px solid hsl(var(--border))",
+                textAlign: "center",
+                background: "hsl(var(--surface))",
+                color: "hsl(var(--foreground))",
+              }}
+            />
+            <button
+              type="button"
+              className="button dark"
+              style={{ height: 38, padding: "0 14px" }}
+              onClick={handleAddToCart}>
+              <Plus size={14} /> Add
+            </button>
+          </div>
+
+          {/* Cart Items Table */}
+          <div
+            className="table-scroll"
+            style={{
+              maxHeight: 240,
+              minHeight: 140,
+              marginBottom: 16,
+              border: "1px solid hsl(var(--border))",
+              borderRadius: 12,
+            }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th style={{ textAlign: "center" }}>Qty</th>
+                  <th style={{ textAlign: "right" }}>Price</th>
+                  <th style={{ textAlign: "right" }}>Total</th>
+                  <th style={{ width: 40 }} />
+                </tr>
+              </thead>
+              <tbody>
+                {cart.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      style={{
+                        textAlign: "center",
+                        padding: "30px 0",
+                        color: "hsl(var(--muted))",
+                      }}>
+                      Cart is empty. Select products above to start checkout.
+                    </td>
+                  </tr>
+                ) : (
+                  cart.map((item) => (
+                    <tr key={item.id}>
+                      <td>
+                        <strong>{item.name}</strong>
+                        <div className="muted" style={{ fontSize: 10 }}>
+                          {item.sku}
+                        </div>
+                      </td>
+                      <td style={{ textAlign: "center" }}>
+                        <div
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 6,
+                          }}>
+                          <button
+                            type="button"
+                            className="icon-button"
+                            style={{
+                              width: 22,
+                              height: 22,
+                              borderRadius: 6,
+                              fontSize: 12,
+                            }}
+                            onClick={() => handleUpdateCartQty(item.id, -1)}>
+                            -
+                          </button>
+                          <span style={{ minWidth: 18, fontWeight: 600 }}>
+                            {item.qty}
+                          </span>
+                          <button
+                            type="button"
+                            className="icon-button"
+                            style={{
+                              width: 22,
+                              height: 22,
+                              borderRadius: 6,
+                              fontSize: 12,
+                            }}
+                            onClick={() => handleUpdateCartQty(item.id, 1)}>
+                            +
+                          </button>
+                        </div>
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        ₱{item.price.toFixed(2)}
+                      </td>
+                      <td style={{ textAlign: "right", fontWeight: 600 }}>
+                        ₱{(item.price * item.qty).toFixed(2)}
+                      </td>
+                      <td style={{ textAlign: "center" }}>
+                        <button
+                          type="button"
+                          className="icon-button"
+                          style={{
+                            width: 24,
+                            height: 24,
+                            border: 0,
+                            color: "hsl(var(--danger))",
+                          }}
+                          onClick={() => handleRemoveFromCart(item.id)}>
+                          <Trash2 size={13} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Payment & Checkout Summary */}
+          <form
+            onSubmit={handleCheckout}
+            style={{
+              background: "hsl(var(--surface-soft))",
+              padding: 14,
+              borderRadius: 14,
+              border: "1px solid hsl(var(--border))",
+            }}>
+            <div
+              style={{
+                display: "grid",
+                gap: 8,
+                marginBottom: 14,
+                fontSize: 13,
+              }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  color: "hsl(var(--muted))",
+                }}>
+                <span>Subtotal</span>
+                <span>₱{subtotal.toFixed(2)}</span>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  color: "hsl(var(--muted))",
+                }}>
+                <span>VAT (12% included)</span>
+                <span>₱{vat.toFixed(2)}</span>
+              </div>
+              {isDiscountEligible && (
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    color: "#34C759",
+                    fontWeight: 700,
+                  }}>
+                  <span>{discountType} Discount (20%)</span>
+                  <span>-₱{discountAmount.toFixed(2)}</span>
+                </div>
+              )}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  fontSize: 17,
+                  fontWeight: 700,
+                  paddingTop: 6,
+                  borderTop: "1px solid hsl(var(--border))",
+                }}>
+                <span>Total Amount</span>
+                <span>₱{total.toFixed(2)}</span>
+              </div>
+            </div>
+
+            {/* Customer Discount Tabs */}
+            <div style={{ marginBottom: 12 }}>
+              <label
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: "hsl(var(--muted))",
+                  display: "block",
+                  marginBottom: 6,
+                }}>
+                Customer Discount
+              </label>
+              <div style={{ display: "flex", gap: 8 }}>
+                {(["None", "Senior", "PWD"] as const).map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    className={`button ${discountType === type ? "dark" : "soft"}`}
+                    style={{ flex: 1, height: 34, fontSize: 12 }}
+                    onClick={() => setDiscountType(type)}>
+                    {type}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Payment Method Tabs */}
+            <div style={{ marginBottom: 12 }}>
+              <label
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: "hsl(var(--muted))",
+                  display: "block",
+                  marginBottom: 6,
+                }}>
+                Payment Method
+              </label>
+              <div style={{ display: "flex", gap: 8 }}>
+                {(["Cash", "GCash", "Card"] as const).map((method) => (
+                  <button
+                    key={method}
+                    type="button"
+                    className={`button ${paymentMethod === method ? "dark" : "soft"}`}
+                    style={{ flex: 1, height: 34, fontSize: 12 }}
+                    onClick={() => setPaymentMethod(method)}>
+                    {method}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Cash Tendered & Change Due */}
+            {paymentMethod === "Cash" && (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 10,
+                  marginBottom: 14,
+                }}>
+                <div>
+                  <label
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: "hsl(var(--muted))",
+                      display: "block",
+                      marginBottom: 4,
+                    }}>
+                    Cash Tendered
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={cashTendered}
+                    onChange={(e) => setCashTendered(e.target.value)}
+                    style={{
+                      width: "100%",
+                      height: 36,
+                      borderRadius: 10,
+                      padding: "0 10px",
+                      border: "1px solid hsl(var(--border))",
+                      background: "hsl(var(--surface))",
+                    }}
+                  />
+                </div>
+                <div>
+                  <label
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: "hsl(var(--muted))",
+                      display: "block",
+                      marginBottom: 4,
+                    }}>
+                    Change Due
+                  </label>
+                  <div
+                    style={{
+                      height: 36,
+                      display: "flex",
+                      alignItems: "center",
+                      padding: "0 10px",
+                      fontWeight: 700,
+                      color:
+                        changeDue >= 0 ? "#34C759" : "hsl(var(--danger))",
+                      background: "hsl(var(--surface))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: 10,
+                    }}>
+                    ₱{changeDue.toFixed(2)}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className="button dark full"
+              disabled={cart.length === 0}
+              style={{ height: 42, fontSize: 14, fontWeight: 600 }}>
+              <Receipt size={16} /> Complete & Print Receipt (₱
+              {total.toFixed(2)})
+            </button>
+          </form>
+        </section>
+
+        {/* Right Column: Recent Sales & Shift Reconciliation */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+          {/* Shift Transactions Card */}
+          <section className="surface-card table-card" style={{ padding: 18 }}>
+            <div className="card-header" style={{ marginBottom: 12 }}>
+              <div>
+                <h2 className="card-title">Shift Receipts Log</h2>
+                <p className="card-subtitle">
+                  Transactions recorded during current shift
+                </p>
+              </div>
+              <div className="search-wrap" style={{ width: 160 }}>
+                <Search size={14} />
+                <input
+                  type="search"
+                  placeholder="Receipt #..."
+                  value={searchReceipt}
+                  onChange={(e) => setSearchReceipt(e.target.value)}
+                  style={{ height: 30, fontSize: 11 }}
+                />
+              </div>
+            </div>
+
+            <div className="table-scroll" style={{ minHeight: 450, maxHeight: 450 }}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Receipt</th>
+                    <th>Time</th>
+                    <th>Method</th>
+                    <th style={{ textAlign: "right" }}>Total</th>
+                    <th style={{ width: 40 }} />
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredReceipts.map((r) => (
+                    <tr key={r.id}>
+                      <td>
+                        <strong>{r.id}</strong>
+                        <div className="muted" style={{ fontSize: 10 }}>
+                          {r.items} items
+                        </div>
+                      </td>
+                      <td className="muted">{r.time}</td>
+                      <td>
+                        <span
+                          className={`pill ${r.method === "Cash" ? "success" : "neutral"}`}
+                          style={{ fontSize: 10, padding: "2px 8px" }}>
+                          {r.method}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: "right", fontWeight: 600 }}>
+                        ₱{r.total.toFixed(2)}
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="icon-button"
+                          style={{ width: 26, height: 26 }}
+                          title="View Receipt Details"
+                          onClick={() => setSelectedReceipt(r)}>
+                          <Eye size={13} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+        </div>
+      </div>
+
+      {/* Modal: View Receipt Details */}
+      {selectedReceipt && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setSelectedReceipt(null)}>
+          <div
+            className="modal dialog"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: 400 }}>
+            <div className="modal-header">
+              <div>
+                <h2>Receipt Details ({selectedReceipt.id})</h2>
+                <p className="modal-sub">
+                  Processed at {selectedReceipt.time} by {selectedReceipt.cashier}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setSelectedReceipt(null)}>
+                <X size={16} />
+              </button>
+            </div>
+            <div
+              style={{
+                padding: "14px 0",
+                display: "grid",
+                gap: 8,
+                fontSize: 13,
+                borderTop: "1px solid hsl(var(--border))",
+                borderBottom: "1px solid hsl(var(--border))",
+              }}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span>Transaction Status</span>
+                <span className="pill success">{selectedReceipt.status}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span>Payment Method</span>
+                <strong>{selectedReceipt.method}</strong>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span>Total Items</span>
+                <span>{selectedReceipt.items} units</span>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  fontSize: 16,
+                  fontWeight: 700,
+                  marginTop: 6,
+                }}>
+                <span>Total Paid</span>
+                <span>₱{selectedReceipt.total.toFixed(2)}</span>
+              </div>
+            </div>
+            <div className="modal-actions" style={{ marginTop: 16 }}>
+              <button
+                type="button"
+                className="button soft"
+                onClick={() => setSelectedReceipt(null)}>
+                Close
+              </button>
+              <button
+                type="button"
+                className="button dark"
+                onClick={() => {
+                  onToast(`Re-printing receipt ${selectedReceipt.id}...`);
+                  setSelectedReceipt(null);
+                }}>
+                <Download size={13} /> Re-print Receipt
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: End of Shift Z-Read Confirmation */}
+      {showShiftModal && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setShowShiftModal(false)}>
+          <div
+            className="modal dialog"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: 440 }}>
+            <div className="modal-header">
+              <div>
+                <h2>End of Shift Z-Read Report</h2>
+                <p className="modal-sub">
+                  Confirm shift cash drawer count and generate Z-Report.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setShowShiftModal(false)}>
+                <X size={16} />
+              </button>
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gap: 10,
+                padding: "10px 0",
+                fontSize: 13,
+              }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  padding: "8px 12px",
+                  background: "hsl(var(--surface-soft))",
+                  borderRadius: 8,
+                }}>
+                <span>Opening Float</span>
+                <span>₱3,500.00</span>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  padding: "8px 12px",
+                  background: "hsl(var(--surface-soft))",
+                  borderRadius: 8,
+                }}>
+                <span>Recorded Cash Sales</span>
+                <span>₱5,000.00</span>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  padding: "8px 12px",
+                  background: "hsl(var(--surface-soft))",
+                  borderRadius: 8,
+                  fontWeight: 700,
+                }}>
+                <span>Expected Drawer Total</span>
+                <span>₱8,500.00</span>
+              </div>
+            </div>
+            <div className="modal-actions" style={{ marginTop: 14 }}>
+              <button
+                type="button"
+                className="button soft"
+                onClick={() => setShowShiftModal(false)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="button dark"
+                onClick={() => {
+                  onToast("Shift closed successfully. Z-Read report printed.");
+                  setShowShiftModal(false);
+                }}>
+                <Check size={14} /> Confirm & Print Z-Read
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function MovementLineGraph() {
   const paddingLeft = 35;
@@ -1158,19 +2033,19 @@ function Kpi({
       onMouseEnter={
         onClick
           ? (e) => {
-              (e.currentTarget as HTMLDivElement).style.transform =
-                "translateY(-3px)";
-              (e.currentTarget as HTMLDivElement).style.boxShadow =
-                "var(--shadow-lift)";
-            }
+            (e.currentTarget as HTMLDivElement).style.transform =
+              "translateY(-3px)";
+            (e.currentTarget as HTMLDivElement).style.boxShadow =
+              "var(--shadow-lift)";
+          }
           : undefined
       }
       onMouseLeave={
         onClick
           ? (e) => {
-              (e.currentTarget as HTMLDivElement).style.transform = "";
-              (e.currentTarget as HTMLDivElement).style.boxShadow = "";
-            }
+            (e.currentTarget as HTMLDivElement).style.transform = "";
+            (e.currentTarget as HTMLDivElement).style.boxShadow = "";
+          }
           : undefined
       }>
       <div className="kpi-top">
@@ -1549,7 +2424,7 @@ function ModalTable({
             {row.map((cell, cellIndex) => (
               <td key={`${cell}-${cellIndex}`}>
                 {cellIndex === row.length - 1 &&
-                (cell.includes("stock") || cell.includes("Available")) ? (
+                  (cell.includes("stock") || cell.includes("Available")) ? (
                   <span className="pill success">{cell}</span>
                 ) : (
                   cell
@@ -1826,14 +2701,14 @@ function ProcurementPage({ onToast }: { onToast: ToastFn }) {
       orders.map((order) =>
         order.id === id
           ? {
-              ...order,
-              status:
-                order.status === "Pending approval"
-                  ? "In transit"
-                  : order.status === "In transit"
-                    ? "Received"
-                    : "Received",
-            }
+            ...order,
+            status:
+              order.status === "Pending approval"
+                ? "In transit"
+                : order.status === "In transit"
+                  ? "Received"
+                  : "Received",
+          }
           : order,
       ),
     );
@@ -1973,12 +2848,12 @@ function WholesalePage({ onToast }: { onToast: ToastFn }) {
       orders.map((order) =>
         order.id === id
           ? {
-              ...order,
-              status:
-                order.status === "Processing"
-                  ? "Ready to dispatch"
-                  : "Completed",
-            }
+            ...order,
+            status:
+              order.status === "Processing"
+                ? "Ready to dispatch"
+                : "Completed",
+          }
           : order,
       ),
     );
@@ -2259,17 +3134,19 @@ function UserManagementPage({
   const [resetError, setResetError] = useState("");
 
   useEffect(() => {
-    if (dialog) {
-      document.body.style.overflow = "hidden";
-      return () => {
-        document.body.style.overflow = "";
-      };
+    if (!dialog) {
+      return undefined;
     }
+
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = "";
+    };
   }, [dialog]);
 
   const openCreate = () => {
     setSelected(null);
-    setDraft({ name: "", username: "", role: "Pharmacist", phone: "" });
+    setDraft({ name: "", username: "", role: "Cashier", phone: "" });
     setDialog("create");
   };
   const openEdit = (user: UserRecord) => {
@@ -2287,53 +3164,84 @@ function UserManagementPage({
     setUsers(users.map((u) => (u.id === user.id ? { ...u, status: next } : u)));
     onToast(`${user.name} is now ${next.toLowerCase()}`);
   };
-  const submitUser = (event: FormEvent) => {
+  const submitUser = async (event: FormEvent, password = "") => {
     event.preventDefault();
     if (!draft.name.trim() || !draft.username.trim()) return;
+
     if (dialog === "create") {
-      const initials = draft.name
-        .split(" ")
-        .map((part) => part[0])
-        .join("")
-        .slice(0, 2)
-        .toUpperCase();
-      setUsers([
-        ...users,
-        {
-          id: Date.now(),
-          initials,
-          name: draft.name,
-          username: draft.username,
-          role: draft.role,
-          status: "Active",
-          lastActive: "Just now",
-          phone: draft.phone,
-        },
-      ]);
-      onToast("Account created");
+      const dbRole =
+        draft.role === "Administrator"
+          ? "admin"
+          : draft.role === "Front Desk"
+            ? "frontdesk"
+            : "cashier";
+      try {
+        const response = await fetch("http://localhost:5000/api/users", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username: draft.username,
+            password,
+            fullName: draft.name,
+            contactNumber: draft.phone,
+            role: dbRole,
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          onToast(data.error ?? "Failed to create user");
+          return;
+        }
+        const initials = draft.name
+          .split(" ")
+          .map((part) => part[0])
+          .join("")
+          .slice(0, 2)
+          .toUpperCase();
+        setUsers([
+          ...users,
+          {
+            id: data.id || Date.now(),
+            initials,
+            name: draft.name,
+            username: draft.username,
+            role: draft.role,
+            status: "Active",
+            lastActive: "Just now",
+            phone: draft.phone,
+          },
+        ]);
+        onToast("Account created");
+      } catch {
+        onToast("Could not create user. Please check your session.");
+        return;
+      }
     } else if (selected) {
       setUsers(
         users.map((user) =>
           user.id === selected.id
             ? {
-                ...user,
-                name: draft.name,
-                username: draft.username,
-                role: draft.role,
-                phone: draft.phone,
-                initials: draft.name
-                  .split(" ")
-                  .map((part) => part[0])
-                  .join("")
-                  .slice(0, 2)
-                  .toUpperCase(),
-              }
+              ...user,
+              name: draft.name,
+              username: draft.username,
+              role: draft.role,
+              phone: draft.phone,
+              initials: draft.name
+                .split(" ")
+                .map((part) => part[0])
+                .join("")
+                .slice(0, 2)
+                .toUpperCase(),
+            }
             : user,
         ),
       );
       onToast("User profile updated");
     }
+
     setDialog(null);
+    return;
   };
   const remove = (user: UserRecord) => {
     if (window.confirm(`Remove ${user.name} from Medprix?`)) {
@@ -2467,8 +3375,7 @@ function UserManagementPage({
                         onToast("Role updated");
                       }}>
                       <option>Administrator</option>
-                      <option>Pharmacist</option>
-                      <option>Inventory lead</option>
+                      <option>Front Desk</option>
                       <option>Cashier</option>
                     </select>
                   </td>
@@ -2687,7 +3594,7 @@ function UserDialog({
     phone: string;
   }) => void;
   onClose: () => void;
-  onSubmit: (event: FormEvent) => void;
+  onSubmit: (event: FormEvent, password: string) => void;
 }) {
   const [showPwd, setShowPwd] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -2715,7 +3622,7 @@ function UserDialog({
       }
     }
     setPwdError("");
-    onSubmit(e);
+    onSubmit(e, password);
   };
 
   return createPortal(
@@ -2780,8 +3687,7 @@ function UserDialog({
               value={draft.role}
               onChange={(e) => setDraft({ ...draft, role: e.target.value })}>
               <option>Administrator</option>
-              <option>Pharmacist</option>
-              <option>Inventory lead</option>
+              <option>Front Desk</option>
               <option>Cashier</option>
             </select>
           </div>
