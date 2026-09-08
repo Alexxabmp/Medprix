@@ -12,6 +12,7 @@
     "build": "npm run typecheck && npm -w artifacts/medprix-dashboard run build",
     "typecheck:libs": "tsc --build",
     "typecheck": "npm run typecheck:libs",
+    "migrate": "npm run migrate --workspace=@workspace/db",
     "dev": "concurrently -n api,web -c blue,green \"cross-env PORT=5000 npm run dev --workspace=@workspace/api-server\" \"cross-env PORT=5173 BASE_PATH=/ npm run dev --workspace=@workspace/medprix-dashboard\""
   },
   "private": true,

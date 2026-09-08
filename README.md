@@ -121,12 +121,16 @@ cp .env.example .env
 
 Do not commit `.env`.
 
-### 3. Initialize the Database
+### 3. Initialize or Migrate the Database
 
-Push the Drizzle ORM schema to your MySQL database
+Push the Drizzle ORM schema to your MySQL database, run column migrations, and seed initial accounts:
 
 ```bash
+# Push schema & run migrations
 npm run push --workspace=@workspace/db
+npm run migrate --workspace=@workspace/db
+
+# Seed initial users & default data
 npm run seed --workspace=@workspace/db
 ```
 
@@ -134,6 +138,8 @@ Or using `pnpm`:
 
 ```bash
 pnpm --filter @workspace/db run push
+pnpm --filter @workspace/db run migrate
+pnpm --filter @workspace/db run seed
 ```
 
 ### 4. Run in Development Mode
@@ -162,7 +168,8 @@ This starts:
 | `npm run build` | Performs typechecking and builds the frontend production bundle. |
 | `npm run typecheck` | Typechecks all libraries and sub-packages (`tsc --build`). |
 | `npm run push --workspace=@workspace/db` | Pushes Drizzle schema directly to the database. |
-| `npm run seed --workspace=@workspace/db` | Seeds the database with initial data. |
+| `npm run migrate --workspace=@workspace/db` | Safely runs non-destructive schema migrations (column renames, new defaults). |
+| `npm run seed --workspace=@workspace/db` | Seeds the database with initial data (auto-runs migrations if needed). |
 | `npm run push-force --workspace=@workspace/db` | Pushes schema changes with forced migration. |
 | `npm run codegen --workspace=@workspace/api-spec` | Regenerates React Query hooks & Zod schemas from `openapi.yaml`. |
 | `npm run start --workspace=@workspace/api-server` | Starts the bundled production API server. |
