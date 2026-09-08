@@ -119,17 +119,7 @@ Create a local `.env` file at the repository root if you want a file-based refer
 cp .env.example .env
 ```
 
-Do not commit `.env`. Load the needed values into your shell before running workspace scripts:
-
-```bash
-# Windows PowerShell
-$env:DATABASE_URL="mysql://root:yourpassword@localhost:3306/medprix"
-$env:SESSION_SECRET="replace-with-a-long-random-secret"
-
-# Linux / macOS Bash / Git Bash
-export DATABASE_URL="mysql://root:yourpassword@localhost:3306/medprix"
-export SESSION_SECRET="replace-with-a-long-random-secret"
-```
+Do not commit `.env`.
 
 ### 3. Initialize the Database
 
@@ -137,6 +127,7 @@ Push the Drizzle ORM schema to your MySQL database
 
 ```bash
 npm run push --workspace=@workspace/db
+npm run seed --workspace=@workspace/db
 ```
 
 Or using `pnpm`:
@@ -171,6 +162,7 @@ This starts:
 | `npm run build` | Performs typechecking and builds the frontend production bundle. |
 | `npm run typecheck` | Typechecks all libraries and sub-packages (`tsc --build`). |
 | `npm run push --workspace=@workspace/db` | Pushes Drizzle schema directly to the database. |
+| `npm run seed --workspace=@workspace/db` | Seeds the database with initial data. |
 | `npm run push-force --workspace=@workspace/db` | Pushes schema changes with forced migration. |
 | `npm run codegen --workspace=@workspace/api-spec` | Regenerates React Query hooks & Zod schemas from `openapi.yaml`. |
 | `npm run start --workspace=@workspace/api-server` | Starts the bundled production API server. |
