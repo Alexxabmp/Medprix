@@ -68,10 +68,31 @@ export default function UserManagementPage({
     });
     setDialog("edit");
   };
-  const toggleStatus = (user: UserRecord) => {
+  const toggleStatus = async (user: UserRecord) => {
     const next = user.status === "Active" ? "Inactive" : "Active";
-    setUsers(users.map((u) => (u.id === user.id ? { ...u, status: next } : u)));
-    onToast(`${user.name} is now ${next.toLowerCase()}`);
+    const nextIsActive = next === "Active";
+    try {
+      const response = await fetch(
+        `http://localhost:5000/api/users/${user.id}`,
+        {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ isActive: nextIsActive }),
+        },
+      );
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        onToast(data.error ?? "Failed to update status");
+        return;
+      }
+      setUsers(
+        users.map((u) => (u.id === user.id ? { ...u, status: next } : u)),
+      );
+      onToast(`${user.name} is now ${next.toLowerCase()}`);
+    } catch {
+      onToast("Could not reach the server.");
+    }
   };
   const submitUser = async (event: FormEvent, password = "") => {
     event.preventDefault();
@@ -190,7 +211,7 @@ export default function UserManagementPage({
   const reset = (event: FormEvent) => {
     event.preventDefault();
     if (password.length < 6) {
-      setResetError("Password must be at least 6 characters.");
+      setResetError("Password must be at least 8 characters.");
       return;
     }
     if (password !== confirmPassword) {
@@ -451,7 +472,7 @@ export default function UserManagementPage({
                     type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="At least 6 characters"
+                    placeholder="At least 8 characters"
                     style={{ paddingRight: 38 }}
                     required
                   />
@@ -542,6 +563,16 @@ export default function UserManagementPage({
   );
 }
 
+function cleanPhoneNumber(val: string): string {
+  // Allow digits, single leading +, spaces, hyphens, and parentheses
+  let sanitized = val.replace(/[^0-9+\s\-()]/g, "");
+  if (sanitized.includes("+")) {
+    sanitized =
+      (sanitized.startsWith("+") ? "+" : "") + sanitized.replace(/\+/g, "");
+  }
+  return sanitized.slice(0, 20);
+}
+
 function UserDialog({
   title,
   isCreate,
@@ -566,7 +597,7 @@ function UserDialog({
   const [showConfirm, setShowConfirm] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmPwd, setConfirmPwd] = useState("");
-  const [pwdError, setPwdError] = useState("");
+  const [formError, setFormError] = useState("");
 
   useEffect(() => {
     document.body.style.overflow = "hidden";
@@ -577,17 +608,24 @@ function UserDialog({
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
+
+    const cleaned = draft.phone.trim();
+    const phoneRegex = /^\+639\d{9}$/;
+    if (!phoneRegex.test(cleaned)) {
+      setFormError("Invalid phone number format.");
+      return;
+    }
     if (isCreate) {
-      if (password.length < 6) {
-        setPwdError("Password must be at least 6 characters.");
+      if (password.length < 8) {
+        setFormError("Password must be at least 8 characters.");
         return;
       }
       if (password !== confirmPwd) {
-        setPwdError("Passwords do not match.");
+        setFormError("Passwords do not match.");
         return;
       }
     }
-    setPwdError("");
+    setFormError("");
     onSubmit(e, password);
   };
 
@@ -640,9 +678,14 @@ function UserDialog({
               id="user-phone"
               data-testid="input-user-phone"
               type="tel"
+              inputMode="tel"
               value={draft.phone}
-              onChange={(e) => setDraft({ ...draft, phone: e.target.value })}
-              placeholder="+63 9XX XXX XXXX"
+              onChange={(e) =>
+                setDraft({ ...draft, phone: cleanPhoneNumber(e.target.value) })
+              }
+              placeholder="+639XXXXXXXXX"
+              minLength={13}
+              maxLength={13}
             />
           </div>
           <div className="field">
@@ -667,7 +710,7 @@ function UserDialog({
                   type={showPwd ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="At least 6 characters"
+                  placeholder="At least 8 characters"
                   style={{ paddingRight: 38 }}
                   required={isCreate}
                 />
@@ -720,9 +763,9 @@ function UserDialog({
             </>
           )}
         </div>
-        {pwdError && (
+        {formError && (
           <p style={{ color: "#FF453A", fontSize: 11, margin: "10px 0 0" }}>
-            {pwdError}
+            {formError}
           </p>
         )}
         <div className="modal-actions">

@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from "react";
-import { ArrowUpRight, Pill } from "lucide-react";
+import { ArrowUpRight, Pill, Eye, EyeOff } from "lucide-react";
 
 export default function LoginPage({ onLogin }: { onLogin: () => void }) {
+  const [showPwd, setShowPwd] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -60,17 +61,33 @@ export default function LoginPage({ onLogin }: { onLogin: () => void }) {
             autoComplete="username"
           />
         </div>
-        <div className="field">
+        <div className="field" style={{ position: "relative" }}>
           <label htmlFor="login-password">Password</label>
           <input
             id="login-password"
             data-testid="input-password"
-            type="password"
+            type={showPwd ? "text" : "password"}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Enter your password"
             autoComplete="current-password"
           />
+          <button
+            type="button"
+            onClick={() => setShowPwd((v) => !v)}
+            style={{
+              position: "absolute",
+              right: 10,
+              bottom: 9,
+              background: "none",
+              border: 0,
+              color: "#a9a6b1",
+              cursor: "pointer",
+              padding: 2,
+            }}
+            aria-label={showPwd ? "Hide password" : "Show password"}>
+            {showPwd ? <EyeOff size={15} /> : <Eye size={15} />}
+          </button>
         </div>
         {error && (
           <p

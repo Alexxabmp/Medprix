@@ -17,6 +17,7 @@ router.get("/users", async (_req, res) => {
         fullName: usersTable.fullName,
         contactNumber: usersTable.contactNumber,
         role: usersTable.role,
+        isActive: usersTable.isActive,
         createdAt: usersTable.createdAt,
         lastLogin: usersTable.lastLogin,
       })
@@ -48,6 +49,18 @@ router.post("/users", async (req, res) => {
       .status(400)
       .json({ error: "Role must be admin, cashier, or frontdesk." });
   }
+
+  if (contactNumber !== undefined && contactNumber !== null && contactNumber !== "") {
+    if (typeof contactNumber !== "string") {
+      return res.status(400).json({ error: "Contact number must be a valid string." });
+    }
+    const cleaned = contactNumber.trim();
+    const phoneRegex = /^\+639\d{9}$/;
+    if (!phoneRegex.test(cleaned)) {
+      return res.status(400).json({ error: "Invalid phone number format. Expected +639XXXXXXXXX." });
+    }
+  }
+
   try {
     const displayName =
       typeof fullName === "string" && fullName.trim()
@@ -60,6 +73,7 @@ router.post("/users", async (req, res) => {
       role,
       fullName: displayName,
       contactNumber: contactNumber || null,
+      isActive: true,
     });
     return res.status(201).json({
       id: result?.insertId,
@@ -67,6 +81,7 @@ router.post("/users", async (req, res) => {
       fullName: displayName,
       contactNumber: contactNumber || null,
       role,
+      isActive: true,
     });
   } catch (err) {
     return res.status(409).json({ error: "Username may already be taken." });
@@ -75,7 +90,7 @@ router.post("/users", async (req, res) => {
 
 router.patch("/users/:id", async (req, res) => {
   const userId = Number(req.params.id);
-  const { role, fullName, contactNumber } = req.body ?? {};
+  const { role, fullName, contactNumber, isActive } = req.body ?? {};
 
   if (!Number.isInteger(userId)) {
     return res.status(400).json({ error: "Invalid user id." });
@@ -86,17 +101,35 @@ router.patch("/users/:id", async (req, res) => {
       .json({ error: "Role must be admin, cashier, or frontdesk." });
   }
 
+  if (contactNumber !== undefined && contactNumber !== null && contactNumber !== "") {
+    if (typeof contactNumber !== "string") {
+      return res.status(400).json({ error: "Contact number must be a valid string." });
+    }
+    const cleaned = contactNumber.trim();
+    const phoneRegex = /^\+639\d{9}$/;
+    if (!phoneRegex.test(cleaned)) {
+      return res.status(400).json({ error: "Invalid phone number format. Expected +639XXXXXXXXX." });
+    }
+  }
+
   try {
     await db
       .update(usersTable)
       .set({
         ...(role ? { role } : {}),
         ...(fullName ? { fullName } : {}),
-        ...(contactNumber !== undefined ? { contactNumber } : {}),
+        ...(contactNumber !== undefined ? { contactNumber: contactNumber || null } : {}),
+        ...(isActive !== undefined ? { isActive: Boolean(isActive) } : {}),
       })
       .where(eq(usersTable.id, userId));
 
-    return res.json({ id: userId, role, fullName, contactNumber });
+    return res.json({
+      id: userId,
+      role,
+      fullName,
+      contactNumber,
+      ...(isActive !== undefined ? { isActive: Boolean(isActive) } : {}),
+    });
   } catch (err) {
     return res.status(500).json({ error: "Failed to update user." });
   }

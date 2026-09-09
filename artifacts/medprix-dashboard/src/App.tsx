@@ -68,7 +68,7 @@ function AppContent() {
                 : user.role === "frontdesk"
                   ? "Front Desk"
                   : "Cashier",
-            status: "Active",
+            status: user.isActive ? "Active" : "Inactive",
             lastActive: user.lastLogin
               ? new Date(user.lastLogin).toLocaleString([], {
                 month: "short",
