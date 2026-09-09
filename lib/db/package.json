@@ -10,10 +10,12 @@
   "scripts": {
     "push": "drizzle-kit push --config ./drizzle.config.ts",
     "push-force": "drizzle-kit push --force --config ./drizzle.config.ts",
+    "migrate": "tsx ./src/migrate.ts",
     "seed": "tsx ./src/seed.ts"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
+    "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "mysql2": "^3.11.0",
     "zod": "^3.25.76"

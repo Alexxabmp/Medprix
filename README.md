@@ -119,30 +119,27 @@ Create a local `.env` file at the repository root if you want a file-based refer
 cp .env.example .env
 ```
 
-Do not commit `.env`. Load the needed values into your shell before running workspace scripts:
+Do not commit `.env`.
+
+### 3. Initialize or Migrate the Database
+
+Push the Drizzle ORM schema to your MySQL database, run column migrations, and seed initial accounts:
 
 ```bash
-# Windows PowerShell
-$env:DATABASE_URL="mysql://root:yourpassword@localhost:3306/medprix"
-$env:SESSION_SECRET="replace-with-a-long-random-secret"
-
-# Linux / macOS Bash / Git Bash
-export DATABASE_URL="mysql://root:yourpassword@localhost:3306/medprix"
-export SESSION_SECRET="replace-with-a-long-random-secret"
-```
-
-### 3. Initialize the Database
-
-Push the Drizzle ORM schema to your MySQL database
-
-```bash
+# Push schema & run migrations
 npm run push --workspace=@workspace/db
+npm run migrate --workspace=@workspace/db
+
+# Seed initial users & default data
+npm run seed --workspace=@workspace/db
 ```
 
 Or using `pnpm`:
 
 ```bash
 pnpm --filter @workspace/db run push
+pnpm --filter @workspace/db run migrate
+pnpm --filter @workspace/db run seed
 ```
 
 ### 4. Run in Development Mode
@@ -171,6 +168,8 @@ This starts:
 | `npm run build` | Performs typechecking and builds the frontend production bundle. |
 | `npm run typecheck` | Typechecks all libraries and sub-packages (`tsc --build`). |
 | `npm run push --workspace=@workspace/db` | Pushes Drizzle schema directly to the database. |
+| `npm run migrate --workspace=@workspace/db` | Safely runs non-destructive schema migrations (column renames, new defaults). |
+| `npm run seed --workspace=@workspace/db` | Seeds the database with initial data (auto-runs migrations if needed). |
 | `npm run push-force --workspace=@workspace/db` | Pushes schema changes with forced migration. |
 | `npm run codegen --workspace=@workspace/api-spec` | Regenerates React Query hooks & Zod schemas from `openapi.yaml`. |
 | `npm run start --workspace=@workspace/api-server` | Starts the bundled production API server. |
