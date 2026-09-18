@@ -156,7 +156,7 @@ a { color: inherit; text-decoration: none; }
 .summary-box span { color: hsl(var(--muted)); font-size: 11px; display: block; }
 .summary-box strong { display: block; font-family: var(--app-font-display); font-size: 23px; margin-top: 9px; letter-spacing: -.05em; color: hsl(var(--foreground)); }
 .summary-box small { color: #34C759; font-weight: 600; font-size: 10px; }
-.modal-backdrop { position: fixed; inset: 0; background: rgba(10, 10, 14, .62); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); display: grid; place-items: center; padding: 18px; z-index: 1000; animation: fade .2s ease both; overflow-y: auto; }
+.modal-backdrop, .modal-overlay { position: fixed; inset: 0; background: rgba(10, 10, 14, .62); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); display: grid; place-items: center; padding: 18px; z-index: 1000; animation: fade .2s ease both; overflow-y: auto; }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 .modal { width: min(640px, 100%); max-height: min(760px, calc(100dvh - 36px)); overflow: auto; background: hsl(var(--surface)); color: hsl(var(--foreground)); border: 1px solid hsl(var(--border)); border-radius: 23px; box-shadow: 0 24px 80px rgba(0, 0, 0, .28); padding: 25px; animation: modalIn .24s ease both; }
 @keyframes modalIn { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }

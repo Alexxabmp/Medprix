@@ -3237,8 +3237,9 @@ function InventoryPage({
   const fetchInventory = async () => {
     try {
       setIsLoading(true);
-      const res = await fetch("/api/inventory");
-      if (res.ok) {
+      const res = await fetch("http://localhost:5000/api/inventory");
+      const contentType = res.headers.get("content-type");
+      if (res.ok && contentType && contentType.includes("application/json")) {
         const data = await res.json();
         if (data.products && Array.isArray(data.products)) {
           setItems(data.products);
@@ -3315,21 +3316,39 @@ function InventoryPage({
     reason: "Dispensed / Sales",
   });
 
-  // Body scroll locking when any modal is open
+  // Body scroll locking and Escape key handling when any modal is open
   useEffect(() => {
-    if (
+    const isAnyModalOpen = Boolean(
       viewProduct ||
       editProduct ||
       batchProduct ||
       stockInProduct ||
       stockOutProduct ||
       isAddProductOpen
-    ) {
+    );
+
+    if (isAnyModalOpen) {
       document.body.style.overflow = "hidden";
-      return () => {
-        document.body.style.overflow = "";
-      };
+    } else {
+      document.body.style.overflow = "";
     }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setViewProduct(null);
+        setEditProduct(null);
+        setBatchProduct(null);
+        setStockInProduct(null);
+        setStockOutProduct(null);
+        setIsAddProductOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", handleKeyDown);
+    };
   }, [
     viewProduct,
     editProduct,
@@ -3449,7 +3468,7 @@ function InventoryPage({
     };
 
     try {
-      const res = await fetch("/api/inventory/products", {
+      const res = await fetch("http://localhost:5000/api/inventory/products", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -3520,7 +3539,7 @@ function InventoryPage({
     };
 
     try {
-      const res = await fetch(`/api/inventory/products/${editProduct.id}`, {
+      const res = await fetch(`http://localhost:5000/api/inventory/products/${editProduct.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -3584,7 +3603,7 @@ function InventoryPage({
     };
 
     try {
-      const res = await fetch(`/api/inventory/products/${batchProduct.id}/batches`, {
+      const res = await fetch(`http://localhost:5000/api/inventory/products/${batchProduct.id}/batches`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newBatch),
@@ -3637,7 +3656,7 @@ function InventoryPage({
     }
 
     try {
-      const res = await fetch(`/api/inventory/products/${stockInProduct.id}/stock-in`, {
+      const res = await fetch(`http://localhost:5000/api/inventory/products/${stockInProduct.id}/stock-in`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -3724,7 +3743,7 @@ function InventoryPage({
     }
 
     try {
-      const res = await fetch(`/api/inventory/products/${stockOutProduct.id}/stock-out`, {
+      const res = await fetch(`http://localhost:5000/api/inventory/products/${stockOutProduct.id}/stock-out`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -4299,13 +4318,12 @@ function InventoryPage({
       {viewProduct &&
         createPortal(
           <div
-            className="modal-overlay"
-            onClick={() => setViewProduct(null)}
+            className="modal-backdrop"
+            onMouseDown={(e) => e.currentTarget === e.target && setViewProduct(null)}
             data-testid="modal-view-product">
             <div
               className="modal"
-              style={{ maxWidth: 640, width: "94%" }}
-              onClick={(e) => e.stopPropagation()}>
+              style={{ maxWidth: 640, width: "94%" }}>
               <div
                 style={{
                   display: "flex",
@@ -4474,13 +4492,12 @@ function InventoryPage({
       {isAddProductOpen &&
         createPortal(
           <div
-            className="modal-overlay"
-            onClick={() => setIsAddProductOpen(false)}
+            className="modal-backdrop"
+            onMouseDown={(e) => e.currentTarget === e.target && setIsAddProductOpen(false)}
             data-testid="modal-add-product">
             <div
               className="modal"
-              style={{ maxWidth: 540, width: "94%" }}
-              onClick={(e) => e.stopPropagation()}>
+              style={{ maxWidth: 540, width: "94%" }}>
               <div
                 style={{
                   display: "flex",
@@ -4748,13 +4765,12 @@ function InventoryPage({
       {editProduct &&
         createPortal(
           <div
-            className="modal-overlay"
-            onClick={() => setEditProduct(null)}
+            className="modal-backdrop"
+            onMouseDown={(e) => e.currentTarget === e.target && setEditProduct(null)}
             data-testid="modal-edit-product">
             <div
               className="modal"
-              style={{ maxWidth: 500, width: "94%" }}
-              onClick={(e) => e.stopPropagation()}>
+              style={{ maxWidth: 500, width: "94%" }}>
               <div
                 style={{
                   display: "flex",
@@ -4858,7 +4874,7 @@ function InventoryPage({
                     marginBottom: 16,
                   }}>
                   <div>
-                    <label className="field-label">Unit Price *</label>
+                    <label className="field-label">Price (₱) *</label>
                     <input
                       className="input"
                       required
@@ -4902,7 +4918,7 @@ function InventoryPage({
                     Cancel
                   </button>
                   <button type="submit" className="button dark">
-                    Save Changes
+                    Update Details
                   </button>
                 </div>
               </form>
@@ -4917,13 +4933,12 @@ function InventoryPage({
       {batchProduct &&
         createPortal(
           <div
-            className="modal-overlay"
-            onClick={() => setBatchProduct(null)}
+            className="modal-backdrop"
+            onMouseDown={(e) => e.currentTarget === e.target && setBatchProduct(null)}
             data-testid="modal-add-batch">
             <div
               className="modal"
-              style={{ maxWidth: 480, width: "94%" }}
-              onClick={(e) => e.stopPropagation()}>
+              style={{ maxWidth: 480, width: "94%" }}>
               <div
                 style={{
                   display: "flex",
@@ -5106,13 +5121,12 @@ function InventoryPage({
       {stockInProduct &&
         createPortal(
           <div
-            className="modal-overlay"
-            onClick={() => setStockInProduct(null)}
+            className="modal-backdrop"
+            onMouseDown={(e) => e.currentTarget === e.target && setStockInProduct(null)}
             data-testid="modal-stock-in">
             <div
               className="modal"
-              style={{ maxWidth: 460, width: "94%" }}
-              onClick={(e) => e.stopPropagation()}>
+              style={{ maxWidth: 460, width: "94%" }}>
               <div
                 style={{
                   display: "flex",
@@ -5244,13 +5258,12 @@ function InventoryPage({
       {stockOutProduct &&
         createPortal(
           <div
-            className="modal-overlay"
-            onClick={() => setStockOutProduct(null)}
+            className="modal-backdrop"
+            onMouseDown={(e) => e.currentTarget === e.target && setStockOutProduct(null)}
             data-testid="modal-stock-out">
             <div
               className="modal"
-              style={{ maxWidth: 460, width: "94%" }}
-              onClick={(e) => e.stopPropagation()}>
+              style={{ maxWidth: 460, width: "94%" }}>
               <div
                 style={{
                   display: "flex",
