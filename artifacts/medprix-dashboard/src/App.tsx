@@ -1842,12 +1842,6 @@ function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
             <div className="modal-actions" style={{ marginTop: 14 }}>
               <button
                 type="button"
-                className="button soft"
-                onClick={() => setShowShiftModal(false)}>
-                Cancel
-              </button>
-              <button
-                type="button"
                 className="button dark"
                 onClick={() => {
                   onToast("Shift closed successfully. Z-Read report printed.");
@@ -2240,7 +2234,7 @@ function ReportModal({
                 headers={["Product", "Stock", "Status"]}
                 rows={products
                   .slice(0, 3)
-                  .map((p) => [p.name, String(p.stock), p.status])}
+                  .map((p) => [p.name, String(p.stock), p.status ?? "Normal"])}
               />
             </ModalSection>
           </>
@@ -2501,10 +2495,10 @@ function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
   useEffect(() => {
     if (activeModal) {
       document.body.style.overflow = "hidden";
-      return () => {
-        document.body.style.overflow = "";
-      };
     }
+    return () => {
+      document.body.style.overflow = "";
+    };
   }, [activeModal]);
 
   const [searchReceipt, setSearchReceipt] = useState("");
@@ -2836,14 +2830,7 @@ function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
               </div>
             </div>
 
-            <div className="modal-actions">
-              <button
-                type="button"
-                className="button dark"
-                onClick={() => setActiveModal(null)}>
-                Close
-              </button>
-            </div>
+
           </div>
         </div>,
         document.body
@@ -3204,12 +3191,6 @@ function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                 </div>
               </div>
               <div className="modal-actions" style={{ marginTop: 16 }}>
-                <button
-                  type="button"
-                  className="button soft"
-                  onClick={() => setSelectedReceipt(null)}>
-                  Close
-                </button>
                 <button
                   type="button"
                   className="button dark"
@@ -4646,14 +4627,7 @@ function InventoryPage({
                 </div>
               </div>
 
-              <div className="modal-actions">
-                <button
-                  type="button"
-                  className="button dark"
-                  onClick={() => setViewProduct(null)}>
-                  Close
-                </button>
-              </div>
+
             </div>
           </div>,
           document.body,
@@ -4834,12 +4808,6 @@ function InventoryPage({
                 </div>
 
                 <div className="modal-actions">
-                  <button
-                    type="button"
-                    className="button soft"
-                    onClick={() => setIsAddProductOpen(false)}>
-                    Cancel
-                  </button>
                   <button type="submit" className="button dark">
                     Save Product
                   </button>
@@ -4962,12 +4930,6 @@ function InventoryPage({
                 </div>
 
                 <div className="modal-actions">
-                  <button
-                    type="button"
-                    className="button soft"
-                    onClick={() => setEditProduct(null)}>
-                    Cancel
-                  </button>
                   <button type="submit" className="button dark">
                     Update Details
                   </button>
@@ -5102,12 +5064,6 @@ function InventoryPage({
                 </div>
 
                 <div className="modal-actions">
-                  <button
-                    type="button"
-                    className="button soft"
-                    onClick={() => setBatchProduct(null)}>
-                    Cancel
-                  </button>
                   <button type="submit" className="button dark">
                     Record Batch
                   </button>
@@ -5205,12 +5161,6 @@ function InventoryPage({
                 </div>
 
                 <div className="modal-actions">
-                  <button
-                    type="button"
-                    className="button soft"
-                    onClick={() => setStockInProduct(null)}>
-                    Cancel
-                  </button>
                   <button type="submit" className="button dark">
                     <ArrowDownLeft size={14} /> Confirm Stock In
                   </button>
@@ -5324,12 +5274,6 @@ function InventoryPage({
                 </div>
 
                 <div className="modal-actions">
-                  <button
-                    type="button"
-                    className="button soft"
-                    onClick={() => setStockOutProduct(null)}>
-                    Cancel
-                  </button>
                   <button
                     type="submit"
                     className="button dark"
@@ -6162,8 +6106,8 @@ function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
   useEffect(() => {
     if (selectedTrx || selectedLog) {
       document.body.style.overflow = 'hidden';
-      return () => { document.body.style.overflow = ''; };
     }
+    return () => { document.body.style.overflow = ''; };
   }, [selectedTrx, selectedLog]);
 
   // Fetch from API backend if available
@@ -7309,12 +7253,6 @@ function UserManagementPage({
               )}
               <div className="modal-actions">
                 <button
-                  type="button"
-                  className="button soft"
-                  onClick={() => setDialog(null)}>
-                  Cancel
-                </button>
-                <button
                   className="button dark"
                   data-testid="button-confirm-reset"
                   type="submit">
@@ -7535,9 +7473,6 @@ function UserDialog({
           </p>
         )}
         <div className="modal-actions">
-          <button type="button" className="button soft" onClick={onClose}>
-            Cancel
-          </button>
           <button
             className="button dark"
             data-testid="button-save-user"
