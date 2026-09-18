@@ -1314,58 +1314,70 @@ function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
         }
       />
 
-
-      {/* Main 2-Column POS Layout */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1.1fr 0.9fr",
-          gap: 18,
-          alignItems: "start",
-        }}>
-        {/* Left Column: Register Terminal Checkout */}
-        <section className="surface-card" style={{ padding: 20 }}>
-          <div className="card-header" style={{ marginBottom: 16 }}>
-            <div>
-              <h2
-                className="card-title"
-                style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <ShoppingCart size={17} /> Counter Sale Checkout
-              </h2>
-              <p className="card-subtitle">
-                Scan or select products to process transaction
-              </p>
-            </div>
+      {/* Full-Screen Counter Sale Checkout Layout */}
+      <section className="surface-card" style={{ padding: "22px 24px", width: "100%", borderRadius: 20 }}>
+        <div className="card-header" style={{ marginBottom: 18, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <h2
+              className="card-title"
+              style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <ShoppingCart size={18} /> Counter Sale Checkout
+            </h2>
+            <p className="card-subtitle">
+              Scan or select products to process transaction · Terminal #01
+            </p>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {cart.length > 0 && (
+              <span className="pill neutral" style={{ fontSize: 11 }}>
+                {cart.reduce((a, b) => a + b.qty, 0)} items in cart
+              </span>
+            )}
             {cart.length > 0 && (
               <button
                 type="button"
                 className="button soft"
                 style={{ fontSize: 12 }}
                 onClick={() => setCart([])}>
-                Clear Cart
+                <Trash2 size={13} style={{ marginRight: 4 }} /> Clear Cart
               </button>
             )}
           </div>
+        </div>
 
-          {/* Product Selection Form */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr auto auto",
-              gap: 10,
-              marginBottom: 16,
-            }}>
+        {/* Product Selection Form Bar */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 90px auto",
+            gap: 12,
+            alignItems: "flex-end",
+            padding: "14px 16px",
+            background: "hsl(var(--surface-soft))",
+            border: "1px solid hsl(var(--border))",
+            borderRadius: 14,
+            marginBottom: 20,
+          }}>
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 600, color: "hsl(var(--muted))", display: "block", marginBottom: 5 }}>
+              Select Product / Medicine *
+            </label>
             <select
               className="select"
               value={selectedProductId}
               onChange={(e) => setSelectedProductId(e.target.value)}
-              style={{ width: "100%", height: 38 }}>
+              style={{ width: "100%", height: 39 }}>
               {products.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name} ({p.sku}) — {p.price} [Stock: {p.stock}]
                 </option>
               ))}
             </select>
+          </div>
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 600, color: "hsl(var(--muted))", display: "block", marginBottom: 5, textAlign: "center" }}>
+              Quantity
+            </label>
             <input
               type="number"
               min="1"
@@ -1375,191 +1387,233 @@ function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
                 setQty(Math.max(1, parseInt(e.target.value) || 1))
               }
               style={{
-                width: 60,
-                height: 38,
-                borderRadius: 10,
+                width: "100%",
+                height: 39,
+                borderRadius: 11,
                 border: "1px solid hsl(var(--border))",
                 textAlign: "center",
                 background: "hsl(var(--surface))",
                 color: "hsl(var(--foreground))",
+                fontWeight: 600,
+                fontSize: 13,
               }}
             />
+          </div>
+          <div>
             <button
               type="button"
               className="button dark"
-              style={{ height: 38, padding: "0 14px" }}
+              style={{ height: 39, padding: "0 18px", display: "inline-flex", alignItems: "center", gap: 6 }}
               onClick={handleAddToCart}>
-              <Plus size={14} /> Add
+              <Plus size={15} /> Add to Cart
             </button>
           </div>
+        </div>
 
-          {/* Cart Items Table */}
-          <div
-            className="table-scroll"
-            style={{
-              maxHeight: 240,
-              minHeight: 140,
-              marginBottom: 16,
-              border: "1px solid hsl(var(--border))",
-              borderRadius: 12,
-            }}>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Item</th>
-                  <th style={{ textAlign: "center" }}>Qty</th>
-                  <th style={{ textAlign: "right" }}>Price</th>
-                  <th style={{ textAlign: "right" }}>Total</th>
-                  <th style={{ width: 40 }} />
-                </tr>
-              </thead>
-              <tbody>
-                {cart.length === 0 ? (
+        {/* 2-Column POS Layout inside full-width card */}
+        <div className="pos-checkout-grid">
+          {/* Left: Cart Items Table */}
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <h4 style={{ margin: 0, fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "hsl(var(--muted))", fontWeight: 700 }}>
+                Transaction Items ({cart.length})
+              </h4>
+            </div>
+
+            <div
+              className="table-scroll"
+              style={{
+                minHeight: 280,
+                maxHeight: 480,
+                border: "1px solid hsl(var(--border))",
+                borderRadius: 14,
+                overflowX: "auto",
+                background: "hsl(var(--surface))",
+              }}>
+              <table className="data-table">
+                <thead>
                   <tr>
-                    <td
-                      colSpan={5}
-                      style={{
-                        textAlign: "center",
-                        padding: "30px 0",
-                        color: "hsl(var(--muted))",
-                      }}>
-                      Cart is empty. Select products above to start checkout.
-                    </td>
+                    <th>Item Description</th>
+                    <th style={{ textAlign: "center" }}>Qty</th>
+                    <th style={{ textAlign: "right" }}>Unit Price</th>
+                    <th style={{ textAlign: "right" }}>Total</th>
+                    <th style={{ width: 40 }} />
                   </tr>
-                ) : (
-                  cart.map((item) => (
-                    <tr key={item.id}>
-                      <td>
-                        <strong>{item.name}</strong>
-                        <div className="muted" style={{ fontSize: 10 }}>
-                          {item.sku}
+                </thead>
+                <tbody>
+                  {cart.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={5}
+                        style={{
+                          textAlign: "center",
+                          padding: "60px 20px",
+                          color: "hsl(var(--muted))",
+                        }}>
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+                          <div style={{ width: 48, height: 48, borderRadius: "50%", background: "hsl(var(--surface-soft))", display: "grid", placeItems: "center" }}>
+                            <ShoppingCart size={22} className="muted" />
+                          </div>
+                          <strong style={{ fontSize: 14, color: "hsl(var(--foreground))" }}>Cart is empty</strong>
+                          <span style={{ fontSize: 12 }}>Select products from the bar above to begin checkout.</span>
                         </div>
-                      </td>
-                      <td style={{ textAlign: "center" }}>
-                        <div
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 6,
-                          }}>
-                          <button
-                            type="button"
-                            className="icon-button"
-                            style={{
-                              width: 22,
-                              height: 22,
-                              borderRadius: 6,
-                              fontSize: 12,
-                            }}
-                            onClick={() => handleUpdateCartQty(item.id, -1)}>
-                            -
-                          </button>
-                          <span style={{ minWidth: 18, fontWeight: 600 }}>
-                            {item.qty}
-                          </span>
-                          <button
-                            type="button"
-                            className="icon-button"
-                            style={{
-                              width: 22,
-                              height: 22,
-                              borderRadius: 6,
-                              fontSize: 12,
-                            }}
-                            onClick={() => handleUpdateCartQty(item.id, 1)}>
-                            +
-                          </button>
-                        </div>
-                      </td>
-                      <td style={{ textAlign: "right" }}>
-                        ₱{item.price.toFixed(2)}
-                      </td>
-                      <td style={{ textAlign: "right", fontWeight: 600 }}>
-                        ₱{(item.price * item.qty).toFixed(2)}
-                      </td>
-                      <td style={{ textAlign: "center" }}>
-                        <button
-                          type="button"
-                          className="icon-button"
-                          style={{
-                            width: 24,
-                            height: 24,
-                            border: 0,
-                            color: "hsl(var(--danger))",
-                          }}
-                          onClick={() => handleRemoveFromCart(item.id)}>
-                          <Trash2 size={13} />
-                        </button>
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    cart.map((item) => (
+                      <tr key={item.id}>
+                        <td>
+                          <strong>{item.name}</strong>
+                          <div className="muted" style={{ fontSize: 10 }}>
+                            {item.sku}
+                          </div>
+                        </td>
+                        <td style={{ textAlign: "center" }}>
+                          <div
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 6,
+                              background: "hsl(var(--surface-soft))",
+                              padding: "3px 6px",
+                              borderRadius: 8,
+                              border: "1px solid hsl(var(--border))",
+                            }}>
+                            <button
+                              type="button"
+                              className="icon-button"
+                              style={{
+                                width: 22,
+                                height: 22,
+                                borderRadius: 6,
+                                fontSize: 12,
+                                border: 0,
+                                fontWeight: 700,
+                              }}
+                              onClick={() => handleUpdateCartQty(item.id, -1)}>
+                              -
+                            </button>
+                            <span style={{ minWidth: 18, fontWeight: 700, fontSize: 12 }}>
+                              {item.qty}
+                            </span>
+                            <button
+                              type="button"
+                              className="icon-button"
+                              style={{
+                                width: 22,
+                                height: 22,
+                                borderRadius: 6,
+                                fontSize: 12,
+                                border: 0,
+                                fontWeight: 700,
+                              }}
+                              onClick={() => handleUpdateCartQty(item.id, 1)}>
+                              +
+                            </button>
+                          </div>
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          ₱{item.price.toFixed(2)}
+                        </td>
+                        <td style={{ textAlign: "right", fontWeight: 600 }}>
+                          ₱{(item.price * item.qty).toFixed(2)}
+                        </td>
+                        <td style={{ textAlign: "center" }}>
+                          <button
+                            type="button"
+                            className="icon-button"
+                            style={{
+                              width: 24,
+                              height: 24,
+                              border: 0,
+                              color: "hsl(var(--danger))",
+                            }}
+                            title="Remove item"
+                            onClick={() => handleRemoveFromCart(item.id)}>
+                            <Trash2 size={13} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
 
-          {/* Payment & Checkout Summary */}
+          {/* Right: Payment & Checkout Summary */}
           <form
             onSubmit={handleCheckout}
             style={{
               background: "hsl(var(--surface-soft))",
-              padding: 14,
-              borderRadius: 14,
+              padding: 20,
+              borderRadius: 16,
               border: "1px solid hsl(var(--border))",
+              display: "flex",
+              flexDirection: "column",
+              gap: 16,
             }}>
-            <div
-              style={{
-                display: "grid",
-                gap: 8,
-                marginBottom: 14,
-                fontSize: 13,
-              }}>
+            <div>
+              <h4 style={{ margin: "0 0 12px", fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "hsl(var(--muted))", fontWeight: 700 }}>
+                Order Summary &amp; Payment
+              </h4>
               <div
                 style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  color: "hsl(var(--muted))",
+                  display: "grid",
+                  gap: 8,
+                  fontSize: 13,
+                  background: "hsl(var(--surface))",
+                  padding: "14px 16px",
+                  borderRadius: 12,
+                  border: "1px solid hsl(var(--border))",
                 }}>
-                <span>Subtotal</span>
-                <span>₱{subtotal.toFixed(2)}</span>
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  color: "hsl(var(--muted))",
-                }}>
-                <span>VAT (12% included)</span>
-                <span>₱{vat.toFixed(2)}</span>
-              </div>
-              {isDiscountEligible && (
                 <div
                   style={{
                     display: "flex",
                     justifyContent: "space-between",
-                    color: "#34C759",
-                    fontWeight: 700,
+                    color: "hsl(var(--muted))",
                   }}>
-                  <span>{discountType} Discount (20%)</span>
-                  <span>-₱{discountAmount.toFixed(2)}</span>
+                  <span>Subtotal</span>
+                  <span style={{ fontWeight: 600, color: "hsl(var(--foreground))" }}>₱{subtotal.toFixed(2)}</span>
                 </div>
-              )}
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  fontSize: 17,
-                  fontWeight: 700,
-                  paddingTop: 6,
-                  borderTop: "1px solid hsl(var(--border))",
-                }}>
-                <span>Total Amount</span>
-                <span>₱{total.toFixed(2)}</span>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    color: "hsl(var(--muted))",
+                  }}>
+                  <span>VAT (12% included)</span>
+                  <span>₱{vat.toFixed(2)}</span>
+                </div>
+                {isDiscountEligible && (
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      color: "#34C759",
+                      fontWeight: 700,
+                    }}>
+                    <span>{discountType} Privilege (20%)</span>
+                    <span>-₱{discountAmount.toFixed(2)}</span>
+                  </div>
+                )}
+                <div style={{ height: 1, background: "hsl(var(--border))", margin: "2px 0" }} />
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "baseline",
+                  }}>
+                  <span style={{ fontSize: 14, fontWeight: 700 }}>Total Amount</span>
+                  <span style={{ fontFamily: "var(--app-font-display)", fontSize: 24, fontWeight: 700, letterSpacing: "-.04em", color: "hsl(var(--foreground))" }}>
+                    ₱{total.toFixed(2)}
+                  </span>
+                </div>
               </div>
             </div>
 
             {/* Customer Discount Tabs */}
-            <div style={{ marginBottom: 12 }}>
+            <div>
               <label
                 style={{
                   fontSize: 11,
@@ -1568,24 +1622,24 @@ function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
                   display: "block",
                   marginBottom: 6,
                 }}>
-                Customer Discount
+                Customer Privilege Discount
               </label>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
                 {(["None", "Senior", "PWD"] as const).map((type) => (
                   <button
                     key={type}
                     type="button"
                     className={`button ${discountType === type ? "dark" : "soft"}`}
-                    style={{ flex: 1, height: 34, fontSize: 12 }}
+                    style={{ height: 35, fontSize: 11, padding: "0 4px" }}
                     onClick={() => setDiscountType(type)}>
-                    {type}
+                    {type === "None" ? "Standard (None)" : `${type} (-20%)`}
                   </button>
                 ))}
               </div>
             </div>
 
             {/* Payment Method Tabs */}
-            <div style={{ marginBottom: 12 }}>
+            <div>
               <label
                 style={{
                   fontSize: 11,
@@ -1596,13 +1650,13 @@ function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
                 }}>
                 Payment Method
               </label>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
                 {(["Cash", "GCash", "Card"] as const).map((method) => (
                   <button
                     key={method}
                     type="button"
                     className={`button ${paymentMethod === method ? "dark" : "soft"}`}
-                    style={{ flex: 1, height: 34, fontSize: 12 }}
+                    style={{ height: 35, fontSize: 12 }}
                     onClick={() => setPaymentMethod(method)}>
                     {method}
                   </button>
@@ -1617,7 +1671,10 @@ function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
                   display: "grid",
                   gridTemplateColumns: "1fr 1fr",
                   gap: 10,
-                  marginBottom: 14,
+                  background: "hsl(var(--surface))",
+                  padding: 12,
+                  borderRadius: 12,
+                  border: "1px solid hsl(var(--border))",
                 }}>
                 <div>
                   <label
@@ -1638,11 +1695,13 @@ function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
                     onChange={(e) => setCashTendered(e.target.value)}
                     style={{
                       width: "100%",
-                      height: 36,
+                      height: 38,
                       borderRadius: 10,
                       padding: "0 10px",
                       border: "1px solid hsl(var(--border))",
-                      background: "hsl(var(--surface))",
+                      background: "hsl(var(--surface-soft))",
+                      fontSize: 13,
+                      fontWeight: 600,
                     }}
                   />
                 </div>
@@ -1659,13 +1718,14 @@ function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
                   </label>
                   <div
                     style={{
-                      height: 36,
+                      height: 38,
                       display: "flex",
                       alignItems: "center",
                       padding: "0 10px",
                       fontWeight: 700,
+                      fontSize: 14,
                       color: changeDue >= 0 ? "#34C759" : "hsl(var(--danger))",
-                      background: "hsl(var(--surface))",
+                      background: "hsl(var(--surface-soft))",
                       border: "1px solid hsl(var(--border))",
                       borderRadius: 10,
                     }}>
@@ -1679,13 +1739,21 @@ function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
               type="submit"
               className="button dark full"
               disabled={cart.length === 0}
-              style={{ height: 44, fontSize: 14, fontWeight: 600 }}>
+              style={{
+                height: 46,
+                fontSize: 14,
+                fontWeight: 600,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+              }}>
               <Receipt size={16} /> Complete &amp; Print Receipt (₱
               {total.toFixed(2)})
             </button>
           </form>
-        </section>
-      </div>
+        </div>
+      </section>
 
       {/* Modal: End of Shift Z-Read Confirmation */}
       {showShiftModal && (
@@ -2734,7 +2802,7 @@ function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {shiftTransactions.map((trx) => (
+                    {shiftReceipts.map((trx) => (
                       <tr key={trx.id}>
                         <td><strong>{trx.id}</strong></td>
                         <td className="muted">{trx.time}</td>
@@ -2747,6 +2815,15 @@ function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                   </tbody>
                 </table>
               </div>
+            </div>
+
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="button dark"
+                onClick={() => setActiveModal(null)}>
+                Close
+              </button>
             </div>
           </div>
         </div>,

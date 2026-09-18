@@ -245,6 +245,10 @@ a { color: inherit; text-decoration: none; }
   .modal { padding: 19px; border-radius: 18px; } .report-metrics { gap: 5px; } .report-metric { padding: 9px; } .report-metric strong { font-size: 14px; }
   .top-actions { gap: 6px; } .avatar { width: 33px; height: 33px; }
 }
+.pos-checkout-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(360px, 1fr); gap: 22px; align-items: start; }
+@media (max-width: 960px) {
+  .pos-checkout-grid { grid-template-columns: 1fr; }
+}
 .app-shell { display: block; padding: 0 28px 42px; min-height: 100dvh; }
 .main-wrap { width: min(100%, 1260px); max-width: none; margin: 0 auto; }
 .topbar { height: 84px; margin-bottom: 18px; gap: 22px; }
