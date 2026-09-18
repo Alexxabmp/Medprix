@@ -44,6 +44,12 @@ router.post("/login", async (req, res) => {
       return res.status(401).json(invalidLoginResponse);
     }
 
+    if (!user.isActive) {
+      return res
+        .status(403)
+        .json({ error: "Account is inactive. Please contact an administrator." });
+    }
+
     const token = createSessionToken({
       id: user.id,
       username: user.username,
