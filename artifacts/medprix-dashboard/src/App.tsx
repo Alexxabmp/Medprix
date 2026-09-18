@@ -3227,9 +3227,37 @@ function InventoryPage({
 
   // Inventory items state
   const [items, setItems] = useState<ProductItem[]>(products);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isBackendConnected, setIsBackendConnected] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All statuses");
   const [categoryFilter, setCategoryFilter] = useState("All categories");
+
+  // Fetch inventory from backend
+  const fetchInventory = async () => {
+    try {
+      setIsLoading(true);
+      const res = await fetch("/api/inventory");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.products && Array.isArray(data.products)) {
+          setItems(data.products);
+          setIsBackendConnected(true);
+        }
+      } else {
+        setIsBackendConnected(false);
+      }
+    } catch (err) {
+      console.warn("Backend not reachable, using offline cache:", err);
+      setIsBackendConnected(false);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchInventory();
+  }, []);
 
   // Modals state
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
@@ -3391,7 +3419,7 @@ function InventoryPage({
     setIsAddProductOpen(true);
   };
 
-  const handleSaveNewProduct = (e: FormEvent) => {
+  const handleSaveNewProduct = async (e: FormEvent) => {
     e.preventDefault();
     if (!newProd.name.trim() || !newProd.sku.trim()) {
       onToast("Product name and code (SKU) are required");
@@ -3405,22 +3433,54 @@ function InventoryPage({
     const parsedQty = parseInt(newProd.quantity, 10) || 0;
     const parsedReorder = parseInt(newProd.reorder, 10) || 10;
 
-    const newProductItem: ProductItem = {
-      id: `p${items.length + 1}-${Date.now()}`,
+    const payload = {
       name: newProd.name.trim(),
       genericName: newProd.genericName.trim() || newProd.name.trim(),
       sku: newProd.sku.trim().toUpperCase(),
       category: newProd.category,
       price: priceFormatted,
       reorder: parsedReorder,
+      batchNumber: newProd.batchNumber.trim().toUpperCase() || "B001",
+      quantity: parsedQty,
+      expiryDate: newProd.expiryDate || "2027-12-31",
+      mfgDate: newProd.mfgDate,
+      dateReceived: newProd.dateReceived,
+      supplier: newProd.supplier,
+    };
+
+    try {
+      const res = await fetch("/api/inventory/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        await fetchInventory();
+        setIsAddProductOpen(false);
+        onToast(`Added product "${payload.name}" with initial batch`);
+        return;
+      }
+    } catch (err) {
+      console.warn("Backend save failed, falling back to local state:", err);
+    }
+
+    // Fallback local update
+    const newProductItem: ProductItem = {
+      id: `p${items.length + 1}-${Date.now()}`,
+      name: payload.name,
+      genericName: payload.genericName,
+      sku: payload.sku,
+      category: payload.category,
+      price: payload.price,
+      reorder: payload.reorder,
       batches: [
         {
-          batchNumber: newProd.batchNumber.trim().toUpperCase() || "B001",
-          quantity: parsedQty,
-          expiryDate: newProd.expiryDate || "2027-12-31",
-          mfgDate: newProd.mfgDate,
-          dateReceived: newProd.dateReceived,
-          supplier: newProd.supplier,
+          batchNumber: payload.batchNumber,
+          quantity: payload.quantity,
+          expiryDate: payload.expiryDate,
+          mfgDate: payload.mfgDate,
+          dateReceived: payload.dateReceived,
+          supplier: payload.supplier,
         },
       ],
     };
@@ -3442,7 +3502,7 @@ function InventoryPage({
     setEditProduct(product);
   };
 
-  const handleSaveEditProduct = (e: FormEvent) => {
+  const handleSaveEditProduct = async (e: FormEvent) => {
     e.preventDefault();
     if (!editProduct) return;
 
@@ -3450,16 +3510,41 @@ function InventoryPage({
       ? editProdData.price
       : `₱${parseFloat(editProdData.price.replace(/[^\d.]/g, "") || "0").toFixed(2)}`;
 
+    const payload = {
+      name: editProdData.name.trim(),
+      genericName: editProdData.genericName.trim(),
+      sku: editProdData.sku.trim().toUpperCase(),
+      category: editProdData.category,
+      price: priceFormatted,
+      reorder: parseInt(editProdData.reorder, 10) || 10,
+    };
+
+    try {
+      const res = await fetch(`/api/inventory/products/${editProduct.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        await fetchInventory();
+        setEditProduct(null);
+        onToast(`Updated product details for "${editProdData.name}"`);
+        return;
+      }
+    } catch (err) {
+      console.warn("Backend edit failed, falling back to local state:", err);
+    }
+
     const updated = items.map((p) =>
       p.id === editProduct.id
         ? {
             ...p,
-            name: editProdData.name.trim(),
-            genericName: editProdData.genericName.trim(),
-            sku: editProdData.sku.trim().toUpperCase(),
-            category: editProdData.category,
-            price: priceFormatted,
-            reorder: parseInt(editProdData.reorder, 10) || 10,
+            name: payload.name,
+            genericName: payload.genericName,
+            sku: payload.sku,
+            category: payload.category,
+            price: payload.price,
+            reorder: payload.reorder,
           }
         : p,
     );
@@ -3481,7 +3566,7 @@ function InventoryPage({
     setBatchProduct(product);
   };
 
-  const handleSaveAddBatch = (e: FormEvent) => {
+  const handleSaveAddBatch = async (e: FormEvent) => {
     e.preventDefault();
     if (!batchProduct || !newBatchData.batchNumber.trim()) {
       onToast("Batch number is required");
@@ -3497,6 +3582,24 @@ function InventoryPage({
       dateReceived: newBatchData.dateReceived,
       supplier: newBatchData.supplier,
     };
+
+    try {
+      const res = await fetch(`/api/inventory/products/${batchProduct.id}/batches`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newBatch),
+      });
+      if (res.ok) {
+        await fetchInventory();
+        setBatchProduct(null);
+        onToast(
+          `Added batch ${newBatch.batchNumber} (${parsedQty} units) to ${batchProduct.name}`,
+        );
+        return;
+      }
+    } catch (err) {
+      console.warn("Backend batch addition failed, falling back to local state:", err);
+    }
 
     const updated = items.map((p) =>
       p.id === batchProduct.id
@@ -3524,13 +3627,36 @@ function InventoryPage({
     setStockInProduct(product);
   };
 
-  const handleSaveStockIn = (e: FormEvent) => {
+  const handleSaveStockIn = async (e: FormEvent) => {
     e.preventDefault();
     if (!stockInProduct) return;
     const qty = parseInt(stockInData.quantity, 10);
     if (!qty || qty <= 0) {
       onToast("Please enter a valid positive quantity");
       return;
+    }
+
+    try {
+      const res = await fetch(`/api/inventory/products/${stockInProduct.id}/stock-in`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          batchNumber: stockInData.batchNumber,
+          quantity: qty,
+          reason: stockInData.reason,
+          date: stockInData.date,
+        }),
+      });
+      if (res.ok) {
+        await fetchInventory();
+        setStockInProduct(null);
+        onToast(
+          `Stock In recorded: +${qty} units added to ${stockInProduct.name} (${stockInData.reason})`,
+        );
+        return;
+      }
+    } catch (err) {
+      console.warn("Backend stock in failed, falling back to local state:", err);
     }
 
     const updated = items.map((p) => {
@@ -3577,7 +3703,7 @@ function InventoryPage({
     setStockOutProduct(product);
   };
 
-  const handleSaveStockOut = (e: FormEvent) => {
+  const handleSaveStockOut = async (e: FormEvent) => {
     e.preventDefault();
     if (!stockOutProduct) return;
     const qty = parseInt(stockOutData.quantity, 10);
@@ -3595,6 +3721,28 @@ function InventoryPage({
         `Insufficient batch stock. Available in ${stockOutData.batchNumber}: ${targetBatch?.quantity || 0} units`,
       );
       return;
+    }
+
+    try {
+      const res = await fetch(`/api/inventory/products/${stockOutProduct.id}/stock-out`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          batchNumber: stockOutData.batchNumber,
+          quantity: qty,
+          reason: stockOutData.reason,
+        }),
+      });
+      if (res.ok) {
+        await fetchInventory();
+        setStockOutProduct(null);
+        onToast(
+          `Stock Out recorded: -${qty} units removed from ${stockOutProduct.name} (${stockOutData.reason})`,
+        );
+        return;
+      }
+    } catch (err) {
+      console.warn("Backend stock out failed, falling back to local state:", err);
     }
 
     const updated = items.map((p) => {
@@ -3620,14 +3768,27 @@ function InventoryPage({
         title="Inventory"
         description="Real-time stock levels, multi-batch tracking, expiry alerts, and stock movements."
         action={
-          canAddProduct ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <button
-              className="button dark"
-              data-testid="button-add-product"
-              onClick={handleOpenAddProduct}>
-              <Plus size={14} /> Add product
+              type="button"
+              className="button soft"
+              style={{ fontSize: 11, padding: "6px 12px", display: "inline-flex", alignItems: "center", gap: 6 }}
+              onClick={fetchInventory}
+              title="Sync inventory with backend database"
+              data-testid="button-sync-inventory"
+            >
+              <RefreshCw size={12} className={isLoading ? "animate-spin" : ""} />
+              <span>{isBackendConnected ? "Backend Online" : "Sync Inventory"}</span>
             </button>
-          ) : undefined
+            {canAddProduct && (
+              <button
+                className="button dark"
+                data-testid="button-add-product"
+                onClick={handleOpenAddProduct}>
+                <Plus size={14} /> Add product
+              </button>
+            )}
+          </div>
         }
       />
 
