@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node -e \"process.env.NODE_ENV='development'\" && node ./build.mjs && node --enable-source-maps ./dist/index.mjs",
+    "dev": "node ./dev.mjs",
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
