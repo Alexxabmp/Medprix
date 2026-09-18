@@ -1679,165 +1679,13 @@ function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
               type="submit"
               className="button dark full"
               disabled={cart.length === 0}
-              style={{ height: 42, fontSize: 14, fontWeight: 600 }}>
-              <Receipt size={16} /> Complete & Print Receipt (₱
+              style={{ height: 44, fontSize: 14, fontWeight: 600 }}>
+              <Receipt size={16} /> Complete &amp; Print Receipt (₱
               {total.toFixed(2)})
             </button>
           </form>
         </section>
-
-        {/* Right Column: Recent Sales & Shift Reconciliation */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-          {/* Shift Transactions Card */}
-          <section className="surface-card table-card" style={{ padding: 18 }}>
-            <div className="card-header" style={{ marginBottom: 12 }}>
-              <div>
-                <h2 className="card-title">Shift Receipts Log</h2>
-                <p className="card-subtitle">
-                  Transactions recorded during current shift
-                </p>
-              </div>
-              <div className="search-wrap" style={{ width: 160 }}>
-                <Search size={14} />
-                <input
-                  type="search"
-                  placeholder="Receipt #..."
-                  value={searchReceipt}
-                  onChange={(e) => setSearchReceipt(e.target.value)}
-                  style={{ height: 30, fontSize: 11 }}
-                />
-              </div>
-            </div>
-
-            <div
-              className="table-scroll"
-              style={{ minHeight: 450, maxHeight: 450 }}>
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Receipt</th>
-                    <th>Time</th>
-                    <th>Method</th>
-                    <th style={{ textAlign: "right" }}>Total</th>
-                    <th style={{ width: 40 }} />
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredReceipts.map((r) => (
-                    <tr key={r.id}>
-                      <td>
-                        <strong>{r.id}</strong>
-                        <div className="muted" style={{ fontSize: 10 }}>
-                          {r.items} items
-                        </div>
-                      </td>
-                      <td className="muted">{r.time}</td>
-                      <td>
-                        <span
-                          className={`pill ${r.method === "Cash" ? "success" : "neutral"}`}
-                          style={{ fontSize: 10, padding: "2px 8px" }}>
-                          {r.method}
-                        </span>
-                      </td>
-                      <td style={{ textAlign: "right", fontWeight: 600 }}>
-                        ₱{r.total.toFixed(2)}
-                      </td>
-                      <td>
-                        <button
-                          type="button"
-                          className="icon-button"
-                          style={{ width: 26, height: 26 }}
-                          title="View Receipt Details"
-                          onClick={() => setSelectedReceipt(r)}>
-                          <Eye size={13} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        </div>
       </div>
-
-      {/* Modal: View Receipt Details */}
-      {selectedReceipt && (
-        <div
-          className="modal-backdrop"
-          onClick={() => setSelectedReceipt(null)}>
-          <div
-            className="modal dialog"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: 400 }}>
-            <div className="modal-header">
-              <div>
-                <h2>Receipt Details ({selectedReceipt.id})</h2>
-                <p className="modal-sub">
-                  Processed at {selectedReceipt.time} by{" "}
-                  {selectedReceipt.cashier}
-                </p>
-              </div>
-              <button
-                type="button"
-                className="modal-close"
-                onClick={() => setSelectedReceipt(null)}>
-                <X size={16} />
-              </button>
-            </div>
-            <div
-              style={{
-                padding: "14px 0",
-                display: "grid",
-                gap: 8,
-                fontSize: 13,
-                borderTop: "1px solid hsl(var(--border))",
-                borderBottom: "1px solid hsl(var(--border))",
-              }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span>Transaction Status</span>
-                <span className="pill success">{selectedReceipt.status}</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span>Payment Method</span>
-                <strong>{selectedReceipt.method}</strong>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span>Total Items</span>
-                <span>{selectedReceipt.items} units</span>
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  fontSize: 16,
-                  fontWeight: 700,
-                  marginTop: 6,
-                }}>
-                <span>Total Paid</span>
-                <span>₱{selectedReceipt.total.toFixed(2)}</span>
-              </div>
-            </div>
-            <div className="modal-actions" style={{ marginTop: 16 }}>
-              <button
-                type="button"
-                className="button soft"
-                onClick={() => setSelectedReceipt(null)}>
-                Close
-              </button>
-              <button
-                type="button"
-                className="button dark"
-                onClick={() => {
-                  onToast(`Re-printing receipt ${selectedReceipt.id}...`);
-                  setSelectedReceipt(null);
-                }}>
-                <Download size={13} /> Re-print Receipt
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Modal: End of Shift Z-Read Confirmation */}
       {showShiftModal && (
@@ -2572,11 +2420,24 @@ function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
     }
   }, [activeModal]);
 
-  const shiftTransactions = [
+  const [searchReceipt, setSearchReceipt] = useState("");
+  const [selectedReceipt, setSelectedReceipt] = useState<{
+    id: string;
+    time: string;
+    items: number;
+    itemsSummary: string;
+    total: string;
+    method: string;
+    cashier: string;
+    status: string;
+  } | null>(null);
+
+  const shiftReceipts = [
     {
       id: "CS-9401",
       time: "10:14 AM",
-      items: "Paracetamol 500mg (2), Vitamin C (1)",
+      items: 3,
+      itemsSummary: "Paracetamol 500mg (2), Vitamin C 1000mg (1)",
       total: "₱195.00",
       method: "Cash",
       cashier: "Maria Santos",
@@ -2585,7 +2446,8 @@ function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
     {
       id: "CS-9400",
       time: "09:48 AM",
-      items: "Cough relief syrup 120ml (1)",
+      items: 1,
+      itemsSummary: "Cough relief syrup 120ml (1)",
       total: "₱145.00",
       method: "GCash",
       cashier: "Maria Santos",
@@ -2594,7 +2456,8 @@ function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
     {
       id: "CS-9399",
       time: "09:12 AM",
-      items: "Amoxicillin 500mg Box (1), Cetirizine (4)",
+      items: 5,
+      itemsSummary: "Amoxicillin 500mg Box (1), Cetirizine 10mg (4)",
       total: "₱520.00",
       method: "Card",
       cashier: "Maria Santos",
@@ -2603,7 +2466,8 @@ function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
     {
       id: "CS-9398",
       time: "08:35 AM",
-      items: "Mefenamic Acid 500mg (2), Antacid (1)",
+      items: 3,
+      itemsSummary: "Mefenamic Acid 500mg (2), Antacid Chewable (1)",
       total: "₱85.00",
       method: "Cash",
       cashier: "Maria Santos",
@@ -2612,13 +2476,21 @@ function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
     {
       id: "TRX-0005",
       time: "11:20 AM",
-      items: "Sterile Normal Saline (5), Surgical Gloves (10)",
+      items: 15,
+      itemsSummary: "Sterile Normal Saline (5), Surgical Gloves Box (10)",
       total: "₱18,450.00",
       method: "Cash",
       cashier: "Maria Santos",
       status: "Completed",
     },
   ];
+
+  const filteredShiftReceipts = shiftReceipts.filter(
+    (r) =>
+      r.id.toLowerCase().includes(searchReceipt.toLowerCase()) ||
+      r.method.toLowerCase().includes(searchReceipt.toLowerCase()) ||
+      r.itemsSummary.toLowerCase().includes(searchReceipt.toLowerCase()),
+  );
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
@@ -2702,30 +2574,30 @@ function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
           </div>
         </div>
 
-        {/* 3. Transactions Handled */}
+        {/* 3. Shift Receipts Log */}
         <div
           className="surface-card"
           style={{ padding: 22, cursor: "pointer", display: "flex", flexDirection: "column", justifyContent: "space-between", border: "1px solid hsl(var(--border))", borderRadius: 16 }}
           onClick={() => setActiveModal("transactions")}
-          data-testid="card-feature-transactions-handled"
+          data-testid="card-feature-shift-receipts-log"
         >
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
               <div style={{ width: 38, height: 38, borderRadius: 10, background: "hsl(var(--surface-soft))", display: "flex", alignItems: "center", justifyContent: "center", color: "hsl(var(--foreground))" }}>
-                <ShoppingCart size={18} />
+                <Receipt size={18} />
               </div>
               <span className="pill neutral" style={{ fontSize: 10 }}>Feature 3</span>
             </div>
-            <h3 style={{ fontSize: 17, fontWeight: 700, margin: "0 0 6px" }}>Transactions Handled</h3>
+            <h3 style={{ fontSize: 17, fontWeight: 700, margin: "0 0 6px" }}>Shift Receipts Log</h3>
             <p className="muted" style={{ fontSize: 12, margin: 0, lineHeight: 1.5 }}>
-              View a full history and receipt breakdown of transactions you personally processed during your active shift.
+              Transactions recorded during current shift. Search receipt numbers, inspect itemized sales, and audit cashier receipts.
             </p>
           </div>
 
           <div style={{ marginTop: 20, paddingTop: 14, borderTop: "1px solid hsl(var(--border))", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div>
-              <div style={{ fontSize: 20, fontWeight: 700 }}>5 Handled</div>
-              <span className="muted" style={{ fontSize: 11 }}>Avg ₱3,879.00 / order</span>
+              <div style={{ fontSize: 20, fontWeight: 700 }}>5 Receipts Logged</div>
+              <span className="muted" style={{ fontSize: 11 }}>Total ₱19,395.00 recorded</span>
             </div>
             <button className="button dark" style={{ padding: "6px 14px", fontSize: 11 }}>
               Open feature <ArrowUpRight size={12} />
@@ -2800,43 +2672,46 @@ function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                 <span style={{ color: "#34C759", fontSize: 10, fontWeight: 600 }}>Across all payment modes</span>
               </div>
               <div style={{ background: "hsl(var(--surface-soft))", border: "1px solid hsl(var(--border))", borderRadius: 14, padding: "14px 16px" }}>
-                <span className="muted" style={{ fontSize: 11, display: "block" }}>Total receipts</span>
-                <strong style={{ display: "block", fontSize: 20, marginTop: 4, color: "hsl(var(--foreground))", letterSpacing: "-.04em" }}>5</strong>
-                <span style={{ color: "#34C759", fontSize: 10, fontWeight: 600 }}>Transactions completed</span>
+                <span className="muted" style={{ fontSize: 11, display: "block" }}>Transactions</span>
+                <strong style={{ display: "block", fontSize: 20, marginTop: 4, color: "hsl(var(--foreground))", letterSpacing: "-.04em" }}>5 Orders</strong>
+                <span className="muted" style={{ fontSize: 10 }}>Completed shifts</span>
               </div>
               <div style={{ background: "hsl(var(--surface-soft))", border: "1px solid hsl(var(--border))", borderRadius: 14, padding: "14px 16px" }}>
-                <span className="muted" style={{ fontSize: 11, display: "block" }}>Average transaction</span>
+                <span className="muted" style={{ fontSize: 11, display: "block" }}>Average basket</span>
                 <strong style={{ display: "block", fontSize: 20, marginTop: 4, color: "hsl(var(--foreground))", letterSpacing: "-.04em" }}>₱3,879.00</strong>
-                <span style={{ color: "#34C759", fontSize: 10, fontWeight: 600 }}>Average basket size</span>
+                <span className="muted" style={{ fontSize: 10 }}>Per customer</span>
               </div>
             </div>
 
-            {/* Sales by Payment Method */}
-            <div style={{ background: "hsl(var(--surface-soft))", border: "1px solid hsl(var(--border))", padding: "16px 18px", borderRadius: 14, marginBottom: 18 }}>
-              <h4 style={{ margin: "0 0 12px", fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "hsl(var(--muted))", fontWeight: 700 }}>
-                Sales by Payment Method
+            {/* Sales Breakdown by Payment Method */}
+            <div style={{ marginBottom: 18 }}>
+              <h4 style={{ margin: "0 0 10px", fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "hsl(var(--muted))", fontWeight: 700 }}>
+                Payment Method Breakdown
               </h4>
-              <div style={{ display: "grid", gap: 8, fontSize: 12 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ color: "hsl(var(--foreground))", fontWeight: 600 }}>💵 Cash</span>
-                  <div style={{ display: "flex", gap: 12 }}>
-                    <span className="muted">3 receipts (45.3%)</span>
-                    <strong style={{ color: "hsl(var(--foreground))" }}>₱8,780.00</strong>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+                <div style={{ border: "1px solid hsl(var(--border))", borderRadius: 12, padding: "12px 14px", background: "hsl(var(--surface))" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600 }}>Cash</span>
+                    <span className="pill success" style={{ fontSize: 9 }}>3 sales</span>
                   </div>
+                  <strong style={{ fontSize: 16 }}>₱18,730.00</strong>
+                  <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>96.5% of total</div>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ color: "hsl(var(--foreground))", fontWeight: 600 }}>📱 GCash / E-Wallet</span>
-                  <div style={{ display: "flex", gap: 12 }}>
-                    <span className="muted">1 receipt (28.2%)</span>
-                    <strong style={{ color: "hsl(var(--foreground))" }}>₱5,475.00</strong>
+                <div style={{ border: "1px solid hsl(var(--border))", borderRadius: 12, padding: "12px 14px", background: "hsl(var(--surface))" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600 }}>GCash</span>
+                    <span className="pill neutral" style={{ fontSize: 9 }}>1 sale</span>
                   </div>
+                  <strong style={{ fontSize: 16 }}>₱145.00</strong>
+                  <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>0.7% of total</div>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ color: "hsl(var(--foreground))", fontWeight: 600 }}>💳 Credit / Debit Card</span>
-                  <div style={{ display: "flex", gap: 12 }}>
-                    <span className="muted">1 receipt (26.5%)</span>
-                    <strong style={{ color: "hsl(var(--foreground))" }}>₱5,140.00</strong>
+                <div style={{ border: "1px solid hsl(var(--border))", borderRadius: 12, padding: "12px 14px", background: "hsl(var(--surface))" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600 }}>Card</span>
+                    <span className="pill neutral" style={{ fontSize: 9 }}>1 sale</span>
                   </div>
+                  <strong style={{ fontSize: 16 }}>₱520.00</strong>
+                  <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>2.8% of total</div>
                 </div>
               </div>
             </div>
@@ -2863,7 +2738,7 @@ function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                       <tr key={trx.id}>
                         <td><strong>{trx.id}</strong></td>
                         <td className="muted">{trx.time}</td>
-                        <td style={{ maxWidth: 220, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{trx.items}</td>
+                        <td style={{ maxWidth: 220, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{trx.itemsSummary}</td>
                         <td><span className="pill neutral">{trx.method}</span></td>
                         <td style={{ textAlign: "right" }}><strong>{trx.total}</strong></td>
                         <td><span className="pill success">{trx.status}</span></td>
@@ -2886,11 +2761,11 @@ function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
           className="modal-backdrop"
           onMouseDown={(event) => event.currentTarget === event.target && setActiveModal(null)}
         >
-          <div className="modal" style={{ width: "min(620px, 100%)" }}>
+          <div className="modal" style={{ width: "min(640px, 100%)" }}>
             <div className="modal-header">
               <div>
                 <h2>Cash in Drawer</h2>
-                <p className="modal-sub">Physical cash float and register balance breakdown</p>
+                <p className="modal-sub">Cash drawer audit and denominations count · Terminal #01</p>
               </div>
               <button
                 type="button"
@@ -2964,18 +2839,18 @@ function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
       )}
 
       {/* ========================================================================= */}
-      {/* 3. TRANSACTIONS HANDLED MODAL */}
+      {/* 3. SHIFT RECEIPTS LOG MODAL (REPLACING TRANSACTIONS HANDLED) */}
       {/* ========================================================================= */}
       {activeModal === "transactions" && createPortal(
         <div
           className="modal-backdrop"
           onMouseDown={(event) => event.currentTarget === event.target && setActiveModal(null)}
         >
-          <div className="modal" style={{ width: "min(720px, 100%)" }}>
+          <div className="modal" style={{ width: "min(760px, 100%)" }}>
             <div className="modal-header">
               <div>
-                <h2>Transactions Handled</h2>
-                <p className="modal-sub">Receipts processed by Maria Santos on Terminal #01</p>
+                <h2>Shift Receipts Log</h2>
+                <p className="modal-sub">Receipts and transactions recorded during current shift (Maria Santos · Terminal #01)</p>
               </div>
               <button
                 type="button"
@@ -2987,29 +2862,71 @@ function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
               </button>
             </div>
 
-            <div className="table-scroll" style={{ border: "1px solid hsl(var(--border))", borderRadius: 12, overflowX: "auto" }}>
+            <div style={{ marginBottom: 14, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+              <div className="search-wrap" style={{ width: 240 }}>
+                <Search size={14} />
+                <input
+                  type="search"
+                  placeholder="Search receipt #, method..."
+                  value={searchReceipt}
+                  onChange={(e) => setSearchReceipt(e.target.value)}
+                  style={{ height: 32, fontSize: 11 }}
+                />
+              </div>
+              <span className="muted" style={{ fontSize: 11 }}>
+                Showing {filteredShiftReceipts.length} recorded receipt(s)
+              </span>
+            </div>
+
+            <div className="table-scroll" style={{ border: "1px solid hsl(var(--border))", borderRadius: 12, overflowX: "auto", maxHeight: 380 }}>
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Transaction ID</th>
-                    <th>Date &amp; Time</th>
+                    <th>Receipt #</th>
+                    <th>Time</th>
                     <th>Items</th>
+                    <th>Method</th>
                     <th style={{ textAlign: "right" }}>Total Amount</th>
-                    <th>Payment Method</th>
-                    <th>Status</th>
+                    <th style={{ width: 40 }} />
                   </tr>
                 </thead>
                 <tbody>
-                  {shiftTransactions.map((trx) => (
-                    <tr key={trx.id}>
-                      <td><strong>{trx.id}</strong></td>
-                      <td className="muted">{trx.time}</td>
-                      <td>{trx.items}</td>
-                      <td style={{ textAlign: "right" }}><strong>{trx.total}</strong></td>
-                      <td><span className="pill neutral">{trx.method}</span></td>
-                      <td><span className="pill success">{trx.status}</span></td>
+                  {filteredShiftReceipts.map((r) => (
+                    <tr key={r.id}>
+                      <td>
+                        <strong>{r.id}</strong>
+                        <div className="muted" style={{ fontSize: 10 }}>{r.items} items</div>
+                      </td>
+                      <td className="muted">{r.time}</td>
+                      <td style={{ fontSize: 11 }}>{r.itemsSummary}</td>
+                      <td>
+                        <span className={`pill ${r.method === "Cash" ? "success" : "neutral"}`} style={{ fontSize: 10, padding: "2px 8px" }}>
+                          {r.method}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        <strong>{r.total}</strong>
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="icon-button"
+                          style={{ width: 26, height: 26 }}
+                          title="View Receipt Details"
+                          onClick={() => setSelectedReceipt(r)}
+                        >
+                          <Eye size={13} />
+                        </button>
+                      </td>
                     </tr>
                   ))}
+                  {filteredShiftReceipts.length === 0 && (
+                    <tr>
+                      <td colSpan={6} style={{ textAlign: "center", padding: 24 }} className="muted">
+                        No shift receipts match that search query.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -3121,6 +3038,96 @@ function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
         </div>,
         document.body
       )}
+
+      {/* Nested Receipt Details Modal */}
+      {selectedReceipt &&
+        createPortal(
+          <div
+            className="modal-backdrop"
+            onClick={() => setSelectedReceipt(null)}
+            style={{ zIndex: 1100 }}>
+            <div
+              className="modal dialog"
+              onClick={(e) => e.stopPropagation()}
+              style={{ maxWidth: 420 }}>
+              <div className="modal-header">
+                <div>
+                  <h2>Receipt Details ({selectedReceipt.id})</h2>
+                  <p className="modal-sub">
+                    Processed at {selectedReceipt.time} by{" "}
+                    {selectedReceipt.cashier}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="modal-close"
+                  onClick={() => setSelectedReceipt(null)}>
+                  <X size={16} />
+                </button>
+              </div>
+              <div
+                style={{
+                  padding: "14px 0",
+                  display: "grid",
+                  gap: 8,
+                  fontSize: 13,
+                  borderTop: "1px solid hsl(var(--border))",
+                  borderBottom: "1px solid hsl(var(--border))",
+                }}>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span className="muted">Transaction Status</span>
+                  <span className="pill success">{selectedReceipt.status}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span className="muted">Payment Method</span>
+                  <strong>{selectedReceipt.method}</strong>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span className="muted">Items Summary</span>
+                  <span
+                    style={{
+                      fontSize: 11,
+                      textAlign: "right",
+                      maxWidth: 220,
+                    }}>
+                    {selectedReceipt.itemsSummary}
+                  </span>
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    fontSize: 16,
+                    fontWeight: 700,
+                    marginTop: 6,
+                    paddingTop: 6,
+                    borderTop: "1px solid hsl(var(--border))",
+                  }}>
+                  <span>Total Paid</span>
+                  <span>{selectedReceipt.total}</span>
+                </div>
+              </div>
+              <div className="modal-actions" style={{ marginTop: 16 }}>
+                <button
+                  type="button"
+                  className="button soft"
+                  onClick={() => setSelectedReceipt(null)}>
+                  Close
+                </button>
+                <button
+                  type="button"
+                  className="button dark"
+                  onClick={() => {
+                    onToast(`Re-printing receipt ${selectedReceipt.id}...`);
+                    setSelectedReceipt(null);
+                  }}>
+                  <Download size={13} /> Re-print Receipt
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
@@ -3640,7 +3647,6 @@ function InventoryPage({
             <div
               className="surface-card"
               style={{
-                borderLeft: "4px solid #f59e0b",
                 padding: "14px 18px",
                 background: "hsl(var(--surface))",
               }}>
@@ -3726,7 +3732,6 @@ function InventoryPage({
             <div
               className="surface-card"
               style={{
-                borderLeft: "4px solid #ef4444",
                 padding: "14px 18px",
                 background: "hsl(var(--surface))",
               }}>
