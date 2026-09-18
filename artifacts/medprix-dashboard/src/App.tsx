@@ -2588,13 +2588,13 @@ function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
           data-testid="card-feature-shift-sales"
         >
           <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-              <div style={{ width: 38, height: 38, borderRadius: 10, background: "hsl(var(--surface-soft))", display: "flex", alignItems: "center", justifyContent: "center", color: "hsl(var(--foreground))" }}>
-                <Receipt size={18} />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Receipt size={15} />
+                <h3 className="card-title" style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Today's Shift Sales</h3>
               </div>
               <span className="pill neutral" style={{ fontSize: 10 }}>Feature 1</span>
             </div>
-            <h3 style={{ fontSize: 17, fontWeight: 700, margin: "0 0 6px" }}>Today's Shift Sales</h3>
             <p className="muted" style={{ fontSize: 12, margin: 0, lineHeight: 1.5 }}>
               View total sales made during your active shift, receipt counts, and revenue breakdown by payment method.
             </p>
@@ -2619,13 +2619,13 @@ function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
           data-testid="card-feature-cash-drawer"
         >
           <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-              <div style={{ width: 38, height: 38, borderRadius: 10, background: "hsl(var(--surface-soft))", display: "flex", alignItems: "center", justifyContent: "center", color: "hsl(var(--foreground))" }}>
-                <CircleDollarSign size={18} />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <CircleDollarSign size={15} />
+                <h3 className="card-title" style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Cash in Drawer</h3>
               </div>
               <span className="pill neutral" style={{ fontSize: 10 }}>Feature 2</span>
             </div>
-            <h3 style={{ fontSize: 17, fontWeight: 700, margin: "0 0 6px" }}>Cash in Drawer</h3>
             <p className="muted" style={{ fontSize: 12, margin: 0, lineHeight: 1.5 }}>
               Monitor physical cash float, incoming cash transactions, mid-day safe drops, and expected cash in the register.
             </p>
@@ -2650,13 +2650,13 @@ function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
           data-testid="card-feature-shift-receipts-log"
         >
           <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-              <div style={{ width: 38, height: 38, borderRadius: 10, background: "hsl(var(--surface-soft))", display: "flex", alignItems: "center", justifyContent: "center", color: "hsl(var(--foreground))" }}>
-                <Receipt size={18} />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Receipt size={15} />
+                <h3 className="card-title" style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Shift Receipts Log</h3>
               </div>
               <span className="pill neutral" style={{ fontSize: 10 }}>Feature 3</span>
             </div>
-            <h3 style={{ fontSize: 17, fontWeight: 700, margin: "0 0 6px" }}>Shift Receipts Log</h3>
             <p className="muted" style={{ fontSize: 12, margin: 0, lineHeight: 1.5 }}>
               Transactions recorded during current shift. Search receipt numbers, inspect itemized sales, and audit cashier receipts.
             </p>
@@ -2681,13 +2681,13 @@ function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
           data-testid="card-feature-till-status"
         >
           <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-              <div style={{ width: 38, height: 38, borderRadius: 10, background: "hsl(var(--surface-soft))", display: "flex", alignItems: "center", justifyContent: "center", color: "hsl(var(--foreground))" }}>
-                <ShieldCheck size={18} />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <ShieldCheck size={15} />
+                <h3 className="card-title" style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Till Status</h3>
               </div>
               <span className="pill neutral" style={{ fontSize: 10 }}>Feature 4</span>
             </div>
-            <h3 style={{ fontSize: 17, fontWeight: 700, margin: "0 0 6px" }}>Till Status</h3>
             <p className="muted" style={{ fontSize: 12, margin: 0, lineHeight: 1.5 }}>
               Check live cash till balance status (Balanced, Over, Short), discrepancy checks, and supervisor verification logs.
             </p>
@@ -3912,7 +3912,7 @@ function InventoryPage({
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
-                  marginBottom: 8,
+                  marginBottom: 12,
                 }}>
                 <div
                   style={{
@@ -3920,10 +3920,10 @@ function InventoryPage({
                     alignItems: "center",
                     gap: 8,
                     fontWeight: 700,
-                    color: "#b45309",
+                    color: "hsl(var(--foreground))",
                     fontSize: 13,
                   }}>
-                  <AlertTriangle size={16} />
+                  <AlertTriangle size={15} />
                   <span>LOW STOCK ALERT ({lowStockItems.length})</span>
                 </div>
                 <button
@@ -3934,14 +3934,6 @@ function InventoryPage({
                   Filter Low Stock
                 </button>
               </div>
-              <p
-                style={{
-                  fontSize: 12,
-                  margin: "0 0 8px 0",
-                  color: "hsl(var(--muted))",
-                }}>
-                The following products have reached or fallen below their reorder level:
-              </p>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {lowStockItems.slice(0, 3).map((p) => {
                   const stock = getProductTotalStock(p);
@@ -3997,7 +3989,7 @@ function InventoryPage({
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
-                  marginBottom: 8,
+                  marginBottom: 12,
                 }}>
                 <div
                   style={{
@@ -4005,10 +3997,10 @@ function InventoryPage({
                     alignItems: "center",
                     gap: 8,
                     fontWeight: 700,
-                    color: "#dc2626",
+                    color: "hsl(var(--foreground))",
                     fontSize: 13,
                   }}>
-                  <AlertCircle size={16} />
+                  <AlertCircle size={15} />
                   <span>
                     EXPIRED &amp; EXPIRING PRODUCTS (
                     {expiredItems.length + expiringSoonItems.length})
@@ -4022,14 +4014,6 @@ function InventoryPage({
                   Filter Expired
                 </button>
               </div>
-              <p
-                style={{
-                  fontSize: 12,
-                  margin: "0 0 8px 0",
-                  color: "hsl(var(--muted))",
-                }}>
-                Products requiring immediate quarantine or near-term attention:
-              </p>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {expiredItems.map((p) => {
                   const info = getProductStatusData(p);
