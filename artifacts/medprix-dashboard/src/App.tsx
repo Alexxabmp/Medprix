@@ -2,12 +2,16 @@ import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   Activity,
+  AlertCircle,
+  AlertTriangle,
   Archive,
+  ArrowDownLeft,
   ArrowDownToLine,
   ArrowUpRight,
   BarChart3,
   Boxes,
   Building2,
+  Calendar,
   CalendarDays,
   Check,
   ChevronDown,
@@ -20,6 +24,7 @@ import {
   FileBarChart,
   FileText,
   KeyRound,
+  Layers,
   LayoutDashboard,
   Moon,
   MoreHorizontal,
@@ -34,6 +39,7 @@ import {
   ShieldCheck,
   ShoppingCart,
   Sun,
+  Tag,
   Trash2,
   TrendingUp,
   UserCog,
@@ -71,7 +77,7 @@ type UserRecord = {
   phone: string;
 };
 
-// Reports removed from nav Ã¢ ' now embedded in Dashboard
+// Reports removed from nav — now embedded in Dashboard
 const navGroups = [
   {
     label: "Workspace",
@@ -98,7 +104,7 @@ const navGroups = [
         href: "/inventory",
         label: "Inventory",
         icon: Boxes,
-        roles: ["admin", "frontdesk"],
+        roles: ["admin", "frontdesk", "cashier"],
       },
       {
         href: "/supplier",
@@ -150,65 +156,161 @@ function getDefaultRoute(role: string) {
   return getAllowedHrefs(role)[0] ?? "/login";
 }
 
-const products = [
+export interface ProductBatch {
+  batchNumber: string;
+  quantity: number;
+  expiryDate: string;
+  mfgDate?: string;
+  dateReceived?: string;
+  supplier?: string;
+}
+
+export interface ProductItem {
+  id: string;
+  name: string;
+  genericName: string;
+  sku: string;
+  category: string;
+  price: string;
+  reorder: number;
+  batches: ProductBatch[];
+  stock?: number;
+  status?: string;
+}
+
+const products: ProductItem[] = [
   {
     id: "p1",
     name: "Paracetamol 500mg",
+    genericName: "Acetaminophen",
     sku: "MED-0421",
     category: "Pain relief",
-    stock: 120,
     reorder: 40,
     price: "₱5.00",
+    batches: [
+      {
+        batchNumber: "B2026-01",
+        quantity: 70,
+        expiryDate: "2027-08-15",
+        mfgDate: "2025-08-01",
+        dateReceived: "2025-08-20",
+        supplier: "Southstar Distribution",
+      },
+      {
+        batchNumber: "B2026-02",
+        quantity: 50,
+        expiryDate: "2027-11-20",
+        mfgDate: "2025-11-01",
+        dateReceived: "2025-11-25",
+        supplier: "Southstar Distribution",
+      },
+    ],
+    stock: 120,
     status: "Available",
   },
   {
     id: "p2",
     name: "Amoxicillin 500mg",
+    genericName: "Amoxicillin Trihydrate",
     sku: "MED-0184",
     category: "Antibiotics",
-    stock: 8,
     reorder: 30,
     price: "₱12.00",
+    batches: [
+      {
+        batchNumber: "AMX-801",
+        quantity: 8,
+        expiryDate: "2027-04-10",
+        mfgDate: "2025-04-01",
+        dateReceived: "2025-04-15",
+        supplier: "Mercury Health Partners",
+      },
+    ],
+    stock: 8,
     status: "Low stock",
   },
   {
     id: "p3",
     name: "Vitamin C 1000mg",
+    genericName: "Ascorbic Acid + Zinc",
     sku: "VIT-0223",
     category: "Vitamins",
-    stock: 0,
     reorder: 25,
     price: "₱8.00",
+    batches: [
+      {
+        batchNumber: "VIT-102",
+        quantity: 0,
+        expiryDate: "2027-01-15",
+        mfgDate: "2025-01-01",
+        dateReceived: "2025-01-20",
+        supplier: "Wellness Direct PH",
+      },
+    ],
+    stock: 0,
     status: "Out of stock",
   },
   {
     id: "p4",
     name: "Cough relief syrup",
+    genericName: "Dextromethorphan HBr",
     sku: "MED-0552",
     category: "Respiratory",
-    stock: 63,
     reorder: 20,
     price: "₱145.00",
+    batches: [
+      {
+        batchNumber: "CRS-404",
+        quantity: 63,
+        expiryDate: "2027-06-30",
+        mfgDate: "2025-06-01",
+        dateReceived: "2025-06-15",
+        supplier: "Southstar Distribution",
+      },
+    ],
+    stock: 63,
     status: "Available",
   },
   {
     id: "p5",
     name: "Cetirizine 10mg",
+    genericName: "Cetirizine Dihydrochloride",
     sku: "MED-0350",
     category: "Allergy",
-    stock: 36,
     reorder: 18,
     price: "₱7.50",
+    batches: [
+      {
+        batchNumber: "CTZ-201",
+        quantity: 36,
+        expiryDate: "2026-10-15",
+        mfgDate: "2024-10-01",
+        dateReceived: "2024-10-20",
+        supplier: "Mercury Health Partners",
+      },
+    ],
+    stock: 36,
     status: "Available",
   },
   {
     id: "p6",
     name: "Skin cream 30g",
+    genericName: "Hydrocortisone 1%",
     sku: "DER-0108",
     category: "Dermatology",
-    stock: 12,
     reorder: 15,
     price: "₱220.00",
+    batches: [
+      {
+        batchNumber: "SKN-099",
+        quantity: 12,
+        expiryDate: "2026-08-01",
+        mfgDate: "2024-08-01",
+        dateReceived: "2024-08-15",
+        supplier: "Wellness Direct PH",
+      },
+    ],
+    stock: 12,
     status: "Low stock",
   },
 ];
@@ -738,7 +840,7 @@ function AppShell({
               <CashierReviewPage onToast={onToast} />
             </Route>
             <Route path="/inventory">
-              <InventoryPage onToast={onToast} />
+              <InventoryPage onToast={onToast} currentRole={role} />
             </Route>
             <Route path="/supplier">
               <SupplierPage onToast={onToast} />
@@ -3023,124 +3125,2110 @@ function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
   );
 }
 
-function InventoryPage({ onToast }: { onToast: ToastFn }) {
-  const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState("All status");
-  const filtered = products.filter(
-    (product) =>
-      (filter === "All status" || product.status === filter) &&
-      `${product.name} ${product.sku} ${product.category}`
-        .toLowerCase()
-        .includes(search.toLowerCase()),
+function getBatchExpiryStatus(expiryDateStr: string, qty: number) {
+  if (qty <= 0) return { status: "Depleted", tone: "neutral" };
+  const expiry = new Date(expiryDateStr);
+  const now = new Date("2026-09-18T00:00:00");
+  if (isNaN(expiry.getTime())) return { status: "Valid", tone: "success" };
+  if (expiry < now) return { status: "Expired", tone: "danger" };
+  const diffDays = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  if (diffDays <= 60) return { status: "Expiring Soon", tone: "warning" };
+  return { status: "Valid", tone: "success" };
+}
+
+function getProductTotalStock(product: ProductItem): number {
+  return product.batches.reduce((sum, b) => sum + (Number(b.quantity) || 0), 0);
+}
+
+function getProductStatusData(product: ProductItem) {
+  const stock = getProductTotalStock(product);
+  const now = new Date("2026-09-18T00:00:00");
+
+  const expiredBatches = product.batches.filter((b) => {
+    const exp = new Date(b.expiryDate);
+    return !isNaN(exp.getTime()) && exp < now && Number(b.quantity) > 0;
+  });
+
+  const expiringSoonBatches = product.batches.filter((b) => {
+    const exp = new Date(b.expiryDate);
+    if (isNaN(exp.getTime()) || exp < now || Number(b.quantity) <= 0) return false;
+    const diffDays = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    return diffDays <= 60;
+  });
+
+  let statusLabel = "In Stock";
+  let statusTone: "success" | "warning" | "danger" = "success";
+
+  if (expiredBatches.length > 0) {
+    statusLabel = "Expired";
+    statusTone = "danger";
+  } else if (stock === 0) {
+    statusLabel = "Out of Stock";
+    statusTone = "danger";
+  } else if (expiringSoonBatches.length > 0) {
+    statusLabel = "Expiring Soon";
+    statusTone = "warning";
+  } else if (stock <= product.reorder) {
+    statusLabel = "Low Stock";
+    statusTone = "warning";
+  }
+
+  const activeBatches = product.batches.filter((b) => Number(b.quantity) > 0);
+  const sortedBatches = [...(activeBatches.length > 0 ? activeBatches : product.batches)].sort(
+    (a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime()
   );
+  const primaryExpiry = sortedBatches[0]?.expiryDate || "N/A";
+
+  return {
+    stock,
+    statusLabel,
+    statusTone,
+    isLowStock: stock <= product.reorder && stock > 0,
+    isOutOfStock: stock === 0,
+    isExpired: expiredBatches.length > 0,
+    isExpiringSoon: expiringSoonBatches.length > 0,
+    expiredBatches,
+    expiringSoonBatches,
+    primaryExpiry,
+  };
+}
+
+function InventoryPage({
+  onToast,
+  currentRole,
+}: {
+  onToast: ToastFn;
+  currentRole?: string;
+}) {
+  const role = (
+    currentRole ||
+    localStorage.getItem("medprix-role") ||
+    "admin"
+  ).toLowerCase();
+
+  const isAdmin = role === "admin";
+  const isFrontDesk = role === "frontdesk";
+  const isCashier = role === "cashier";
+
+  const canViewAlerts = isAdmin || isFrontDesk;
+  const canAddProduct = isAdmin || isFrontDesk;
+  const canEditProduct = isAdmin || isFrontDesk;
+  const canAddBatch = isAdmin || isFrontDesk;
+  const canAddFullBatchInfo = isAdmin;
+  const canRecordStockIn = isAdmin || isCashier;
+  const canRecordStockOut = isAdmin || isCashier;
+
+  // Inventory items state
+  const [items, setItems] = useState<ProductItem[]>(products);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All statuses");
+  const [categoryFilter, setCategoryFilter] = useState("All categories");
+
+  // Modals state
+  const [isAddProductOpen, setIsAddProductOpen] = useState(false);
+  const [viewProduct, setViewProduct] = useState<ProductItem | null>(null);
+  const [editProduct, setEditProduct] = useState<ProductItem | null>(null);
+  const [batchProduct, setBatchProduct] = useState<ProductItem | null>(null);
+  const [stockInProduct, setStockInProduct] = useState<ProductItem | null>(null);
+  const [stockOutProduct, setStockOutProduct] = useState<ProductItem | null>(null);
+
+  // Forms state
+  const [newProd, setNewProd] = useState({
+    name: "",
+    genericName: "",
+    sku: "",
+    category: "Pain relief",
+    price: "₱",
+    reorder: "20",
+    batchNumber: "B2026-01",
+    quantity: "50",
+    expiryDate: "2027-12-31",
+    mfgDate: "2025-12-01",
+    dateReceived: "2025-12-10",
+    supplier: "Southstar Distribution",
+  });
+
+  const [editProdData, setEditProdData] = useState({
+    name: "",
+    genericName: "",
+    sku: "",
+    category: "Pain relief",
+    price: "",
+    reorder: "",
+  });
+
+  const [newBatchData, setNewBatchData] = useState({
+    batchNumber: "",
+    quantity: "",
+    expiryDate: "",
+    mfgDate: "2025-01-01",
+    dateReceived: new Date().toISOString().slice(0, 10),
+    supplier: "Southstar Distribution",
+  });
+
+  const [stockInData, setStockInData] = useState({
+    batchNumber: "",
+    quantity: "",
+    date: new Date().toISOString().slice(0, 10),
+    reason: "Procurement Delivery",
+  });
+
+  const [stockOutData, setStockOutData] = useState({
+    batchNumber: "",
+    quantity: "",
+    date: new Date().toISOString().slice(0, 10),
+    reason: "Dispensed / Sales",
+  });
+
+  // Body scroll locking when any modal is open
+  useEffect(() => {
+    if (
+      viewProduct ||
+      editProduct ||
+      batchProduct ||
+      stockInProduct ||
+      stockOutProduct ||
+      isAddProductOpen
+    ) {
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = "";
+      };
+    }
+  }, [
+    viewProduct,
+    editProduct,
+    batchProduct,
+    stockInProduct,
+    stockOutProduct,
+    isAddProductOpen,
+  ]);
+
+  // Derived low-stock & expired items for alerts
+  const lowStockItems = items.filter((p) => {
+    const info = getProductStatusData(p);
+    return info.isLowStock || info.isOutOfStock;
+  });
+
+  const expiredItems = items.filter((p) => {
+    const info = getProductStatusData(p);
+    return info.isExpired;
+  });
+
+  const expiringSoonItems = items.filter((p) => {
+    const info = getProductStatusData(p);
+    return info.isExpiringSoon && !info.isExpired;
+  });
+
+  // Filtered products list
+  const filtered = items.filter((product) => {
+    const info = getProductStatusData(product);
+    const q = search.toLowerCase();
+    const matchesSearch =
+      !q ||
+      product.name.toLowerCase().includes(q) ||
+      product.genericName.toLowerCase().includes(q) ||
+      product.sku.toLowerCase().includes(q) ||
+      product.category.toLowerCase().includes(q) ||
+      product.batches.some((b) => b.batchNumber.toLowerCase().includes(q));
+
+    const matchesStatus =
+      statusFilter === "All statuses" ||
+      (statusFilter === "In Stock" && info.statusLabel === "In Stock") ||
+      (statusFilter === "Low Stock" && (info.isLowStock || info.statusLabel === "Low Stock")) ||
+      (statusFilter === "Out of Stock" && info.isOutOfStock) ||
+      (statusFilter === "Expiring Soon" && info.isExpiringSoon) ||
+      (statusFilter === "Expired" && info.isExpired);
+
+    const matchesCategory =
+      categoryFilter === "All categories" || product.category === categoryFilter;
+
+    return matchesSearch && matchesStatus && matchesCategory;
+  });
+
+  // Categories list
+  const categories = [
+    "All categories",
+    "Pain relief",
+    "Antibiotics",
+    "Vitamins",
+    "Respiratory",
+    "Allergy",
+    "Dermatology",
+    "Gastrointestinal",
+    "Cardiovascular",
+  ];
+
+  // Summary counts
+  const totalStockCount = items.reduce(
+    (sum, p) => sum + getProductTotalStock(p),
+    0,
+  );
+
+  // Handlers
+  const handleOpenAddProduct = () => {
+    setNewProd({
+      name: "",
+      genericName: "",
+      sku: `MED-${Math.floor(1000 + Math.random() * 9000)}`,
+      category: "Pain relief",
+      price: "₱10.00",
+      reorder: "20",
+      batchNumber: `B${new Date().getFullYear()}-${Math.floor(10 + Math.random() * 90)}`,
+      quantity: "50",
+      expiryDate: "2027-12-31",
+      mfgDate: "2025-12-01",
+      dateReceived: new Date().toISOString().slice(0, 10),
+      supplier: "Southstar Distribution",
+    });
+    setIsAddProductOpen(true);
+  };
+
+  const handleSaveNewProduct = (e: FormEvent) => {
+    e.preventDefault();
+    if (!newProd.name.trim() || !newProd.sku.trim()) {
+      onToast("Product name and code (SKU) are required");
+      return;
+    }
+
+    const priceFormatted = newProd.price.startsWith("₱")
+      ? newProd.price
+      : `₱${parseFloat(newProd.price.replace(/[^\d.]/g, "") || "0").toFixed(2)}`;
+
+    const parsedQty = parseInt(newProd.quantity, 10) || 0;
+    const parsedReorder = parseInt(newProd.reorder, 10) || 10;
+
+    const newProductItem: ProductItem = {
+      id: `p${items.length + 1}-${Date.now()}`,
+      name: newProd.name.trim(),
+      genericName: newProd.genericName.trim() || newProd.name.trim(),
+      sku: newProd.sku.trim().toUpperCase(),
+      category: newProd.category,
+      price: priceFormatted,
+      reorder: parsedReorder,
+      batches: [
+        {
+          batchNumber: newProd.batchNumber.trim().toUpperCase() || "B001",
+          quantity: parsedQty,
+          expiryDate: newProd.expiryDate || "2027-12-31",
+          mfgDate: newProd.mfgDate,
+          dateReceived: newProd.dateReceived,
+          supplier: newProd.supplier,
+        },
+      ],
+    };
+
+    setItems([newProductItem, ...items]);
+    setIsAddProductOpen(false);
+    onToast(`Added product "${newProductItem.name}" with initial batch`);
+  };
+
+  const handleOpenEditProduct = (product: ProductItem) => {
+    setEditProdData({
+      name: product.name,
+      genericName: product.genericName || "",
+      sku: product.sku,
+      category: product.category,
+      price: product.price,
+      reorder: String(product.reorder),
+    });
+    setEditProduct(product);
+  };
+
+  const handleSaveEditProduct = (e: FormEvent) => {
+    e.preventDefault();
+    if (!editProduct) return;
+
+    const priceFormatted = editProdData.price.startsWith("₱")
+      ? editProdData.price
+      : `₱${parseFloat(editProdData.price.replace(/[^\d.]/g, "") || "0").toFixed(2)}`;
+
+    const updated = items.map((p) =>
+      p.id === editProduct.id
+        ? {
+            ...p,
+            name: editProdData.name.trim(),
+            genericName: editProdData.genericName.trim(),
+            sku: editProdData.sku.trim().toUpperCase(),
+            category: editProdData.category,
+            price: priceFormatted,
+            reorder: parseInt(editProdData.reorder, 10) || 10,
+          }
+        : p,
+    );
+
+    setItems(updated);
+    setEditProduct(null);
+    onToast(`Updated product details for "${editProdData.name}"`);
+  };
+
+  const handleOpenAddBatch = (product: ProductItem) => {
+    setNewBatchData({
+      batchNumber: `B${new Date().getFullYear()}-${Math.floor(10 + Math.random() * 90)}`,
+      quantity: "50",
+      expiryDate: "2028-06-30",
+      mfgDate: "2026-01-01",
+      dateReceived: new Date().toISOString().slice(0, 10),
+      supplier: "Southstar Distribution",
+    });
+    setBatchProduct(product);
+  };
+
+  const handleSaveAddBatch = (e: FormEvent) => {
+    e.preventDefault();
+    if (!batchProduct || !newBatchData.batchNumber.trim()) {
+      onToast("Batch number is required");
+      return;
+    }
+
+    const parsedQty = parseInt(newBatchData.quantity, 10) || 0;
+    const newBatch: ProductBatch = {
+      batchNumber: newBatchData.batchNumber.trim().toUpperCase(),
+      quantity: parsedQty,
+      expiryDate: newBatchData.expiryDate || "2028-06-30",
+      mfgDate: newBatchData.mfgDate,
+      dateReceived: newBatchData.dateReceived,
+      supplier: newBatchData.supplier,
+    };
+
+    const updated = items.map((p) =>
+      p.id === batchProduct.id
+        ? {
+            ...p,
+            batches: [...p.batches, newBatch],
+          }
+        : p,
+    );
+
+    setItems(updated);
+    setBatchProduct(null);
+    onToast(
+      `Added batch ${newBatch.batchNumber} (${parsedQty} units) to ${batchProduct.name}`,
+    );
+  };
+
+  const handleOpenStockIn = (product: ProductItem) => {
+    setStockInData({
+      batchNumber: product.batches[0]?.batchNumber || "B001",
+      quantity: "20",
+      date: new Date().toISOString().slice(0, 10),
+      reason: "Procurement Delivery",
+    });
+    setStockInProduct(product);
+  };
+
+  const handleSaveStockIn = (e: FormEvent) => {
+    e.preventDefault();
+    if (!stockInProduct) return;
+    const qty = parseInt(stockInData.quantity, 10);
+    if (!qty || qty <= 0) {
+      onToast("Please enter a valid positive quantity");
+      return;
+    }
+
+    const updated = items.map((p) => {
+      if (p.id !== stockInProduct.id) return p;
+      const targetBatchIndex = p.batches.findIndex(
+        (b) => b.batchNumber === stockInData.batchNumber,
+      );
+
+      let newBatches = [...p.batches];
+      if (targetBatchIndex > -1) {
+        newBatches[targetBatchIndex] = {
+          ...newBatches[targetBatchIndex],
+          quantity: newBatches[targetBatchIndex].quantity + qty,
+        };
+      } else {
+        newBatches.push({
+          batchNumber: stockInData.batchNumber.trim().toUpperCase() || "B-NEW",
+          quantity: qty,
+          expiryDate: "2028-12-31",
+          dateReceived: stockInData.date,
+        });
+      }
+      return { ...p, batches: newBatches };
+    });
+
+    setItems(updated);
+    setStockInProduct(null);
+    onToast(
+      `Stock In recorded: +${qty} units added to ${stockInProduct.name} (${stockInData.reason})`,
+    );
+  };
+
+  const handleOpenStockOut = (product: ProductItem) => {
+    const firstAvailable =
+      product.batches.find((b) => b.quantity > 0)?.batchNumber ||
+      product.batches[0]?.batchNumber ||
+      "";
+    setStockOutData({
+      batchNumber: firstAvailable,
+      quantity: "5",
+      date: new Date().toISOString().slice(0, 10),
+      reason: "Dispensed / OTC",
+    });
+    setStockOutProduct(product);
+  };
+
+  const handleSaveStockOut = (e: FormEvent) => {
+    e.preventDefault();
+    if (!stockOutProduct) return;
+    const qty = parseInt(stockOutData.quantity, 10);
+    if (!qty || qty <= 0) {
+      onToast("Please enter a valid positive quantity");
+      return;
+    }
+
+    const targetBatch = stockOutProduct.batches.find(
+      (b) => b.batchNumber === stockOutData.batchNumber,
+    );
+
+    if (!targetBatch || targetBatch.quantity < qty) {
+      onToast(
+        `Insufficient batch stock. Available in ${stockOutData.batchNumber}: ${targetBatch?.quantity || 0} units`,
+      );
+      return;
+    }
+
+    const updated = items.map((p) => {
+      if (p.id !== stockOutProduct.id) return p;
+      const newBatches = p.batches.map((b) =>
+        b.batchNumber === stockOutData.batchNumber
+          ? { ...b, quantity: Math.max(0, b.quantity - qty) }
+          : b,
+      );
+      return { ...p, batches: newBatches };
+    });
+
+    setItems(updated);
+    setStockOutProduct(null);
+    onToast(
+      `Stock Out recorded: -${qty} units removed from ${stockOutProduct.name} (${stockOutData.reason})`,
+    );
+  };
+
   return (
     <div>
       <PageHeading
         title="Inventory"
-        description="A quiet, current view of every product on your shelves."
+        description="Real-time stock levels, multi-batch tracking, expiry alerts, and stock movements."
         action={
-          <button
-            className="button dark"
-            data-testid="button-inventory-count"
-            onClick={() => onToast("Inventory count session started")}>
-            <ClipboardList size={14} /> Start count
-          </button>
+          canAddProduct ? (
+            <button
+              className="button dark"
+              data-testid="button-add-product"
+              onClick={handleOpenAddProduct}>
+              <Plus size={14} /> Add product
+            </button>
+          ) : undefined
         }
       />
+
+      {/* ========================================================================= */}
+      {/* ALERTS SECTION (ADMIN & FRONT DESK ONLY) */}
+      {/* ========================================================================= */}
+      {canViewAlerts && (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+            gap: 16,
+            marginBottom: 20,
+          }}>
+          {/* Low Stock Alert */}
+          {lowStockItems.length > 0 && (
+            <div
+              className="surface-card"
+              style={{
+                borderLeft: "4px solid #f59e0b",
+                padding: "14px 18px",
+                background: "hsl(var(--surface))",
+              }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 8,
+                }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    fontWeight: 700,
+                    color: "#b45309",
+                    fontSize: 13,
+                  }}>
+                  <AlertTriangle size={16} />
+                  <span>LOW STOCK ALERT ({lowStockItems.length})</span>
+                </div>
+                <button
+                  type="button"
+                  className="button soft"
+                  style={{ padding: "3px 8px", fontSize: 10 }}
+                  onClick={() => setStatusFilter("Low Stock")}>
+                  Filter Low Stock
+                </button>
+              </div>
+              <p
+                style={{
+                  fontSize: 12,
+                  margin: "0 0 8px 0",
+                  color: "hsl(var(--muted))",
+                }}>
+                The following products have reached or fallen below their reorder level:
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {lowStockItems.slice(0, 3).map((p) => {
+                  const stock = getProductTotalStock(p);
+                  return (
+                    <div
+                      key={p.id}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        fontSize: 12,
+                        background: "hsl(var(--surface-soft))",
+                        padding: "6px 10px",
+                        borderRadius: 6,
+                      }}>
+                      <div>
+                        <strong>{p.name}</strong>{" "}
+                        <span className="muted" style={{ fontSize: 10 }}>
+                          ({p.sku})
+                        </span>
+                      </div>
+                      <div>
+                        <span
+                          style={{
+                            color: stock === 0 ? "#ef4444" : "#b45309",
+                            fontWeight: 700,
+                          }}>
+                          {stock} units left
+                        </span>
+                        <span
+                          className="muted"
+                          style={{ fontSize: 10, marginLeft: 6 }}>
+                          (Reorder: {p.reorder})
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Expired / Expiring Products Alert */}
+          {(expiredItems.length > 0 || expiringSoonItems.length > 0) && (
+            <div
+              className="surface-card"
+              style={{
+                borderLeft: "4px solid #ef4444",
+                padding: "14px 18px",
+                background: "hsl(var(--surface))",
+              }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 8,
+                }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    fontWeight: 700,
+                    color: "#dc2626",
+                    fontSize: 13,
+                  }}>
+                  <AlertCircle size={16} />
+                  <span>
+                    EXPIRED &amp; EXPIRING PRODUCTS (
+                    {expiredItems.length + expiringSoonItems.length})
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="button soft"
+                  style={{ padding: "3px 8px", fontSize: 10 }}
+                  onClick={() => setStatusFilter("Expired")}>
+                  Filter Expired
+                </button>
+              </div>
+              <p
+                style={{
+                  fontSize: 12,
+                  margin: "0 0 8px 0",
+                  color: "hsl(var(--muted))",
+                }}>
+                Products requiring immediate quarantine or near-term attention:
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {expiredItems.map((p) => {
+                  const info = getProductStatusData(p);
+                  return info.expiredBatches.map((b) => (
+                    <div
+                      key={`${p.id}-${b.batchNumber}`}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        fontSize: 12,
+                        background: "hsl(var(--surface-soft))",
+                        padding: "6px 10px",
+                        borderRadius: 6,
+                        border: "1px solid rgba(239, 68, 68, 0.2)",
+                      }}>
+                      <div>
+                        <strong>{p.name}</strong>{" "}
+                        <span
+                          className="pill danger"
+                          style={{ fontSize: 9, padding: "1px 6px", marginLeft: 4 }}>
+                          EXPIRED
+                        </span>
+                        <div className="muted" style={{ fontSize: 10 }}>
+                          Batch: {b.batchNumber} • {b.quantity} units
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          color: "#dc2626",
+                          fontWeight: 600,
+                          fontSize: 11,
+                        }}>
+                        Expired: {b.expiryDate}
+                      </div>
+                    </div>
+                  ));
+                })}
+                {expiringSoonItems.map((p) => {
+                  const info = getProductStatusData(p);
+                  return info.expiringSoonBatches.map((b) => (
+                    <div
+                      key={`${p.id}-${b.batchNumber}`}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        fontSize: 12,
+                        background: "hsl(var(--surface-soft))",
+                        padding: "6px 10px",
+                        borderRadius: 6,
+                      }}>
+                      <div>
+                        <strong>{p.name}</strong>{" "}
+                        <span
+                          className="pill warning"
+                          style={{ fontSize: 9, padding: "1px 6px", marginLeft: 4 }}>
+                          EXPIRING SOON
+                        </span>
+                        <div className="muted" style={{ fontSize: 10 }}>
+                          Batch: {b.batchNumber} • {b.quantity} units
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          color: "#b45309",
+                          fontWeight: 600,
+                          fontSize: 11,
+                        }}>
+                        Expires: {b.expiryDate}
+                      </div>
+                    </div>
+                  ));
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* SUMMARY STRIP */}
+      {/* ========================================================================= */}
       <div className="summary-strip">
         <Summary
           label="Total products"
-          value="850"
-          caption="Across 12 categories"
+          value={String(items.length)}
+          caption={`${totalStockCount} units across shelves`}
         />
         <Summary
           label="Low stock"
-          value="95"
-          caption="Needs attention"
-          tone="warning"
+          value={String(lowStockItems.length)}
+          caption={
+            lowStockItems.length > 0 ? "Requires reordering" : "All optimal"
+          }
+          tone={lowStockItems.length > 0 ? "warning" : undefined}
         />
         <Summary
-          label="Inventory value"
-          value="₱825,450"
-          caption="+6.2% this month"
+          label="Expired / Expiring"
+          value={String(expiredItems.length + expiringSoonItems.length)}
+          caption={
+            expiredItems.length > 0
+              ? `${expiredItems.length} expired batch(es)`
+              : "No expired stock"
+          }
+          tone={expiredItems.length > 0 ? "warning" : undefined}
         />
       </div>
+
+      {/* ========================================================================= */}
+      {/* INVENTORY TABLE & TOOLS */}
+      {/* ========================================================================= */}
       <section className="surface-card table-card">
         <div className="table-tools">
-          <div className="search-wrap">
-            <Search size={15} />
-            <input
-              data-testid="input-inventory-search"
-              type="search"
-              placeholder="Search products, SKU, category..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              flexWrap: "wrap",
+              flex: 1,
+            }}>
+            <div className="search-wrap" style={{ minWidth: 260 }}>
+              <Search size={15} />
+              <input
+                data-testid="input-inventory-search"
+                type="search"
+                placeholder="Search product name, generic, SKU..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+
+            <select
+              className="select"
+              data-testid="select-inventory-category"
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}>
+              {categories.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
           </div>
+
           <select
             className="select"
             data-testid="select-inventory-filter"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}>
-            <option>All status</option>
-            <option>Available</option>
-            <option>Low stock</option>
-            <option>Out of stock</option>
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}>
+            <option>All statuses</option>
+            <option>In Stock</option>
+            <option>Low Stock</option>
+            <option>Out of Stock</option>
+            <option>Expiring Soon</option>
+            <option>Expired</option>
           </select>
         </div>
+
         <div className="table-scroll">
           <table className="data-table">
             <thead>
               <tr>
                 <th>Product</th>
+                <th>Product Code</th>
                 <th>Category</th>
-                <th>In stock</th>
-                <th>Reorder point</th>
-                <th>Unit price</th>
-                <th>Status</th>
+                <th style={{ textAlign: "right" }}>Price</th>
+                <th style={{ textAlign: "right" }}>Current Stock</th>
+                <th>Batch Number</th>
+                <th>Expiry Date</th>
+                <th>Stock Status</th>
+                <th style={{ textAlign: "right" }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((product) => (
-                <tr key={product.id} data-testid={`row-product-${product.id}`}>
-                  <td>
-                    <div className="product-cell">
-                      <span className="product-symbol">
-                        <Package size={15} />
-                      </span>
-                      <div>
-                        <strong>{product.name}</strong>
-                        <div className="muted" style={{ fontSize: 10 }}>
-                          {product.sku}
+              {filtered.map((product) => {
+                const info = getProductStatusData(product);
+
+                return (
+                  <tr key={product.id} data-testid={`row-product-${product.id}`}>
+                    <td>
+                      <div className="product-cell">
+                        <span className="product-symbol">
+                          <Package size={15} />
+                        </span>
+                        <div>
+                          <strong>{product.name}</strong>
+                          <div className="muted" style={{ fontSize: 10 }}>
+                            {product.genericName}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </td>
-                  <td className="muted">{product.category}</td>
-                  <td>
-                    <strong>{product.stock}</strong>{" "}
-                    <span className="muted">units</span>
-                  </td>
-                  <td className="muted">{product.reorder}</td>
-                  <td>{product.price}</td>
-                  <td>
-                    <span
-                      className={`status-dot ${product.status === "Available" ? "green" : product.status === "Low stock" ? "amber" : "red"}`}
-                    />
-                    {product.status}
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td>
+                      <span
+                        style={{
+                          fontFamily: "monospace",
+                          fontSize: 11,
+                          fontWeight: 600,
+                        }}>
+                        {product.sku}
+                      </span>
+                    </td>
+                    <td className="muted">{product.category}</td>
+                    <td style={{ textAlign: "right" }}>
+                      <strong>{product.price}</strong>
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <strong
+                        style={{
+                          color:
+                            info.stock === 0
+                              ? "#ef4444"
+                              : info.isLowStock
+                                ? "#b45309"
+                                : undefined,
+                        }}>
+                        {info.stock}
+                      </strong>{" "}
+                      <span className="muted">units</span>
+                    </td>
+                    <td>
+                      <div style={{ fontSize: 11 }}>
+                        {product.batches.length === 1 ? (
+                          <span>
+                            {product.batches[0].batchNumber} (
+                            {product.batches[0].quantity}u)
+                          </span>
+                        ) : (
+                          <span
+                            title={product.batches
+                              .map((b) => `${b.batchNumber}: ${b.quantity}u`)
+                              .join(", ")}>
+                            {product.batches[0]?.batchNumber} +
+                            {product.batches.length - 1} more
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ fontSize: 11 }}>
+                        <span
+                          style={{
+                            color: info.isExpired
+                              ? "#dc2626"
+                              : info.isExpiringSoon
+                                ? "#b45309"
+                                : undefined,
+                            fontWeight:
+                              info.isExpired || info.isExpiringSoon
+                                ? 600
+                                : 400,
+                          }}>
+                          {info.primaryExpiry}
+                        </span>
+                      </div>
+                    </td>
+                    <td>
+                      <span
+                        className={`pill ${info.statusTone}`}
+                        style={{ fontSize: 10, padding: "2px 8px" }}>
+                        {info.statusLabel}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 4,
+                          justifyContent: "flex-end",
+                          alignItems: "center",
+                          flexWrap: "wrap",
+                        }}>
+                        {/* View Details - ALL 3 ROLES */}
+                        <button
+                          type="button"
+                          className="button soft"
+                          style={{ padding: "4px 8px", fontSize: 11 }}
+                          onClick={() => setViewProduct(product)}
+                          title="View product & batches"
+                          data-testid={`button-view-${product.id}`}>
+                          <Eye size={12} /> View
+                        </button>
+
+                        {/* Edit Product - ADMIN & FRONT DESK */}
+                        {canEditProduct && (
+                          <button
+                            type="button"
+                            className="button soft"
+                            style={{ padding: "4px 8px", fontSize: 11 }}
+                            onClick={() => handleOpenEditProduct(product)}
+                            title="Edit product information"
+                            data-testid={`button-edit-${product.id}`}>
+                            <Pencil size={12} /> Edit
+                          </button>
+                        )}
+
+                        {/* Add Batch / Add Expiry Date - ADMIN & FRONT DESK */}
+                        {canAddBatch && (
+                          <button
+                            type="button"
+                            className="button soft"
+                            style={{ padding: "4px 8px", fontSize: 11 }}
+                            onClick={() => handleOpenAddBatch(product)}
+                            title={
+                              canAddFullBatchInfo
+                                ? "Add product batch information"
+                                : "Add batch expiry date"
+                            }
+                            data-testid={`button-batch-${product.id}`}>
+                            <Plus size={12} />{" "}
+                            {canAddFullBatchInfo ? "Batch" : "Expiry"}
+                          </button>
+                        )}
+
+                        {/* Stock In - ADMIN & CASHIER */}
+                        {canRecordStockIn && (
+                          <button
+                            type="button"
+                            className="button soft"
+                            style={{ padding: "4px 8px", fontSize: 11 }}
+                            onClick={() => handleOpenStockIn(product)}
+                            title="Record Stock In"
+                            data-testid={`button-stock-in-${product.id}`}>
+                            <ArrowDownLeft size={12} /> In
+                          </button>
+                        )}
+
+                        {/* Stock Out - ADMIN & CASHIER */}
+                        {canRecordStockOut && (
+                          <button
+                            type="button"
+                            className="button soft"
+                            style={{ padding: "4px 8px", fontSize: 11 }}
+                            onClick={() => handleOpenStockOut(product)}
+                            title="Record Stock Out"
+                            disabled={info.stock <= 0}
+                            data-testid={`button-stock-out-${product.id}`}>
+                            <ArrowUpRight size={12} /> Out
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
+
           {filtered.length === 0 && (
             <div className="empty-state">
               <Package size={25} />
-              <div>No products match that search.</div>
+              <div>No products match that search or filter.</div>
             </div>
           )}
         </div>
       </section>
+
+      {/* ========================================================================= */}
+      {/* 1. VIEW PRODUCT DETAILS MODAL (ALL ROLES) */}
+      {/* ========================================================================= */}
+      {viewProduct &&
+        createPortal(
+          <div
+            className="modal-overlay"
+            onClick={() => setViewProduct(null)}
+            data-testid="modal-view-product">
+            <div
+              className="modal"
+              style={{ maxWidth: 640, width: "94%" }}
+              onClick={(e) => e.stopPropagation()}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  borderBottom: "1px solid hsl(var(--border))",
+                  paddingBottom: 12,
+                  marginBottom: 16,
+                }}>
+                <div>
+                  <h3
+                    style={{
+                      margin: 0,
+                      fontSize: 16,
+                      fontWeight: 700,
+                      color: "hsl(var(--foreground))",
+                    }}>
+                    {viewProduct.name}
+                  </h3>
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    Generic: {viewProduct.genericName} • Code: {viewProduct.sku}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="icon-button"
+                  onClick={() => setViewProduct(null)}>
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Product Info Grid */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
+                  gap: 10,
+                  marginBottom: 16,
+                }}>
+                <div
+                  style={{
+                    background: "hsl(var(--surface-soft))",
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                  }}>
+                  <div className="muted" style={{ fontSize: 10 }}>
+                    Category
+                  </div>
+                  <strong style={{ fontSize: 12 }}>{viewProduct.category}</strong>
+                </div>
+                <div
+                  style={{
+                    background: "hsl(var(--surface-soft))",
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                  }}>
+                  <div className="muted" style={{ fontSize: 10 }}>
+                    Unit Price
+                  </div>
+                  <strong style={{ fontSize: 12 }}>{viewProduct.price}</strong>
+                </div>
+                <div
+                  style={{
+                    background: "hsl(var(--surface-soft))",
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                  }}>
+                  <div className="muted" style={{ fontSize: 10 }}>
+                    Reorder Level
+                  </div>
+                  <strong style={{ fontSize: 12 }}>
+                    {viewProduct.reorder} units
+                  </strong>
+                </div>
+                <div
+                  style={{
+                    background: "hsl(var(--surface-soft))",
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                  }}>
+                  <div className="muted" style={{ fontSize: 10 }}>
+                    Total Stock
+                  </div>
+                  <strong style={{ fontSize: 12 }}>
+                    {getProductTotalStock(viewProduct)} units
+                  </strong>
+                </div>
+              </div>
+
+              {/* Batches Table */}
+              <div style={{ marginBottom: 16 }}>
+                <h4
+                  style={{
+                    margin: "0 0 8px 0",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: "hsl(var(--foreground))",
+                  }}>
+                  Recorded Batches &amp; Expiry Dates ({viewProduct.batches.length})
+                </h4>
+                <div
+                  style={{
+                    overflowX: "auto",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: 8,
+                  }}>
+                  <table className="data-table" style={{ fontSize: 11 }}>
+                    <thead>
+                      <tr>
+                        <th>Batch #</th>
+                        <th style={{ textAlign: "right" }}>Quantity</th>
+                        <th>Expiry Date</th>
+                        <th>Status</th>
+                        <th>Mfg Date</th>
+                        <th>Supplier</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {viewProduct.batches.map((b) => {
+                        const expInfo = getBatchExpiryStatus(
+                          b.expiryDate,
+                          b.quantity,
+                        );
+                        return (
+                          <tr key={b.batchNumber}>
+                            <td>
+                              <strong>{b.batchNumber}</strong>
+                            </td>
+                            <td style={{ textAlign: "right" }}>
+                              <strong>{b.quantity}</strong> units
+                            </td>
+                            <td>{b.expiryDate}</td>
+                            <td>
+                              <span
+                                className={`pill ${expInfo.tone}`}
+                                style={{ fontSize: 9, padding: "1px 6px" }}>
+                                {expInfo.status}
+                              </span>
+                            </td>
+                            <td className="muted">{b.mfgDate || "—"}</td>
+                            <td className="muted">{b.supplier || "—"}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  className="button dark"
+                  onClick={() => setViewProduct(null)}>
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* ========================================================================= */}
+      {/* 2. ADD PRODUCT MODAL (ADMIN & FRONT DESK) */}
+      {/* ========================================================================= */}
+      {isAddProductOpen &&
+        createPortal(
+          <div
+            className="modal-overlay"
+            onClick={() => setIsAddProductOpen(false)}
+            data-testid="modal-add-product">
+            <div
+              className="modal"
+              style={{ maxWidth: 540, width: "94%" }}
+              onClick={(e) => e.stopPropagation()}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  borderBottom: "1px solid hsl(var(--border))",
+                  paddingBottom: 12,
+                  marginBottom: 16,
+                }}>
+                <h3
+                  style={{
+                    margin: 0,
+                    fontSize: 16,
+                    fontWeight: 700,
+                    color: "hsl(var(--foreground))",
+                  }}>
+                  Add New Product
+                </h3>
+                <button
+                  type="button"
+                  className="icon-button"
+                  onClick={() => setIsAddProductOpen(false)}>
+                  <X size={16} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveNewProduct}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 12,
+                    marginBottom: 12,
+                  }}>
+                  <div>
+                    <label className="field-label">Product Name *</label>
+                    <input
+                      className="input"
+                      required
+                      placeholder="e.g. Paracetamol 500mg"
+                      value={newProd.name}
+                      onChange={(e) =>
+                        setNewProd({ ...newProd, name: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="field-label">Generic Name *</label>
+                    <input
+                      className="input"
+                      required
+                      placeholder="e.g. Acetaminophen"
+                      value={newProd.genericName}
+                      onChange={(e) =>
+                        setNewProd({ ...newProd, genericName: e.target.value })
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 12,
+                    marginBottom: 12,
+                  }}>
+                  <div>
+                    <label className="field-label">Product Code (SKU) *</label>
+                    <input
+                      className="input"
+                      required
+                      placeholder="e.g. MED-0421"
+                      value={newProd.sku}
+                      onChange={(e) =>
+                        setNewProd({ ...newProd, sku: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="field-label">Category</label>
+                    <select
+                      className="select"
+                      style={{ width: "100%" }}
+                      value={newProd.category}
+                      onChange={(e) =>
+                        setNewProd({ ...newProd, category: e.target.value })
+                      }>
+                      {categories
+                        .filter((c) => c !== "All categories")
+                        .map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 12,
+                    marginBottom: 14,
+                  }}>
+                  <div>
+                    <label className="field-label">Unit Price *</label>
+                    <input
+                      className="input"
+                      required
+                      placeholder="₱10.00"
+                      value={newProd.price}
+                      onChange={(e) =>
+                        setNewProd({ ...newProd, price: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="field-label">Reorder Level *</label>
+                    <input
+                      className="input"
+                      type="number"
+                      min="1"
+                      required
+                      value={newProd.reorder}
+                      onChange={(e) =>
+                        setNewProd({ ...newProd, reorder: e.target.value })
+                      }
+                    />
+                  </div>
+                </div>
+
+                {/* Initial Batch Information */}
+                <div
+                  style={{
+                    borderTop: "1px solid hsl(var(--border))",
+                    paddingTop: 12,
+                    marginBottom: 14,
+                  }}>
+                  <h4
+                    style={{
+                      margin: "0 0 10px 0",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: "hsl(var(--foreground))",
+                    }}>
+                    Initial Batch Information
+                  </h4>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr 1fr",
+                      gap: 10,
+                      marginBottom: 10,
+                    }}>
+                    <div>
+                      <label className="field-label">Batch Number *</label>
+                      <input
+                        className="input"
+                        required
+                        placeholder="e.g. B2026-01"
+                        value={newProd.batchNumber}
+                        onChange={(e) =>
+                          setNewProd({
+                            ...newProd,
+                            batchNumber: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                    <div>
+                      <label className="field-label">Quantity *</label>
+                      <input
+                        className="input"
+                        type="number"
+                        min="1"
+                        required
+                        value={newProd.quantity}
+                        onChange={(e) =>
+                          setNewProd({ ...newProd, quantity: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div>
+                      <label className="field-label">Expiry Date *</label>
+                      <input
+                        className="input"
+                        type="date"
+                        required
+                        value={newProd.expiryDate}
+                        onChange={(e) =>
+                          setNewProd({ ...newProd, expiryDate: e.target.value })
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  {isAdmin && (
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: 10,
+                      }}>
+                      <div>
+                        <label className="field-label">Supplier</label>
+                        <select
+                          className="select"
+                          style={{ width: "100%" }}
+                          value={newProd.supplier}
+                          onChange={(e) =>
+                            setNewProd({ ...newProd, supplier: e.target.value })
+                          }>
+                          {suppliers.map((s) => (
+                            <option key={s.name} value={s.name}>
+                              {s.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="field-label">Date Received</label>
+                        <input
+                          className="input"
+                          type="date"
+                          value={newProd.dateReceived}
+                          onChange={(e) =>
+                            setNewProd({
+                              ...newProd,
+                              dateReceived: e.target.value,
+                            })
+                          }
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    gap: 8,
+                  }}>
+                  <button
+                    type="button"
+                    className="button soft"
+                    onClick={() => setIsAddProductOpen(false)}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="button dark">
+                    Save Product
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* ========================================================================= */}
+      {/* 3. EDIT PRODUCT MODAL (ADMIN & FRONT DESK) */}
+      {/* ========================================================================= */}
+      {editProduct &&
+        createPortal(
+          <div
+            className="modal-overlay"
+            onClick={() => setEditProduct(null)}
+            data-testid="modal-edit-product">
+            <div
+              className="modal"
+              style={{ maxWidth: 500, width: "94%" }}
+              onClick={(e) => e.stopPropagation()}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  borderBottom: "1px solid hsl(var(--border))",
+                  paddingBottom: 12,
+                  marginBottom: 16,
+                }}>
+                <h3
+                  style={{
+                    margin: 0,
+                    fontSize: 16,
+                    fontWeight: 700,
+                    color: "hsl(var(--foreground))",
+                  }}>
+                  Update Product Information
+                </h3>
+                <button
+                  type="button"
+                  className="icon-button"
+                  onClick={() => setEditProduct(null)}>
+                  <X size={16} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveEditProduct}>
+                <div style={{ marginBottom: 12 }}>
+                  <label className="field-label">Product Name *</label>
+                  <input
+                    className="input"
+                    required
+                    value={editProdData.name}
+                    onChange={(e) =>
+                      setEditProdData({ ...editProdData, name: e.target.value })
+                    }
+                  />
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <label className="field-label">Generic Name</label>
+                  <input
+                    className="input"
+                    value={editProdData.genericName}
+                    onChange={(e) =>
+                      setEditProdData({
+                        ...editProdData,
+                        genericName: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 12,
+                    marginBottom: 12,
+                  }}>
+                  <div>
+                    <label className="field-label">Product Code (SKU) *</label>
+                    <input
+                      className="input"
+                      required
+                      value={editProdData.sku}
+                      onChange={(e) =>
+                        setEditProdData({
+                          ...editProdData,
+                          sku: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="field-label">Category</label>
+                    <select
+                      className="select"
+                      style={{ width: "100%" }}
+                      value={editProdData.category}
+                      onChange={(e) =>
+                        setEditProdData({
+                          ...editProdData,
+                          category: e.target.value,
+                        })
+                      }>
+                      {categories
+                        .filter((c) => c !== "All categories")
+                        .map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 12,
+                    marginBottom: 16,
+                  }}>
+                  <div>
+                    <label className="field-label">Unit Price *</label>
+                    <input
+                      className="input"
+                      required
+                      value={editProdData.price}
+                      onChange={(e) =>
+                        setEditProdData({
+                          ...editProdData,
+                          price: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="field-label">Reorder Level *</label>
+                    <input
+                      className="input"
+                      type="number"
+                      min="1"
+                      required
+                      value={editProdData.reorder}
+                      onChange={(e) =>
+                        setEditProdData({
+                          ...editProdData,
+                          reorder: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    gap: 8,
+                  }}>
+                  <button
+                    type="button"
+                    className="button soft"
+                    onClick={() => setEditProduct(null)}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="button dark">
+                    Save Changes
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* ========================================================================= */}
+      {/* 4. ADD BATCH / BATCH EXPIRY DATE MODAL (ADMIN & FRONT DESK) */}
+      {/* ========================================================================= */}
+      {batchProduct &&
+        createPortal(
+          <div
+            className="modal-overlay"
+            onClick={() => setBatchProduct(null)}
+            data-testid="modal-add-batch">
+            <div
+              className="modal"
+              style={{ maxWidth: 480, width: "94%" }}
+              onClick={(e) => e.stopPropagation()}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  borderBottom: "1px solid hsl(var(--border))",
+                  paddingBottom: 12,
+                  marginBottom: 16,
+                }}>
+                <div>
+                  <h3
+                    style={{
+                      margin: 0,
+                      fontSize: 16,
+                      fontWeight: 700,
+                      color: "hsl(var(--foreground))",
+                    }}>
+                    {isAdmin
+                      ? "Add Product Batch Information"
+                      : "Add Batch Expiry Date"}
+                  </h3>
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    For {batchProduct.name} ({batchProduct.sku})
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="icon-button"
+                  onClick={() => setBatchProduct(null)}>
+                  <X size={16} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveAddBatch}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 12,
+                    marginBottom: 12,
+                  }}>
+                  <div>
+                    <label className="field-label">Batch Number *</label>
+                    <input
+                      className="input"
+                      required
+                      placeholder="e.g. B2026-03"
+                      value={newBatchData.batchNumber}
+                      onChange={(e) =>
+                        setNewBatchData({
+                          ...newBatchData,
+                          batchNumber: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="field-label">Quantity *</label>
+                    <input
+                      className="input"
+                      type="number"
+                      min="1"
+                      required
+                      value={newBatchData.quantity}
+                      onChange={(e) =>
+                        setNewBatchData({
+                          ...newBatchData,
+                          quantity: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: 12 }}>
+                  <label className="field-label">Expiry Date *</label>
+                  <input
+                    className="input"
+                    type="date"
+                    required
+                    value={newBatchData.expiryDate}
+                    onChange={(e) =>
+                      setNewBatchData({
+                        ...newBatchData,
+                        expiryDate: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+
+                {/* Full batch fields for Admin */}
+                {canAddFullBatchInfo && (
+                  <>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: 12,
+                        marginBottom: 12,
+                      }}>
+                      <div>
+                        <label className="field-label">
+                          Manufacturing Date
+                        </label>
+                        <input
+                          className="input"
+                          type="date"
+                          value={newBatchData.mfgDate}
+                          onChange={(e) =>
+                            setNewBatchData({
+                              ...newBatchData,
+                              mfgDate: e.target.value,
+                            })
+                          }
+                        />
+                      </div>
+                      <div>
+                        <label className="field-label">Date Received</label>
+                        <input
+                          className="input"
+                          type="date"
+                          value={newBatchData.dateReceived}
+                          onChange={(e) =>
+                            setNewBatchData({
+                              ...newBatchData,
+                              dateReceived: e.target.value,
+                            })
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ marginBottom: 16 }}>
+                      <label className="field-label">Supplier</label>
+                      <select
+                        className="select"
+                        style={{ width: "100%" }}
+                        value={newBatchData.supplier}
+                        onChange={(e) =>
+                          setNewBatchData({
+                            ...newBatchData,
+                            supplier: e.target.value,
+                          })
+                        }>
+                        {suppliers.map((s) => (
+                          <option key={s.name} value={s.name}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </>
+                )}
+
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    gap: 8,
+                  }}>
+                  <button
+                    type="button"
+                    className="button soft"
+                    onClick={() => setBatchProduct(null)}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="button dark">
+                    Record Batch
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* ========================================================================= */}
+      {/* 5. RECORD STOCK IN MODAL (ADMIN & CASHIER) */}
+      {/* ========================================================================= */}
+      {stockInProduct &&
+        createPortal(
+          <div
+            className="modal-overlay"
+            onClick={() => setStockInProduct(null)}
+            data-testid="modal-stock-in">
+            <div
+              className="modal"
+              style={{ maxWidth: 460, width: "94%" }}
+              onClick={(e) => e.stopPropagation()}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  borderBottom: "1px solid hsl(var(--border))",
+                  paddingBottom: 12,
+                  marginBottom: 16,
+                }}>
+                <div>
+                  <h3
+                    style={{
+                      margin: 0,
+                      fontSize: 16,
+                      fontWeight: 700,
+                      color: "hsl(var(--foreground))",
+                    }}>
+                    Record Stock In
+                  </h3>
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    Add inventory to {stockInProduct.name} ({stockInProduct.sku})
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="icon-button"
+                  onClick={() => setStockInProduct(null)}>
+                  <X size={16} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveStockIn}>
+                <div style={{ marginBottom: 12 }}>
+                  <label className="field-label">Target Batch *</label>
+                  <select
+                    className="select"
+                    style={{ width: "100%" }}
+                    value={stockInData.batchNumber}
+                    onChange={(e) =>
+                      setStockInData({
+                        ...stockInData,
+                        batchNumber: e.target.value,
+                      })
+                    }>
+                    {stockInProduct.batches.map((b) => (
+                      <option key={b.batchNumber} value={b.batchNumber}>
+                        {b.batchNumber} (Current: {b.quantity} units, Exp:{" "}
+                        {b.expiryDate})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 12,
+                    marginBottom: 12,
+                  }}>
+                  <div>
+                    <label className="field-label">Quantity to Add *</label>
+                    <input
+                      className="input"
+                      type="number"
+                      min="1"
+                      required
+                      value={stockInData.quantity}
+                      onChange={(e) =>
+                        setStockInData({
+                          ...stockInData,
+                          quantity: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="field-label">Date *</label>
+                    <input
+                      className="input"
+                      type="date"
+                      required
+                      value={stockInData.date}
+                      onChange={(e) =>
+                        setStockInData({ ...stockInData, date: e.target.value })
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                  <label className="field-label">Reason / Reference *</label>
+                  <input
+                    className="input"
+                    required
+                    placeholder="e.g. Procurement Delivery, Restock, Return"
+                    value={stockInData.reason}
+                    onChange={(e) =>
+                      setStockInData({ ...stockInData, reason: e.target.value })
+                    }
+                  />
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    gap: 8,
+                  }}>
+                  <button
+                    type="button"
+                    className="button soft"
+                    onClick={() => setStockInProduct(null)}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="button dark">
+                    <ArrowDownLeft size={14} /> Confirm Stock In
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* ========================================================================= */}
+      {/* 6. RECORD STOCK OUT MODAL (ADMIN & CASHIER) */}
+      {/* ========================================================================= */}
+      {stockOutProduct &&
+        createPortal(
+          <div
+            className="modal-overlay"
+            onClick={() => setStockOutProduct(null)}
+            data-testid="modal-stock-out">
+            <div
+              className="modal"
+              style={{ maxWidth: 460, width: "94%" }}
+              onClick={(e) => e.stopPropagation()}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  borderBottom: "1px solid hsl(var(--border))",
+                  paddingBottom: 12,
+                  marginBottom: 16,
+                }}>
+                <div>
+                  <h3
+                    style={{
+                      margin: 0,
+                      fontSize: 16,
+                      fontWeight: 700,
+                      color: "hsl(var(--foreground))",
+                    }}>
+                    Record Stock Out
+                  </h3>
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    Deduct inventory from {stockOutProduct.name} (
+                    {stockOutProduct.sku})
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="icon-button"
+                  onClick={() => setStockOutProduct(null)}>
+                  <X size={16} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveStockOut}>
+                <div style={{ marginBottom: 12 }}>
+                  <label className="field-label">Source Batch *</label>
+                  <select
+                    className="select"
+                    style={{ width: "100%" }}
+                    value={stockOutData.batchNumber}
+                    onChange={(e) =>
+                      setStockOutData({
+                        ...stockOutData,
+                        batchNumber: e.target.value,
+                      })
+                    }>
+                    {stockOutProduct.batches.map((b) => (
+                      <option key={b.batchNumber} value={b.batchNumber}>
+                        {b.batchNumber} (Available: {b.quantity} units, Exp:{" "}
+                        {b.expiryDate})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 12,
+                    marginBottom: 12,
+                  }}>
+                  <div>
+                    <label className="field-label">Quantity to Deduct *</label>
+                    <input
+                      className="input"
+                      type="number"
+                      min="1"
+                      required
+                      value={stockOutData.quantity}
+                      onChange={(e) =>
+                        setStockOutData({
+                          ...stockOutData,
+                          quantity: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="field-label">Date *</label>
+                    <input
+                      className="input"
+                      type="date"
+                      required
+                      value={stockOutData.date}
+                      onChange={(e) =>
+                        setStockOutData({
+                          ...stockOutData,
+                          date: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
+                  <label className="field-label">Reason *</label>
+                  <select
+                    className="select"
+                    style={{ width: "100%" }}
+                    value={stockOutData.reason}
+                    onChange={(e) =>
+                      setStockOutData({
+                        ...stockOutData,
+                        reason: e.target.value,
+                      })
+                    }>
+                    <option value="Dispensed / Sales">Dispensed / Sales</option>
+                    <option value="Damaged / Broken">Damaged / Broken</option>
+                    <option value="Expired Product Disposal">
+                      Expired Product Disposal
+                    </option>
+                    <option value="Inventory Audit Adjustment">
+                      Inventory Audit Adjustment
+                    </option>
+                    <option value="Internal Use / Clinic Transfer">
+                      Internal Use / Clinic Transfer
+                    </option>
+                  </select>
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    gap: 8,
+                  }}>
+                  <button
+                    type="button"
+                    className="button soft"
+                    onClick={() => setStockOutProduct(null)}>
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="button dark"
+                    style={{ background: "#dc2626", borderColor: "#dc2626" }}>
+                    <ArrowUpRight size={14} /> Confirm Stock Out
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
