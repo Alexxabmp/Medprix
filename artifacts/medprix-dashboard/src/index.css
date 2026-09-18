@@ -188,10 +188,12 @@ a { color: inherit; text-decoration: none; }
 .field { display: grid; gap: 6px; }
 .field.full-width { grid-column: 1 / -1; }
 .field label { font-size: 11px; color: hsl(var(--muted)); font-weight: 600; }
-.field input, .field select { height: 39px; border: 1px solid hsl(var(--border)); border-radius: 11px; padding: 0 11px; outline: 0; background: hsl(var(--surface-soft)); color: hsl(var(--foreground)); font-size: 12px; }
-.field input:focus, .field select:focus { border-color: hsl(var(--foreground)); box-shadow: 0 0 0 3px rgba(0,0,0,.1); }
-.modal .field label { color: hsl(var(--muted)); }
-.modal .field input, .modal .field select { background: hsl(var(--surface-soft)); border-color: hsl(var(--border)); color: hsl(var(--foreground)); }
+.field input, .field select, .input, .select { height: 39px; border: 1px solid hsl(var(--border)); border-radius: 11px; padding: 0 11px; outline: 0; background: hsl(var(--surface-soft)); color: hsl(var(--foreground)); font-size: 12px; width: 100%; box-sizing: border-box; transition: border-color .15s, box-shadow .15s; }
+.field input:focus, .field select:focus, .input:focus, .select:focus { border-color: hsl(var(--foreground)); box-shadow: 0 0 0 3px rgba(0,0,0,.1); }
+.field-label { font-size: 11px; color: hsl(var(--muted)); font-weight: 600; margin-bottom: 6px; display: block; }
+.modal .field label { color: hsl(var(--muted)); font-size: 11px; font-weight: 600; margin-bottom: 6px; display: block; }
+.modal .field input, .modal .field select, .modal input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]), .modal select { background: hsl(var(--surface-soft)); border: 1px solid hsl(var(--border)); border-radius: 11px; color: hsl(var(--foreground)); height: 39px; padding: 0 11px; font-size: 12px; width: 100%; box-sizing: border-box; }
+.modal input:focus, .modal select:focus { border-color: hsl(var(--foreground)); box-shadow: 0 0 0 3px rgba(0,0,0,.1); outline: 0; }
 .toast { position: fixed; right: 24px; bottom: 24px; z-index: 1100; background: hsl(var(--foreground)); color: hsl(var(--background)); padding: 13px 16px; border-radius: 13px; box-shadow: 0 14px 30px rgba(20, 18, 26, .25); display: flex; align-items: center; gap: 9px; font-size: 12px; animation: toastIn .25s ease both; }
 @keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .login-page { min-height: 100dvh; display: grid; place-items: center; padding: 22px; background: transparent; position: relative; overflow: hidden; }

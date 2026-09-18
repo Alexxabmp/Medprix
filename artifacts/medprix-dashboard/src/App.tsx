@@ -4323,33 +4323,17 @@ function InventoryPage({
             data-testid="modal-view-product">
             <div
               className="modal"
-              style={{ maxWidth: 640, width: "94%" }}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  borderBottom: "1px solid hsl(var(--border))",
-                  paddingBottom: 12,
-                  marginBottom: 16,
-                }}>
+              style={{ width: "min(640px, 100%)" }}>
+              <div className="modal-header">
                 <div>
-                  <h3
-                    style={{
-                      margin: 0,
-                      fontSize: 16,
-                      fontWeight: 700,
-                      color: "hsl(var(--foreground))",
-                    }}>
-                    {viewProduct.name}
-                  </h3>
-                  <div className="muted" style={{ fontSize: 12 }}>
+                  <h2>{viewProduct.name}</h2>
+                  <p className="modal-sub">
                     Generic: {viewProduct.genericName} • Code: {viewProduct.sku}
-                  </div>
+                  </p>
                 </div>
                 <button
                   type="button"
-                  className="icon-button"
+                  className="modal-close"
                   onClick={() => setViewProduct(null)}>
                   <X size={16} />
                 </button>
@@ -4366,69 +4350,65 @@ function InventoryPage({
                 <div
                   style={{
                     background: "hsl(var(--surface-soft))",
-                    padding: "8px 12px",
-                    borderRadius: 8,
+                    border: "1px solid hsl(var(--border))",
+                    padding: "10px 14px",
+                    borderRadius: 11,
                   }}>
-                  <div className="muted" style={{ fontSize: 10 }}>
+                  <div className="muted" style={{ fontSize: 10, fontWeight: 600 }}>
                     Category
                   </div>
-                  <strong style={{ fontSize: 12 }}>{viewProduct.category}</strong>
+                  <strong style={{ fontSize: 13 }}>{viewProduct.category}</strong>
                 </div>
                 <div
                   style={{
                     background: "hsl(var(--surface-soft))",
-                    padding: "8px 12px",
-                    borderRadius: 8,
+                    border: "1px solid hsl(var(--border))",
+                    padding: "10px 14px",
+                    borderRadius: 11,
                   }}>
-                  <div className="muted" style={{ fontSize: 10 }}>
+                  <div className="muted" style={{ fontSize: 10, fontWeight: 600 }}>
                     Unit Price
                   </div>
-                  <strong style={{ fontSize: 12 }}>{viewProduct.price}</strong>
+                  <strong style={{ fontSize: 13 }}>{viewProduct.price}</strong>
                 </div>
                 <div
                   style={{
                     background: "hsl(var(--surface-soft))",
-                    padding: "8px 12px",
-                    borderRadius: 8,
+                    border: "1px solid hsl(var(--border))",
+                    padding: "10px 14px",
+                    borderRadius: 11,
                   }}>
-                  <div className="muted" style={{ fontSize: 10 }}>
+                  <div className="muted" style={{ fontSize: 10, fontWeight: 600 }}>
                     Reorder Level
                   </div>
-                  <strong style={{ fontSize: 12 }}>
+                  <strong style={{ fontSize: 13 }}>
                     {viewProduct.reorder} units
                   </strong>
                 </div>
                 <div
                   style={{
                     background: "hsl(var(--surface-soft))",
-                    padding: "8px 12px",
-                    borderRadius: 8,
+                    border: "1px solid hsl(var(--border))",
+                    padding: "10px 14px",
+                    borderRadius: 11,
                   }}>
-                  <div className="muted" style={{ fontSize: 10 }}>
+                  <div className="muted" style={{ fontSize: 10, fontWeight: 600 }}>
                     Total Stock
                   </div>
-                  <strong style={{ fontSize: 12 }}>
+                  <strong style={{ fontSize: 13 }}>
                     {getProductTotalStock(viewProduct)} units
                   </strong>
                 </div>
               </div>
 
               {/* Batches Table */}
-              <div style={{ marginBottom: 16 }}>
-                <h4
-                  style={{
-                    margin: "0 0 8px 0",
-                    fontSize: 13,
-                    fontWeight: 600,
-                    color: "hsl(var(--foreground))",
-                  }}>
-                  Recorded Batches &amp; Expiry Dates ({viewProduct.batches.length})
-                </h4>
+              <div className="modal-section">
+                <h4>Recorded Batches &amp; Expiry Dates ({viewProduct.batches.length})</h4>
                 <div
                   style={{
                     overflowX: "auto",
                     border: "1px solid hsl(var(--border))",
-                    borderRadius: 8,
+                    borderRadius: 11,
                   }}>
                   <table className="data-table" style={{ fontSize: 11 }}>
                     <thead>
@@ -4473,7 +4453,7 @@ function InventoryPage({
                 </div>
               </div>
 
-              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <div className="modal-actions">
                 <button
                   type="button"
                   className="button dark"
@@ -4497,45 +4477,25 @@ function InventoryPage({
             data-testid="modal-add-product">
             <div
               className="modal"
-              style={{ maxWidth: 540, width: "94%" }}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  borderBottom: "1px solid hsl(var(--border))",
-                  paddingBottom: 12,
-                  marginBottom: 16,
-                }}>
-                <h3
-                  style={{
-                    margin: 0,
-                    fontSize: 16,
-                    fontWeight: 700,
-                    color: "hsl(var(--foreground))",
-                  }}>
-                  Add New Product
-                </h3>
+              style={{ width: "min(580px, 100%)" }}>
+              <div className="modal-header">
+                <div>
+                  <h2>Add New Product</h2>
+                  <p className="modal-sub">Product details and initial batch registration</p>
+                </div>
                 <button
                   type="button"
-                  className="icon-button"
+                  className="modal-close"
                   onClick={() => setIsAddProductOpen(false)}>
                   <X size={16} />
                 </button>
               </div>
 
               <form onSubmit={handleSaveNewProduct}>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 12,
-                    marginBottom: 12,
-                  }}>
-                  <div>
-                    <label className="field-label">Product Name *</label>
+                <div className="form-grid">
+                  <div className="field">
+                    <label>Product Name *</label>
                     <input
-                      className="input"
                       required
                       placeholder="e.g. Paracetamol 500mg"
                       value={newProd.name}
@@ -4544,10 +4504,9 @@ function InventoryPage({
                       }
                     />
                   </div>
-                  <div>
-                    <label className="field-label">Generic Name *</label>
+                  <div className="field">
+                    <label>Generic Name *</label>
                     <input
-                      className="input"
                       required
                       placeholder="e.g. Acetaminophen"
                       value={newProd.genericName}
@@ -4556,19 +4515,9 @@ function InventoryPage({
                       }
                     />
                   </div>
-                </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 12,
-                    marginBottom: 12,
-                  }}>
-                  <div>
-                    <label className="field-label">Product Code (SKU) *</label>
+                  <div className="field">
+                    <label>Product Code (SKU) *</label>
                     <input
-                      className="input"
                       required
                       placeholder="e.g. MED-0421"
                       value={newProd.sku}
@@ -4577,11 +4526,9 @@ function InventoryPage({
                       }
                     />
                   </div>
-                  <div>
-                    <label className="field-label">Category</label>
+                  <div className="field">
+                    <label>Category</label>
                     <select
-                      className="select"
-                      style={{ width: "100%" }}
                       value={newProd.category}
                       onChange={(e) =>
                         setNewProd({ ...newProd, category: e.target.value })
@@ -4595,19 +4542,9 @@ function InventoryPage({
                         ))}
                     </select>
                   </div>
-                </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 12,
-                    marginBottom: 14,
-                  }}>
-                  <div>
-                    <label className="field-label">Unit Price *</label>
+                  <div className="field">
+                    <label>Unit Price *</label>
                     <input
-                      className="input"
                       required
                       placeholder="₱10.00"
                       value={newProd.price}
@@ -4616,10 +4553,9 @@ function InventoryPage({
                       }
                     />
                   </div>
-                  <div>
-                    <label className="field-label">Reorder Level *</label>
+                  <div className="field">
+                    <label>Reorder Level *</label>
                     <input
-                      className="input"
                       type="number"
                       min="1"
                       required
@@ -4632,32 +4568,12 @@ function InventoryPage({
                 </div>
 
                 {/* Initial Batch Information */}
-                <div
-                  style={{
-                    borderTop: "1px solid hsl(var(--border))",
-                    paddingTop: 12,
-                    marginBottom: 14,
-                  }}>
-                  <h4
-                    style={{
-                      margin: "0 0 10px 0",
-                      fontSize: 12,
-                      fontWeight: 700,
-                      color: "hsl(var(--foreground))",
-                    }}>
-                    Initial Batch Information
-                  </h4>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr 1fr",
-                      gap: 10,
-                      marginBottom: 10,
-                    }}>
-                    <div>
-                      <label className="field-label">Batch Number *</label>
+                <div className="modal-section">
+                  <h4>Initial Batch Information</h4>
+                  <div className="form-grid">
+                    <div className="field">
+                      <label>Batch Number *</label>
                       <input
-                        className="input"
                         required
                         placeholder="e.g. B2026-01"
                         value={newProd.batchNumber}
@@ -4669,10 +4585,9 @@ function InventoryPage({
                         }
                       />
                     </div>
-                    <div>
-                      <label className="field-label">Quantity *</label>
+                    <div className="field">
+                      <label>Quantity *</label>
                       <input
-                        className="input"
                         type="number"
                         min="1"
                         required
@@ -4682,10 +4597,9 @@ function InventoryPage({
                         }
                       />
                     </div>
-                    <div>
-                      <label className="field-label">Expiry Date *</label>
+                    <div className="field">
+                      <label>Expiry Date *</label>
                       <input
-                        className="input"
                         type="date"
                         required
                         value={newProd.expiryDate}
@@ -4694,20 +4608,23 @@ function InventoryPage({
                         }
                       />
                     </div>
-                  </div>
-
-                  {isAdmin && (
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "1fr 1fr",
-                        gap: 10,
-                      }}>
-                      <div>
-                        <label className="field-label">Supplier</label>
+                    <div className="field">
+                      <label>Date Received</label>
+                      <input
+                        type="date"
+                        value={newProd.dateReceived}
+                        onChange={(e) =>
+                          setNewProd({
+                            ...newProd,
+                            dateReceived: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                    {isAdmin && (
+                      <div className="field full-width">
+                        <label>Supplier</label>
                         <select
-                          className="select"
-                          style={{ width: "100%" }}
                           value={newProd.supplier}
                           onChange={(e) =>
                             setNewProd({ ...newProd, supplier: e.target.value })
@@ -4719,30 +4636,11 @@ function InventoryPage({
                           ))}
                         </select>
                       </div>
-                      <div>
-                        <label className="field-label">Date Received</label>
-                        <input
-                          className="input"
-                          type="date"
-                          value={newProd.dateReceived}
-                          onChange={(e) =>
-                            setNewProd({
-                              ...newProd,
-                              dateReceived: e.target.value,
-                            })
-                          }
-                        />
-                      </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
 
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "flex-end",
-                    gap: 8,
-                  }}>
+                <div className="modal-actions">
                   <button
                     type="button"
                     className="button soft"
@@ -4768,71 +4666,49 @@ function InventoryPage({
             className="modal-backdrop"
             onMouseDown={(e) => e.currentTarget === e.target && setEditProduct(null)}
             data-testid="modal-edit-product">
-            <div
-              className="modal"
-              style={{ maxWidth: 500, width: "94%" }}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  borderBottom: "1px solid hsl(var(--border))",
-                  paddingBottom: 12,
-                  marginBottom: 16,
-                }}>
-                <h3
-                  style={{
-                    margin: 0,
-                    fontSize: 16,
-                    fontWeight: 700,
-                    color: "hsl(var(--foreground))",
-                  }}>
-                  Update Product Information
-                </h3>
+            <div className="modal dialog" style={{ maxWidth: 500 }}>
+              <div className="modal-header">
+                <div>
+                  <h2>Update Product Information</h2>
+                  <p className="modal-sub">
+                    Edit product details and reorder thresholds
+                  </p>
+                </div>
                 <button
                   type="button"
-                  className="icon-button"
+                  className="modal-close"
                   onClick={() => setEditProduct(null)}>
-                  <X size={16} />
+                  <X size={15} />
                 </button>
               </div>
 
               <form onSubmit={handleSaveEditProduct}>
-                <div style={{ marginBottom: 12 }}>
-                  <label className="field-label">Product Name *</label>
-                  <input
-                    className="input"
-                    required
-                    value={editProdData.name}
-                    onChange={(e) =>
-                      setEditProdData({ ...editProdData, name: e.target.value })
-                    }
-                  />
-                </div>
-                <div style={{ marginBottom: 12 }}>
-                  <label className="field-label">Generic Name</label>
-                  <input
-                    className="input"
-                    value={editProdData.genericName}
-                    onChange={(e) =>
-                      setEditProdData({
-                        ...editProdData,
-                        genericName: e.target.value,
-                      })
-                    }
-                  />
-                </div>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 12,
-                    marginBottom: 12,
-                  }}>
-                  <div>
-                    <label className="field-label">Product Code (SKU) *</label>
+                <div className="form-grid">
+                  <div className="field full-width">
+                    <label>Product Name *</label>
                     <input
-                      className="input"
+                      required
+                      value={editProdData.name}
+                      onChange={(e) =>
+                        setEditProdData({ ...editProdData, name: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="field full-width">
+                    <label>Generic Name</label>
+                    <input
+                      value={editProdData.genericName}
+                      onChange={(e) =>
+                        setEditProdData({
+                          ...editProdData,
+                          genericName: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="field">
+                    <label>Product Code (SKU) *</label>
+                    <input
                       required
                       value={editProdData.sku}
                       onChange={(e) =>
@@ -4843,11 +4719,9 @@ function InventoryPage({
                       }
                     />
                   </div>
-                  <div>
-                    <label className="field-label">Category</label>
+                  <div className="field">
+                    <label>Category</label>
                     <select
-                      className="select"
-                      style={{ width: "100%" }}
                       value={editProdData.category}
                       onChange={(e) =>
                         setEditProdData({
@@ -4864,19 +4738,9 @@ function InventoryPage({
                         ))}
                     </select>
                   </div>
-                </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 12,
-                    marginBottom: 16,
-                  }}>
-                  <div>
-                    <label className="field-label">Price (₱) *</label>
+                  <div className="field">
+                    <label>Price (₱) *</label>
                     <input
-                      className="input"
                       required
                       value={editProdData.price}
                       onChange={(e) =>
@@ -4887,10 +4751,9 @@ function InventoryPage({
                       }
                     />
                   </div>
-                  <div>
-                    <label className="field-label">Reorder Level *</label>
+                  <div className="field">
+                    <label>Reorder Level *</label>
                     <input
-                      className="input"
                       type="number"
                       min="1"
                       required
@@ -4905,12 +4768,7 @@ function InventoryPage({
                   </div>
                 </div>
 
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "flex-end",
-                    gap: 8,
-                  }}>
+                <div className="modal-actions">
                   <button
                     type="button"
                     className="button soft"
@@ -4936,54 +4794,31 @@ function InventoryPage({
             className="modal-backdrop"
             onMouseDown={(e) => e.currentTarget === e.target && setBatchProduct(null)}
             data-testid="modal-add-batch">
-            <div
-              className="modal"
-              style={{ maxWidth: 480, width: "94%" }}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  borderBottom: "1px solid hsl(var(--border))",
-                  paddingBottom: 12,
-                  marginBottom: 16,
-                }}>
+            <div className="modal dialog" style={{ maxWidth: 500 }}>
+              <div className="modal-header">
                 <div>
-                  <h3
-                    style={{
-                      margin: 0,
-                      fontSize: 16,
-                      fontWeight: 700,
-                      color: "hsl(var(--foreground))",
-                    }}>
+                  <h2>
                     {isAdmin
                       ? "Add Product Batch Information"
                       : "Add Batch Expiry Date"}
-                  </h3>
-                  <div className="muted" style={{ fontSize: 12 }}>
+                  </h2>
+                  <p className="modal-sub">
                     For {batchProduct.name} ({batchProduct.sku})
-                  </div>
+                  </p>
                 </div>
                 <button
                   type="button"
-                  className="icon-button"
+                  className="modal-close"
                   onClick={() => setBatchProduct(null)}>
-                  <X size={16} />
+                  <X size={15} />
                 </button>
               </div>
 
               <form onSubmit={handleSaveAddBatch}>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 12,
-                    marginBottom: 12,
-                  }}>
-                  <div>
-                    <label className="field-label">Batch Number *</label>
+                <div className="form-grid">
+                  <div className="field">
+                    <label>Batch Number *</label>
                     <input
-                      className="input"
                       required
                       placeholder="e.g. B2026-03"
                       value={newBatchData.batchNumber}
@@ -4995,10 +4830,9 @@ function InventoryPage({
                       }
                     />
                   </div>
-                  <div>
-                    <label className="field-label">Quantity *</label>
+                  <div className="field">
+                    <label>Quantity *</label>
                     <input
-                      className="input"
                       type="number"
                       min="1"
                       required
@@ -5011,54 +4845,25 @@ function InventoryPage({
                       }
                     />
                   </div>
-                </div>
-
-                <div style={{ marginBottom: 12 }}>
-                  <label className="field-label">Expiry Date *</label>
-                  <input
-                    className="input"
-                    type="date"
-                    required
-                    value={newBatchData.expiryDate}
-                    onChange={(e) =>
-                      setNewBatchData({
-                        ...newBatchData,
-                        expiryDate: e.target.value,
-                      })
-                    }
-                  />
-                </div>
-
-                {/* Full batch fields for Admin */}
-                {canAddFullBatchInfo && (
-                  <>
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "1fr 1fr",
-                        gap: 12,
-                        marginBottom: 12,
-                      }}>
-                      <div>
-                        <label className="field-label">
-                          Manufacturing Date
-                        </label>
+                  <div className={canAddFullBatchInfo ? "field" : "field full-width"}>
+                    <label>Expiry Date *</label>
+                    <input
+                      type="date"
+                      required
+                      value={newBatchData.expiryDate}
+                      onChange={(e) =>
+                        setNewBatchData({
+                          ...newBatchData,
+                          expiryDate: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  {canAddFullBatchInfo && (
+                    <>
+                      <div className="field">
+                        <label>Date Received</label>
                         <input
-                          className="input"
-                          type="date"
-                          value={newBatchData.mfgDate}
-                          onChange={(e) =>
-                            setNewBatchData({
-                              ...newBatchData,
-                              mfgDate: e.target.value,
-                            })
-                          }
-                        />
-                      </div>
-                      <div>
-                        <label className="field-label">Date Received</label>
-                        <input
-                          className="input"
                           type="date"
                           value={newBatchData.dateReceived}
                           onChange={(e) =>
@@ -5069,36 +4874,41 @@ function InventoryPage({
                           }
                         />
                       </div>
-                    </div>
+                      <div className="field">
+                        <label>Manufacturing Date</label>
+                        <input
+                          type="date"
+                          value={newBatchData.mfgDate}
+                          onChange={(e) =>
+                            setNewBatchData({
+                              ...newBatchData,
+                              mfgDate: e.target.value,
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="field full-width">
+                        <label>Supplier</label>
+                        <select
+                          value={newBatchData.supplier}
+                          onChange={(e) =>
+                            setNewBatchData({
+                              ...newBatchData,
+                              supplier: e.target.value,
+                            })
+                          }>
+                          {suppliers.map((s) => (
+                            <option key={s.name} value={s.name}>
+                              {s.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </>
+                  )}
+                </div>
 
-                    <div style={{ marginBottom: 16 }}>
-                      <label className="field-label">Supplier</label>
-                      <select
-                        className="select"
-                        style={{ width: "100%" }}
-                        value={newBatchData.supplier}
-                        onChange={(e) =>
-                          setNewBatchData({
-                            ...newBatchData,
-                            supplier: e.target.value,
-                          })
-                        }>
-                        {suppliers.map((s) => (
-                          <option key={s.name} value={s.name}>
-                            {s.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </>
-                )}
-
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "flex-end",
-                    gap: 8,
-                  }}>
+                <div className="modal-actions">
                   <button
                     type="button"
                     className="button soft"
@@ -5124,73 +4934,46 @@ function InventoryPage({
             className="modal-backdrop"
             onMouseDown={(e) => e.currentTarget === e.target && setStockInProduct(null)}
             data-testid="modal-stock-in">
-            <div
-              className="modal"
-              style={{ maxWidth: 460, width: "94%" }}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  borderBottom: "1px solid hsl(var(--border))",
-                  paddingBottom: 12,
-                  marginBottom: 16,
-                }}>
+            <div className="modal dialog" style={{ maxWidth: 480 }}>
+              <div className="modal-header">
                 <div>
-                  <h3
-                    style={{
-                      margin: 0,
-                      fontSize: 16,
-                      fontWeight: 700,
-                      color: "hsl(var(--foreground))",
-                    }}>
-                    Record Stock In
-                  </h3>
-                  <div className="muted" style={{ fontSize: 12 }}>
+                  <h2>Record Stock In</h2>
+                  <p className="modal-sub">
                     Add inventory to {stockInProduct.name} ({stockInProduct.sku})
-                  </div>
+                  </p>
                 </div>
                 <button
                   type="button"
-                  className="icon-button"
+                  className="modal-close"
                   onClick={() => setStockInProduct(null)}>
-                  <X size={16} />
+                  <X size={15} />
                 </button>
               </div>
 
               <form onSubmit={handleSaveStockIn}>
-                <div style={{ marginBottom: 12 }}>
-                  <label className="field-label">Target Batch *</label>
-                  <select
-                    className="select"
-                    style={{ width: "100%" }}
-                    value={stockInData.batchNumber}
-                    onChange={(e) =>
-                      setStockInData({
-                        ...stockInData,
-                        batchNumber: e.target.value,
-                      })
-                    }>
-                    {stockInProduct.batches.map((b) => (
-                      <option key={b.batchNumber} value={b.batchNumber}>
-                        {b.batchNumber} (Current: {b.quantity} units, Exp:{" "}
-                        {b.expiryDate})
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <div className="form-grid">
+                  <div className="field full-width">
+                    <label>Target Batch *</label>
+                    <select
+                      value={stockInData.batchNumber}
+                      onChange={(e) =>
+                        setStockInData({
+                          ...stockInData,
+                          batchNumber: e.target.value,
+                        })
+                      }>
+                      {stockInProduct.batches.map((b) => (
+                        <option key={b.batchNumber} value={b.batchNumber}>
+                          {b.batchNumber} (Current: {b.quantity} units, Exp:{" "}
+                          {b.expiryDate})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 12,
-                    marginBottom: 12,
-                  }}>
-                  <div>
-                    <label className="field-label">Quantity to Add *</label>
+                  <div className="field">
+                    <label>Quantity to Add *</label>
                     <input
-                      className="input"
                       type="number"
                       min="1"
                       required
@@ -5203,10 +4986,9 @@ function InventoryPage({
                       }
                     />
                   </div>
-                  <div>
-                    <label className="field-label">Date *</label>
+                  <div className="field">
+                    <label>Date *</label>
                     <input
-                      className="input"
                       type="date"
                       required
                       value={stockInData.date}
@@ -5215,27 +4997,21 @@ function InventoryPage({
                       }
                     />
                   </div>
+
+                  <div className="field full-width">
+                    <label>Reason / Reference *</label>
+                    <input
+                      required
+                      placeholder="e.g. Procurement Delivery, Restock, Return"
+                      value={stockInData.reason}
+                      onChange={(e) =>
+                        setStockInData({ ...stockInData, reason: e.target.value })
+                      }
+                    />
+                  </div>
                 </div>
 
-                <div style={{ marginBottom: 16 }}>
-                  <label className="field-label">Reason / Reference *</label>
-                  <input
-                    className="input"
-                    required
-                    placeholder="e.g. Procurement Delivery, Restock, Return"
-                    value={stockInData.reason}
-                    onChange={(e) =>
-                      setStockInData({ ...stockInData, reason: e.target.value })
-                    }
-                  />
-                </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "flex-end",
-                    gap: 8,
-                  }}>
+                <div className="modal-actions">
                   <button
                     type="button"
                     className="button soft"
@@ -5261,74 +5037,47 @@ function InventoryPage({
             className="modal-backdrop"
             onMouseDown={(e) => e.currentTarget === e.target && setStockOutProduct(null)}
             data-testid="modal-stock-out">
-            <div
-              className="modal"
-              style={{ maxWidth: 460, width: "94%" }}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  borderBottom: "1px solid hsl(var(--border))",
-                  paddingBottom: 12,
-                  marginBottom: 16,
-                }}>
+            <div className="modal dialog" style={{ maxWidth: 480 }}>
+              <div className="modal-header">
                 <div>
-                  <h3
-                    style={{
-                      margin: 0,
-                      fontSize: 16,
-                      fontWeight: 700,
-                      color: "hsl(var(--foreground))",
-                    }}>
-                    Record Stock Out
-                  </h3>
-                  <div className="muted" style={{ fontSize: 12 }}>
+                  <h2>Record Stock Out</h2>
+                  <p className="modal-sub">
                     Deduct inventory from {stockOutProduct.name} (
                     {stockOutProduct.sku})
-                  </div>
+                  </p>
                 </div>
                 <button
                   type="button"
-                  className="icon-button"
+                  className="modal-close"
                   onClick={() => setStockOutProduct(null)}>
-                  <X size={16} />
+                  <X size={15} />
                 </button>
               </div>
 
               <form onSubmit={handleSaveStockOut}>
-                <div style={{ marginBottom: 12 }}>
-                  <label className="field-label">Source Batch *</label>
-                  <select
-                    className="select"
-                    style={{ width: "100%" }}
-                    value={stockOutData.batchNumber}
-                    onChange={(e) =>
-                      setStockOutData({
-                        ...stockOutData,
-                        batchNumber: e.target.value,
-                      })
-                    }>
-                    {stockOutProduct.batches.map((b) => (
-                      <option key={b.batchNumber} value={b.batchNumber}>
-                        {b.batchNumber} (Available: {b.quantity} units, Exp:{" "}
-                        {b.expiryDate})
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <div className="form-grid">
+                  <div className="field full-width">
+                    <label>Source Batch *</label>
+                    <select
+                      value={stockOutData.batchNumber}
+                      onChange={(e) =>
+                        setStockOutData({
+                          ...stockOutData,
+                          batchNumber: e.target.value,
+                        })
+                      }>
+                      {stockOutProduct.batches.map((b) => (
+                        <option key={b.batchNumber} value={b.batchNumber}>
+                          {b.batchNumber} (Available: {b.quantity} units, Exp:{" "}
+                          {b.expiryDate})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 12,
-                    marginBottom: 12,
-                  }}>
-                  <div>
-                    <label className="field-label">Quantity to Deduct *</label>
+                  <div className="field">
+                    <label>Quantity to Deduct *</label>
                     <input
-                      className="input"
                       type="number"
                       min="1"
                       required
@@ -5341,10 +5090,9 @@ function InventoryPage({
                       }
                     />
                   </div>
-                  <div>
-                    <label className="field-label">Date *</label>
+                  <div className="field">
+                    <label>Date *</label>
                     <input
-                      className="input"
                       type="date"
                       required
                       value={stockOutData.date}
@@ -5356,40 +5104,33 @@ function InventoryPage({
                       }
                     />
                   </div>
+
+                  <div className="field full-width">
+                    <label>Reason *</label>
+                    <select
+                      value={stockOutData.reason}
+                      onChange={(e) =>
+                        setStockOutData({
+                          ...stockOutData,
+                          reason: e.target.value,
+                        })
+                      }>
+                      <option value="Dispensed / Sales">Dispensed / Sales</option>
+                      <option value="Damaged / Broken">Damaged / Broken</option>
+                      <option value="Expired Product Disposal">
+                        Expired Product Disposal
+                      </option>
+                      <option value="Inventory Audit Adjustment">
+                        Inventory Audit Adjustment
+                      </option>
+                      <option value="Internal Use / Clinic Transfer">
+                        Internal Use / Clinic Transfer
+                      </option>
+                    </select>
+                  </div>
                 </div>
 
-                <div style={{ marginBottom: 16 }}>
-                  <label className="field-label">Reason *</label>
-                  <select
-                    className="select"
-                    style={{ width: "100%" }}
-                    value={stockOutData.reason}
-                    onChange={(e) =>
-                      setStockOutData({
-                        ...stockOutData,
-                        reason: e.target.value,
-                      })
-                    }>
-                    <option value="Dispensed / Sales">Dispensed / Sales</option>
-                    <option value="Damaged / Broken">Damaged / Broken</option>
-                    <option value="Expired Product Disposal">
-                      Expired Product Disposal
-                    </option>
-                    <option value="Inventory Audit Adjustment">
-                      Inventory Audit Adjustment
-                    </option>
-                    <option value="Internal Use / Clinic Transfer">
-                      Internal Use / Clinic Transfer
-                    </option>
-                  </select>
-                </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "flex-end",
-                    gap: 8,
-                  }}>
+                <div className="modal-actions">
                   <button
                     type="button"
                     className="button soft"
