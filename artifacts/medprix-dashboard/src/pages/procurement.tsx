@@ -2,12 +2,12 @@ import { useState, type FormEvent } from "react";
 import { Check, Plus, Search, ShoppingCart, X } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import { Summary } from "@/components/custom-ui/summary-card";
-import { purchaseOrders as initialPurchaseOrders, suppliers } from "@/lib/data";
-import type { ToastFn } from "@/lib/types";
+import { purchaseOrders, suppliers } from "@/lib/data";
+import type { PurchaseOrder, ToastFn } from "@/lib/types";
 
 export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
   const [status, setStatus] = useState("All orders");
-  const [orders, setOrders] = useState(purchaseOrders);
+  const [orders, setOrders] = useState<PurchaseOrder[]>(purchaseOrders);
   const statuses = [
     "All orders",
     "Pending approval",

@@ -1,4 +1,4 @@
-import { useState, useRef, type FormEvent, type ReactNode } from "react";
+import { useState, useEffect, useRef, type FormEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import {
@@ -6,7 +6,9 @@ import {
   AlertCircle,
   AlertTriangle,
   Archive,
+  ArrowDownLeft,
   ArrowDownToLine,
+  ArrowUpRight,
   Boxes,
   Calendar,
   Check,
@@ -30,7 +32,7 @@ import {
 } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import { Summary } from "@/components/custom-ui/summary-card";
-import { products as initialProducts, suppliers } from "@/lib/data";
+import { products, suppliers } from "@/lib/data";
 import type { ProductItem, ProductBatch, ToastFn } from "@/lib/types";
 
 function getBatchExpiryStatus(expiryDateStr: string, qty: number) {

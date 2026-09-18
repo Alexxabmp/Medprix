@@ -1,14 +1,18 @@
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowDownLeft,
+  ArrowUpRight,
   CalendarDays,
   CircleDollarSign,
   ClipboardList,
   Download,
+  Eye,
   FileText,
   Plus,
   Receipt,
   Search,
+  ShieldCheck,
   X,
 } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
@@ -19,12 +23,11 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
 
   // Modal body scroll lock
   useEffect(() => {
-    if (activeModal) {
-      document.body.style.overflow = "hidden";
-      return () => {
-        document.body.style.overflow = "";
-      };
-    }
+    if (!activeModal) return undefined;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = "";
+    };
   }, [activeModal]);
 
   const [searchReceipt, setSearchReceipt] = useState("");

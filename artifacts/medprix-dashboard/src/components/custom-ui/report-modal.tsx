@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+﻿import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ArrowUpRight, Download, X } from "lucide-react";
 import { cashMismatches, movementFast, movementSlow, products } from "@/lib/data";
@@ -174,14 +174,14 @@ export function ReportModal({
         {type === "sales" && (
           <>
             <div className="report-metrics">
-              <ReportMetric label="Total sales" value="Γé▒45,250" />
+              <ReportMetric label="Total sales" value="₱45,250" />
               <ReportMetric label="Transactions" value="128" />
               <ReportMetric label="Products sold" value="356" />
             </div>
             <ModalSection title="Payment method">
-              <ModalRow label="Cash" value="Γé▒25,000" />
-              <ModalRow label="Card" value="Γé▒12,500" />
-              <ModalRow label="E-wallet" value="Γé▒7,750" />
+              <ModalRow label="Cash" value="₱25,000" />
+              <ModalRow label="Card" value="₱12,500" />
+              <ModalRow label="E-wallet" value="₱7,750" />
             </ModalSection>
           </>
         )}
@@ -199,7 +199,7 @@ export function ReportModal({
                 headers={["Product", "Stock", "Status"]}
                 rows={products
                   .slice(0, 3)
-                  .map((p) => [p.name, String(p.stock), p.status])}
+                  .map((p) => [p.name, String(p.stock ?? 0), p.status ?? "Available"])}
               />
             </ModalSection>
           </>
@@ -209,13 +209,13 @@ export function ReportModal({
         {type === "financial" && (
           <>
             <div className="report-metrics">
-              <ReportMetric label="Total sales" value="Γé▒450,000" />
-              <ReportMetric label="Expenses" value="Γé▒85,000" />
-              <ReportMetric label="Net profit" value="Γé▒365,000" />
+              <ReportMetric label="Total sales" value="₱450,000" />
+              <ReportMetric label="Expenses" value="₱85,000" />
+              <ReportMetric label="Net profit" value="₱365,000" />
             </div>
             <ModalSection title="Summary">
               <ModalRow label="Gross margin" value="81.1%" />
-              <ModalRow label="Operating expenses" value="Γé▒85,000" />
+              <ModalRow label="Operating expenses" value="₱85,000" />
               <ModalRow label="Net profit margin" value="81.1%" />
             </ModalSection>
           </>
@@ -225,7 +225,7 @@ export function ReportModal({
         {type === "valuation" && (
           <>
             <div className="report-metrics">
-              <ReportMetric label="Current stock value" value="Γé▒825,450" />
+              <ReportMetric label="Current stock value" value="₱825,450" />
               <ReportMetric label="Units held" value="4,280" />
               <ReportMetric label="SKUs tracked" value="850" />
             </div>
@@ -233,9 +233,9 @@ export function ReportModal({
               <ModalTable
                 headers={["Product", "Qty", "Value"]}
                 rows={[
-                  ["Paracetamol", "120", "Γé▒600"],
-                  ["Amoxicillin", "80", "Γé▒960"],
-                  ["Vitamin C", "50", "Γé▒400"],
+                  ["Paracetamol", "120", "₱600"],
+                  ["Amoxicillin", "80", "₱960"],
+                  ["Vitamin C", "50", "₱400"],
                 ]}
               />
             </ModalSection>
@@ -273,8 +273,8 @@ export function ReportModal({
           <>
             <div className="report-metrics">
               <ReportMetric label="Open alerts" value="2" />
-              <ReportMetric label="Short" value="Γé▒500" />
-              <ReportMetric label="Over" value="Γé▒1,000" />
+              <ReportMetric label="Short" value="₱500" />
+              <ReportMetric label="Over" value="₱1,000" />
             </div>
             <ModalSection
               title={`${cashMismatches.length} inconsistencies detected`}>
@@ -386,3 +386,4 @@ export function ReportModal({
     document.body,
   );
 }
+

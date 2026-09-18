@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Building2, Check, Plus, Search } from "lucide-react";
+import { ArrowUpRight, Building2, Check, Plus, Search } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import { Summary } from "@/components/custom-ui/summary-card";
-import { suppliers as initialSuppliers } from "@/lib/data";
+import { suppliers } from "@/lib/data";
 import type { ToastFn } from "@/lib/types";
 
 export default function SupplierPage({ onToast }: { onToast: ToastFn }) {

@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   Activity,
   AlertCircle,
+  ArrowUpRight,
   Check,
   Clock3,
   Eye,
@@ -13,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
+import { Summary } from "@/components/custom-ui/summary-card";
 import {
   initialTransactionsData,
   initialSystemLogsData,
@@ -43,10 +46,9 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
 
   // Modal body scroll lock
   useEffect(() => {
-    if (selectedTrx || selectedLog) {
-      document.body.style.overflow = 'hidden';
-      return () => { document.body.style.overflow = ''; };
-    }
+    if (!selectedTrx && !selectedLog) return undefined;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
   }, [selectedTrx, selectedLog]);
 
   // Fetch from API backend if available
