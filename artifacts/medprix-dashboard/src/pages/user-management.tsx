@@ -543,12 +543,6 @@ export default function UserManagementPage({
               )}
               <div className="modal-actions">
                 <button
-                  type="button"
-                  className="button soft"
-                  onClick={() => setDialog(null)}>
-                  Cancel
-                </button>
-                <button
                   className="button dark"
                   data-testid="button-confirm-reset"
                   type="submit">
@@ -769,9 +763,6 @@ function UserDialog({
           </p>
         )}
         <div className="modal-actions">
-          <button type="button" className="button soft" onClick={onClose}>
-            Cancel
-          </button>
           <button
             className="button dark"
             data-testid="button-save-user"

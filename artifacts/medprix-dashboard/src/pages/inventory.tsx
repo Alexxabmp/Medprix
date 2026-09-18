@@ -1453,14 +1453,7 @@ export default function InventoryPage({
                 </div>
               </div>
 
-              <div className="modal-actions">
-                <button
-                  type="button"
-                  className="button dark"
-                  onClick={() => setViewProduct(null)}>
-                  Close
-                </button>
-              </div>
+
             </div>
           </div>,
           document.body,
@@ -1641,12 +1634,6 @@ export default function InventoryPage({
                 </div>
 
                 <div className="modal-actions">
-                  <button
-                    type="button"
-                    className="button soft"
-                    onClick={() => setIsAddProductOpen(false)}>
-                    Cancel
-                  </button>
                   <button type="submit" className="button dark">
                     Save Product
                   </button>
@@ -1769,12 +1756,6 @@ export default function InventoryPage({
                 </div>
 
                 <div className="modal-actions">
-                  <button
-                    type="button"
-                    className="button soft"
-                    onClick={() => setEditProduct(null)}>
-                    Cancel
-                  </button>
                   <button type="submit" className="button dark">
                     Update Details
                   </button>
@@ -1909,12 +1890,6 @@ export default function InventoryPage({
                 </div>
 
                 <div className="modal-actions">
-                  <button
-                    type="button"
-                    className="button soft"
-                    onClick={() => setBatchProduct(null)}>
-                    Cancel
-                  </button>
                   <button type="submit" className="button dark">
                     Record Batch
                   </button>
@@ -2012,12 +1987,6 @@ export default function InventoryPage({
                 </div>
 
                 <div className="modal-actions">
-                  <button
-                    type="button"
-                    className="button soft"
-                    onClick={() => setStockInProduct(null)}>
-                    Cancel
-                  </button>
                   <button type="submit" className="button dark">
                     <ArrowDownLeft size={14} /> Confirm Stock In
                   </button>
@@ -2131,12 +2100,6 @@ export default function InventoryPage({
                 </div>
 
                 <div className="modal-actions">
-                  <button
-                    type="button"
-                    className="button soft"
-                    onClick={() => setStockOutProduct(null)}>
-                    Cancel
-                  </button>
                   <button
                     type="submit"
                     className="button dark"

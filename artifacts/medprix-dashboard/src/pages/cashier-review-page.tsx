@@ -359,14 +359,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
               </div>
             </div>
 
-            <div className="modal-actions">
-              <button
-                type="button"
-                className="button dark"
-                onClick={() => setActiveModal(null)}>
-                Close
-              </button>
-            </div>
+
           </div>
         </div>,
         document.body
@@ -727,12 +720,6 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                 </div>
               </div>
               <div className="modal-actions" style={{ marginTop: 16 }}>
-                <button
-                  type="button"
-                  className="button soft"
-                  onClick={() => setSelectedReceipt(null)}>
-                  Close
-                </button>
                 <button
                   type="button"
                   className="button dark"

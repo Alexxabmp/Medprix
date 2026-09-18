@@ -721,12 +721,6 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
             <div className="modal-actions" style={{ marginTop: 14 }}>
               <button
                 type="button"
-                className="button soft"
-                onClick={() => setShowShiftModal(false)}>
-                Cancel
-              </button>
-              <button
-                type="button"
                 className="button dark"
                 onClick={() => {
                   onToast("Shift closed successfully. Z-Read report printed.");
