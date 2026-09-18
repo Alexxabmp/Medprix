@@ -3221,6 +3221,43 @@ function getBatchExpiryStatus(expiryDateStr: string, qty: number) {
   return { status: "Valid", tone: "success" };
 }
 
+function getBatchStatusData(batch: ProductBatch, product: ProductItem) {
+  const qty = Number(batch.quantity) || 0;
+  const productStock = getProductTotalStock(product);
+  const now = new Date("2026-09-18T00:00:00");
+  const exp = new Date(batch.expiryDate);
+
+  // Stock Level Status
+  let stockLevelLabel = "In Stock";
+  let stockLevelTone: "success" | "warning" | "danger" = "success";
+
+  if (qty <= 0) {
+    stockLevelLabel = "Out of Stock";
+    stockLevelTone = "danger";
+  } else if (productStock <= product.reorder) {
+    stockLevelLabel = "Low Stock";
+    stockLevelTone = "warning";
+  }
+
+  const badges: Array<{ label: string; tone: "success" | "warning" | "danger" }> = [
+    { label: stockLevelLabel, tone: stockLevelTone },
+  ];
+
+  // Expiring Status
+  if (!isNaN(exp.getTime())) {
+    if (exp < now) {
+      badges.push({ label: "Expired", tone: "danger" });
+    } else {
+      const diffDays = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      if (diffDays <= 60) {
+        badges.push({ label: "Expiring Soon", tone: "warning" });
+      }
+    }
+  }
+
+  return badges;
+}
+
 function getProductTotalStock(product: ProductItem): number {
   return product.batches.reduce((sum, b) => sum + (Number(b.quantity) || 0), 0);
 }
@@ -4456,7 +4493,23 @@ function InventoryPage({
               style={{ width: "min(640px, 100%)" }}>
               <div className="modal-header">
                 <div>
-                  <h2>{viewProduct.name}</h2>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      flexWrap: "wrap",
+                    }}>
+                    <h2>{viewProduct.name}</h2>
+                    {getProductStatusData(viewProduct).badges.map((badge, idx) => (
+                      <span
+                        key={idx}
+                        className={`pill ${badge.tone}`}
+                        style={{ fontSize: 10, padding: "2px 8px" }}>
+                        {badge.label}
+                      </span>
+                    ))}
+                  </div>
                   <p className="modal-sub">
                     Generic: {viewProduct.genericName} • Code: {viewProduct.sku}
                   </p>
@@ -4553,10 +4606,7 @@ function InventoryPage({
                     </thead>
                     <tbody>
                       {viewProduct.batches.map((b) => {
-                        const expInfo = getBatchExpiryStatus(
-                          b.expiryDate,
-                          b.quantity,
-                        );
+                        const badges = getBatchStatusData(b, viewProduct);
                         return (
                           <tr key={b.batchNumber}>
                             <td>
@@ -4567,11 +4617,22 @@ function InventoryPage({
                             </td>
                             <td>{b.expiryDate}</td>
                             <td>
-                              <span
-                                className={`pill ${expInfo.tone}`}
-                                style={{ fontSize: 9, padding: "1px 6px" }}>
-                                {expInfo.status}
-                              </span>
+                              <div
+                                style={{
+                                  display: "flex",
+                                  gap: 4,
+                                  flexWrap: "wrap",
+                                  alignItems: "center",
+                                }}>
+                                {badges.map((badge, idx) => (
+                                  <span
+                                    key={idx}
+                                    className={`pill ${badge.tone}`}
+                                    style={{ fontSize: 9, padding: "1px 6px" }}>
+                                    {badge.label}
+                                  </span>
+                                ))}
+                              </div>
                             </td>
                             <td className="muted">{b.mfgDate || "—"}</td>
                             <td className="muted">{b.supplier || "—"}</td>
