@@ -4127,44 +4127,44 @@ function InventoryPage({
       {/* INVENTORY TABLE & TOOLS */}
       {/* ========================================================================= */}
       <section className="surface-card table-card">
-        <div className="table-tools">
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              flexWrap: "wrap",
-              flex: 1,
-            }}>
-            <div className="search-wrap" style={{ minWidth: 260 }}>
-              <Search size={15} />
-              <input
-                data-testid="input-inventory-search"
-                type="search"
-                placeholder="Search product name, generic, SKU..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-
-            <select
-              className="select"
-              data-testid="select-inventory-category"
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}>
-              {categories.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
+        <div
+          className="table-tools"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            flexWrap: "nowrap",
+          }}>
+          <div className="search-wrap" style={{ flex: 1, minWidth: 260, height: 39 }}>
+            <Search size={15} />
+            <input
+              data-testid="input-inventory-search"
+              type="search"
+              placeholder="Search product name, generic, SKU..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
+
+          <select
+            className="select"
+            data-testid="select-inventory-category"
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            style={{ width: 190, minWidth: 190, maxWidth: 190, flex: "0 0 190px", height: 39 }}>
+            {categories.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
 
           <select
             className="select"
             data-testid="select-inventory-filter"
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}>
+            onChange={(e) => setStatusFilter(e.target.value)}
+            style={{ width: 190, minWidth: 190, maxWidth: 190, flex: "0 0 190px", height: 39 }}>
             <option>All statuses</option>
             <option>In Stock</option>
             <option>Low Stock</option>
