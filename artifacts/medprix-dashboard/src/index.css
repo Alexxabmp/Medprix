@@ -10,9 +10,12 @@
   --surface-soft: 240 5% 97%;
   --border: 240 8% 91%;
   --muted: 240 5% 48%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 240 6% 9%;
   --primary: 211 100% 50%;
   --primary-foreground: 0 0% 100%;
   --accent: 211 100% 50%;
+  --accent-foreground: 0 0% 100%;
   --accent-soft: 211 100% 95%;
   --mint: 142 52% 90%;
   --peach: 4 92% 93%;
@@ -32,9 +35,12 @@
   --surface-soft: 240 4% 15%;
   --border: 240 4% 22%;
   --muted: 240 6% 60%;
+  --popover: 240 4% 11%;
+  --popover-foreground: 240 10% 96%;
   --primary: 211 100% 56%;
   --primary-foreground: 0 0% 100%;
   --accent: 211 100% 56%;
+  --accent-foreground: 0 0% 100%;
   --accent-soft: 211 30% 18%;
   --mint: 142 38% 20%;
   --peach: 4 45% 22%;
@@ -215,6 +221,50 @@ a { color: inherit; text-decoration: none; }
 .user-menu-item:hover { background: hsl(var(--surface-soft)); }
 .user-menu-item.danger { color: #FF3B30; }
 .user-menu-item.danger:hover { background: hsl(var(--peach)); }
+.action-dropdown-menu {
+  position: relative;
+  z-index: 1000;
+  background: hsl(var(--surface));
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  box-shadow: var(--shadow-lift);
+  padding: 5px;
+  min-width: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  outline: none;
+  animation: menuIn .15s ease both;
+}
+.action-dropdown-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 0;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  cursor: pointer;
+  transition: background .12s, color .12s;
+  text-align: left;
+  outline: none;
+  user-select: none;
+  box-sizing: border-box;
+}
+.action-dropdown-item:hover,
+.action-dropdown-item[data-highlighted] {
+  background: hsl(var(--surface-soft));
+}
+.action-dropdown-item[data-disabled],
+.action-dropdown-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
 .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 13px 0; border-bottom: 1px solid hsl(var(--border)); }
 .toggle-row:last-child { border-bottom: 0; }
 .toggle { width: 38px; height: 22px; padding: 2px; border-radius: 99px; background: hsl(var(--border)); border: 0; transition: background .2s; flex-shrink: 0; }

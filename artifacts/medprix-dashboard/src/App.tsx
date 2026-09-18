@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import {
   Activity,
   AlertCircle,
@@ -4328,10 +4329,10 @@ function InventoryPage({
                       <div
                         style={{
                           display: "flex",
-                          gap: 4,
+                          gap: 6,
                           justifyContent: "flex-end",
                           alignItems: "center",
-                          flexWrap: "wrap",
+                          whiteSpace: "nowrap",
                         }}>
                         {/* View Details - ALL 3 ROLES */}
                         <button
@@ -4344,62 +4345,85 @@ function InventoryPage({
                           <Eye size={12} /> View
                         </button>
 
-                        {/* Edit Product - ADMIN & FRONT DESK */}
-                        {canEditProduct && (
-                          <button
-                            type="button"
-                            className="button soft"
-                            style={{ padding: "4px 8px", fontSize: 11 }}
-                            onClick={() => handleOpenEditProduct(product)}
-                            title="Edit product information"
-                            data-testid={`button-edit-${product.id}`}>
-                            <Pencil size={12} /> Edit
-                          </button>
-                        )}
+                        {/* More Action Dropdown - ADMIN, FRONT DESK, CASHIER */}
+                        {(canEditProduct || canAddBatch || canRecordStockIn || canRecordStockOut) && (
+                          <DropdownMenuPrimitive.Root>
+                            <DropdownMenuPrimitive.Trigger asChild>
+                              <button
+                                type="button"
+                                className="button soft"
+                                style={{
+                                  padding: "4px 8px",
+                                  fontSize: 11,
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 4,
+                                }}
+                                title="More actions"
+                                data-testid={`button-more-action-${product.id}`}>
+                                More Action <ChevronDown size={12} />
+                              </button>
+                            </DropdownMenuPrimitive.Trigger>
 
-                        {/* Add Batch / Add Expiry Date - ADMIN & FRONT DESK */}
-                        {canAddBatch && (
-                          <button
-                            type="button"
-                            className="button soft"
-                            style={{ padding: "4px 8px", fontSize: 11 }}
-                            onClick={() => handleOpenAddBatch(product)}
-                            title={
-                              canAddFullBatchInfo
-                                ? "Add product batch information"
-                                : "Add batch expiry date"
-                            }
-                            data-testid={`button-batch-${product.id}`}>
-                            <Plus size={12} />{" "}
-                            {canAddFullBatchInfo ? "Batch" : "Expiry"}
-                          </button>
-                        )}
+                            <DropdownMenuPrimitive.Portal>
+                              <DropdownMenuPrimitive.Content
+                                align="end"
+                                sideOffset={4}
+                                className="action-dropdown-menu">
+                                {/* Edit Product - ADMIN & FRONT DESK */}
+                                {canEditProduct && (
+                                  <DropdownMenuPrimitive.Item
+                                    className="action-dropdown-item"
+                                    onSelect={() => handleOpenEditProduct(product)}
+                                    title="Edit product information"
+                                    data-testid={`button-edit-${product.id}`}>
+                                    <Pencil size={12} /> Edit
+                                  </DropdownMenuPrimitive.Item>
+                                )}
 
-                        {/* Stock In - ADMIN & CASHIER */}
-                        {canRecordStockIn && (
-                          <button
-                            type="button"
-                            className="button soft"
-                            style={{ padding: "4px 8px", fontSize: 11 }}
-                            onClick={() => handleOpenStockIn(product)}
-                            title="Record Stock In"
-                            data-testid={`button-stock-in-${product.id}`}>
-                            <ArrowDownLeft size={12} /> In
-                          </button>
-                        )}
+                                {/* Add Batch / Add Expiry Date - ADMIN & FRONT DESK */}
+                                {canAddBatch && (
+                                  <DropdownMenuPrimitive.Item
+                                    className="action-dropdown-item"
+                                    onSelect={() => handleOpenAddBatch(product)}
+                                    title={
+                                      canAddFullBatchInfo
+                                        ? "Add product batch information"
+                                        : "Add batch expiry date"
+                                    }
+                                    data-testid={`button-batch-${product.id}`}>
+                                    <Plus size={12} />{" "}
+                                    {canAddFullBatchInfo ? "Batch" : "Expiry"}
+                                  </DropdownMenuPrimitive.Item>
+                                )}
 
-                        {/* Stock Out - ADMIN & CASHIER */}
-                        {canRecordStockOut && (
-                          <button
-                            type="button"
-                            className="button soft"
-                            style={{ padding: "4px 8px", fontSize: 11 }}
-                            onClick={() => handleOpenStockOut(product)}
-                            title="Record Stock Out"
-                            disabled={info.stock <= 0}
-                            data-testid={`button-stock-out-${product.id}`}>
-                            <ArrowUpRight size={12} /> Out
-                          </button>
+                                {/* Stock In - ADMIN & CASHIER */}
+                                {canRecordStockIn && (
+                                  <DropdownMenuPrimitive.Item
+                                    className="action-dropdown-item"
+                                    onSelect={() => handleOpenStockIn(product)}
+                                    title="Record Stock In"
+                                    data-testid={`button-stock-in-${product.id}`}>
+                                    <ArrowDownLeft size={12} /> In
+                                  </DropdownMenuPrimitive.Item>
+                                )}
+
+                                {/* Stock Out - ADMIN & CASHIER */}
+                                {canRecordStockOut && (
+                                  <DropdownMenuPrimitive.Item
+                                    className="action-dropdown-item"
+                                    disabled={info.stock <= 0}
+                                    onSelect={() => {
+                                      if (info.stock > 0) handleOpenStockOut(product);
+                                    }}
+                                    title={info.stock <= 0 ? "Cannot Stock Out (0 stock)" : "Record Stock Out"}
+                                    data-testid={`button-stock-out-${product.id}`}>
+                                    <ArrowUpRight size={12} /> Out
+                                  </DropdownMenuPrimitive.Item>
+                                )}
+                              </DropdownMenuPrimitive.Content>
+                            </DropdownMenuPrimitive.Portal>
+                          </DropdownMenuPrimitive.Root>
                         )}
                       </div>
                     </td>
