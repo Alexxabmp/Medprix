@@ -3240,20 +3240,49 @@ function getProductStatusData(product: ProductItem) {
     return diffDays <= 60;
   });
 
-  let statusLabel = "In Stock";
-  let statusTone: "success" | "warning" | "danger" = "success";
+  const isLowStock = stock <= product.reorder && stock > 0;
+  const isOutOfStock = stock === 0;
+  const isExpired = expiredBatches.length > 0;
+  const isExpiringSoon = expiringSoonBatches.length > 0;
 
-  if (expiredBatches.length > 0) {
-    statusLabel = "Expired";
+  // Stock Level Status
+  let stockLevelLabel = "In Stock";
+  let stockLevelTone: "success" | "warning" | "danger" = "success";
+
+  if (isOutOfStock) {
+    stockLevelLabel = "Out of Stock";
+    stockLevelTone = "danger";
+  } else if (isLowStock) {
+    stockLevelLabel = "Low Stock";
+    stockLevelTone = "warning";
+  }
+
+  // Dual badges: stock level status + expiring status
+  const badges: Array<{ label: string; tone: "success" | "warning" | "danger" }> = [
+    { label: stockLevelLabel, tone: stockLevelTone },
+  ];
+
+  let expiryStatusLabel: string | null = null;
+  let expiryStatusTone: "warning" | "danger" | null = null;
+
+  if (isExpired) {
+    expiryStatusLabel = "Expired";
+    expiryStatusTone = "danger";
+    badges.push({ label: "Expired", tone: "danger" });
+  }
+  if (isExpiringSoon) {
+    if (!expiryStatusLabel) {
+      expiryStatusLabel = "Expiring Soon";
+      expiryStatusTone = "warning";
+    }
+    badges.push({ label: "Expiring Soon", tone: "warning" });
+  }
+
+  const statusLabel = badges.map((b) => b.label).join(" • ");
+  let statusTone: "success" | "warning" | "danger" = stockLevelTone;
+  if (isExpired || isOutOfStock) {
     statusTone = "danger";
-  } else if (stock === 0) {
-    statusLabel = "Out of Stock";
-    statusTone = "danger";
-  } else if (expiringSoonBatches.length > 0) {
-    statusLabel = "Expiring Soon";
-    statusTone = "warning";
-  } else if (stock <= product.reorder) {
-    statusLabel = "Low Stock";
+  } else if (isExpiringSoon || isLowStock) {
     statusTone = "warning";
   }
 
@@ -3267,10 +3296,15 @@ function getProductStatusData(product: ProductItem) {
     stock,
     statusLabel,
     statusTone,
-    isLowStock: stock <= product.reorder && stock > 0,
-    isOutOfStock: stock === 0,
-    isExpired: expiredBatches.length > 0,
-    isExpiringSoon: expiringSoonBatches.length > 0,
+    stockLevelLabel,
+    stockLevelTone,
+    expiryStatusLabel,
+    expiryStatusTone,
+    badges,
+    isLowStock,
+    isOutOfStock,
+    isExpired,
+    isExpiringSoon,
     expiredBatches,
     expiringSoonBatches,
     primaryExpiry,
@@ -3465,8 +3499,8 @@ function InventoryPage({
 
     const matchesStatus =
       statusFilter === "All statuses" ||
-      (statusFilter === "In Stock" && info.statusLabel === "In Stock") ||
-      (statusFilter === "Low Stock" && (info.isLowStock || info.statusLabel === "Low Stock")) ||
+      (statusFilter === "In Stock" && info.stockLevelLabel === "In Stock") ||
+      (statusFilter === "Low Stock" && info.isLowStock) ||
       (statusFilter === "Out of Stock" && info.isOutOfStock) ||
       (statusFilter === "Expiring Soon" && info.isExpiringSoon) ||
       (statusFilter === "Expired" && info.isExpired);
@@ -4273,11 +4307,22 @@ function InventoryPage({
                       </div>
                     </td>
                     <td>
-                      <span
-                        className={`pill ${info.statusTone}`}
-                        style={{ fontSize: 10, padding: "2px 8px" }}>
-                        {info.statusLabel}
-                      </span>
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 4,
+                          flexWrap: "wrap",
+                          alignItems: "center",
+                        }}>
+                        {info.badges.map((badge, idx) => (
+                          <span
+                            key={idx}
+                            className={`pill ${badge.tone}`}
+                            style={{ fontSize: 10, padding: "2px 8px" }}>
+                            {badge.label}
+                          </span>
+                        ))}
+                      </div>
                     </td>
                     <td style={{ textAlign: "right" }}>
                       <div
