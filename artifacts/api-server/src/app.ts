@@ -1,4 +1,4 @@
-﻿import express, { type Express } from "express";
+import express, { type Express } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
@@ -58,6 +58,16 @@ app.use(
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+app.get("/", (_req, res) => {
+  res.json({
+    status: "healthy",
+    service: "Medprix API Server",
+    port: 5000,
+    frontend: "http://localhost:3000",
+    message: "Backend API is online and responding.",
+  });
+});
 
 app.use("/api", router);
 

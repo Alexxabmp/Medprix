@@ -88,10 +88,10 @@ function AppContent() {
   };
 
   useEffect(() => {
-    if (!session) return;
+    if (!session || role !== "admin") return;
     fetchUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session]);
+  }, [session, role]);
 
   useEffect(() => {
     if (!session) return;
