@@ -4493,23 +4493,7 @@ function InventoryPage({
               style={{ width: "min(640px, 100%)" }}>
               <div className="modal-header">
                 <div>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      flexWrap: "wrap",
-                    }}>
-                    <h2>{viewProduct.name}</h2>
-                    {getProductStatusData(viewProduct).badges.map((badge, idx) => (
-                      <span
-                        key={idx}
-                        className={`pill ${badge.tone}`}
-                        style={{ fontSize: 10, padding: "2px 8px" }}>
-                        {badge.label}
-                      </span>
-                    ))}
-                  </div>
+                  <h2>{viewProduct.name}</h2>
                   <p className="modal-sub">
                     Generic: {viewProduct.genericName} • Code: {viewProduct.sku}
                   </p>
