@@ -201,9 +201,9 @@ export default function InventoryPage({
     "Admin"
   ).toLowerCase();
 
-  const isAdmin = role === "Admin";
-  const isFrontDesk = role === "FrontDesk";
-  const isCashier = role === "Cashier";
+  const isAdmin = role === "admin";
+  const isFrontDesk = role === "frontdesk";
+  const isCashier = role === "cashier";
 
   const canViewAlerts = isAdmin || isFrontDesk;
   const canAddProduct = isAdmin || isFrontDesk;
@@ -1766,13 +1766,13 @@ export default function InventoryPage({
                       }
                     />
                   </div>
-                  <div 
-                    className="field full-width" 
-                    style={{ 
+                  <div
+                    className="field full-width"
+                    style={{
                       display: "flex",
                       alignItems:
-                      "center",
-                      gap: 8 
+                        "center",
+                      gap: 8
                     }}>
                     <input
                       type="checkbox"
