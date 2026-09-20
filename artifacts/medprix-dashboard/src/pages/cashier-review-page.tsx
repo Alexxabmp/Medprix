@@ -17,27 +17,10 @@ import {
   X,
 } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
-import type { ToastFn } from "@/lib/types";
+import type { ToastFn, ShiftReceipt } from "@/lib/types";
+import { usePharmacyTransactions } from "@/lib/pharmacy-store";
 
-export interface ShiftReceipt {
-  id: string;
-  rawId?: number;
-  time: string;
-  dateTime?: string;
-  items: number;
-  itemsList?: Array<{ product: string; quantity: number; unitPrice?: string; subtotal?: string }>;
-  itemsSummary: string;
-  total: number;
-  totalFormatted: string;
-  subtotal?: string;
-  vat?: string;
-  discount?: string;
-  amountReceived?: string;
-  change?: string;
-  method: string;
-  cashier: string;
-  status: string;
-}
+export type { ShiftReceipt };
 
 const formatPeso = (amount: number) =>
   `₱${amount.toLocaleString("en-PH", {
@@ -45,68 +28,9 @@ const formatPeso = (amount: number) =>
     maximumFractionDigits: 2,
   })}`;
 
-const defaultReceipts: ShiftReceipt[] = [
-  {
-    id: "CS-9401",
-    time: "10:14 AM",
-    items: 3,
-    itemsSummary: "Paracetamol 500mg (2), Vitamin C 1000mg (1)",
-    total: 195.0,
-    totalFormatted: "₱195.00",
-    method: "Cash",
-    cashier: "Maria Santos",
-    status: "Completed",
-  },
-  {
-    id: "CS-9400",
-    time: "09:48 AM",
-    items: 1,
-    itemsSummary: "Cough relief syrup 120ml (1)",
-    total: 145.0,
-    totalFormatted: "₱145.00",
-    method: "GCash",
-    cashier: "Maria Santos",
-    status: "Completed",
-  },
-  {
-    id: "CS-9399",
-    time: "09:12 AM",
-    items: 5,
-    itemsSummary: "Amoxicillin 500mg Box (1), Cetirizine 10mg (4)",
-    total: 520.0,
-    totalFormatted: "₱520.00",
-    method: "Card",
-    cashier: "Maria Santos",
-    status: "Completed",
-  },
-  {
-    id: "CS-9398",
-    time: "08:35 AM",
-    items: 3,
-    itemsSummary: "Mefenamic Acid 500mg (2), Antacid Chewable (1)",
-    total: 85.0,
-    totalFormatted: "₱85.00",
-    method: "Cash",
-    cashier: "Maria Santos",
-    status: "Completed",
-  },
-  {
-    id: "TRX-0005",
-    time: "11:20 AM",
-    items: 15,
-    itemsSummary: "Sterile Normal Saline (5), Surgical Gloves Box (10)",
-    total: 18450.0,
-    totalFormatted: "₱18,450.00",
-    method: "Cash",
-    cashier: "Maria Santos",
-    status: "Completed",
-  },
-];
-
 export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
   const [activeModal, setActiveModal] = useState<"sales" | "drawer" | "transactions" | "till" | null>(null);
-  const [shiftReceipts, setShiftReceipts] = useState<ShiftReceipt[]>(defaultReceipts);
-  const [isLoading, setIsLoading] = useState(false);
+  const { receipts: shiftReceipts, loading: isLoading } = usePharmacyTransactions();
 
   // Modal body scroll lock
   useEffect(() => {
@@ -119,59 +43,6 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
 
   const [searchReceipt, setSearchReceipt] = useState("");
   const [selectedReceipt, setSelectedReceipt] = useState<ShiftReceipt | null>(null);
-
-  const fetchTransactions = async () => {
-    try {
-      setIsLoading(true);
-      const response = await fetch("/api/admin/transactions", {
-        credentials: "include",
-      });
-      if (!response.ok) return;
-      const data = await response.json();
-      if (!Array.isArray(data) || data.length === 0) return;
-      const mapped: ShiftReceipt[] = data.map((t: any) => {
-        const totalNum =
-          parseFloat(String(t.total || "0").replace("₱", "").replace(/,/g, "")) || 0;
-        const itemCount = Array.isArray(t.items)
-          ? t.items.reduce((sum: number, it: any) => sum + (Number(it.quantity) || 1), 0)
-          : 1;
-        const itemsSummary =
-          Array.isArray(t.items) && t.items.length > 0
-            ? t.items.map((it: any) => `${it.product} (${it.quantity})`).join(", ")
-            : `${itemCount} item(s)`;
-        return {
-          id: t.transactionNumber || `TRX-${t.id}`,
-          rawId: t.id,
-          time: t.dateTime
-            ? t.dateTime.split(", ")[1] || t.dateTime
-            : new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          dateTime: t.dateTime || new Date().toLocaleString(),
-          items: itemCount,
-          itemsList: t.items || [],
-          itemsSummary,
-          total: totalNum,
-          totalFormatted: t.total || formatPeso(totalNum),
-          subtotal: t.subtotal,
-          vat: t.vat,
-          discount: t.discount,
-          amountReceived: t.amountReceived,
-          change: t.change,
-          method: t.payment || "Cash",
-          cashier: t.user || "Maria Santos",
-          status: t.status || "Completed",
-        };
-      });
-      setShiftReceipts(mapped);
-    } catch {
-      // Keep existing receipts on error
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchTransactions();
-  }, []);
 
   // Compute live shift metrics
   const totalSales = shiftReceipts.reduce((sum, r) => sum + r.total, 0);

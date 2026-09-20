@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, Route, Switch, useLocation } from "wouter";
 import { Moon, Pill, Sun, UserCog, X } from "lucide-react";
 import { navGroups } from "@/lib/data";
 import type { ToastFn, UserRecord } from "@/lib/types";
+import { prefetchPharmacyData } from "@/lib/pharmacy-store";
 
 import DashboardPage from "@/pages/admin-dashboard";
 import CashierDashboardPage from "@/pages/cashier-dashboard";
@@ -36,6 +37,10 @@ export function AppShell({
 }) {
   const [location] = useLocation();
   const [showUserMenu, setShowUserMenu] = useState(false);
+
+  useEffect(() => {
+    prefetchPharmacyData();
+  }, []);
   const roleKey = role.toLowerCase();
   const pageName =
     location === "/dashboard"

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   ArrowUpRight,
   BarChart3,
@@ -14,6 +14,7 @@ import { MovementLineGraph } from "@/components/custom-ui/movement-line-graph";
 import { ReportModal } from "@/components/custom-ui/report-modal";
 import { cashMismatches, movementFast, movementSlow } from "@/lib/data";
 import type { ReportType, ToastFn } from "@/lib/types";
+import { usePharmacyTransactions, usePharmacyInventory } from "@/lib/pharmacy-store";
 
 const formatPeso = (val: number) =>
   `₱${val.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -21,24 +22,9 @@ const formatPeso = (val: number) =>
 export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
   const [report, setReport] = useState<ReportType | null>(null);
   const [cashDetailRow, setCashDetailRow] = useState<number | null>(null);
-  const [transactions, setTransactions] = useState<any[]>([]);
-  const [inventoryProducts, setInventoryProducts] = useState<any[]>([]);
 
-  useEffect(() => {
-    fetch("/api/admin/transactions", { credentials: "include" })
-      .then((r) => (r.ok ? r.json() : []))
-      .then((data) => {
-        if (Array.isArray(data)) setTransactions(data);
-      })
-      .catch(() => {});
-
-    fetch("/api/inventory", { credentials: "include" })
-      .then((r) => (r.ok ? r.json() : { products: [] }))
-      .then((data) => {
-        if (data && Array.isArray(data.products)) setInventoryProducts(data.products);
-      })
-      .catch(() => {});
-  }, []);
+  const { transactions } = usePharmacyTransactions();
+  const { items: inventoryProducts } = usePharmacyInventory();
 
   const liveDailySales = transactions.reduce((sum, t) => {
     const val = parseFloat(String(t.total || "0").replace("₱", "").replace(/,/g, "")) || 0;
@@ -89,16 +75,16 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
       <section className="kpi-grid">
         <Kpi
           label="Daily sales"
-          value={liveTxCount > 0 ? formatPeso(liveDailySales) : "₱45,250"}
-          change={liveTxCount > 0 ? `${liveTxCount} transactions logged` : "128 transactions"}
+          value={formatPeso(liveDailySales)}
+          change={`${liveTxCount} transactions logged`}
           icon={BarChart3}
           onClick={() => setReport("sales")}
           testId="card-report-sales"
         />
         <Kpi
           label="Inventory"
-          value={liveProductCount > 0 ? `${liveProductCount} products` : "850 products"}
-          change={liveProductCount > 0 ? `${liveLowStockCount} low stock` : "95 low stock"}
+          value={`${liveProductCount} products`}
+          change={`${liveLowStockCount} low stock`}
           icon={Package}
           onClick={() => setReport("inventory")}
           testId="card-report-inventory"
@@ -113,8 +99,8 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
         />
         <Kpi
           label="Stock value"
-          value={liveProductCount > 0 ? formatPeso(liveStockValuation) : "₱825,450"}
-          change={liveProductCount > 0 ? `${liveTotalStockUnits.toLocaleString()} units held` : "4,280 units held"}
+          value={formatPeso(liveStockValuation)}
+          change={`${liveTotalStockUnits.toLocaleString()} units held`}
           icon={Boxes}
           onClick={() => setReport("valuation")}
           testId="card-report-valuation"

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, type FormEvent, type ReactNode } from "rea
 import { createPortal } from "react-dom";
 import { Link } from "wouter";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
+import { usePharmacyInventory } from "@/lib/pharmacy-store";
 import {
   Activity,
   AlertCircle,
@@ -216,40 +217,11 @@ export default function InventoryPage({
   const canRecordStockIn = isAdmin || isCashier;
   const canRecordStockOut = isAdmin || isCashier;
 
-  // Inventory items state
-  const [items, setItems] = useState<ProductItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isBackendConnected, setIsBackendConnected] = useState(false);
+  // Inventory items state from shared pharmacy store
+  const { items, setItems, loading: isLoading, refresh: fetchInventory, isBackendConnected } = usePharmacyInventory();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All statuses");
   const [categoryFilter, setCategoryFilter] = useState("All categories");
-
-  // Fetch inventory from backend
-  const fetchInventory = async () => {
-    try {
-      setIsLoading(true);
-      const res = await fetch("http://localhost:5000/api/inventory");
-      const contentType = res.headers.get("content-type");
-      if (res.ok && contentType && contentType.includes("application/json")) {
-        const data = await res.json();
-        if (data.products && Array.isArray(data.products)) {
-          setItems(data.products);
-          setIsBackendConnected(true);
-          return;
-        }
-      }
-      setIsBackendConnected(false);
-    } catch (err) {
-      console.warn("Backend not reachable:", err);
-      setIsBackendConnected(false);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchInventory();
-  }, []);
 
   // Modals state
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);

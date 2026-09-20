@@ -14,27 +14,10 @@ import {
   X,
 } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
-import type { ProductItem, ToastFn } from "@/lib/types";
+import type { ProductItem, ToastFn, ShiftReceipt } from "@/lib/types";
+import { usePharmacyInventory, usePharmacyTransactions } from "@/lib/pharmacy-store";
 
-export interface ShiftReceipt {
-  id: string;
-  rawId?: number;
-  time: string;
-  dateTime: string;
-  items: number;
-  itemsList: { product: string; quantity: number; unitPrice: string; subtotal: string }[];
-  itemsSummary: string;
-  total: number;
-  totalFormatted: string;
-  subtotal: string;
-  vat: string;
-  discount: string;
-  amountReceived: string;
-  change: string;
-  method: string;
-  cashier: string;
-  status: string;
-}
+export type { ShiftReceipt };
 
 type CartItem = {
   id: string;
@@ -85,9 +68,9 @@ function getBatchAllocations(product: ProductItem, quantity: number) {
 }
 
 export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
-  const [products, setProducts] = useState<ProductItem[]>([]);
+  const { items: products, setItems: setProducts, refresh: fetchProducts, loading: isLoadingProducts } = usePharmacyInventory();
+  const { receipts, setReceipts, refresh: fetchTransactions } = usePharmacyTransactions();
   const [selectedProductId, setSelectedProductId] = useState("");
-  const [isLoadingProducts, setIsLoadingProducts] = useState(true);
   const [productLoadError, setProductLoadError] = useState("");
   const [productSearch, setProductSearch] = useState("");
   const [qty, setQty] = useState(1);
@@ -102,86 +85,12 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
   const [searchReceipt, setSearchReceipt] = useState("");
   const [showShiftModal, setShowShiftModal] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<ShiftReceipt | null>(null);
-  const [receipts, setReceipts] = useState<ShiftReceipt[]>([]);
-
-  const fetchProducts = async () => {
-    try {
-      setIsLoadingProducts(true);
-      setProductLoadError("");
-      const response = await fetch("/api/inventory", {
-        credentials: "include",
-      });
-      const contentType = response.headers.get("content-type");
-      if (!response.ok || !contentType?.includes("application/json")) {
-        throw new Error("Inventory API unavailable");
-      }
-      const data = await response.json();
-      const liveProducts = Array.isArray(data.products) ? data.products : [];
-      setProducts(liveProducts);
-      setSelectedProductId((current) =>
-        current && liveProducts.some((product: ProductItem) => product.id === current)
-          ? current
-          : liveProducts[0]?.id || "",
-      );
-    } catch {
-      setProducts([]);
-      setSelectedProductId("");
-      setProductLoadError("No live inventory products available.");
-    } finally {
-      setIsLoadingProducts(false);
-    }
-  };
-
-  const fetchTransactions = async () => {
-    try {
-      const response = await fetch("/api/admin/transactions", {
-        credentials: "include",
-      });
-      if (!response.ok) return;
-      const data = await response.json();
-      if (!Array.isArray(data)) return;
-      const mapped: ShiftReceipt[] = data.map((t: any) => {
-        const totalNum =
-          parseFloat(String(t.total || "0").replace("₱", "").replace(",", "")) || 0;
-        const itemCount = Array.isArray(t.items)
-          ? t.items.reduce((sum: number, it: any) => sum + (Number(it.quantity) || 1), 0)
-          : 1;
-        const itemsSummary =
-          Array.isArray(t.items) && t.items.length > 0
-            ? t.items.map((it: any) => `${it.product} (${it.quantity})`).join(", ")
-            : `${itemCount} item(s)`;
-        return {
-          id: t.transactionNumber || `TRX-${t.id}`,
-          rawId: t.id,
-          time: t.dateTime
-            ? t.dateTime.split(", ")[1] || t.dateTime
-            : new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          dateTime: t.dateTime || new Date().toLocaleString(),
-          items: itemCount,
-          itemsList: t.items || [],
-          itemsSummary,
-          total: totalNum,
-          totalFormatted: t.total || formatPeso(totalNum),
-          subtotal: t.subtotal || formatPeso(totalNum / 1.12),
-          vat: t.vat || formatPeso(totalNum - totalNum / 1.12),
-          discount: t.discount || "₱0.00",
-          amountReceived: t.amountReceived || t.total || "₱0.00",
-          change: t.change || "₱0.00",
-          method: t.payment || "Cash",
-          cashier: t.user || "Cashier",
-          status: t.status || "Completed",
-        };
-      });
-      setReceipts(mapped);
-    } catch {
-      // Keep existing receipts
-    }
-  };
 
   useEffect(() => {
-    fetchProducts();
-    fetchTransactions();
-  }, []);
+    if (products.length > 0 && !selectedProductId) {
+      setSelectedProductId(products[0].id);
+    }
+  }, [products, selectedProductId]);
 
   const filteredProducts = products.filter((product) => {
     const q = productSearch.toLowerCase();

@@ -124,3 +124,23 @@ export interface UserActivity {
   description: string;
   flag: "Normal" | "Suspicious" | "Flagged";
 }
+
+export interface ShiftReceipt {
+  id: string;
+  rawId?: number;
+  time: string;
+  dateTime?: string;
+  items: number;
+  itemsList?: Array<{ product: string; quantity: number; unitPrice?: string; subtotal?: string }>;
+  itemsSummary: string;
+  total: number;
+  totalFormatted: string;
+  subtotal?: string;
+  vat?: string;
+  discount?: string;
+  amountReceived?: string;
+  change?: string;
+  method: string;
+  cashier: string;
+  status: string;
+}
