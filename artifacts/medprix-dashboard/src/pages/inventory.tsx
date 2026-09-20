@@ -32,7 +32,7 @@ import {
 } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import { Summary } from "@/components/custom-ui/summary-card";
-import { products, suppliers } from "@/lib/data";
+import { suppliers } from "@/lib/data";
 import type { ProductItem, ProductBatch, ToastFn } from "@/lib/types";
 
 function getBatchExpiryStatus(expiryDateStr: string, qty: number) {
@@ -184,12 +184,12 @@ export default function InventoryPage({
   const role = (
     currentRole ||
     localStorage.getItem("medprix-role") ||
-    "admin"
+    "Admin"
   ).toLowerCase();
 
-  const isAdmin = role === "admin";
-  const isFrontDesk = role === "frontdesk";
-  const isCashier = role === "cashier";
+  const isAdmin = role === "Admin";
+  const isFrontDesk = role === "FrontDesk";
+  const isCashier = role === "Cashier";
 
   const canViewAlerts = isAdmin || isFrontDesk;
   const canAddProduct = isAdmin || isFrontDesk;
@@ -200,8 +200,8 @@ export default function InventoryPage({
   const canRecordStockOut = isAdmin || isCashier;
 
   // Inventory items state
-  const [items, setItems] = useState<ProductItem[]>(products);
-  const [isLoading, setIsLoading] = useState(false);
+  const [items, setItems] = useState<ProductItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [isBackendConnected, setIsBackendConnected] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All statuses");
@@ -249,6 +249,8 @@ export default function InventoryPage({
     sku: "",
     category: "Pain relief",
     price: "₱",
+    cost: "₱",
+    isDangerousDrug: false,
     reorder: "20",
     batchNumber: "B2026-01",
     quantity: "50",
@@ -264,6 +266,8 @@ export default function InventoryPage({
     sku: "",
     category: "Pain relief",
     price: "",
+    cost: "",
+    isDangerousDrug: false,
     reorder: "",
   });
 
@@ -401,6 +405,8 @@ export default function InventoryPage({
       sku: `MED-${Math.floor(1000 + Math.random() * 9000)}`,
       category: "Pain relief",
       price: "₱10.00",
+      cost: "₱6.00",
+      isDangerousDrug: false,
       reorder: "20",
       batchNumber: `B${new Date().getFullYear()}-${Math.floor(10 + Math.random() * 90)}`,
       quantity: "50",
@@ -423,6 +429,10 @@ export default function InventoryPage({
       ? newProd.price
       : `₱${parseFloat(newProd.price.replace(/[^\d.]/g, "") || "0").toFixed(2)}`;
 
+    const costFormatted = newProd.cost.startsWith("₱")
+      ? newProd.cost
+      : `₱${parseFloat(newProd.cost.replace(/[^\d.]/g, "") || "0").toFixed(2)}`;
+
     const parsedQty = parseInt(newProd.quantity, 10) || 0;
     const parsedReorder = parseInt(newProd.reorder, 10) || 10;
 
@@ -432,6 +442,8 @@ export default function InventoryPage({
       sku: newProd.sku.trim().toUpperCase(),
       category: newProd.category,
       price: priceFormatted,
+      costPrice: costFormatted,
+      isDangerousDrug: newProd.isDangerousDrug,
       reorder: parsedReorder,
       batchNumber: newProd.batchNumber.trim().toUpperCase() || "B001",
       quantity: parsedQty,
@@ -447,40 +459,20 @@ export default function InventoryPage({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (res.ok) {
-        await fetchInventory();
-        setIsAddProductOpen(false);
-        onToast(`Added product "${payload.name}" with initial batch`);
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        onToast(data?.error || "Failed to add product");
         return;
       }
+
+      await fetchInventory();
+      setIsAddProductOpen(false);
+      onToast(`Added product "${payload.name}" with initial batch`);
     } catch (err) {
-      console.warn("Backend save failed, falling back to local state:", err);
+      console.error("Add product failed:", err);
+      onToast("Couldn't reach the server. Product was not saved.");
     }
-
-    // Fallback local update
-    const newProductItem: ProductItem = {
-      id: `p${items.length + 1}-${Date.now()}`,
-      name: payload.name,
-      genericName: payload.genericName,
-      sku: payload.sku,
-      category: payload.category,
-      price: payload.price,
-      reorder: payload.reorder,
-      batches: [
-        {
-          batchNumber: payload.batchNumber,
-          quantity: payload.quantity,
-          expiryDate: payload.expiryDate,
-          mfgDate: payload.mfgDate,
-          dateReceived: payload.dateReceived,
-          supplier: payload.supplier,
-        },
-      ],
-    };
-
-    setItems([newProductItem, ...items]);
-    setIsAddProductOpen(false);
-    onToast(`Added product "${newProductItem.name}" with initial batch`);
   };
 
   const handleOpenEditProduct = (product: ProductItem) => {
@@ -490,6 +482,8 @@ export default function InventoryPage({
       sku: product.sku,
       category: product.category,
       price: product.price,
+      cost: product.cost,
+      isDangerousDrug: product.isDangerousDrug,
       reorder: String(product.reorder),
     });
     setEditProduct(product);
@@ -503,12 +497,18 @@ export default function InventoryPage({
       ? editProdData.price
       : `₱${parseFloat(editProdData.price.replace(/[^\d.]/g, "") || "0").toFixed(2)}`;
 
+    const costFormatted = editProdData.cost.startsWith("₱")
+      ? editProdData.cost
+      : `₱${parseFloat(editProdData.cost.replace(/[^\d.]/g, "") || "0").toFixed(2)}`;
+
     const payload = {
       name: editProdData.name.trim(),
       genericName: editProdData.genericName.trim(),
       sku: editProdData.sku.trim().toUpperCase(),
       category: editProdData.category,
       price: priceFormatted,
+      costPrice: costFormatted,
+      isDangerousDrug: editProdData.isDangerousDrug,
       reorder: parseInt(editProdData.reorder, 10) || 10,
     };
 
@@ -518,33 +518,20 @@ export default function InventoryPage({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (res.ok) {
-        await fetchInventory();
-        setEditProduct(null);
-        onToast(`Updated product details for "${editProdData.name}"`);
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        onToast(data?.error || "Failed to update product");
         return;
       }
+
+      await fetchInventory();
+      setEditProduct(null);
+      onToast(`Updated product details for "${editProdData.name}"`);
     } catch (err) {
-      console.warn("Backend edit failed, falling back to local state:", err);
+      console.error("Edit product failed:", err);
+      onToast("Couldn't reach the server. Changes were not saved.");
     }
-
-    const updated = items.map((p) =>
-      p.id === editProduct.id
-        ? {
-            ...p,
-            name: payload.name,
-            genericName: payload.genericName,
-            sku: payload.sku,
-            category: payload.category,
-            price: payload.price,
-            reorder: payload.reorder,
-          }
-        : p,
-    );
-
-    setItems(updated);
-    setEditProduct(null);
-    onToast(`Updated product details for "${editProdData.name}"`);
   };
 
   const handleOpenAddBatch = (product: ProductItem) => {
@@ -567,7 +554,7 @@ export default function InventoryPage({
     }
 
     const parsedQty = parseInt(newBatchData.quantity, 10) || 0;
-    const newBatch: ProductBatch = {
+    const newBatch = {
       batchNumber: newBatchData.batchNumber.trim().toUpperCase(),
       quantity: parsedQty,
       expiryDate: newBatchData.expiryDate || "2028-06-30",
@@ -582,32 +569,20 @@ export default function InventoryPage({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newBatch),
       });
-      if (res.ok) {
-        await fetchInventory();
-        setBatchProduct(null);
-        onToast(
-          `Added batch ${newBatch.batchNumber} (${parsedQty} units) to ${batchProduct.name}`,
-        );
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        onToast(data?.error || "Failed to add batch");
         return;
       }
+
+      await fetchInventory();
+      setBatchProduct(null);
+      onToast(`Added batch ${newBatch.batchNumber} (${parsedQty} units) to ${batchProduct.name}`);
     } catch (err) {
-      console.warn("Backend batch addition failed, falling back to local state:", err);
+      console.error("Add batch failed:", err);
+      onToast("Couldn't reach the server. Batch was not saved.");
     }
-
-    const updated = items.map((p) =>
-      p.id === batchProduct.id
-        ? {
-            ...p,
-            batches: [...p.batches, newBatch],
-          }
-        : p,
-    );
-
-    setItems(updated);
-    setBatchProduct(null);
-    onToast(
-      `Added batch ${newBatch.batchNumber} (${parsedQty} units) to ${batchProduct.name}`,
-    );
   };
 
   const handleOpenStockIn = (product: ProductItem) => {
@@ -640,46 +615,20 @@ export default function InventoryPage({
           date: stockInData.date,
         }),
       });
-      if (res.ok) {
-        await fetchInventory();
-        setStockInProduct(null);
-        onToast(
-          `Stock In recorded: +${qty} units added to ${stockInProduct.name} (${stockInData.reason})`,
-        );
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        onToast(data?.error || "Failed to record stock in");
         return;
       }
+
+      await fetchInventory();
+      setStockInProduct(null);
+      onToast(`Stock In recorded: +${qty} units added to ${stockInProduct.name} (${stockInData.reason})`);
     } catch (err) {
-      console.warn("Backend stock in failed, falling back to local state:", err);
+      console.error("Stock in failed:", err);
+      onToast("Couldn't reach the server. Stock in was not recorded.");
     }
-
-    const updated = items.map((p) => {
-      if (p.id !== stockInProduct.id) return p;
-      const targetBatchIndex = p.batches.findIndex(
-        (b) => b.batchNumber === stockInData.batchNumber,
-      );
-
-      let newBatches = [...p.batches];
-      if (targetBatchIndex > -1) {
-        newBatches[targetBatchIndex] = {
-          ...newBatches[targetBatchIndex],
-          quantity: newBatches[targetBatchIndex].quantity + qty,
-        };
-      } else {
-        newBatches.push({
-          batchNumber: stockInData.batchNumber.trim().toUpperCase() || "B-NEW",
-          quantity: qty,
-          expiryDate: "2028-12-31",
-          dateReceived: stockInData.date,
-        });
-      }
-      return { ...p, batches: newBatches };
-    });
-
-    setItems(updated);
-    setStockInProduct(null);
-    onToast(
-      `Stock In recorded: +${qty} units added to ${stockInProduct.name} (${stockInData.reason})`,
-    );
   };
 
   const handleOpenStockOut = (product: ProductItem) => {
@@ -710,9 +659,7 @@ export default function InventoryPage({
     );
 
     if (!targetBatch || targetBatch.quantity < qty) {
-      onToast(
-        `Insufficient batch stock. Available in ${stockOutData.batchNumber}: ${targetBatch?.quantity || 0} units`,
-      );
+      onToast(`Insufficient batch stock. Available in ${stockOutData.batchNumber}: ${targetBatch?.quantity || 0} units`);
       return;
     }
 
@@ -726,33 +673,20 @@ export default function InventoryPage({
           reason: stockOutData.reason,
         }),
       });
-      if (res.ok) {
-        await fetchInventory();
-        setStockOutProduct(null);
-        onToast(
-          `Stock Out recorded: -${qty} units removed from ${stockOutProduct.name} (${stockOutData.reason})`,
-        );
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        onToast(data?.error || "Failed to record stock out");
         return;
       }
+
+      await fetchInventory();
+      setStockOutProduct(null);
+      onToast(`Stock Out recorded: -${qty} units removed from ${stockOutProduct.name} (${stockOutData.reason})`);
     } catch (err) {
-      console.warn("Backend stock out failed, falling back to local state:", err);
+      console.error("Stock out failed:", err);
+      onToast("Couldn't reach the server. Stock out was not recorded.");
     }
-
-    const updated = items.map((p) => {
-      if (p.id !== stockOutProduct.id) return p;
-      const newBatches = p.batches.map((b) =>
-        b.batchNumber === stockOutData.batchNumber
-          ? { ...b, quantity: Math.max(0, b.quantity - qty) }
-          : b,
-      );
-      return { ...p, batches: newBatches };
-    });
-
-    setItems(updated);
-    setStockOutProduct(null);
-    onToast(
-      `Stock Out recorded: -${qty} units removed from ${stockOutProduct.name} (${stockOutData.reason})`,
-    );
   };
 
   return (
@@ -1072,230 +1006,244 @@ export default function InventoryPage({
         </div>
 
         <div className="table-scroll">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Product</th>
-                <th>Product Code</th>
-                <th>Category</th>
-                <th style={{ textAlign: "right" }}>Price</th>
-                <th style={{ textAlign: "right" }}>Current Stock</th>
-                <th>Batch Number</th>
-                <th>Expiry Date</th>
-                <th>Stock Status</th>
-                <th style={{ textAlign: "right" }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((product) => {
-                const info = getProductStatusData(product);
+          {isLoading && items.length === 0 ? (
+            <div className="empty-state">
+              <RefreshCw size={25} className="animate-spin" />
+              <div>Loading inventory…</div>
+            </div>
+          ) : (
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Product Code</th>
+                  <th>Category</th>
+                  <th style={{ textAlign: "right" }}>Price</th>
+                  <th style={{ textAlign: "right" }}>Current Stock</th>
+                  <th>Batch Number</th>
+                  <th>Expiry Date</th>
+                  <th>Stock Status</th>
+                  <th style={{ textAlign: "right" }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((product) => {
+                  const info = getProductStatusData(product);
 
-                return (
-                  <tr key={product.id} data-testid={`row-product-${product.id}`}>
-                    <td>
-                      <div className="product-cell">
-                        <span className="product-symbol">
-                          <Package size={15} />
-                        </span>
-                        <div>
-                          <strong>{product.name}</strong>
-                          <div className="muted" style={{ fontSize: 10 }}>
-                            {product.genericName}
+                  return (
+                    <tr key={product.id} data-testid={`row-product-${product.id}`}>
+                      <td>
+                        <div className="product-cell">
+                          <span className="product-symbol">
+                            <Package size={15} />
+                          </span>
+                          <div>
+                            <strong>{product.name}</strong>
+                            {product.isDangerousDrug && (
+                              <span
+                                className="pill danger"
+                                style={{ fontSize: 8, padding: "1px 5px", marginLeft: 6 }}>
+                                DD
+                              </span>
+                            )}
+                            <div className="muted" style={{ fontSize: 10 }}>
+                              {product.genericName}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </td>
-                    <td>
-                      <span
-                        style={{
-                          fontFamily: "monospace",
-                          fontSize: 11,
-                          fontWeight: 600,
-                        }}>
-                        {product.sku}
-                      </span>
-                    </td>
-                    <td className="muted">{product.category}</td>
-                    <td style={{ textAlign: "right" }}>
-                      <strong>{product.price}</strong>
-                    </td>
-                    <td style={{ textAlign: "right" }}>
-                      <strong
-                        style={{
-                          color:
-                            info.stock === 0
-                              ? "#ef4444"
-                              : info.isLowStock
-                                ? "#b45309"
-                                : undefined,
-                        }}>
-                        {info.stock}
-                      </strong>{" "}
-                      <span className="muted">units</span>
-                    </td>
-                    <td>
-                      <div style={{ fontSize: 11 }}>
-                        {product.batches.length === 1 ? (
-                          <span>
-                            {product.batches[0].batchNumber} (
-                            {product.batches[0].quantity}u)
-                          </span>
-                        ) : (
-                          <span
-                            title={product.batches
-                              .map((b) => `${b.batchNumber}: ${b.quantity}u`)
-                              .join(", ")}>
-                            {product.batches[0]?.batchNumber} +
-                            {product.batches.length - 1} more
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td>
-                      <div style={{ fontSize: 11 }}>
+                      </td>
+                      <td>
                         <span
                           style={{
-                            color: info.isExpired
-                              ? "#dc2626"
-                              : info.isExpiringSoon
-                                ? "#b45309"
-                                : undefined,
-                            fontWeight:
-                              info.isExpired || info.isExpiringSoon
-                                ? 600
-                                : 400,
+                            fontFamily: "monospace",
+                            fontSize: 11,
+                            fontWeight: 600,
                           }}>
-                          {info.primaryExpiry}
+                          {product.sku}
                         </span>
-                      </div>
-                    </td>
-                    <td>
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: 4,
-                          flexWrap: "wrap",
-                          alignItems: "center",
-                        }}>
-                        {info.badges.map((badge, idx) => (
+                      </td>
+                      <td className="muted">{product.category}</td>
+                      <td style={{ textAlign: "right" }}>
+                        <strong>{product.price}</strong>
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        <strong
+                          style={{
+                            color:
+                              info.stock === 0
+                                ? "#ef4444"
+                                : info.isLowStock
+                                  ? "#b45309"
+                                  : undefined,
+                          }}>
+                          {info.stock}
+                        </strong>{" "}
+                        <span className="muted">units</span>
+                      </td>
+                      <td>
+                        <div style={{ fontSize: 11 }}>
+                          {product.batches.length === 1 ? (
+                            <span>
+                              {product.batches[0].batchNumber} (
+                              {product.batches[0].quantity}u)
+                            </span>
+                          ) : (
+                            <span
+                              title={product.batches
+                                .map((b) => `${b.batchNumber}: ${b.quantity}u`)
+                                .join(", ")}>
+                              {product.batches[0]?.batchNumber} +
+                              {product.batches.length - 1} more
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td>
+                        <div style={{ fontSize: 11 }}>
                           <span
-                            key={idx}
-                            className={`pill ${badge.tone}`}
-                            style={{ fontSize: 10, padding: "2px 8px" }}>
-                            {badge.label}
+                            style={{
+                              color: info.isExpired
+                                ? "#dc2626"
+                                : info.isExpiringSoon
+                                  ? "#b45309"
+                                  : undefined,
+                              fontWeight:
+                                info.isExpired || info.isExpiringSoon
+                                  ? 600
+                                  : 400,
+                            }}>
+                            {info.primaryExpiry}
                           </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td style={{ textAlign: "right" }}>
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: 6,
-                          justifyContent: "flex-end",
-                          alignItems: "center",
-                          whiteSpace: "nowrap",
-                        }}>
-                        {/* View Details - ALL 3 ROLES */}
-                        <button
-                          type="button"
-                          className="button soft"
-                          style={{ padding: "4px 8px", fontSize: 11 }}
-                          onClick={() => setViewProduct(product)}
-                          title="View product & batches"
-                          data-testid={`button-view-${product.id}`}>
-                          <Eye size={12} /> View
-                        </button>
+                        </div>
+                      </td>
+                      <td>
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 4,
+                            flexWrap: "wrap",
+                            alignItems: "center",
+                          }}>
+                          {info.badges.map((badge, idx) => (
+                            <span
+                              key={idx}
+                              className={`pill ${badge.tone}`}
+                              style={{ fontSize: 10, padding: "2px 8px" }}>
+                              {badge.label}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 6,
+                            justifyContent: "flex-end",
+                            alignItems: "center",
+                            whiteSpace: "nowrap",
+                          }}>
+                          {/* View Details - ALL 3 ROLES */}
+                          <button
+                            type="button"
+                            className="button soft"
+                            style={{ padding: "4px 8px", fontSize: 11 }}
+                            onClick={() => setViewProduct(product)}
+                            title="View product & batches"
+                            data-testid={`button-view-${product.id}`}>
+                            <Eye size={12} /> View
+                          </button>
 
-                        {/* More Action Dropdown - ADMIN, FRONT DESK, CASHIER */}
-                        {(canEditProduct || canAddBatch || canRecordStockIn || canRecordStockOut) && (
-                          <DropdownMenuPrimitive.Root>
-                            <DropdownMenuPrimitive.Trigger asChild>
-                              <button
-                                type="button"
-                                className="button soft"
-                                style={{
-                                  padding: "4px 8px",
-                                  fontSize: 11,
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: 4,
-                                }}
-                                title="More actions"
-                                data-testid={`button-more-action-${product.id}`}>
-                                More Action <ChevronDown size={12} />
-                              </button>
-                            </DropdownMenuPrimitive.Trigger>
+                          {/* More Action Dropdown - ADMIN, FRONT DESK, CASHIER */}
+                          {(canEditProduct || canAddBatch || canRecordStockIn || canRecordStockOut) && (
+                            <DropdownMenuPrimitive.Root>
+                              <DropdownMenuPrimitive.Trigger asChild>
+                                <button
+                                  type="button"
+                                  className="button soft"
+                                  style={{
+                                    padding: "4px 8px",
+                                    fontSize: 11,
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 4,
+                                  }}
+                                  title="More actions"
+                                  data-testid={`button-more-action-${product.id}`}>
+                                  More Action <ChevronDown size={12} />
+                                </button>
+                              </DropdownMenuPrimitive.Trigger>
 
-                            <DropdownMenuPrimitive.Portal>
-                              <DropdownMenuPrimitive.Content
-                                align="end"
-                                sideOffset={4}
-                                className="action-dropdown-menu">
-                                {/* Edit Product - ADMIN & FRONT DESK */}
-                                {canEditProduct && (
-                                  <DropdownMenuPrimitive.Item
-                                    className="action-dropdown-item"
-                                    onSelect={() => handleOpenEditProduct(product)}
-                                    title="Edit product information"
-                                    data-testid={`button-edit-${product.id}`}>
-                                    <Pencil size={12} /> Edit
-                                  </DropdownMenuPrimitive.Item>
-                                )}
+                              <DropdownMenuPrimitive.Portal>
+                                <DropdownMenuPrimitive.Content
+                                  align="end"
+                                  sideOffset={4}
+                                  className="action-dropdown-menu">
+                                  {/* Edit Product - ADMIN & FRONT DESK */}
+                                  {canEditProduct && (
+                                    <DropdownMenuPrimitive.Item
+                                      className="action-dropdown-item"
+                                      onSelect={() => handleOpenEditProduct(product)}
+                                      title="Edit product information"
+                                      data-testid={`button-edit-${product.id}`}>
+                                      <Pencil size={12} /> Edit
+                                    </DropdownMenuPrimitive.Item>
+                                  )}
 
-                                {/* Add Batch / Add Expiry Date - ADMIN & FRONT DESK */}
-                                {canAddBatch && (
-                                  <DropdownMenuPrimitive.Item
-                                    className="action-dropdown-item"
-                                    onSelect={() => handleOpenAddBatch(product)}
-                                    title={
-                                      canAddFullBatchInfo
-                                        ? "Add product batch information"
-                                        : "Add batch expiry date"
-                                    }
-                                    data-testid={`button-batch-${product.id}`}>
-                                    <Plus size={12} />{" "}
-                                    {canAddFullBatchInfo ? "Batch" : "Expiry"}
-                                  </DropdownMenuPrimitive.Item>
-                                )}
+                                  {/* Add Batch / Add Expiry Date - ADMIN & FRONT DESK */}
+                                  {canAddBatch && (
+                                    <DropdownMenuPrimitive.Item
+                                      className="action-dropdown-item"
+                                      onSelect={() => handleOpenAddBatch(product)}
+                                      title={
+                                        canAddFullBatchInfo
+                                          ? "Add product batch information"
+                                          : "Add batch expiry date"
+                                      }
+                                      data-testid={`button-batch-${product.id}`}>
+                                      <Plus size={12} />{" "}
+                                      {canAddFullBatchInfo ? "Batch" : "Expiry"}
+                                    </DropdownMenuPrimitive.Item>
+                                  )}
 
-                                {/* Stock In - ADMIN & CASHIER */}
-                                {canRecordStockIn && (
-                                  <DropdownMenuPrimitive.Item
-                                    className="action-dropdown-item"
-                                    onSelect={() => handleOpenStockIn(product)}
-                                    title="Record Stock In"
-                                    data-testid={`button-stock-in-${product.id}`}>
-                                    <ArrowDownLeft size={12} /> In
-                                  </DropdownMenuPrimitive.Item>
-                                )}
+                                  {/* Stock In - ADMIN & CASHIER */}
+                                  {canRecordStockIn && (
+                                    <DropdownMenuPrimitive.Item
+                                      className="action-dropdown-item"
+                                      onSelect={() => handleOpenStockIn(product)}
+                                      title="Record Stock In"
+                                      data-testid={`button-stock-in-${product.id}`}>
+                                      <ArrowDownLeft size={12} /> In
+                                    </DropdownMenuPrimitive.Item>
+                                  )}
 
-                                {/* Stock Out - ADMIN & CASHIER */}
-                                {canRecordStockOut && (
-                                  <DropdownMenuPrimitive.Item
-                                    className="action-dropdown-item"
-                                    disabled={info.stock <= 0}
-                                    onSelect={() => {
-                                      if (info.stock > 0) handleOpenStockOut(product);
-                                    }}
-                                    title={info.stock <= 0 ? "Cannot Stock Out (0 stock)" : "Record Stock Out"}
-                                    data-testid={`button-stock-out-${product.id}`}>
-                                    <ArrowUpRight size={12} /> Out
-                                  </DropdownMenuPrimitive.Item>
-                                )}
-                              </DropdownMenuPrimitive.Content>
-                            </DropdownMenuPrimitive.Portal>
-                          </DropdownMenuPrimitive.Root>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                                  {/* Stock Out - ADMIN & CASHIER */}
+                                  {canRecordStockOut && (
+                                    <DropdownMenuPrimitive.Item
+                                      className="action-dropdown-item"
+                                      disabled={info.stock <= 0}
+                                      onSelect={() => {
+                                        if (info.stock > 0) handleOpenStockOut(product);
+                                      }}
+                                      title={info.stock <= 0 ? "Cannot Stock Out (0 stock)" : "Record Stock Out"}
+                                      data-testid={`button-stock-out-${product.id}`}>
+                                      <ArrowUpRight size={12} /> Out
+                                    </DropdownMenuPrimitive.Item>
+                                  )}
+                                </DropdownMenuPrimitive.Content>
+                              </DropdownMenuPrimitive.Portal>
+                            </DropdownMenuPrimitive.Root>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
 
-          {filtered.length === 0 && (
+          {!isLoading && filtered.length === 0 && (
             <div className="empty-state">
               <Package size={25} />
               <div>No products match that search or filter.</div>
@@ -1322,6 +1270,13 @@ export default function InventoryPage({
                   <p className="modal-sub">
                     Generic: {viewProduct.genericName} • Code: {viewProduct.sku}
                   </p>
+                  {viewProduct.isDangerousDrug && (
+                    <span
+                      className="pill danger"
+                      style={{ fontSize: 9, padding: "2px 8px", marginTop: 4, display: "inline-block" }}>
+                      DANGEROUS DRUG
+                    </span>
+                  )}
                 </div>
                 <button
                   type="button"
@@ -1357,11 +1312,22 @@ export default function InventoryPage({
                     border: "1px solid hsl(var(--border))",
                     padding: "10px 14px",
                     borderRadius: 11,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "6px"
                   }}>
-                  <div className="muted" style={{ fontSize: 10, fontWeight: 600 }}>
-                    Unit Price
+                  <div>
+                    <div className="muted" style={{ fontSize: 10, fontWeight: 600 }}>
+                      Unit Price
+                    </div>
+                    <strong style={{ fontSize: 13 }}>{viewProduct.price}</strong>
                   </div>
-                  <strong style={{ fontSize: 13 }}>{viewProduct.price}</strong>
+                  <div>
+                    <div className="muted" style={{ fontSize: 10, fontWeight: 600 }}>
+                      Cost Price
+                    </div>
+                    <strong style={{ fontSize: 13 }}>{viewProduct.cost}</strong>
+                  </div>
                 </div>
                 <div
                   style={{
@@ -1547,6 +1513,17 @@ export default function InventoryPage({
                     />
                   </div>
                   <div className="field">
+                    <label>Cost Price *</label>
+                    <input
+                      required
+                      placeholder="₱6.00"
+                      value={newProd.cost}
+                      onChange={(e) =>
+                        setNewProd({ ...newProd, cost: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="field">
                     <label>Reorder Level *</label>
                     <input
                       type="number"
@@ -1557,6 +1534,19 @@ export default function InventoryPage({
                         setNewProd({ ...newProd, reorder: e.target.value })
                       }
                     />
+                  </div>
+                  <div className="field full-width" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      id="new-product-dangerous"
+                      checked={newProd.isDangerousDrug}
+                      onChange={(e) =>
+                        setNewProd({ ...newProd, isDangerousDrug: e.target.checked })
+                      }
+                    />
+                    <label htmlFor="new-product-dangerous" style={{ margin: 0 }}>
+                      Dangerous Drug (requires controlled tracking)
+                    </label>
                   </div>
                 </div>
 
@@ -1739,6 +1729,16 @@ export default function InventoryPage({
                     />
                   </div>
                   <div className="field">
+                    <label>Cost Price (₱) *</label>
+                    <input
+                      required
+                      value={editProdData.cost}
+                      onChange={(e) =>
+                        setEditProdData({ ...editProdData, cost: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="field">
                     <label>Reorder Level *</label>
                     <input
                       type="number"
@@ -1752,6 +1752,19 @@ export default function InventoryPage({
                         })
                       }
                     />
+                  </div>
+                  <div className="field full-width" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      id="edit-product-dangerous"
+                      checked={editProdData.isDangerousDrug}
+                      onChange={(e) =>
+                        setEditProdData({ ...editProdData, isDangerousDrug: e.target.checked })
+                      }
+                    />
+                    <label htmlFor="edit-product-dangerous" style={{ margin: 0 }}>
+                      Dangerous Drug (requires controlled tracking)
+                    </label>
                   </div>
                 </div>
 
