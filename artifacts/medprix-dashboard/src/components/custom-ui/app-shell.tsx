@@ -40,8 +40,8 @@ export function AppShell({
     location === "/dashboard"
       ? "Dashboard"
       : (navGroups
-          .flatMap((group) => group.items)
-          .find((item) => item.href === location)?.label ?? "Dashboard");
+        .flatMap((group) => group.items)
+        .find((item) => item.href === location)?.label ?? "Dashboard");
 
   const storedFullName = localStorage.getItem("medprix-fullname");
   const storedUsername = localStorage.getItem("medprix-username");
@@ -53,9 +53,9 @@ export function AppShell({
     .slice(0, 2)
     .toUpperCase();
   const displayTitle =
-    role === "admin"
+    role === "Admin"
       ? "Administrator"
-      : role === "frontdesk"
+      : role === "FrontDesk"
         ? "Front Desk"
         : "Cashier";
   const currentUser = {

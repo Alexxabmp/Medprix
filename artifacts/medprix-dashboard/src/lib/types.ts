@@ -11,7 +11,7 @@ export type ReportType =
   | "cash";
 
 export interface UserRecord {
-  id: number;
+  id: string;
   initials: string;
   name: string;
   username: string;
@@ -37,6 +37,8 @@ export interface ProductItem {
   sku: string;
   category: string;
   price: string;
+  cost: string;
+  isDangerousDrug: boolean;
   reorder: number;
   batches: ProductBatch[];
   stock?: number;

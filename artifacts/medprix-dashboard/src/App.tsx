@@ -63,19 +63,19 @@ function AppContent() {
             name,
             username: user.username,
             role:
-              user.role === "admin"
+              user.role === "Admin"
                 ? "Administrator"
-                : user.role === "frontdesk"
+                : user.role === "FrontDesk"
                   ? "Front Desk"
                   : "Cashier",
             status: user.isActive === false ? "Inactive" : "Active",
             lastActive: user.lastLogin
               ? new Date(user.lastLogin).toLocaleString([], {
-                  month: "short",
-                  day: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
+                month: "short",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
               : "Never",
             phone: user.contactNumber || "",
           };
@@ -88,7 +88,7 @@ function AppContent() {
   };
 
   useEffect(() => {
-    if (!session || role !== "admin") return;
+    if (!session || role !== "Admin") return;
     fetchUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, role]);
@@ -163,7 +163,7 @@ function AppContent() {
             fetch("http://localhost:5000/api/logout", {
               method: "POST",
               credentials: "include",
-            }).catch(() => {});
+            }).catch(() => { });
             localStorage.removeItem("medprix-session");
             localStorage.removeItem("medprix-role");
             localStorage.removeItem("medprix-username");

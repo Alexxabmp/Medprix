@@ -5,8 +5,8 @@ import {
   readSessionCookie,
   verifySessionToken,
   type SessionUser,
-  type UserRole,
 } from "../lib/session";
+import type { UserRoleEnum } from "@workspace/db/schema";
 
 declare global {
   namespace Express {
@@ -41,14 +41,14 @@ export async function requireAuth(
       return res.status(401).json({ error: "Authentication required." });
     }
 
-    res.locals.user = user;
+    res.locals.user = user as SessionUser;
     return next();
   } catch {
     return res.status(500).json({ error: "Authentication check failed." });
   }
 }
 
-export function requireRole(role: UserRole) {
+export function requireRole(role: UserRoleEnum) {
   return (req: Request, res: Response, next: NextFunction) => {
     if (res.locals.user?.role !== role) {
       return res.status(403).json({ error: "Insufficient permissions." });

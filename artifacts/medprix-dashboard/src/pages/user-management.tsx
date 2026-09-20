@@ -101,10 +101,10 @@ export default function UserManagementPage({
     if (dialog === "create") {
       const dbRole =
         draft.role === "Administrator"
-          ? "admin"
+          ? "Admin"
           : draft.role === "Front Desk"
-            ? "frontdesk"
-            : "cashier";
+            ? "FrontDesk"
+            : "Cashier";
       try {
         const response = await fetch("http://localhost:5000/api/users", {
           method: "POST",
@@ -132,7 +132,7 @@ export default function UserManagementPage({
         setUsers([
           ...users,
           {
-            id: data.id || Date.now(),
+            id: data.id,
             initials,
             name: draft.name,
             username: draft.username,
@@ -150,10 +150,10 @@ export default function UserManagementPage({
     } else if (selected) {
       const dbRole =
         draft.role === "Administrator"
-          ? "admin"
+          ? "Admin"
           : draft.role === "Front Desk"
-            ? "frontdesk"
-            : "cashier";
+            ? "FrontDesk"
+            : "Cashier";
       try {
         const response = await fetch(
           `http://localhost:5000/api/users/${selected.id}`,
@@ -162,6 +162,7 @@ export default function UserManagementPage({
             credentials: "include",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
+              username: draft.username,
               role: dbRole,
               fullName: draft.name,
               contactNumber: draft.phone,
@@ -181,18 +182,18 @@ export default function UserManagementPage({
         users.map((user) =>
           user.id === selected.id
             ? {
-                ...user,
-                name: draft.name,
-                username: draft.username,
-                role: draft.role,
-                phone: draft.phone,
-                initials: draft.name
-                  .split(" ")
-                  .map((part) => part[0])
-                  .join("")
-                  .slice(0, 2)
-                  .toUpperCase(),
-              }
+              ...user,
+              name: draft.name,
+              username: draft.username,
+              role: draft.role,
+              phone: draft.phone,
+              initials: draft.name
+                .split(" ")
+                .map((part) => part[0])
+                .join("")
+                .slice(0, 2)
+                .toUpperCase(),
+            }
             : user,
         ),
       );
@@ -202,14 +203,34 @@ export default function UserManagementPage({
     setDialog(null);
     return;
   };
-  const remove = (user: UserRecord) => {
-    if (window.confirm(`Remove ${user.name} from Medprix?`)) {
+  const remove = async (user: UserRecord) => {
+    if (!window.confirm(`Remove ${user.name} from Medprix?`)) return;
+
+    try {
+      const response = await fetch(
+        `http://localhost:5000/api/users/${user.id}`,
+        {
+          method: "DELETE",
+          credentials: "include",
+        },
+      );
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        onToast(data.error ?? "Failed to delete user.");
+        return;
+      }
+
       setUsers(users.filter((item) => item.id !== user.id));
       onToast("User account removed");
+    } catch {
+      onToast("Could not reach the server.");
     }
   };
-  const reset = (event: FormEvent) => {
+  const reset = async (event: FormEvent) => {
     event.preventDefault();
+    if (!selected) return;
     if (password.length < 8) {
       setResetError("Password must be at least 8 characters.");
       return;
@@ -218,13 +239,31 @@ export default function UserManagementPage({
       setResetError("Passwords do not match.");
       return;
     }
-    setResetError("");
-    setDialog(null);
-    setPassword("");
-    setConfirmPassword("");
-    setShowPassword(false);
-    setShowConfirmPassword(false);
-    onToast(`Password successfully updated for ${selected?.name}`);
+    try {
+      const response = await fetch(
+        `http://localhost:5000/api/users/${selected.id}/password`,
+        {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password }),
+        },
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setResetError(data.error ?? "Failed to reset password.");
+        return;
+      }
+      setResetError("");
+      setDialog(null);
+      setPassword("");
+      setConfirmPassword("");
+      setShowPassword(false);
+      setShowConfirmPassword(false);
+      onToast(`Password successfully updated for ${selected.name}`);
+    } catch {
+      setResetError("Could not reach the server.");
+    }
   };
   const shown = users.filter((user) =>
     `${user.name} ${user.username} ${user.role}`
@@ -271,7 +310,7 @@ export default function UserManagementPage({
             <input
               data-testid="input-user-search"
               type="search"
-              placeholder="Search name, email, or role..."
+              placeholder="Search name or role..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -323,14 +362,15 @@ export default function UserManagementPage({
                       style={{ height: 30, padding: "0 8px" }}
                       data-testid={`select-role-${user.id}`}
                       value={user.role}
+                      disabled={user.username === localStorage.getItem("medprix-username")}
                       onChange={async (e) => {
                         const newRoleLabel = e.target.value;
                         const dbRole =
                           newRoleLabel === "Administrator"
-                            ? "admin"
+                            ? "Admin"
                             : newRoleLabel === "Front Desk"
-                              ? "frontdesk"
-                              : "cashier";
+                              ? "FrontDesk"
+                              : "Cashier";
                         try {
                           const response = await fetch(
                             `http://localhost:5000/api/users/${user.id}`,
@@ -379,7 +419,12 @@ export default function UserManagementPage({
                         data-testid={`toggle-status-${user.id}`}
                         aria-pressed={user.status === "Active"}
                         onClick={() => toggleStatus(user)}
-                        title={`Set ${user.status === "Active" ? "inactive" : "active"}`}>
+                        disabled={user.username === localStorage.getItem("medprix-username")}
+                        title={
+                          user.username === localStorage.getItem("medprix-username")
+                            ? "You cannot deactivate your own account"
+                            : `Set ${user.status === "Active" ? "inactive" : "active"}`
+                        }>
                         <span />
                       </button>
                     </div>
@@ -605,7 +650,7 @@ function UserDialog({
 
     const cleaned = draft.phone.trim();
     const phoneRegex = /^\+639\d{9}$/;
-    if (!phoneRegex.test(cleaned)) {
+    if (cleaned && !phoneRegex.test(cleaned)) {
       setFormError("Invalid phone number format.");
       return;
     }
