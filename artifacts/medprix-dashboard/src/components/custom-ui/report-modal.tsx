@@ -1,6 +1,7 @@
-﻿import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ArrowUpRight, Download, X } from "lucide-react";
+import { Link } from "wouter";
+import { ArrowUpRight, ClipboardList, Download, ShoppingCart, X } from "lucide-react";
 import { cashMismatches, movementFast, movementSlow, products } from "@/lib/data";
 import type { ReportType, ToastFn } from "@/lib/types";
 
@@ -355,7 +356,23 @@ export function ReportModal({
                     ? `Cash is ${row.difference.replace("-", "")} short. Review the register transactions before closing the shift.`
                     : `Cash is ${row.difference} over. Verify receipts and confirm no duplicate entries.`}
                 </div>
-                <div className="modal-actions">
+                <div className="modal-actions" style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                  <Link
+                    href="/review"
+                    className="button soft"
+                    style={{ display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none", fontSize: 12 }}
+                    onClick={onClose}
+                  >
+                    <ClipboardList size={13} /> Open Shift Review
+                  </Link>
+                  <Link
+                    href="/pos"
+                    className="button soft"
+                    style={{ display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none", fontSize: 12 }}
+                    onClick={onClose}
+                  >
+                    <ShoppingCart size={13} /> Open POS Register
+                  </Link>
                   <button
                     className="button dark"
                     data-testid="button-view-transactions"
@@ -372,7 +389,27 @@ export function ReportModal({
           })()}
 
         {type !== "cash" && (
-          <div className="modal-actions">
+          <div className="modal-actions" style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
+            {type === "sales" && (
+              <>
+                <Link
+                  href="/review"
+                  className="button soft"
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none", fontSize: 12 }}
+                  onClick={onClose}
+                >
+                  <ClipboardList size={13} /> Open Shift Review
+                </Link>
+                <Link
+                  href="/pos"
+                  className="button soft"
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none", fontSize: 12 }}
+                  onClick={onClose}
+                >
+                  <ShoppingCart size={13} /> Open POS Register
+                </Link>
+              </>
+            )}
             <button
               className="button dark"
               data-testid="button-export-report"

@@ -1,12 +1,16 @@
-﻿import { useState } from "react";
+import { useState, useEffect } from "react";
+import { Link } from "wouter";
 import {
   ArrowUpRight,
   BarChart3,
   Boxes,
   CalendarDays,
   CircleDollarSign,
+  ClipboardList,
   FileBarChart,
   Package,
+  ShieldCheck,
+  ShoppingCart,
 } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import { Kpi } from "@/components/custom-ui/kpi-card";
@@ -15,9 +19,28 @@ import { ReportModal } from "@/components/custom-ui/report-modal";
 import { cashMismatches, movementFast, movementSlow } from "@/lib/data";
 import type { ReportType, ToastFn } from "@/lib/types";
 
+const formatPeso = (val: number) =>
+  `₱${val.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
 export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
   const [report, setReport] = useState<ReportType | null>(null);
   const [cashDetailRow, setCashDetailRow] = useState<number | null>(null);
+  const [transactions, setTransactions] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch("/api/admin/transactions", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => {
+        if (Array.isArray(data)) setTransactions(data);
+      })
+      .catch(() => {});
+  }, []);
+
+  const liveDailySales = transactions.reduce((sum, t) => {
+    const val = parseFloat(String(t.total || "0").replace("₱", "").replace(/,/g, "")) || 0;
+    return sum + val;
+  }, 0);
+  const liveTxCount = transactions.length;
 
   return (
     <div>
@@ -41,8 +64,8 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
       <section className="kpi-grid">
         <Kpi
           label="Daily sales"
-          value="₱45,250"
-          change="128 transactions"
+          value={liveTxCount > 0 ? formatPeso(liveDailySales) : "₱45,250"}
+          change={liveTxCount > 0 ? `${liveTxCount} transactions logged` : "128 transactions"}
           icon={BarChart3}
           onClick={() => setReport("sales")}
           testId="card-report-sales"
@@ -71,6 +94,87 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
           onClick={() => setReport("valuation")}
           testId="card-report-valuation"
         />
+      </section>
+
+      {/* Cashier Account Operations Connection Card */}
+      <section
+        className="surface-card"
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 16,
+          padding: "16px 20px",
+          border: "1px solid hsl(var(--border))",
+          borderRadius: 16,
+          marginBottom: 16,
+          flexWrap: "wrap",
+        }}
+        data-testid="card-cashier-operations-link"
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: 12,
+              background: "hsl(var(--surface-soft))",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              border: "1px solid hsl(var(--border))",
+              flexShrink: 0,
+            }}
+          >
+            <ShoppingCart size={19} />
+          </div>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>Cashier Register &amp; Shift Review</h3>
+              <span className="pill success" style={{ fontSize: 10, padding: "2px 8px" }}>
+                <ShieldCheck size={11} style={{ marginRight: 3 }} /> Terminal #01 Active
+              </span>
+            </div>
+            <p className="muted" style={{ margin: "2px 0 0", fontSize: 11 }}>
+              {liveTxCount > 0
+                ? `${liveTxCount} receipt(s) completed today (${formatPeso(liveDailySales)}) · Connected to Cashier operations.`
+                : "Open live cashier POS checkout terminal or review register till balances and receipts."}
+            </p>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <Link
+            href="/pos"
+            className="button soft"
+            style={{
+              fontSize: 12,
+              padding: "7px 14px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              textDecoration: "none",
+            }}
+            title="Open Cashier POS Dashboard"
+          >
+            <ShoppingCart size={13} /> Open Cashier POS
+          </Link>
+          <Link
+            href="/review"
+            className="button dark"
+            style={{
+              fontSize: 12,
+              padding: "7px 14px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              textDecoration: "none",
+            }}
+            title="Open Shift Review & Register Operations"
+          >
+            <ClipboardList size={13} /> Open Shift Review
+          </Link>
+        </div>
       </section>
 
       {/* Bar chart box — product movement */}
@@ -114,13 +218,30 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
               <h2 className="card-title">Cash mismatch</h2>
               <p className="card-subtitle">2 inconsistencies detected</p>
             </div>
-            <button
-              className="button soft"
-              data-testid="card-report-cash"
-              onClick={() => setReport("cash")}
-            >
-              View alerts
-            </button>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <Link
+                href="/review"
+                className="button soft"
+                style={{
+                  fontSize: 11,
+                  padding: "5px 10px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  textDecoration: "none",
+                }}
+                title="Inspect Till and Cash in Drawer in Shift Review"
+              >
+                <ClipboardList size={12} /> Shift Review
+              </Link>
+              <button
+                className="button soft"
+                data-testid="card-report-cash"
+                onClick={() => setReport("cash")}
+              >
+                View alerts
+              </button>
+            </div>
           </div>
           {cashMismatches.map((row, index) => (
             <div className="list-row" key={row.date + row.shift}>

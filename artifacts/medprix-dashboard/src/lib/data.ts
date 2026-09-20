@@ -1,4 +1,4 @@
-﻿import {
+import {
   Boxes,
   Building2,
   ClipboardList,
@@ -33,7 +33,7 @@ export const navGroups = [
         href: "/pos",
         label: "POS Register",
         icon: ShoppingCart,
-        roles: ["Cashier"],
+        roles: ["Cashier", "Admin"],
       },
       {
         href: "/review",
