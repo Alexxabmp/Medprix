@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import {
   db,
   poItemsTable,
@@ -59,7 +59,7 @@ router.get("/suppliers", async (_req: Request, res: Response) => {
 
 router.get("/purchase-orders", async (_req: Request, res: Response) => {
   const [orders, suppliers, items] = await Promise.all([
-    db.select().from(purchaseOrdersTable),
+    db.select().from(purchaseOrdersTable).orderBy(desc(purchaseOrdersTable.orderDate)),
     db.select().from(suppliersTable),
     db.select().from(poItemsTable),
   ]);
@@ -162,6 +162,84 @@ router.get("/supplier-invoices", async (_req: Request, res: Response) => {
   }));
 
   return res.json({ success: true, invoices: result });
+});
+
+router.post("/supplier-deliveries", async (req: Request, res: Response) => {
+  const { poId, deliveryDate, deliveryStatus, items } = req.body as {
+    poId?: string;
+    deliveryDate?: string;
+    deliveryStatus?: string;
+    items?: Array<{ productId?: string; batchNumber?: string; expirationDate?: string; quantityDelivered?: number | string }>;
+  };
+  const validStatuses = supplierDeliveriesTable.deliveryStatus.enumValues;
+
+  if (!poId || !Array.isArray(items) || items.length === 0 || (deliveryStatus && !validStatuses.includes(deliveryStatus as (typeof validStatuses)[number]))) {
+    return res.status(400).json({ success: false, error: "Purchase order, valid delivery status, and at least one item are required." });
+  }
+  const [order] = await db.select().from(purchaseOrdersTable).where(eq(purchaseOrdersTable.id, poId));
+  if (!order) return res.status(400).json({ success: false, error: "Purchase order not found." });
+
+  const normalizedItems = items.map((item) => ({
+    productId: item.productId || "",
+    batchNumber: String(item.batchNumber || "").trim(),
+    expirationDate: String(item.expirationDate || ""),
+    quantityDelivered: Number(item.quantityDelivered),
+  }));
+  if (normalizedItems.some((item) => !item.productId || !item.batchNumber || !/^\d{4}-\d{2}-\d{2}$/.test(item.expirationDate) || !Number.isInteger(item.quantityDelivered) || item.quantityDelivered <= 0)) {
+    return res.status(400).json({ success: false, error: "Each delivery item needs a product, batch, valid expiry date, and positive whole quantity." });
+  }
+  const products = await db.select().from(productsTable);
+  if (normalizedItems.some((item) => !products.some((product) => product.id === item.productId))) {
+    return res.status(400).json({ success: false, error: "One or more delivery products were not found." });
+  }
+
+  const result = await db.transaction(async (tx) => {
+    const [delivery] = await tx.insert(supplierDeliveriesTable).values({
+      poId,
+      deliveryDate: deliveryDate ? new Date(deliveryDate) : new Date(),
+      deliveryStatus: (deliveryStatus || "Received") as (typeof validStatuses)[number],
+    }).returning();
+    const createdItems = await tx.insert(deliveryItemsTable).values(normalizedItems.map((item) => ({
+      deliveryId: delivery.id,
+      productId: item.productId,
+      batchNumber: item.batchNumber,
+      expirationDate: item.expirationDate,
+      quantityDelivered: item.quantityDelivered,
+    }))).returning();
+    return { delivery, items: createdItems };
+  });
+  return res.status(201).json({ success: true, delivery: result.delivery, items: result.items });
+});
+
+router.post("/supplier-invoices", async (req: Request, res: Response) => {
+  const { supplierId, poId, invoiceNumber, dueDate, invoiceAmount, isPaid } = req.body as {
+    supplierId?: string; poId?: string | null; invoiceNumber?: string; dueDate?: string; invoiceAmount?: number | string; isPaid?: boolean;
+  };
+  if (!supplierId || !invoiceNumber?.trim() || !dueDate || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate) || !Number.isFinite(Number(invoiceAmount)) || Number(invoiceAmount) < 0) {
+    return res.status(400).json({ success: false, error: "Supplier, invoice number, due date, and non-negative amount are required." });
+  }
+  const [supplier] = await db.select().from(suppliersTable).where(eq(suppliersTable.id, supplierId));
+  if (!supplier) return res.status(400).json({ success: false, error: "Supplier not found." });
+  if (poId) {
+    const [order] = await db.select().from(purchaseOrdersTable).where(eq(purchaseOrdersTable.id, poId));
+    if (!order) return res.status(400).json({ success: false, error: "Purchase order not found." });
+    if (order.supplierId !== supplierId) return res.status(400).json({ success: false, error: "Purchase order does not belong to this supplier." });
+  }
+  const [invoice] = await db.insert(supplierInvoicesTable).values({
+    supplierId, poId: poId || null, invoiceNumber: invoiceNumber.trim(), dueDate,
+    invoiceAmount: formatAmount(Number(invoiceAmount)), isPaid: Boolean(isPaid),
+  }).returning();
+  return res.status(201).json({ success: true, invoice });
+});
+
+router.patch("/supplier-invoices/:id/status", async (req: Request, res: Response) => {
+  const invoiceId = asId(req.params.id);
+  const { status } = req.body as { status?: string };
+  if (status !== "Paid" && status !== "Unpaid") return res.status(400).json({ success: false, error: "Invoice status must be Paid or Unpaid." });
+  const [existing] = await db.select().from(supplierInvoicesTable).where(eq(supplierInvoicesTable.id, invoiceId));
+  if (!existing) return res.status(404).json({ success: false, error: "Invoice not found." });
+  const [invoice] = await db.update(supplierInvoicesTable).set({ isPaid: status === "Paid" }).where(eq(supplierInvoicesTable.id, invoiceId)).returning();
+  return res.json({ success: true, invoice });
 });
 
 router.post("/purchase-orders", async (req: Request, res: Response) => {
