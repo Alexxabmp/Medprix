@@ -1,31 +1,10 @@
-﻿import fs from "node:fs";
+import { config } from "dotenv";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
 import * as schema from "./schema";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Auto-load .env file if available
-try {
-  if (typeof process.loadEnvFile === "function") {
-    const candidates = [
-      path.resolve(process.cwd(), ".env"),
-      path.resolve(process.cwd(), "../../.env"),
-      path.resolve(__dirname, "../../../.env"),
-    ];
-    for (const envPath of candidates) {
-      if (fs.existsSync(envPath)) {
-        process.loadEnvFile(envPath);
-        break;
-      }
-    }
-  }
-} catch {
-  // Ignore if no .env
-}
+config({ path: path.resolve(import.meta.dirname, "../../../.env") });
 
 if (!process.env.DATABASE_URL) {
   throw new Error(
@@ -33,7 +12,7 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-const poolConnection = mysql.createPool(process.env.DATABASE_URL);
-export const db = drizzle(poolConnection, { schema, mode: "default" });
+const client = postgres(process.env.DATABASE_URL);
+export const db = drizzle(client, { schema });
 
 export * from "./schema";

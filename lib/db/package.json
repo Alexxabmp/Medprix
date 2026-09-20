@@ -11,12 +11,16 @@
     "push": "drizzle-kit push --config ./drizzle.config.ts",
     "push-force": "drizzle-kit push --force --config ./drizzle.config.ts",
     "migrate": "tsx ./src/migrate.ts",
-    "seed": "tsx ./src/seed.ts"
+    "seed": "tsx ./src/seed.ts",
+    "reset": "tsx ./src/reset.ts",
+    "triggers": "tsx ./src/triggers.ts",
+    "fresh": "tsx ./src/reset.ts --yes && drizzle-kit push --force --config ./drizzle.config.ts && tsx ./src/triggers.ts && tsx ./src/seed.ts"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
+    "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
-    "mysql2": "^3.11.0",
+    "postgres": "^3.4.5",
     "zod": "^3.25.76"
   },
   "devDependencies": {
