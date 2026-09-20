@@ -1,10 +1,8 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Link } from "wouter";
 import {
   ArrowDownLeft,
   ArrowUpRight,
-  Boxes,
   CalendarDays,
   CircleDollarSign,
   ClipboardList,
@@ -846,16 +844,6 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                 </div>
               </div>
               <div className="modal-actions" style={{ marginTop: 16, display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                <Link
-                  href="/inventory"
-                  className="button soft"
-                  style={{ display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none", fontSize: 12 }}
-                  onClick={() => {
-                    setSelectedReceipt(null);
-                    setActiveModal(null);
-                  }}>
-                  <Boxes size={13} /> View in Inventory
-                </Link>
                 <button
                   type="button"
                   className="button dark"

@@ -33,7 +33,7 @@ export const navGroups = [
         href: "/pos",
         label: "POS Register",
         icon: ShoppingCart,
-        roles: ["Cashier", "Admin"],
+        roles: ["Cashier"],
       },
       {
         href: "/review",

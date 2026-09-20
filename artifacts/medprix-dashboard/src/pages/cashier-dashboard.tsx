@@ -1,7 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Link } from "wouter";
 import {
-  Boxes,
   CalendarDays,
   Check,
   ClipboardList,
@@ -1163,13 +1161,6 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
               )}
             </div>
             <div className="modal-actions" style={{ marginTop: 16, display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <Link
-                href="/inventory"
-                className="button soft"
-                style={{ textDecoration: "none", fontSize: 12, padding: "8px 14px", display: "inline-flex", alignItems: "center", gap: 6 }}
-                onClick={() => setSelectedReceipt(null)}>
-                <Boxes size={13} /> View in Inventory
-              </Link>
               <button
                 type="button"
                 className="button dark"

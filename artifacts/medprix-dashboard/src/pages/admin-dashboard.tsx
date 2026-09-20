@@ -1,16 +1,12 @@
 import { useState, useEffect } from "react";
-import { Link } from "wouter";
 import {
   ArrowUpRight,
   BarChart3,
   Boxes,
   CalendarDays,
   CircleDollarSign,
-  ClipboardList,
   FileBarChart,
   Package,
-  ShieldCheck,
-  ShoppingCart,
 } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import { Kpi } from "@/components/custom-ui/kpi-card";
@@ -26,12 +22,20 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
   const [report, setReport] = useState<ReportType | null>(null);
   const [cashDetailRow, setCashDetailRow] = useState<number | null>(null);
   const [transactions, setTransactions] = useState<any[]>([]);
+  const [inventoryProducts, setInventoryProducts] = useState<any[]>([]);
 
   useEffect(() => {
     fetch("/api/admin/transactions", { credentials: "include" })
       .then((r) => (r.ok ? r.json() : []))
       .then((data) => {
         if (Array.isArray(data)) setTransactions(data);
+      })
+      .catch(() => {});
+
+    fetch("/api/inventory", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : { products: [] }))
+      .then((data) => {
+        if (data && Array.isArray(data.products)) setInventoryProducts(data.products);
       })
       .catch(() => {});
   }, []);
@@ -41,6 +45,27 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
     return sum + val;
   }, 0);
   const liveTxCount = transactions.length;
+
+  const liveProductCount = inventoryProducts.length;
+  const liveLowStockCount = inventoryProducts.filter((p) => {
+    const stock = Array.isArray(p.batches)
+      ? p.batches.reduce((sum: number, b: any) => sum + (Number(b.quantity) || 0), 0)
+      : (Number(p.stock) || 0);
+    return stock <= (Number(p.reorder) || 10);
+  }).length;
+  const liveTotalStockUnits = inventoryProducts.reduce((sum, p) => {
+    const stock = Array.isArray(p.batches)
+      ? p.batches.reduce((bSum: number, b: any) => bSum + (Number(b.quantity) || 0), 0)
+      : (Number(p.stock) || 0);
+    return sum + stock;
+  }, 0);
+  const liveStockValuation = inventoryProducts.reduce((sum, p) => {
+    const stock = Array.isArray(p.batches)
+      ? p.batches.reduce((bSum: number, b: any) => bSum + (Number(b.quantity) || 0), 0)
+      : (Number(p.stock) || 0);
+    const priceNum = parseFloat(String(p.price || "0").replace("₱", "").replace(/,/g, "")) || 0;
+    return sum + stock * priceNum;
+  }, 0);
 
   return (
     <div>
@@ -72,8 +97,8 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
         />
         <Kpi
           label="Inventory"
-          value="850 products"
-          change="95 low stock"
+          value={liveProductCount > 0 ? `${liveProductCount} products` : "850 products"}
+          change={liveProductCount > 0 ? `${liveLowStockCount} low stock` : "95 low stock"}
           icon={Package}
           onClick={() => setReport("inventory")}
           testId="card-report-inventory"
@@ -88,93 +113,12 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
         />
         <Kpi
           label="Stock value"
-          value="₱825,450"
-          change="4,280 units held"
+          value={liveProductCount > 0 ? formatPeso(liveStockValuation) : "₱825,450"}
+          change={liveProductCount > 0 ? `${liveTotalStockUnits.toLocaleString()} units held` : "4,280 units held"}
           icon={Boxes}
           onClick={() => setReport("valuation")}
           testId="card-report-valuation"
         />
-      </section>
-
-      {/* Cashier Account Operations Connection Card */}
-      <section
-        className="surface-card"
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: 16,
-          padding: "16px 20px",
-          border: "1px solid hsl(var(--border))",
-          borderRadius: 16,
-          marginBottom: 16,
-          flexWrap: "wrap",
-        }}
-        data-testid="card-cashier-operations-link"
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <div
-            style={{
-              width: 42,
-              height: 42,
-              borderRadius: 12,
-              background: "hsl(var(--surface-soft))",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              border: "1px solid hsl(var(--border))",
-              flexShrink: 0,
-            }}
-          >
-            <ShoppingCart size={19} />
-          </div>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>Cashier Register &amp; Shift Review</h3>
-              <span className="pill success" style={{ fontSize: 10, padding: "2px 8px" }}>
-                <ShieldCheck size={11} style={{ marginRight: 3 }} /> Terminal #01 Active
-              </span>
-            </div>
-            <p className="muted" style={{ margin: "2px 0 0", fontSize: 11 }}>
-              {liveTxCount > 0
-                ? `${liveTxCount} receipt(s) completed today (${formatPeso(liveDailySales)}) · Connected to Cashier operations.`
-                : "Open live cashier POS checkout terminal or review register till balances and receipts."}
-            </p>
-          </div>
-        </div>
-
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <Link
-            href="/pos"
-            className="button soft"
-            style={{
-              fontSize: 12,
-              padding: "7px 14px",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              textDecoration: "none",
-            }}
-            title="Open Cashier POS Dashboard"
-          >
-            <ShoppingCart size={13} /> Open Cashier POS
-          </Link>
-          <Link
-            href="/review"
-            className="button dark"
-            style={{
-              fontSize: 12,
-              padding: "7px 14px",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              textDecoration: "none",
-            }}
-            title="Open Shift Review & Register Operations"
-          >
-            <ClipboardList size={13} /> Open Shift Review
-          </Link>
-        </div>
       </section>
 
       {/* Bar chart box — product movement */}
@@ -218,30 +162,13 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
               <h2 className="card-title">Cash mismatch</h2>
               <p className="card-subtitle">2 inconsistencies detected</p>
             </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <Link
-                href="/review"
-                className="button soft"
-                style={{
-                  fontSize: 11,
-                  padding: "5px 10px",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 5,
-                  textDecoration: "none",
-                }}
-                title="Inspect Till and Cash in Drawer in Shift Review"
-              >
-                <ClipboardList size={12} /> Shift Review
-              </Link>
-              <button
-                className="button soft"
-                data-testid="card-report-cash"
-                onClick={() => setReport("cash")}
-              >
-                View alerts
-              </button>
-            </div>
+            <button
+              className="button soft"
+              data-testid="card-report-cash"
+              onClick={() => setReport("cash")}
+            >
+              View alerts
+            </button>
           </div>
           {cashMismatches.map((row, index) => (
             <div className="list-row" key={row.date + row.shift}>
@@ -308,6 +235,8 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
         <ReportModal
           type={report}
           initialCashDetailRow={cashDetailRow}
+          liveTransactions={transactions}
+          liveProducts={inventoryProducts}
           onClose={() => {
             setReport(null);
             setCashDetailRow(null);

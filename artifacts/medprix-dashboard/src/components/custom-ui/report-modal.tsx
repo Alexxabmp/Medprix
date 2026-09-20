@@ -1,7 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Link } from "wouter";
-import { ArrowUpRight, ClipboardList, Download, ShoppingCart, X } from "lucide-react";
+import { ArrowUpRight, Download, X } from "lucide-react";
 import { cashMismatches, movementFast, movementSlow, products } from "@/lib/data";
 import type { ReportType, ToastFn } from "@/lib/types";
 
@@ -95,11 +94,15 @@ export function ReportModal({
   initialCashDetailRow = null,
   onClose,
   onToast,
+  liveTransactions = [],
+  liveProducts = [],
 }: {
   type: ReportType;
   initialCashDetailRow?: number | null;
   onClose: () => void;
   onToast: ToastFn;
+  liveTransactions?: any[];
+  liveProducts?: any[];
 }) {
   const [movementTab, setMovementTab] = useState<"fast" | "slow">("fast");
   const [cashDetailRow, setCashDetailRow] = useState<number | null>(
@@ -120,6 +123,63 @@ export function ReportModal({
     };
   }, []);
 
+  const formatPeso = (val: number) =>
+    `₱${val.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  // Live Sales metrics
+  const hasLiveTx = liveTransactions.length > 0;
+  const liveTotalSales = liveTransactions.reduce((sum, t) => {
+    const val = parseFloat(String(t.total || "0").replace("₱", "").replace(/,/g, "")) || 0;
+    return sum + val;
+  }, 0);
+  const liveTotalTx = liveTransactions.length;
+  const liveProductsSold = liveTransactions.reduce((sum, t) => {
+    if (Array.isArray(t.items)) {
+      return sum + t.items.reduce((iSum: number, item: any) => iSum + (Number(item.quantity) || 1), 0);
+    }
+    return sum + 1;
+  }, 0);
+
+  const liveCashSales = liveTransactions
+    .filter((t) => (t.payment || "").toLowerCase().includes("cash"))
+    .reduce((sum, t) => sum + (parseFloat(String(t.total || "0").replace("₱", "").replace(/,/g, "")) || 0), 0);
+  const liveCardSales = liveTransactions
+    .filter((t) => {
+      const m = (t.payment || "").toLowerCase();
+      return m.includes("card") || m.includes("credit") || m.includes("debit");
+    })
+    .reduce((sum, t) => sum + (parseFloat(String(t.total || "0").replace("₱", "").replace(/,/g, "")) || 0), 0);
+  const liveWalletSales = liveTransactions
+    .filter((t) => {
+      const m = (t.payment || "").toLowerCase();
+      return m.includes("gcash") || m.includes("wallet") || m.includes("paymaya");
+    })
+    .reduce((sum, t) => sum + (parseFloat(String(t.total || "0").replace("₱", "").replace(/,/g, "")) || 0), 0);
+
+  // Live Inventory & Valuation metrics
+  const hasLiveProducts = liveProducts.length > 0;
+  const liveTotalProducts = liveProducts.length;
+  const liveLowStock = liveProducts.filter((p) => {
+    const stock = Array.isArray(p.batches)
+      ? p.batches.reduce((sum: number, b: any) => sum + (Number(b.quantity) || 0), 0)
+      : (Number(p.stock) || 0);
+    return stock <= (Number(p.reorder) || 10);
+  }).length;
+  const liveInStock = Math.max(0, liveTotalProducts - liveLowStock);
+  const liveTotalUnits = liveProducts.reduce((sum, p) => {
+    const stock = Array.isArray(p.batches)
+      ? p.batches.reduce((bSum: number, b: any) => bSum + (Number(b.quantity) || 0), 0)
+      : (Number(p.stock) || 0);
+    return sum + stock;
+  }, 0);
+  const liveTotalStockValuation = liveProducts.reduce((sum, p) => {
+    const stock = Array.isArray(p.batches)
+      ? p.batches.reduce((bSum: number, b: any) => bSum + (Number(b.quantity) || 0), 0)
+      : (Number(p.stock) || 0);
+    const priceNum = parseFloat(String(p.price || "0").replace("₱", "").replace(/,/g, "")) || 0;
+    return sum + stock * priceNum;
+  }, 0);
+
   const titles: Record<ReportType, string> = {
     sales: "Daily sales report",
     inventory: "Inventory report",
@@ -128,7 +188,7 @@ export function ReportModal({
     movement: "Product movement",
     cash:
       cashDetailRow !== null
-        ? `Cash mismatch ΓÇô ${cashMismatches[cashDetailRow].date} ${cashMismatches[cashDetailRow].shift} shift`
+        ? `Cash mismatch – ${cashMismatches[cashDetailRow].date} ${cashMismatches[cashDetailRow].shift} shift`
         : "Cash mismatch alerts",
   };
 
@@ -149,10 +209,10 @@ export function ReportModal({
             <h2>{titles[type]}</h2>
             <p className="modal-sub">
               {cashDetailRow !== null
-                ? `Shift reconciliation ┬╖ ${cashMismatches[cashDetailRow].date} ┬╖ Medprix Central`
+                ? `Shift reconciliation · ${cashMismatches[cashDetailRow].date} · Medprix Central`
                 : type === "financial"
                   ? "Period: August 2026"
-                  : "August 18, 2026 ┬╖ Medprix Central"}
+                  : "August 18, 2026 · Medprix Central"}
             </p>
           </div>
           {cashDetailRow !== null ? (
@@ -160,7 +220,7 @@ export function ReportModal({
               className="button soft"
               style={{ marginRight: 8 }}
               onClick={() => setCashDetailRow(null)}>
-              ΓåÉ Back
+              ← Back
             </button>
           ) : null}
           <button
@@ -175,14 +235,14 @@ export function ReportModal({
         {type === "sales" && (
           <>
             <div className="report-metrics">
-              <ReportMetric label="Total sales" value="₱45,250" />
-              <ReportMetric label="Transactions" value="128" />
-              <ReportMetric label="Products sold" value="356" />
+              <ReportMetric label="Total sales" value={hasLiveTx ? formatPeso(liveTotalSales) : "₱45,250"} />
+              <ReportMetric label="Transactions" value={hasLiveTx ? String(liveTotalTx) : "128"} />
+              <ReportMetric label="Products sold" value={hasLiveTx ? String(liveProductsSold) : "356"} />
             </div>
             <ModalSection title="Payment method">
-              <ModalRow label="Cash" value="₱25,000" />
-              <ModalRow label="Card" value="₱12,500" />
-              <ModalRow label="E-wallet" value="₱7,750" />
+              <ModalRow label="Cash" value={hasLiveTx ? formatPeso(liveCashSales) : "₱25,000"} />
+              <ModalRow label="Card" value={hasLiveTx ? formatPeso(liveCardSales) : "₱12,500"} />
+              <ModalRow label="E-wallet" value={hasLiveTx ? formatPeso(liveWalletSales) : "₱7,750"} />
             </ModalSection>
           </>
         )}
@@ -191,16 +251,24 @@ export function ReportModal({
         {type === "inventory" && (
           <>
             <div className="report-metrics">
-              <ReportMetric label="Total products" value="850" />
-              <ReportMetric label="In stock" value="720" />
-              <ReportMetric label="Low stock" value="95" />
+              <ReportMetric label="Total products" value={hasLiveProducts ? String(liveTotalProducts) : "850"} />
+              <ReportMetric label="In stock" value={hasLiveProducts ? String(liveInStock) : "720"} />
+              <ReportMetric label="Low stock" value={hasLiveProducts ? String(liveLowStock) : "95"} />
             </div>
             <ModalSection title="Stock watchlist">
               <ModalTable
                 headers={["Product", "Stock", "Status"]}
-                rows={products
-                  .slice(0, 3)
-                  .map((p) => [p.name, String(p.stock ?? 0), p.status ?? "Available"])}
+                rows={hasLiveProducts
+                  ? liveProducts.slice(0, 5).map((p) => {
+                      const stock = Array.isArray(p.batches)
+                        ? p.batches.reduce((sum: number, b: any) => sum + (Number(b.quantity) || 0), 0)
+                        : (Number(p.stock) || 0);
+                      const status = stock === 0 ? "Out of stock" : stock <= (Number(p.reorder) || 10) ? "Low stock" : "Available";
+                      return [p.name, String(stock), status];
+                    })
+                  : products
+                      .slice(0, 3)
+                      .map((p) => [p.name, String(p.stock ?? 0), p.status ?? "Available"])}
               />
             </ModalSection>
           </>
@@ -226,18 +294,26 @@ export function ReportModal({
         {type === "valuation" && (
           <>
             <div className="report-metrics">
-              <ReportMetric label="Current stock value" value="₱825,450" />
-              <ReportMetric label="Units held" value="4,280" />
-              <ReportMetric label="SKUs tracked" value="850" />
+              <ReportMetric label="Current stock value" value={hasLiveProducts ? formatPeso(liveTotalStockValuation) : "₱825,450"} />
+              <ReportMetric label="Units held" value={hasLiveProducts ? liveTotalUnits.toLocaleString() : "4,280"} />
+              <ReportMetric label="SKUs tracked" value={hasLiveProducts ? String(liveTotalProducts) : "850"} />
             </div>
             <ModalSection title="Value by product">
               <ModalTable
                 headers={["Product", "Qty", "Value"]}
-                rows={[
-                  ["Paracetamol", "120", "₱600"],
-                  ["Amoxicillin", "80", "₱960"],
-                  ["Vitamin C", "50", "₱400"],
-                ]}
+                rows={hasLiveProducts
+                  ? liveProducts.slice(0, 5).map((p) => {
+                      const stock = Array.isArray(p.batches)
+                        ? p.batches.reduce((sum: number, b: any) => sum + (Number(b.quantity) || 0), 0)
+                        : (Number(p.stock) || 0);
+                      const priceNum = parseFloat(String(p.price || "0").replace("₱", "").replace(/,/g, "")) || 0;
+                      return [p.name, String(stock), formatPeso(stock * priceNum)];
+                    })
+                  : [
+                      ["Paracetamol", "120", "₱600"],
+                      ["Amoxicillin", "80", "₱960"],
+                      ["Vitamin C", "50", "₱400"],
+                    ]}
               />
             </ModalSection>
           </>
@@ -356,23 +432,7 @@ export function ReportModal({
                     ? `Cash is ${row.difference.replace("-", "")} short. Review the register transactions before closing the shift.`
                     : `Cash is ${row.difference} over. Verify receipts and confirm no duplicate entries.`}
                 </div>
-                <div className="modal-actions" style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
-                  <Link
-                    href="/review"
-                    className="button soft"
-                    style={{ display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none", fontSize: 12 }}
-                    onClick={onClose}
-                  >
-                    <ClipboardList size={13} /> Open Shift Review
-                  </Link>
-                  <Link
-                    href="/pos"
-                    className="button soft"
-                    style={{ display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none", fontSize: 12 }}
-                    onClick={onClose}
-                  >
-                    <ShoppingCart size={13} /> Open POS Register
-                  </Link>
+                <div className="modal-actions">
                   <button
                     className="button dark"
                     data-testid="button-view-transactions"
@@ -389,27 +449,7 @@ export function ReportModal({
           })()}
 
         {type !== "cash" && (
-          <div className="modal-actions" style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
-            {type === "sales" && (
-              <>
-                <Link
-                  href="/review"
-                  className="button soft"
-                  style={{ display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none", fontSize: 12 }}
-                  onClick={onClose}
-                >
-                  <ClipboardList size={13} /> Open Shift Review
-                </Link>
-                <Link
-                  href="/pos"
-                  className="button soft"
-                  style={{ display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none", fontSize: 12 }}
-                  onClick={onClose}
-                >
-                  <ShoppingCart size={13} /> Open POS Register
-                </Link>
-              </>
-            )}
+          <div className="modal-actions">
             <button
               className="button dark"
               data-testid="button-export-report"
