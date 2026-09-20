@@ -133,6 +133,51 @@ export async function autoInitPglite(pg: PGlite) {
         [randomUUID(), suppliers[0].id, poId],
       );
     }
+
+    // Ensure persistent cashier transactions & logs tables exist
+    await pg.exec(`
+      CREATE TABLE IF NOT EXISTS cashier_transactions (
+        id SERIAL PRIMARY KEY,
+        transaction_number VARCHAR(100) UNIQUE NOT NULL,
+        date_time VARCHAR(100) NOT NULL,
+        user_name VARCHAR(150) NOT NULL,
+        business_type VARCHAR(50) NOT NULL DEFAULT 'Retail',
+        customer VARCHAR(150) NOT NULL DEFAULT 'Walk-in Customer',
+        total VARCHAR(50) NOT NULL,
+        subtotal VARCHAR(50) NOT NULL,
+        discount VARCHAR(50) NOT NULL DEFAULT '₱0.00',
+        vat VARCHAR(50) NOT NULL DEFAULT '₱0.00',
+        amount_received VARCHAR(50) NOT NULL DEFAULT '₱0.00',
+        change VARCHAR(50) NOT NULL DEFAULT '₱0.00',
+        payment VARCHAR(50) NOT NULL DEFAULT 'Cash',
+        status VARCHAR(50) NOT NULL DEFAULT 'Completed',
+        items JSONB NOT NULL DEFAULT '[]'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS cashier_system_logs (
+        id SERIAL PRIMARY KEY,
+        date_time VARCHAR(100) NOT NULL,
+        user_name VARCHAR(150) NOT NULL,
+        role VARCHAR(50) NOT NULL,
+        action VARCHAR(100) NOT NULL,
+        module VARCHAR(100) NOT NULL,
+        description TEXT NOT NULL,
+        status VARCHAR(50) NOT NULL DEFAULT 'Success',
+        device_ip VARCHAR(50) NOT NULL DEFAULT '127.0.0.1',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS cashier_user_activities (
+        id SERIAL PRIMARY KEY,
+        date_time VARCHAR(100) NOT NULL,
+        user_name VARCHAR(150) NOT NULL,
+        role VARCHAR(50) NOT NULL,
+        activity VARCHAR(150) NOT NULL,
+        module VARCHAR(100) NOT NULL,
+        description TEXT NOT NULL,
+        flag VARCHAR(50) NOT NULL DEFAULT 'Normal',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
   } catch (err) {
     console.error("autoInitPglite notice:", err);
   }

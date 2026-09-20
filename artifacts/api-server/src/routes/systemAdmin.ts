@@ -1,4 +1,8 @@
 import { Router, type IRouter } from "express";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { queryDb, execDb } from "@workspace/db";
 
 const router: IRouter = Router();
 
@@ -339,10 +343,297 @@ export const initialUserActivities: UserActivity[] = [
   },
 ];
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+function getStorageDir(): string {
+  const candidates = [
+    path.resolve(process.cwd(), "lib/db/.storage"),
+    path.resolve(process.cwd(), "../../lib/db/.storage"),
+    path.resolve(__dirname, "../../../../../lib/db/.storage"),
+    path.resolve(__dirname, "../../../../lib/db/.storage"),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(path.dirname(c))) {
+      if (!fs.existsSync(c)) {
+        try {
+          fs.mkdirSync(c, { recursive: true });
+        } catch {}
+      }
+      return c;
+    }
+  }
+  const fallback = path.resolve(process.cwd(), ".storage");
+  if (!fs.existsSync(fallback)) {
+    try {
+      fs.mkdirSync(fallback, { recursive: true });
+    } catch {}
+  }
+  return fallback;
+}
+
+function loadJsonFile<T>(filename: string, fallback: T): T {
+  try {
+    const filePath = path.join(getStorageDir(), filename);
+    if (fs.existsSync(filePath)) {
+      const raw = fs.readFileSync(filePath, "utf-8");
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed as T;
+      }
+    }
+  } catch (err) {
+    console.error(`Error reading ${filename} from storage:`, err);
+  }
+  return fallback;
+}
+
+function saveJsonFile(filename: string, data: any): void {
+  try {
+    const filePath = path.join(getStorageDir(), filename);
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
+  } catch (err) {
+    console.error(`Error writing ${filename} to storage:`, err);
+  }
+}
+
+// In-memory data initialized from persistent JSON files immediately on module load
+let persistentTransactions: UserTransaction[] = loadJsonFile<UserTransaction[]>(
+  "transactions.json",
+  [...initialTransactions]
+);
+
+let persistentSystemLogs: SystemLog[] = loadJsonFile<SystemLog[]>(
+  "system_logs.json",
+  [...initialSystemLogs]
+);
+
+let persistentUserActivities: UserActivity[] = loadJsonFile<UserActivity[]>(
+  "user_activities.json",
+  [...initialUserActivities]
+);
+
+// If file was not on disk yet, write initial data to seed the file
+if (!fs.existsSync(path.join(getStorageDir(), "transactions.json"))) {
+  saveJsonFile("transactions.json", persistentTransactions);
+}
+if (!fs.existsSync(path.join(getStorageDir(), "system_logs.json"))) {
+  saveJsonFile("system_logs.json", persistentSystemLogs);
+}
+if (!fs.existsSync(path.join(getStorageDir(), "user_activities.json"))) {
+  saveJsonFile("user_activities.json", persistentUserActivities);
+}
+
+async function saveTransactionToDb(t: UserTransaction) {
+  try {
+    await queryDb(
+      `INSERT INTO cashier_transactions (
+        transaction_number, date_time, user_name, business_type,
+        customer, total, subtotal, discount, vat,
+        amount_received, change, payment, status, items
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      ON CONFLICT (transaction_number) DO UPDATE SET
+        total = EXCLUDED.total,
+        status = EXCLUDED.status,
+        items = EXCLUDED.items`,
+      [
+        t.transactionNumber,
+        t.dateTime,
+        t.user,
+        t.businessType,
+        t.customer,
+        t.total,
+        t.subtotal,
+        t.discount,
+        t.vat,
+        t.amountReceived,
+        t.change,
+        t.payment,
+        t.status,
+        JSON.stringify(t.items || []),
+      ]
+    );
+  } catch (err) {
+    console.error("Failed to save cashier transaction to DB:", err);
+  }
+}
+
+async function saveSystemLogToDb(l: SystemLog) {
+  try {
+    await queryDb(
+      `INSERT INTO cashier_system_logs (
+        date_time, user_name, role, action, module, description, status, device_ip
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [l.dateTime, l.user, l.role, l.action, l.module, l.description, l.status, l.deviceIp]
+    );
+  } catch (err) {
+    console.error("Failed to save system log to DB:", err);
+  }
+}
+
+async function saveUserActivityToDb(a: UserActivity) {
+  try {
+    await queryDb(
+      `INSERT INTO cashier_user_activities (
+        date_time, user_name, role, activity, module, description, flag
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [a.dateTime, a.user, a.role, a.activity, a.module, a.description, a.flag]
+    );
+  } catch (err) {
+    console.error("Failed to save user activity to DB:", err);
+  }
+}
+
+async function syncWithDatabase() {
+  try {
+    // 1. Ensure tables exist in case of fresh DB
+    await execDb(`
+      CREATE TABLE IF NOT EXISTS cashier_transactions (
+        id SERIAL PRIMARY KEY,
+        transaction_number VARCHAR(100) UNIQUE NOT NULL,
+        date_time VARCHAR(100) NOT NULL,
+        user_name VARCHAR(150) NOT NULL,
+        business_type VARCHAR(50) NOT NULL DEFAULT 'Retail',
+        customer VARCHAR(150) NOT NULL DEFAULT 'Walk-in Customer',
+        total VARCHAR(50) NOT NULL,
+        subtotal VARCHAR(50) NOT NULL,
+        discount VARCHAR(50) NOT NULL DEFAULT '₱0.00',
+        vat VARCHAR(50) NOT NULL DEFAULT '₱0.00',
+        amount_received VARCHAR(50) NOT NULL DEFAULT '₱0.00',
+        change VARCHAR(50) NOT NULL DEFAULT '₱0.00',
+        payment VARCHAR(50) NOT NULL DEFAULT 'Cash',
+        status VARCHAR(50) NOT NULL DEFAULT 'Completed',
+        items JSONB NOT NULL DEFAULT '[]'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS cashier_system_logs (
+        id SERIAL PRIMARY KEY,
+        date_time VARCHAR(100) NOT NULL,
+        user_name VARCHAR(150) NOT NULL,
+        role VARCHAR(50) NOT NULL,
+        action VARCHAR(100) NOT NULL,
+        module VARCHAR(100) NOT NULL,
+        description TEXT NOT NULL,
+        status VARCHAR(50) NOT NULL DEFAULT 'Success',
+        device_ip VARCHAR(50) NOT NULL DEFAULT '127.0.0.1',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS cashier_user_activities (
+        id SERIAL PRIMARY KEY,
+        date_time VARCHAR(100) NOT NULL,
+        user_name VARCHAR(150) NOT NULL,
+        role VARCHAR(50) NOT NULL,
+        activity VARCHAR(150) NOT NULL,
+        module VARCHAR(100) NOT NULL,
+        description TEXT NOT NULL,
+        flag VARCHAR(50) NOT NULL DEFAULT 'Normal',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    // 2. Sync transactions
+    const txRes = await queryDb<any>("SELECT * FROM cashier_transactions ORDER BY id ASC");
+    if (txRes.rows && txRes.rows.length > 0) {
+      const dbTxMap = new Map<string, UserTransaction>();
+      for (const row of txRes.rows) {
+        let items = row.items;
+        if (typeof items === "string") {
+          try {
+            items = JSON.parse(items);
+          } catch {
+            items = [];
+          }
+        }
+        const tx: UserTransaction = {
+          id: Number(row.id),
+          transactionNumber: row.transaction_number,
+          dateTime: row.date_time,
+          user: row.user_name,
+          businessType: (row.business_type === "Wholesale" ? "Wholesale" : "Retail"),
+          customer: row.customer,
+          total: row.total,
+          subtotal: row.subtotal,
+          discount: row.discount,
+          vat: row.vat,
+          amountReceived: row.amount_received,
+          change: row.change,
+          payment: row.payment,
+          status: row.status as any,
+          items: Array.isArray(items) ? items : [],
+        };
+        dbTxMap.set(tx.transactionNumber, tx);
+      }
+
+      for (const fileTx of persistentTransactions) {
+        if (!dbTxMap.has(fileTx.transactionNumber)) {
+          await saveTransactionToDb(fileTx);
+          dbTxMap.set(fileTx.transactionNumber, fileTx);
+        }
+      }
+
+      persistentTransactions = Array.from(dbTxMap.values()).sort(
+        (a, b) => b.id - a.id
+      );
+      saveJsonFile("transactions.json", persistentTransactions);
+    } else {
+      for (const tx of [...persistentTransactions].reverse()) {
+        await saveTransactionToDb(tx);
+      }
+    }
+
+    // 3. Sync system logs
+    const logRes = await queryDb<any>("SELECT * FROM cashier_system_logs ORDER BY id DESC");
+    if (logRes.rows && logRes.rows.length > 0) {
+      const dbLogs: SystemLog[] = logRes.rows.map((row) => ({
+        id: Number(row.id),
+        dateTime: row.date_time,
+        user: row.user_name,
+        role: row.role,
+        action: row.action,
+        module: row.module,
+        description: row.description,
+        status: (row.status === "Failed" ? "Failed" : "Success"),
+        deviceIp: row.device_ip,
+      }));
+      persistentSystemLogs = dbLogs;
+      saveJsonFile("system_logs.json", persistentSystemLogs);
+    } else {
+      for (const l of [...persistentSystemLogs].reverse()) {
+        await saveSystemLogToDb(l);
+      }
+    }
+
+    // 4. Sync user activities
+    const actRes = await queryDb<any>("SELECT * FROM cashier_user_activities ORDER BY id DESC");
+    if (actRes.rows && actRes.rows.length > 0) {
+      const dbActivities: UserActivity[] = actRes.rows.map((row) => ({
+        id: Number(row.id),
+        dateTime: row.date_time,
+        user: row.user_name,
+        role: row.role,
+        activity: row.activity,
+        module: row.module,
+        description: row.description,
+        flag: (row.flag === "Suspicious" || row.flag === "Flagged" ? row.flag : "Normal"),
+      }));
+      persistentUserActivities = dbActivities;
+      saveJsonFile("user_activities.json", persistentUserActivities);
+    } else {
+      for (const a of [...persistentUserActivities].reverse()) {
+        await saveUserActivityToDb(a);
+      }
+    }
+  } catch (err) {
+    console.warn("DB synchronization note (file persistence remains fully active):", err);
+  }
+}
+
+void syncWithDatabase();
+
 // GET /api/admin/transactions
 router.get("/admin/transactions", (req, res) => {
   const { businessType, search, status } = req.query;
-  let results = [...initialTransactions];
+  let results = [...persistentTransactions];
 
   if (businessType && businessType !== "All") {
     results = results.filter(
@@ -373,7 +664,7 @@ router.get("/admin/transactions", (req, res) => {
 // GET /api/admin/transactions/:id
 router.get("/admin/transactions/:id", (req, res) => {
   const id = Number(req.params.id);
-  const item = initialTransactions.find((t) => t.id === id);
+  const item = persistentTransactions.find((t) => t.id === id);
   if (!item) {
     return res.status(404).json({ error: "Transaction not found." });
   }
@@ -382,13 +673,18 @@ router.get("/admin/transactions/:id", (req, res) => {
 
 router.post("/admin/transactions", (req, res) => {
   const nextId =
-    initialTransactions.reduce((max, transaction) => Math.max(max, transaction.id), 0) + 1;
+    persistentTransactions.reduce(
+      (max, transaction) => Math.max(max, Number(transaction.id) || 0),
+      0
+    ) + 1;
   const transaction: UserTransaction = {
     id: nextId,
-    transactionNumber: req.body.transactionNumber || `TRX-${String(nextId).padStart(4, "0")}`,
+    transactionNumber:
+      req.body.transactionNumber || `TRX-${String(nextId).padStart(4, "0")}`,
     dateTime: req.body.dateTime || new Date().toLocaleString(),
     user: req.body.user || "Cashier",
-    businessType: req.body.businessType === "Wholesale" ? "Wholesale" : "Retail",
+    businessType:
+      req.body.businessType === "Wholesale" ? "Wholesale" : "Retail",
     customer: req.body.customer || "Walk-in Customer",
     total: req.body.total || "₱0.00",
     subtotal: req.body.subtotal || "₱0.00",
@@ -401,14 +697,35 @@ router.post("/admin/transactions", (req, res) => {
     items: Array.isArray(req.body.items) ? req.body.items : [],
   };
 
-  initialTransactions.unshift(transaction);
+  persistentTransactions.unshift(transaction);
+  saveJsonFile("transactions.json", persistentTransactions);
+  void saveTransactionToDb(transaction);
+
   return res.status(201).json(transaction);
+});
+
+router.delete("/admin/transactions/:id", (req, res) => {
+  const param = req.params.id;
+  const numId = Number(param);
+  const idx = persistentTransactions.findIndex(
+    (t) => t.id === numId || t.transactionNumber === param
+  );
+  if (idx === -1) {
+    return res.status(404).json({ error: "Transaction not found." });
+  }
+  const removed = persistentTransactions.splice(idx, 1)[0];
+  saveJsonFile("transactions.json", persistentTransactions);
+  void queryDb(
+    "DELETE FROM cashier_transactions WHERE id = $1 OR transaction_number = $2",
+    [numId || 0, param]
+  );
+  return res.json({ success: true, removed });
 });
 
 // GET /api/admin/system-logs
 router.get("/admin/system-logs", (req, res) => {
   const { search, status, module: mod } = req.query;
-  let results = [...initialSystemLogs];
+  let results = [...persistentSystemLogs];
 
   if (status && status !== "All") {
     results = results.filter(
@@ -438,7 +755,8 @@ router.get("/admin/system-logs", (req, res) => {
 });
 
 router.post("/admin/system-logs", (req, res) => {
-  const nextId = initialSystemLogs.reduce((max, log) => Math.max(max, log.id), 0) + 1;
+  const nextId =
+    persistentSystemLogs.reduce((max, log) => Math.max(max, Number(log.id) || 0), 0) + 1;
   const log: SystemLog = {
     id: nextId,
     dateTime: req.body.dateTime || new Date().toLocaleString(),
@@ -451,14 +769,17 @@ router.post("/admin/system-logs", (req, res) => {
     deviceIp: req.body.deviceIp || "POS Terminal 1",
   };
 
-  initialSystemLogs.unshift(log);
+  persistentSystemLogs.unshift(log);
+  saveJsonFile("system_logs.json", persistentSystemLogs);
+  void saveSystemLogToDb(log);
+
   return res.status(201).json(log);
 });
 
 // GET /api/admin/user-activities
 router.get("/admin/user-activities", (req, res) => {
   const { search, flag, role, module: mod } = req.query;
-  let results = [...initialUserActivities];
+  let results = [...persistentUserActivities];
 
   if (flag && flag !== "All") {
     results = results.filter(
@@ -494,7 +815,10 @@ router.get("/admin/user-activities", (req, res) => {
 
 router.post("/admin/user-activities", (req, res) => {
   const nextId =
-    initialUserActivities.reduce((max, activity) => Math.max(max, activity.id), 0) + 1;
+    persistentUserActivities.reduce(
+      (max, activity) => Math.max(max, Number(activity.id) || 0),
+      0
+    ) + 1;
   const activity: UserActivity = {
     id: nextId,
     dateTime: req.body.dateTime || new Date().toLocaleString(),
@@ -509,7 +833,10 @@ router.post("/admin/user-activities", (req, res) => {
         : "Normal",
   };
 
-  initialUserActivities.unshift(activity);
+  persistentUserActivities.unshift(activity);
+  saveJsonFile("user_activities.json", persistentUserActivities);
+  void saveUserActivityToDb(activity);
+
   return res.status(201).json(activity);
 });
 

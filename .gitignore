@@ -56,4 +56,6 @@ Thumbs.db
 # Local database and scratch files
 .pgdata/
 **/.pgdata/
+.storage/
+**/.storage/
 scratch/

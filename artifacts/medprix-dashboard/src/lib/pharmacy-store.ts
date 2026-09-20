@@ -23,7 +23,11 @@ export function mapTransactionsToReceipts(data: any[]): ShiftReceipt[] {
       id: t.transactionNumber || `TRX-${t.id}`,
       rawId: t.id,
       time: t.dateTime
-        ? t.dateTime.split(", ")[1] || t.dateTime
+        ? t.dateTime.includes(" – ")
+          ? t.dateTime.split(" – ")[1]
+          : t.dateTime.includes(", ")
+          ? t.dateTime.split(", ").slice(-1)[0]
+          : t.dateTime
         : new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       dateTime: t.dateTime || new Date().toLocaleString(),
       items: itemCount,
