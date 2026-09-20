@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
+import { Link } from "wouter";
 import {
   ArrowDownLeft,
   ArrowUpRight,
+  Boxes,
   CalendarDays,
   CircleDollarSign,
   ClipboardList,
@@ -13,13 +15,100 @@ import {
   Receipt,
   Search,
   ShieldCheck,
+  ShoppingCart,
   X,
 } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import type { ToastFn } from "@/lib/types";
 
+export interface ShiftReceipt {
+  id: string;
+  rawId?: number;
+  time: string;
+  dateTime?: string;
+  items: number;
+  itemsList?: Array<{ product: string; quantity: number; unitPrice?: string; subtotal?: string }>;
+  itemsSummary: string;
+  total: number;
+  totalFormatted: string;
+  subtotal?: string;
+  vat?: string;
+  discount?: string;
+  amountReceived?: string;
+  change?: string;
+  method: string;
+  cashier: string;
+  status: string;
+}
+
+const formatPeso = (amount: number) =>
+  `₱${amount.toLocaleString("en-PH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+
+const defaultReceipts: ShiftReceipt[] = [
+  {
+    id: "CS-9401",
+    time: "10:14 AM",
+    items: 3,
+    itemsSummary: "Paracetamol 500mg (2), Vitamin C 1000mg (1)",
+    total: 195.0,
+    totalFormatted: "₱195.00",
+    method: "Cash",
+    cashier: "Maria Santos",
+    status: "Completed",
+  },
+  {
+    id: "CS-9400",
+    time: "09:48 AM",
+    items: 1,
+    itemsSummary: "Cough relief syrup 120ml (1)",
+    total: 145.0,
+    totalFormatted: "₱145.00",
+    method: "GCash",
+    cashier: "Maria Santos",
+    status: "Completed",
+  },
+  {
+    id: "CS-9399",
+    time: "09:12 AM",
+    items: 5,
+    itemsSummary: "Amoxicillin 500mg Box (1), Cetirizine 10mg (4)",
+    total: 520.0,
+    totalFormatted: "₱520.00",
+    method: "Card",
+    cashier: "Maria Santos",
+    status: "Completed",
+  },
+  {
+    id: "CS-9398",
+    time: "08:35 AM",
+    items: 3,
+    itemsSummary: "Mefenamic Acid 500mg (2), Antacid Chewable (1)",
+    total: 85.0,
+    totalFormatted: "₱85.00",
+    method: "Cash",
+    cashier: "Maria Santos",
+    status: "Completed",
+  },
+  {
+    id: "TRX-0005",
+    time: "11:20 AM",
+    items: 15,
+    itemsSummary: "Sterile Normal Saline (5), Surgical Gloves Box (10)",
+    total: 18450.0,
+    totalFormatted: "₱18,450.00",
+    method: "Cash",
+    cashier: "Maria Santos",
+    status: "Completed",
+  },
+];
+
 export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
   const [activeModal, setActiveModal] = useState<"sales" | "drawer" | "transactions" | "till" | null>(null);
+  const [shiftReceipts, setShiftReceipts] = useState<ShiftReceipt[]>(defaultReceipts);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Modal body scroll lock
   useEffect(() => {
@@ -31,75 +120,109 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
   }, [activeModal]);
 
   const [searchReceipt, setSearchReceipt] = useState("");
-  const [selectedReceipt, setSelectedReceipt] = useState<{
-    id: string;
-    time: string;
-    items: number;
-    itemsSummary: string;
-    total: string;
-    method: string;
-    cashier: string;
-    status: string;
-  } | null>(null);
+  const [selectedReceipt, setSelectedReceipt] = useState<ShiftReceipt | null>(null);
 
-  const shiftReceipts = [
-    {
-      id: "CS-9401",
-      time: "10:14 AM",
-      items: 3,
-      itemsSummary: "Paracetamol 500mg (2), Vitamin C 1000mg (1)",
-      total: "₱195.00",
-      method: "Cash",
-      cashier: "Maria Santos",
-      status: "Completed",
-    },
-    {
-      id: "CS-9400",
-      time: "09:48 AM",
-      items: 1,
-      itemsSummary: "Cough relief syrup 120ml (1)",
-      total: "₱145.00",
-      method: "GCash",
-      cashier: "Maria Santos",
-      status: "Completed",
-    },
-    {
-      id: "CS-9399",
-      time: "09:12 AM",
-      items: 5,
-      itemsSummary: "Amoxicillin 500mg Box (1), Cetirizine 10mg (4)",
-      total: "₱520.00",
-      method: "Card",
-      cashier: "Maria Santos",
-      status: "Completed",
-    },
-    {
-      id: "CS-9398",
-      time: "08:35 AM",
-      items: 3,
-      itemsSummary: "Mefenamic Acid 500mg (2), Antacid Chewable (1)",
-      total: "₱85.00",
-      method: "Cash",
-      cashier: "Maria Santos",
-      status: "Completed",
-    },
-    {
-      id: "TRX-0005",
-      time: "11:20 AM",
-      items: 15,
-      itemsSummary: "Sterile Normal Saline (5), Surgical Gloves Box (10)",
-      total: "₱18,450.00",
-      method: "Cash",
-      cashier: "Maria Santos",
-      status: "Completed",
-    },
-  ];
+  const fetchTransactions = async () => {
+    try {
+      setIsLoading(true);
+      const response = await fetch("/api/admin/transactions", {
+        credentials: "include",
+      });
+      if (!response.ok) return;
+      const data = await response.json();
+      if (!Array.isArray(data) || data.length === 0) return;
+      const mapped: ShiftReceipt[] = data.map((t: any) => {
+        const totalNum =
+          parseFloat(String(t.total || "0").replace("₱", "").replace(/,/g, "")) || 0;
+        const itemCount = Array.isArray(t.items)
+          ? t.items.reduce((sum: number, it: any) => sum + (Number(it.quantity) || 1), 0)
+          : 1;
+        const itemsSummary =
+          Array.isArray(t.items) && t.items.length > 0
+            ? t.items.map((it: any) => `${it.product} (${it.quantity})`).join(", ")
+            : `${itemCount} item(s)`;
+        return {
+          id: t.transactionNumber || `TRX-${t.id}`,
+          rawId: t.id,
+          time: t.dateTime
+            ? t.dateTime.split(", ")[1] || t.dateTime
+            : new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          dateTime: t.dateTime || new Date().toLocaleString(),
+          items: itemCount,
+          itemsList: t.items || [],
+          itemsSummary,
+          total: totalNum,
+          totalFormatted: t.total || formatPeso(totalNum),
+          subtotal: t.subtotal,
+          vat: t.vat,
+          discount: t.discount,
+          amountReceived: t.amountReceived,
+          change: t.change,
+          method: t.payment || "Cash",
+          cashier: t.user || "Maria Santos",
+          status: t.status || "Completed",
+        };
+      });
+      setShiftReceipts(mapped);
+    } catch {
+      // Keep existing receipts on error
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTransactions();
+  }, []);
+
+  // Compute live shift metrics
+  const totalSales = shiftReceipts.reduce((sum, r) => sum + r.total, 0);
+  const totalReceiptsCount = shiftReceipts.length;
+  const avgBasket = totalReceiptsCount > 0 ? totalSales / totalReceiptsCount : 0;
+
+  const cashReceipts = shiftReceipts.filter((r) => r.method.toLowerCase().includes("cash"));
+  const cashSalesTotal = cashReceipts.reduce((sum, r) => sum + r.total, 0);
+
+  const gcashReceipts = shiftReceipts.filter((r) => r.method.toLowerCase().includes("gcash"));
+  const gcashSalesTotal = gcashReceipts.reduce((sum, r) => sum + r.total, 0);
+
+  const cardReceipts = shiftReceipts.filter((r) => {
+    const m = r.method.toLowerCase();
+    return m.includes("card") || m.includes("credit") || m.includes("debit");
+  });
+  const cardSalesTotal = cardReceipts.reduce((sum, r) => sum + r.total, 0);
+
+  const cashPct = totalSales > 0 ? ((cashSalesTotal / totalSales) * 100).toFixed(1) : "0.0";
+  const gcashPct = totalSales > 0 ? ((gcashSalesTotal / totalSales) * 100).toFixed(1) : "0.0";
+  const cardPct = totalSales > 0 ? ((cardSalesTotal / totalSales) * 100).toFixed(1) : "0.0";
+
+  // Cash in Drawer calculations
+  const openingFloat = 5000.0;
+  const cashDrop = 2000.0;
+  const currentExpectedCash = openingFloat + cashSalesTotal - cashDrop;
+
+  const calculateBills = (amount: number) => {
+    let rem = Math.max(0, Math.floor(amount));
+    const k1000 = Math.floor(rem / 1000);
+    rem %= 1000;
+    const k500 = Math.floor(rem / 500);
+    rem %= 500;
+    const k100 = Math.floor(rem / 100);
+    rem %= 100;
+    const k50 = Math.floor(rem / 50);
+    rem %= 50;
+    const k20 = Math.floor(rem / 20);
+    rem %= 20;
+    const coins = (amount - Math.floor(amount)) + rem;
+    return { k1000, k500, k100, k50, k20, coins };
+  };
+  const bills = calculateBills(currentExpectedCash);
 
   const filteredShiftReceipts = shiftReceipts.filter(
     (r) =>
       r.id.toLowerCase().includes(searchReceipt.toLowerCase()) ||
       r.method.toLowerCase().includes(searchReceipt.toLowerCase()) ||
-      r.itemsSummary.toLowerCase().includes(searchReceipt.toLowerCase()),
+      (r.itemsSummary && r.itemsSummary.toLowerCase().includes(searchReceipt.toLowerCase())),
   );
 
   return (
@@ -144,8 +267,8 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
 
           <div style={{ marginTop: 20, paddingTop: 14, borderTop: "1px solid hsl(var(--border))", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div>
-              <div style={{ fontSize: 20, fontWeight: 700 }}>₱19,395.00</div>
-              <span className="muted" style={{ fontSize: 11 }}>5 receipts completed</span>
+              <div style={{ fontSize: 20, fontWeight: 700 }}>{formatPeso(totalSales)}</div>
+              <span className="muted" style={{ fontSize: 11 }}>{totalReceiptsCount} receipts completed</span>
             </div>
             <button className="button dark" style={{ padding: "6px 14px", fontSize: 11 }}>
               Open feature <ArrowUpRight size={12} />
@@ -175,8 +298,8 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
 
           <div style={{ marginTop: 20, paddingTop: 14, borderTop: "1px solid hsl(var(--border))", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div>
-              <div style={{ fontSize: 20, fontWeight: 700 }}>₱11,780.00</div>
-              <span className="muted" style={{ fontSize: 11 }}>Float: ₱5,000 · Cash sales: ₱8,780</span>
+              <div style={{ fontSize: 20, fontWeight: 700 }}>{formatPeso(currentExpectedCash)}</div>
+              <span className="muted" style={{ fontSize: 11 }}>Float: ₱5,000.00 · Cash sales: {formatPeso(cashSalesTotal)}</span>
             </div>
             <button className="button dark" style={{ padding: "6px 14px", fontSize: 11 }}>
               Open feature <ArrowUpRight size={12} />
@@ -206,8 +329,8 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
 
           <div style={{ marginTop: 20, paddingTop: 14, borderTop: "1px solid hsl(var(--border))", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div>
-              <div style={{ fontSize: 20, fontWeight: 700 }}>5 Receipts Logged</div>
-              <span className="muted" style={{ fontSize: 11 }}>Total ₱19,395.00 recorded</span>
+              <div style={{ fontSize: 20, fontWeight: 700 }}>{totalReceiptsCount} Receipts Logged</div>
+              <span className="muted" style={{ fontSize: 11 }}>Total {formatPeso(totalSales)} recorded</span>
             </div>
             <button className="button dark" style={{ padding: "6px 14px", fontSize: 11 }}>
               Open feature <ArrowUpRight size={12} />
@@ -241,7 +364,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                 <span className="pill success" style={{ fontSize: 11 }}>Balanced</span>
                 <span style={{ fontSize: 13, fontWeight: 600 }}>₱0.00 variance</span>
               </div>
-              <span className="muted" style={{ fontSize: 11 }}>Verified 2:00 PM today</span>
+              <span className="muted" style={{ fontSize: 11 }}>Verified today</span>
             </div>
             <button className="button dark" style={{ padding: "6px 14px", fontSize: 11 }}>
               Open feature <ArrowUpRight size={12} />
@@ -262,7 +385,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
             <div className="modal-header">
               <div>
                 <h2>Today's Shift Sales</h2>
-                <p className="modal-sub">Sales performance summary for Maria Santos (Shift #1)</p>
+                <p className="modal-sub">Live sales performance summary for Shift #1</p>
               </div>
               <button
                 type="button"
@@ -278,18 +401,18 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 18 }}>
               <div style={{ background: "hsl(var(--surface-soft))", border: "1px solid hsl(var(--border))", borderRadius: 14, padding: "14px 16px" }}>
                 <span className="muted" style={{ fontSize: 11, display: "block" }}>Total shift sales</span>
-                <strong style={{ display: "block", fontSize: 20, marginTop: 4, color: "hsl(var(--foreground))", letterSpacing: "-.04em" }}>₱19,395.00</strong>
+                <strong style={{ display: "block", fontSize: 20, marginTop: 4, color: "hsl(var(--foreground))", letterSpacing: "-.04em" }}>{formatPeso(totalSales)}</strong>
                 <span style={{ color: "#34C759", fontSize: 10, fontWeight: 600 }}>Across all payment modes</span>
               </div>
               <div style={{ background: "hsl(var(--surface-soft))", border: "1px solid hsl(var(--border))", borderRadius: 14, padding: "14px 16px" }}>
                 <span className="muted" style={{ fontSize: 11, display: "block" }}>Transactions</span>
-                <strong style={{ display: "block", fontSize: 20, marginTop: 4, color: "hsl(var(--foreground))", letterSpacing: "-.04em" }}>5 Orders</strong>
-                <span className="muted" style={{ fontSize: 10 }}>Completed shifts</span>
+                <strong style={{ display: "block", fontSize: 20, marginTop: 4, color: "hsl(var(--foreground))", letterSpacing: "-.04em" }}>{totalReceiptsCount} Orders</strong>
+                <span className="muted" style={{ fontSize: 10 }}>Completed transactions</span>
               </div>
               <div style={{ background: "hsl(var(--surface-soft))", border: "1px solid hsl(var(--border))", borderRadius: 14, padding: "14px 16px" }}>
                 <span className="muted" style={{ fontSize: 11, display: "block" }}>Average basket</span>
-                <strong style={{ display: "block", fontSize: 20, marginTop: 4, color: "hsl(var(--foreground))", letterSpacing: "-.04em" }}>₱3,879.00</strong>
-                <span className="muted" style={{ fontSize: 10 }}>Per customer</span>
+                <strong style={{ display: "block", fontSize: 20, marginTop: 4, color: "hsl(var(--foreground))", letterSpacing: "-.04em" }}>{formatPeso(avgBasket)}</strong>
+                <span className="muted" style={{ fontSize: 10 }}>Per customer order</span>
               </div>
             </div>
 
@@ -302,26 +425,26 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                 <div style={{ border: "1px solid hsl(var(--border))", borderRadius: 12, padding: "12px 14px", background: "hsl(var(--surface))" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                     <span style={{ fontSize: 12, fontWeight: 600 }}>Cash</span>
-                    <span className="pill success" style={{ fontSize: 9 }}>3 sales</span>
+                    <span className="pill success" style={{ fontSize: 9 }}>{cashReceipts.length} sale(s)</span>
                   </div>
-                  <strong style={{ fontSize: 16 }}>₱18,730.00</strong>
-                  <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>96.5% of total</div>
+                  <strong style={{ fontSize: 16 }}>{formatPeso(cashSalesTotal)}</strong>
+                  <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>{cashPct}% of total</div>
                 </div>
                 <div style={{ border: "1px solid hsl(var(--border))", borderRadius: 12, padding: "12px 14px", background: "hsl(var(--surface))" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                     <span style={{ fontSize: 12, fontWeight: 600 }}>GCash</span>
-                    <span className="pill neutral" style={{ fontSize: 9 }}>1 sale</span>
+                    <span className="pill neutral" style={{ fontSize: 9 }}>{gcashReceipts.length} sale(s)</span>
                   </div>
-                  <strong style={{ fontSize: 16 }}>₱145.00</strong>
-                  <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>0.7% of total</div>
+                  <strong style={{ fontSize: 16 }}>{formatPeso(gcashSalesTotal)}</strong>
+                  <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>{gcashPct}% of total</div>
                 </div>
                 <div style={{ border: "1px solid hsl(var(--border))", borderRadius: 12, padding: "12px 14px", background: "hsl(var(--surface))" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                     <span style={{ fontSize: 12, fontWeight: 600 }}>Card</span>
-                    <span className="pill neutral" style={{ fontSize: 9 }}>1 sale</span>
+                    <span className="pill neutral" style={{ fontSize: 9 }}>{cardReceipts.length} sale(s)</span>
                   </div>
-                  <strong style={{ fontSize: 16 }}>₱520.00</strong>
-                  <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>2.8% of total</div>
+                  <strong style={{ fontSize: 16 }}>{formatPeso(cardSalesTotal)}</strong>
+                  <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>{cardPct}% of total</div>
                 </div>
               </div>
             </div>
@@ -350,7 +473,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                         <td className="muted">{trx.time}</td>
                         <td style={{ maxWidth: 220, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{trx.itemsSummary}</td>
                         <td><span className="pill neutral">{trx.method}</span></td>
-                        <td style={{ textAlign: "right" }}><strong>{trx.total}</strong></td>
+                        <td style={{ textAlign: "right" }}><strong>{trx.totalFormatted}</strong></td>
                         <td><span className="pill success">{trx.status}</span></td>
                       </tr>
                     ))}
@@ -358,8 +481,6 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                 </table>
               </div>
             </div>
-
-
           </div>
         </div>,
         document.body
@@ -377,7 +498,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
             <div className="modal-header">
               <div>
                 <h2>Cash in Drawer</h2>
-                <p className="modal-sub">Cash drawer audit and denominations count · Terminal #01</p>
+                <p className="modal-sub">Live cash drawer audit and denominations count · Terminal #01</p>
               </div>
               <button
                 type="button"
@@ -401,7 +522,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <span className="muted">Cash received from transactions:</span>
-                  <strong style={{ color: "#34C759" }}>+₱8,780.00</strong>
+                  <strong style={{ color: "#34C759" }}>+{formatPeso(cashSalesTotal)}</strong>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <span className="muted">Mid-day cash drop (Transferred to main safe):</span>
@@ -410,7 +531,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                 <div style={{ height: 1, background: "hsl(var(--border))", margin: "4px 0" }} />
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15 }}>
                   <strong style={{ color: "hsl(var(--foreground))" }}>Current Expected Cash:</strong>
-                  <strong style={{ color: "hsl(var(--foreground))" }}>₱11,780.00</strong>
+                  <strong style={{ color: "hsl(var(--foreground))" }}>{formatPeso(currentExpectedCash)}</strong>
                 </div>
               </div>
             </div>
@@ -430,16 +551,16 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                     </tr>
                   </thead>
                   <tbody>
-                    <tr><td>₱1,000 Bill</td><td style={{ textAlign: "center" }}>8</td><td style={{ textAlign: "right" }}>₱8,000.00</td></tr>
-                    <tr><td>₱500 Bill</td><td style={{ textAlign: "center" }}>5</td><td style={{ textAlign: "right" }}>₱2,500.00</td></tr>
-                    <tr><td>₱100 Bill</td><td style={{ textAlign: "center" }}>10</td><td style={{ textAlign: "right" }}>₱1,000.00</td></tr>
-                    <tr><td>₱50 Bill</td><td style={{ textAlign: "center" }}>4</td><td style={{ textAlign: "right" }}>₱200.00</td></tr>
-                    <tr><td>₱20 Bill</td><td style={{ textAlign: "center" }}>3</td><td style={{ textAlign: "right" }}>₱60.00</td></tr>
-                    <tr><td>Coins &amp; Loose Change</td><td style={{ textAlign: "center" }}>-</td><td style={{ textAlign: "right" }}>₱20.00</td></tr>
+                    <tr><td>₱1,000 Bill</td><td style={{ textAlign: "center" }}>{bills.k1000}</td><td style={{ textAlign: "right" }}>{formatPeso(bills.k1000 * 1000)}</td></tr>
+                    <tr><td>₱500 Bill</td><td style={{ textAlign: "center" }}>{bills.k500}</td><td style={{ textAlign: "right" }}>{formatPeso(bills.k500 * 500)}</td></tr>
+                    <tr><td>₱100 Bill</td><td style={{ textAlign: "center" }}>{bills.k100}</td><td style={{ textAlign: "right" }}>{formatPeso(bills.k100 * 100)}</td></tr>
+                    <tr><td>₱50 Bill</td><td style={{ textAlign: "center" }}>{bills.k50}</td><td style={{ textAlign: "right" }}>{formatPeso(bills.k50 * 50)}</td></tr>
+                    <tr><td>₱20 Bill</td><td style={{ textAlign: "center" }}>{bills.k20}</td><td style={{ textAlign: "right" }}>{formatPeso(bills.k20 * 20)}</td></tr>
+                    <tr><td>Coins &amp; Loose Change</td><td style={{ textAlign: "center" }}>-</td><td style={{ textAlign: "right" }}>{formatPeso(bills.coins)}</td></tr>
                     <tr style={{ background: "hsl(var(--surface-soft))" }}>
                       <td><strong>Total Physical Count</strong></td>
-                      <td style={{ textAlign: "center" }}><strong>30 units</strong></td>
-                      <td style={{ textAlign: "right" }}><strong>₱11,780.00</strong></td>
+                      <td style={{ textAlign: "center" }}><strong>{bills.k1000 + bills.k500 + bills.k100 + bills.k50 + bills.k20} bills</strong></td>
+                      <td style={{ textAlign: "right" }}><strong>{formatPeso(currentExpectedCash)}</strong></td>
                     </tr>
                   </tbody>
                 </table>
@@ -462,7 +583,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
             <div className="modal-header">
               <div>
                 <h2>Shift Receipts Log</h2>
-                <p className="modal-sub">Receipts and transactions recorded during current shift (Maria Santos · Terminal #01)</p>
+                <p className="modal-sub">Receipts and transactions recorded during current shift (Terminal #01)</p>
               </div>
               <button
                 type="button"
@@ -475,14 +596,14 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
             </div>
 
             <div style={{ marginBottom: 14, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-              <div className="search-wrap" style={{ width: 240 }}>
-                <Search size={14} />
+              <div className="search-wrap" style={{ width: 240, height: 34 }}>
+                <Search size={14} style={{ flexShrink: 0 }} />
                 <input
                   type="search"
                   placeholder="Search receipt #, method..."
                   value={searchReceipt}
                   onChange={(e) => setSearchReceipt(e.target.value)}
-                  style={{ height: 32, fontSize: 11 }}
+                  style={{ border: "none", background: "transparent", boxShadow: "none", outline: "none", padding: 0, height: "100%", fontSize: 11 }}
                 />
               </div>
               <span className="muted" style={{ fontSize: 11 }}>
@@ -517,7 +638,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                         </span>
                       </td>
                       <td style={{ textAlign: "right" }}>
-                        <strong>{r.total}</strong>
+                        <strong>{r.totalFormatted}</strong>
                       </td>
                       <td>
                         <button
@@ -587,19 +708,19 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                 </div>
                 <div>
                   <span className="muted" style={{ display: "block", fontSize: 11, marginBottom: 2 }}>Expected Cash:</span>
-                  <strong style={{ color: "hsl(var(--foreground))" }}>₱11,780.00</strong>
+                  <strong style={{ color: "hsl(var(--foreground))" }}>{formatPeso(currentExpectedCash)}</strong>
                 </div>
                 <div>
                   <span className="muted" style={{ display: "block", fontSize: 11, marginBottom: 2 }}>Physical Count:</span>
-                  <strong style={{ color: "hsl(var(--foreground))" }}>₱11,780.00</strong>
+                  <strong style={{ color: "hsl(var(--foreground))" }}>{formatPeso(currentExpectedCash)}</strong>
                 </div>
                 <div>
                   <span className="muted" style={{ display: "block", fontSize: 11, marginBottom: 2 }}>Last Verification Time:</span>
-                  <strong style={{ color: "hsl(var(--foreground))" }}>September 1, 2026 – 2:00 PM</strong>
+                  <strong style={{ color: "hsl(var(--foreground))" }}>Active Shift</strong>
                 </div>
                 <div>
                   <span className="muted" style={{ display: "block", fontSize: 11, marginBottom: 2 }}>Verified by Supervisor:</span>
-                  <strong style={{ color: "hsl(var(--foreground))" }}>Juan Dela Cruz (Admin)</strong>
+                  <strong style={{ color: "hsl(var(--foreground))" }}>Admin Verified</strong>
                 </div>
               </div>
             </div>
@@ -629,16 +750,9 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                       <td><span className="pill success">Balanced</span></td>
                     </tr>
                     <tr>
-                      <td>12:00 PM (Midday Check)</td>
-                      <td>₱8,280.00</td>
-                      <td>₱8,280.00</td>
-                      <td>₱0.00</td>
-                      <td><span className="pill success">Balanced</span></td>
-                    </tr>
-                    <tr>
-                      <td>02:00 PM (Afternoon Audit)</td>
-                      <td>₱11,780.00</td>
-                      <td>₱11,780.00</td>
+                      <td>Active Audit (Current)</td>
+                      <td>{formatPeso(currentExpectedCash)}</td>
+                      <td>{formatPeso(currentExpectedCash)}</td>
                       <td>₱0.00</td>
                       <td><span className="pill success">Balanced</span></td>
                     </tr>
@@ -661,7 +775,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
             <div
               className="modal dialog"
               onClick={(e) => e.stopPropagation()}
-              style={{ maxWidth: 420 }}>
+              style={{ maxWidth: 440 }}>
               <div className="modal-header">
                 <div>
                   <h2>Receipt Details ({selectedReceipt.id})</h2>
@@ -700,11 +814,23 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                     style={{
                       fontSize: 11,
                       textAlign: "right",
-                      maxWidth: 220,
+                      maxWidth: 240,
                     }}>
                     {selectedReceipt.itemsSummary}
                   </span>
                 </div>
+                {selectedReceipt.amountReceived && (
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span className="muted">Amount Received</span>
+                    <span>{selectedReceipt.amountReceived}</span>
+                  </div>
+                )}
+                {selectedReceipt.change && (
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span className="muted">Change</span>
+                    <span>{selectedReceipt.change}</span>
+                  </div>
+                )}
                 <div
                   style={{
                     display: "flex",
@@ -716,10 +842,20 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                     borderTop: "1px solid hsl(var(--border))",
                   }}>
                   <span>Total Paid</span>
-                  <span>{selectedReceipt.total}</span>
+                  <span>{selectedReceipt.totalFormatted}</span>
                 </div>
               </div>
-              <div className="modal-actions" style={{ marginTop: 16 }}>
+              <div className="modal-actions" style={{ marginTop: 16, display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                <Link
+                  href="/inventory"
+                  className="button soft"
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none", fontSize: 12 }}
+                  onClick={() => {
+                    setSelectedReceipt(null);
+                    setActiveModal(null);
+                  }}>
+                  <Boxes size={13} /> View in Inventory
+                </Link>
                 <button
                   type="button"
                   className="button dark"

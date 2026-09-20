@@ -1,7 +1,10 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { Link } from "wouter";
 import {
+  Boxes,
   CalendarDays,
   Check,
+  ClipboardList,
   Download,
   Eye,
   Plus,
@@ -15,6 +18,26 @@ import {
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import type { ProductItem, ToastFn } from "@/lib/types";
 
+export interface ShiftReceipt {
+  id: string;
+  rawId?: number;
+  time: string;
+  dateTime: string;
+  items: number;
+  itemsList: { product: string; quantity: number; unitPrice: string; subtotal: string }[];
+  itemsSummary: string;
+  total: number;
+  totalFormatted: string;
+  subtotal: string;
+  vat: string;
+  discount: string;
+  amountReceived: string;
+  change: string;
+  method: string;
+  cashier: string;
+  status: string;
+}
+
 type CartItem = {
   id: string;
   name: string;
@@ -24,7 +47,10 @@ type CartItem = {
 };
 
 function getProductStock(product: ProductItem): number {
-  return product.batches.reduce((sum, batch) => sum + (Number(batch.quantity) || 0), 0);
+  if (Array.isArray(product.batches) && product.batches.length > 0) {
+    return product.batches.reduce((sum, batch) => sum + (Number(batch.quantity) || 0), 0);
+  }
+  return Number(product.stock) || 0;
 }
 
 function getProductPrice(product: ProductItem): number {
@@ -38,7 +64,7 @@ function formatPeso(value: number): string {
 function getBatchAllocations(product: ProductItem, quantity: number) {
   let remaining = quantity;
   const allocations: { batchNumber: string; quantity: number }[] = [];
-  const batches = [...product.batches]
+  const batches = [...(product.batches || [])]
     .filter((batch) => Number(batch.quantity) > 0)
     .sort(
       (a, b) =>
@@ -50,6 +76,11 @@ function getBatchAllocations(product: ProductItem, quantity: number) {
     const allocated = Math.min(Number(batch.quantity), remaining);
     allocations.push({ batchNumber: batch.batchNumber, quantity: allocated });
     remaining -= allocated;
+  }
+
+  if (remaining > 0 && product.batches && product.batches.length > 0) {
+    allocations.push({ batchNumber: product.batches[0].batchNumber, quantity: remaining });
+    remaining = 0;
   }
 
   return remaining === 0 ? allocations : null;
@@ -72,13 +103,14 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
   const [cashTendered, setCashTendered] = useState<string>("200");
   const [searchReceipt, setSearchReceipt] = useState("");
   const [showShiftModal, setShowShiftModal] = useState(false);
-  const [selectedReceipt, setSelectedReceipt] = useState<any | null>(null);
+  const [selectedReceipt, setSelectedReceipt] = useState<ShiftReceipt | null>(null);
+  const [receipts, setReceipts] = useState<ShiftReceipt[]>([]);
 
   const fetchProducts = async () => {
     try {
       setIsLoadingProducts(true);
       setProductLoadError("");
-      const response = await fetch("http://localhost:5000/api/inventory", {
+      const response = await fetch("/api/inventory", {
         credentials: "include",
       });
       const contentType = response.headers.get("content-type");
@@ -102,8 +134,55 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
     }
   };
 
+  const fetchTransactions = async () => {
+    try {
+      const response = await fetch("/api/admin/transactions", {
+        credentials: "include",
+      });
+      if (!response.ok) return;
+      const data = await response.json();
+      if (!Array.isArray(data)) return;
+      const mapped: ShiftReceipt[] = data.map((t: any) => {
+        const totalNum =
+          parseFloat(String(t.total || "0").replace("₱", "").replace(",", "")) || 0;
+        const itemCount = Array.isArray(t.items)
+          ? t.items.reduce((sum: number, it: any) => sum + (Number(it.quantity) || 1), 0)
+          : 1;
+        const itemsSummary =
+          Array.isArray(t.items) && t.items.length > 0
+            ? t.items.map((it: any) => `${it.product} (${it.quantity})`).join(", ")
+            : `${itemCount} item(s)`;
+        return {
+          id: t.transactionNumber || `TRX-${t.id}`,
+          rawId: t.id,
+          time: t.dateTime
+            ? t.dateTime.split(", ")[1] || t.dateTime
+            : new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          dateTime: t.dateTime || new Date().toLocaleString(),
+          items: itemCount,
+          itemsList: t.items || [],
+          itemsSummary,
+          total: totalNum,
+          totalFormatted: t.total || formatPeso(totalNum),
+          subtotal: t.subtotal || formatPeso(totalNum / 1.12),
+          vat: t.vat || formatPeso(totalNum - totalNum / 1.12),
+          discount: t.discount || "₱0.00",
+          amountReceived: t.amountReceived || t.total || "₱0.00",
+          change: t.change || "₱0.00",
+          method: t.payment || "Cash",
+          cashier: t.user || "Cashier",
+          status: t.status || "Completed",
+        };
+      });
+      setReceipts(mapped);
+    } catch {
+      // Keep existing receipts
+    }
+  };
+
   useEffect(() => {
     fetchProducts();
+    fetchTransactions();
   }, []);
 
   const filteredProducts = products.filter((product) => {
@@ -111,7 +190,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
     return (
       !q ||
       product.name.toLowerCase().includes(q) ||
-      product.genericName.toLowerCase().includes(q) ||
+      (product.genericName && product.genericName.toLowerCase().includes(q)) ||
       product.sku.toLowerCase().includes(q) ||
       product.category.toLowerCase().includes(q)
     );
@@ -124,44 +203,6 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
     }
   }, [filteredProducts, selectedProductId]);
 
-  const [receipts, setReceipts] = useState([
-    {
-      id: "CS-9401",
-      time: "10:14 AM",
-      items: 3,
-      total: 195.0,
-      method: "Cash",
-      cashier: "Maria Santos",
-      status: "Completed",
-    },
-    {
-      id: "CS-9400",
-      time: "09:48 AM",
-      items: 1,
-      total: 145.0,
-      method: "GCash",
-      cashier: "Maria Santos",
-      status: "Completed",
-    },
-    {
-      id: "CS-9399",
-      time: "09:12 AM",
-      items: 5,
-      total: 520.0,
-      method: "Card",
-      cashier: "Maria Santos",
-      status: "Completed",
-    },
-    {
-      id: "CS-9398",
-      time: "08:35 AM",
-      items: 2,
-      total: 85.0,
-      method: "Cash",
-      cashier: "Maria Santos",
-      status: "Completed",
-    },
-  ]);
 
   const subtotal = cart.reduce((acc, item) => acc + item.price * item.qty, 0);
   const isDiscountEligible = discountType !== "None";
@@ -260,7 +301,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
       return;
     }
 
-    const nextNumber = 9402 + receipts.length - 4;
+    const nextNumber = 9400 + receipts.length + 1;
     const newId = `CS-${nextNumber}`;
     const now = new Date();
     const timeStr = now.toLocaleTimeString([], {
@@ -277,7 +318,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
     const cashierName =
       localStorage.getItem("medprix-fullname") ||
       localStorage.getItem("medprix-username") ||
-      "Cashier";
+      "Cashier Staff";
 
     try {
       for (const entry of allocations) {
@@ -285,7 +326,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
 
         for (const batch of entry.batches) {
           const response = await fetch(
-            `http://localhost:5000/api/inventory/products/${entry.product.id}/stock-out`,
+            `/api/inventory/products/${entry.product.id}/stock-out`,
             {
               method: "POST",
               credentials: "include",
@@ -309,22 +350,11 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
       return;
     }
 
-    const newReceipt = {
-      id: newId,
-      time: timeStr,
-      items: cart.reduce((a, b) => a + b.qty, 0),
-      total: total,
-      method: paymentMethod,
-      discount: discountType,
-      cashier: cashierName,
-      status: "Completed",
-    };
-
     const transactionPayload = {
       transactionNumber: newId,
       dateTime,
       user: cashierName,
-      businessType: "Retail",
+      businessType: "Retail" as const,
       customer: "Walk-in Customer",
       total: formatPeso(total),
       subtotal: formatPeso(subtotal),
@@ -334,7 +364,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
         paymentMethod === "Cash" ? formatPeso(tenderedNum) : formatPeso(total),
       change: formatPeso(changeDue),
       payment: paymentMethod,
-      status: "Completed",
+      status: "Completed" as const,
       items: cart.map((item) => ({
         product: item.name,
         quantity: item.qty,
@@ -343,46 +373,71 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
       })),
     };
 
-    fetch("http://localhost:5000/api/admin/transactions", {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(transactionPayload),
-    }).catch(() => {});
+    try {
+      await fetch("/api/admin/transactions", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(transactionPayload),
+      });
 
-    fetch("http://localhost:5000/api/admin/system-logs", {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        user: cashierName,
-        role: "Cashier",
-        action: "Sales Transaction",
-        module: "Sales POS",
-        description: `Completed retail receipt ${newId} (${formatPeso(total)})`,
-        status: "Success",
-        deviceIp: "POS Terminal 1",
-      }),
-    }).catch(() => {});
+      fetch("/api/admin/system-logs", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user: cashierName,
+          role: "Cashier",
+          action: "Sales Transaction",
+          module: "Sales POS",
+          description: `Completed retail receipt ${newId} (${formatPeso(total)})`,
+          status: "Success",
+          deviceIp: "POS Terminal 1",
+        }),
+      }).catch(() => {});
 
-    fetch("http://localhost:5000/api/admin/user-activities", {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        user: cashierName,
-        role: "Cashier",
-        activity: "Transaction completed",
-        module: "Sales & Wholesale Activity",
-        description: `Processed retail receipt ${newId} (${formatPeso(total)})`,
-        flag: "Normal",
-      }),
-    }).catch(() => {});
+      fetch("/api/admin/user-activities", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user: cashierName,
+          role: "Cashier",
+          activity: "Transaction completed",
+          module: "Sales & Wholesale Activity",
+          description: `Processed retail receipt ${newId} (${formatPeso(total)})`,
+          flag: "Normal",
+        }),
+      }).catch(() => {});
+    } catch (err) {
+      console.warn("Failed to persist transaction to backend:", err);
+    }
 
-    setReceipts([newReceipt, ...receipts]);
+    const newReceipt: ShiftReceipt = {
+      id: newId,
+      time: timeStr,
+      dateTime,
+      items: cart.reduce((a, b) => a + b.qty, 0),
+      itemsList: transactionPayload.items,
+      itemsSummary: cart.map((item) => `${item.name} (${item.qty})`).join(", "),
+      total: total,
+      totalFormatted: formatPeso(total),
+      subtotal: formatPeso(subtotal),
+      vat: formatPeso(vat),
+      discount: formatPeso(discountAmount),
+      amountReceived: transactionPayload.amountReceived,
+      change: formatPeso(changeDue),
+      method: paymentMethod,
+      cashier: cashierName,
+      status: "Completed",
+    };
+
+    setSelectedReceipt(newReceipt);
+    setReceipts((prev) => [newReceipt, ...prev]);
     setCart([]);
     setCashTendered("");
     await fetchProducts();
+    await fetchTransactions();
     onToast(
       `Sale completed! Receipt ${newId} printed.${isDiscountEligible ? ` ${discountType} discount applied.` : ""} Change: ₱${changeDue.toFixed(2)}`,
     );
@@ -391,7 +446,8 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
   const filteredReceipts = receipts.filter(
     (r) =>
       r.id.toLowerCase().includes(searchReceipt.toLowerCase()) ||
-      r.method.toLowerCase().includes(searchReceipt.toLowerCase()),
+      r.method.toLowerCase().includes(searchReceipt.toLowerCase()) ||
+      (r.itemsSummary && r.itemsSummary.toLowerCase().includes(searchReceipt.toLowerCase())),
   );
 
   return (
@@ -892,6 +948,242 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
           </form>
         </div>
       </section>
+
+      {/* Recent Shift Receipts Section */}
+      <section
+        className="surface-card"
+        style={{ padding: "22px 24px", width: "100%", borderRadius: 20 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 16,
+            flexWrap: "wrap",
+            gap: 12,
+          }}>
+          <div>
+            <h3
+              style={{
+                margin: 0,
+                fontSize: 16,
+                fontWeight: 700,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+              }}>
+              <Receipt size={16} /> Recent Shift Receipts ({filteredReceipts.length})
+            </h3>
+            <p className="card-subtitle" style={{ margin: "2px 0 0" }}>
+              Completed transactions from this active register shift.
+            </p>
+          </div>
+          <div className="search-wrap" style={{ width: 260 }}>
+            <Search size={14} />
+            <input
+              type="search"
+              placeholder="Search receipt #, method, item..."
+              value={searchReceipt}
+              onChange={(e) => setSearchReceipt(e.target.value)}
+              style={{ height: 34, fontSize: 12 }}
+            />
+          </div>
+        </div>
+
+        <div
+          className="table-scroll"
+          style={{
+            border: "1px solid hsl(var(--border))",
+            borderRadius: 12,
+            overflowX: "auto",
+          }}>
+          <table className="data-table" style={{ width: "100%" }}>
+            <thead>
+              <tr>
+                <th>Receipt #</th>
+                <th>Time</th>
+                <th>Items Sold</th>
+                <th>Payment</th>
+                <th style={{ textAlign: "right" }}>Total</th>
+                <th>Status</th>
+                <th style={{ textAlign: "center", width: 90 }}>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredReceipts.map((r) => (
+                <tr key={r.id}>
+                  <td>
+                    <strong>{r.id}</strong>
+                  </td>
+                  <td className="muted">{r.time}</td>
+                  <td
+                    style={{
+                      maxWidth: 240,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      fontSize: 12,
+                    }}>
+                    {r.itemsSummary || `${r.items} item(s)`}
+                  </td>
+                  <td>
+                    <span
+                      className={`pill ${r.method === "Cash" ? "success" : "neutral"}`}
+                      style={{ fontSize: 10 }}>
+                      {r.method}
+                    </span>
+                  </td>
+                  <td style={{ textAlign: "right" }}>
+                    <strong>{r.totalFormatted || formatPeso(r.total)}</strong>
+                  </td>
+                  <td>
+                    <span className="pill success" style={{ fontSize: 10 }}>
+                      {r.status || "Completed"}
+                    </span>
+                  </td>
+                  <td style={{ textAlign: "center" }}>
+                    <button
+                      type="button"
+                      className="button soft"
+                      style={{ padding: "4px 10px", fontSize: 11 }}
+                      onClick={() => setSelectedReceipt(r)}>
+                      <Eye size={12} style={{ marginRight: 4 }} /> View
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {filteredReceipts.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={7}
+                    style={{ textAlign: "center", padding: 28 }}
+                    className="muted">
+                    No receipts recorded for this shift yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* Modal: Receipt Details & Print */}
+      {selectedReceipt && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setSelectedReceipt(null)}
+          style={{ zIndex: 1100 }}>
+          <div
+            className="modal dialog"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: 440, width: "90%" }}>
+            <div className="modal-header">
+              <div>
+                <h2>Receipt Details ({selectedReceipt.id})</h2>
+                <p className="modal-sub">
+                  Processed at {selectedReceipt.time} by {selectedReceipt.cashier}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setSelectedReceipt(null)}>
+                <X size={16} />
+              </button>
+            </div>
+            <div
+              style={{
+                padding: "14px 0",
+                display: "grid",
+                gap: 10,
+                fontSize: 13,
+                borderTop: "1px solid hsl(var(--border))",
+                borderBottom: "1px solid hsl(var(--border))",
+              }}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span className="muted">Transaction Status</span>
+                <span className="pill success">{selectedReceipt.status || "Completed"}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span className="muted">Payment Method</span>
+                <strong>{selectedReceipt.method}</strong>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <span className="muted">Items Summary</span>
+                <span
+                  style={{
+                    fontSize: 11,
+                    textAlign: "right",
+                    maxWidth: 220,
+                  }}>
+                  {selectedReceipt.itemsSummary || `${selectedReceipt.items} item(s)`}
+                </span>
+              </div>
+              {selectedReceipt.subtotal && (
+                <div style={{ display: "flex", justifyContent: "space-between", color: "hsl(var(--muted))" }}>
+                  <span>Subtotal</span>
+                  <span>{selectedReceipt.subtotal}</span>
+                </div>
+              )}
+              {selectedReceipt.vat && (
+                <div style={{ display: "flex", justifyContent: "space-between", color: "hsl(var(--muted))" }}>
+                  <span>VAT (12% incl.)</span>
+                  <span>{selectedReceipt.vat}</span>
+                </div>
+              )}
+              {selectedReceipt.discount && selectedReceipt.discount !== "₱0.00" && (
+                <div style={{ display: "flex", justifyContent: "space-between", color: "#34C759", fontWeight: 600 }}>
+                  <span>Privilege Discount</span>
+                  <span>-{selectedReceipt.discount}</span>
+                </div>
+              )}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  fontSize: 16,
+                  fontWeight: 700,
+                  paddingTop: 8,
+                  borderTop: "1px solid hsl(var(--border))",
+                }}>
+                <span>Total Amount</span>
+                <span>{selectedReceipt.totalFormatted || formatPeso(selectedReceipt.total)}</span>
+              </div>
+              {selectedReceipt.amountReceived && (
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span className="muted">Amount Tendered</span>
+                  <span>{selectedReceipt.amountReceived}</span>
+                </div>
+              )}
+              {selectedReceipt.change && (
+                <div style={{ display: "flex", justifyContent: "space-between", color: "#34C759", fontWeight: 700 }}>
+                  <span>Change Due</span>
+                  <span>{selectedReceipt.change}</span>
+                </div>
+              )}
+            </div>
+            <div className="modal-actions" style={{ marginTop: 16, display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <Link
+                href="/inventory"
+                className="button soft"
+                style={{ textDecoration: "none", fontSize: 12, padding: "8px 14px", display: "inline-flex", alignItems: "center", gap: 6 }}
+                onClick={() => setSelectedReceipt(null)}>
+                <Boxes size={13} /> View in Inventory
+              </Link>
+              <button
+                type="button"
+                className="button dark"
+                onClick={() => {
+                  onToast(`Printing receipt ${selectedReceipt.id}...`);
+                  window.print();
+                }}>
+                <Download size={13} style={{ marginRight: 4 }} /> Print Receipt
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {/* Modal: End of Shift Z-Read Confirmation */}
       {showShiftModal && (

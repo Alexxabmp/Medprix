@@ -1164,6 +1164,17 @@ a {
   outline: 0;
 }
 
+.modal .search-wrap input,
+.modal .search-wrap input:focus {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  outline: 0 !important;
+  padding: 0 !important;
+  height: 100% !important;
+}
+
 .toast {
   position: fixed;
   right: 24px;

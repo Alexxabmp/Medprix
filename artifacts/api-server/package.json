@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@workspace/api-zod": "*",
     "@workspace/db": "*",
     "bcrypt": "^6.0.0",

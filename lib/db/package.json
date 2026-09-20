@@ -17,6 +17,7 @@
     "fresh": "tsx ./src/reset.ts --yes && drizzle-kit push --force --config ./drizzle.config.ts && tsx ./src/triggers.ts && tsx ./src/seed.ts"
   },
   "dependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "bcrypt": "^6.0.0",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",

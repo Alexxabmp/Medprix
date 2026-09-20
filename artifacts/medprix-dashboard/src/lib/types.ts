@@ -1,4 +1,4 @@
-﻿// Shared application types
+// Shared application types
 
 export type ToastFn = (message: string) => void;
 
@@ -37,8 +37,8 @@ export interface ProductItem {
   sku: string;
   category: string;
   price: string;
-  cost: string;
-  isDangerousDrug: boolean;
+  cost?: string;
+  isDangerousDrug?: boolean;
   reorder: number;
   batches: ProductBatch[];
   stock?: number;

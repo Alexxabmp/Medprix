@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, type FormEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { Link } from "wouter";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import {
   Activity,
@@ -14,6 +15,7 @@ import {
   Check,
   ChevronDown,
   CircleDollarSign,
+  ClipboardList,
   Clock3,
   Download,
   Ellipsis,
@@ -25,6 +27,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  ShoppingCart,
   Tag,
   Trash2,
   TrendingUp,
@@ -255,6 +258,8 @@ export default function InventoryPage({
   const [batchProduct, setBatchProduct] = useState<ProductItem | null>(null);
   const [stockInProduct, setStockInProduct] = useState<ProductItem | null>(null);
   const [stockOutProduct, setStockOutProduct] = useState<ProductItem | null>(null);
+  const [alertModal, setAlertModal] = useState<"low-stock" | "expired" | null>(null);
+  const [alertSearch, setAlertSearch] = useState("");
 
   // Forms state
   const [newProd, setNewProd] = useState({
@@ -498,8 +503,8 @@ export default function InventoryPage({
       sku: product.sku,
       category: product.category,
       price: product.price,
-      cost: product.cost,
-      isDangerousDrug: product.isDangerousDrug,
+      cost: product.cost || "",
+      isDangerousDrug: product.isDangerousDrug || false,
       reorder: String(product.reorder),
     });
     setEditProduct(product);
@@ -755,212 +760,6 @@ export default function InventoryPage({
       />
 
       {/* ========================================================================= */}
-      {/* ALERTS SECTION (ADMIN & FRONT DESK ONLY) */}
-      {/* ========================================================================= */}
-      {canViewAlerts && (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-            gap: 16,
-            marginBottom: 20,
-          }}>
-          {/* Low Stock Alert */}
-          {lowStockItems.length > 0 && (
-            <div
-              className="surface-card"
-              style={{
-                padding: "14px 18px",
-                background: "hsl(var(--surface))",
-              }}>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  marginBottom: 12,
-                }}>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    fontWeight: 700,
-                    color: "hsl(var(--foreground))",
-                    fontSize: 13,
-                  }}>
-                  <AlertTriangle size={15} />
-                  <span>LOW STOCK ALERT ({lowStockItems.length})</span>
-                </div>
-                <button
-                  type="button"
-                  className="button soft"
-                  style={{ padding: "3px 8px", fontSize: 10 }}
-                  onClick={() => setStatusFilter("Low Stock")}>
-                  Filter Low Stock
-                </button>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {lowStockItems.slice(0, 3).map((p) => {
-                  const stock = getProductTotalStock(p);
-                  return (
-                    <div
-                      key={p.id}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        fontSize: 12,
-                        background: "hsl(var(--surface-soft))",
-                        padding: "6px 10px",
-                        borderRadius: 6,
-                      }}>
-                      <div>
-                        <strong>{p.name}</strong>{" "}
-                        <span className="muted" style={{ fontSize: 10 }}>
-                          ({p.sku})
-                        </span>
-                      </div>
-                      <div>
-                        <span
-                          style={{
-                            color: stock === 0 ? "#ef4444" : "#b45309",
-                            fontWeight: 700,
-                          }}>
-                          {stock} units left
-                        </span>
-                        <span
-                          className="muted"
-                          style={{ fontSize: 10, marginLeft: 6 }}>
-                          (Reorder: {p.reorder})
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Expired / Expiring Products Alert */}
-          {(expiredItems.length > 0 || expiringSoonItems.length > 0) && (
-            <div
-              className="surface-card"
-              style={{
-                padding: "14px 18px",
-                background: "hsl(var(--surface))",
-              }}>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  marginBottom: 12,
-                }}>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    fontWeight: 700,
-                    color: "hsl(var(--foreground))",
-                    fontSize: 13,
-                  }}>
-                  <AlertCircle size={15} />
-                  <span>
-                    EXPIRED &amp; EXPIRING PRODUCTS (
-                    {expiredItems.length + expiringSoonItems.length})
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  className="button soft"
-                  style={{ padding: "3px 8px", fontSize: 10 }}
-                  onClick={() => setStatusFilter("Expired")}>
-                  Filter Expired
-                </button>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {expiredItems.map((p) => {
-                  const info = getProductStatusData(p);
-                  return info.expiredBatches.map((b) => (
-                    <div
-                      key={`${p.id}-${b.batchNumber}`}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        fontSize: 12,
-                        background: "hsl(var(--surface-soft))",
-                        padding: "6px 10px",
-                        borderRadius: 6,
-                        border: "1px solid rgba(239, 68, 68, 0.2)",
-                      }}>
-                      <div>
-                        <strong>{p.name}</strong>{" "}
-                        <span
-                          className="pill danger"
-                          style={{ fontSize: 9, padding: "1px 6px", marginLeft: 4 }}>
-                          EXPIRED
-                        </span>
-                        <div className="muted" style={{ fontSize: 10 }}>
-                          Batch: {b.batchNumber} • {b.quantity} units
-                        </div>
-                      </div>
-                      <div
-                        style={{
-                          color: "#dc2626",
-                          fontWeight: 600,
-                          fontSize: 11,
-                        }}>
-                        Expired: {b.expiryDate}
-                      </div>
-                    </div>
-                  ));
-                })}
-                {expiringSoonItems.map((p) => {
-                  const info = getProductStatusData(p);
-                  return info.expiringSoonBatches.map((b) => (
-                    <div
-                      key={`${p.id}-${b.batchNumber}`}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        fontSize: 12,
-                        background: "hsl(var(--surface-soft))",
-                        padding: "6px 10px",
-                        borderRadius: 6,
-                      }}>
-                      <div>
-                        <strong>{p.name}</strong>{" "}
-                        <span
-                          className="pill warning"
-                          style={{ fontSize: 9, padding: "1px 6px", marginLeft: 4 }}>
-                          EXPIRING SOON
-                        </span>
-                        <div className="muted" style={{ fontSize: 10 }}>
-                          Batch: {b.batchNumber} • {b.quantity} units
-                        </div>
-                      </div>
-                      <div
-                        style={{
-                          color: "#b45309",
-                          fontWeight: 600,
-                          fontSize: 11,
-                        }}>
-                        Expires: {b.expiryDate}
-                      </div>
-                    </div>
-                  ));
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ========================================================================= */}
       {/* SUMMARY STRIP */}
       {/* ========================================================================= */}
       <div className="summary-strip">
@@ -976,6 +775,26 @@ export default function InventoryPage({
             lowStockItems.length > 0 ? "Requires reordering" : "All optimal"
           }
           tone={lowStockItems.length > 0 ? "warning" : undefined}
+          action={
+            <button
+              type="button"
+              className="button soft"
+              style={{
+                fontSize: 10,
+                padding: "2px 8px",
+                height: 22,
+                cursor: "pointer",
+                borderRadius: 6,
+                fontWeight: 600,
+                lineHeight: "1",
+              }}
+              onClick={() => {
+                setAlertSearch("");
+                setAlertModal("low-stock");
+              }}>
+              See Products
+            </button>
+          }
         />
         <Summary
           label="Expired / Expiring"
@@ -986,6 +805,26 @@ export default function InventoryPage({
               : "No expired stock"
           }
           tone={expiredItems.length > 0 ? "warning" : undefined}
+          action={
+            <button
+              type="button"
+              className="button soft"
+              style={{
+                fontSize: 10,
+                padding: "2px 8px",
+                height: 22,
+                cursor: "pointer",
+                borderRadius: 6,
+                fontWeight: 600,
+                lineHeight: "1",
+              }}
+              onClick={() => {
+                setAlertSearch("");
+                setAlertModal("expired");
+              }}>
+              See Products
+            </button>
+          }
         />
       </div>
 
@@ -2200,6 +2039,267 @@ export default function InventoryPage({
                   </button>
                 </div>
               </form>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* ========================================================================= */}
+      {/* 7. LOW STOCK PRODUCTS MODAL */}
+      {/* ========================================================================= */}
+      {alertModal === "low-stock" &&
+        createPortal(
+          <div
+            className="modal-backdrop"
+            onMouseDown={(e) => e.currentTarget === e.target && setAlertModal(null)}
+            data-testid="modal-low-stock-products">
+            <div className="modal dialog" style={{ maxWidth: 680, width: "92%" }}>
+              <div className="modal-header">
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <AlertTriangle size={17} style={{ color: "#d97706" }} />
+                    <h2 style={{ margin: 0, fontSize: 16 }}>Low Stock Products ({lowStockItems.length})</h2>
+                  </div>
+                  <p className="modal-sub">
+                    Products currently at or below minimum reorder thresholds.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="modal-close"
+                  onClick={() => setAlertModal(null)}>
+                  <X size={15} />
+                </button>
+              </div>
+
+              <div style={{ padding: "0 0 12px 0" }}>
+                <div className="search-wrap" style={{ width: "100%", marginBottom: 12, height: 38 }}>
+                  <Search size={14} style={{ flexShrink: 0 }} />
+                  <input
+                    type="search"
+                    placeholder="Search low stock product name, generic, SKU..."
+                    value={alertSearch}
+                    onChange={(e) => setAlertSearch(e.target.value)}
+                    style={{ border: "none", background: "transparent", boxShadow: "none", outline: "none", padding: 0, height: "100%", fontSize: 12 }}
+                  />
+                </div>
+
+                <div
+                  className="table-scroll"
+                  style={{
+                    maxHeight: 380,
+                    overflowY: "auto",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: 10,
+                  }}>
+                  <table className="data-table" style={{ width: "100%" }}>
+                    <thead>
+                      <tr>
+                        <th>Product &amp; SKU</th>
+                        <th>Category</th>
+                        <th style={{ textAlign: "right" }}>Stock Left</th>
+                        <th style={{ textAlign: "right" }}>Reorder Level</th>
+                        <th>Status</th>
+                        <th style={{ textAlign: "center" }}>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lowStockItems
+                        .filter((p) => {
+                          if (!alertSearch) return true;
+                          const q = alertSearch.toLowerCase();
+                          return (
+                            p.name.toLowerCase().includes(q) ||
+                            (p.genericName && p.genericName.toLowerCase().includes(q)) ||
+                            p.sku.toLowerCase().includes(q)
+                          );
+                        })
+                        .map((p) => {
+                          const stock = getProductTotalStock(p);
+                          return (
+                            <tr key={p.id}>
+                              <td>
+                                <strong style={{ display: "block" }}>{p.name}</strong>
+                                <span className="muted" style={{ fontSize: 11 }}>
+                                  {p.genericName ? `${p.genericName} • ` : ""}{p.sku}
+                                </span>
+                              </td>
+                              <td className="muted" style={{ fontSize: 12 }}>{p.category}</td>
+                              <td style={{ textAlign: "right" }}>
+                                <strong style={{ color: stock === 0 ? "#dc2626" : "#b45309" }}>
+                                  {stock} units
+                                </strong>
+                              </td>
+                              <td style={{ textAlign: "right" }} className="muted">
+                                {p.reorder}
+                              </td>
+                              <td>
+                                <span
+                                  className={`pill ${stock === 0 ? "danger" : "warning"}`}
+                                  style={{ fontSize: 10 }}>
+                                  {stock === 0 ? "Out of Stock" : "Low Stock"}
+                                </span>
+                              </td>
+                              <td style={{ textAlign: "center" }}>
+                                <button
+                                  type="button"
+                                  className="button soft"
+                                  style={{ padding: "3px 8px", fontSize: 11 }}
+                                  onClick={() => {
+                                    setAlertModal(null);
+                                    handleOpenStockIn(p);
+                                  }}>
+                                  <ArrowDownToLine size={12} style={{ marginRight: 4 }} /> Stock In
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      {lowStockItems.length === 0 && (
+                        <tr>
+                          <td colSpan={6} style={{ textAlign: "center", padding: 24 }} className="muted">
+                            All products have optimal stock levels.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* ========================================================================= */}
+      {/* 8. EXPIRED & EXPIRING PRODUCTS MODAL */}
+      {/* ========================================================================= */}
+      {alertModal === "expired" &&
+        createPortal(
+          <div
+            className="modal-backdrop"
+            onMouseDown={(e) => e.currentTarget === e.target && setAlertModal(null)}
+            data-testid="modal-expired-products">
+            <div className="modal dialog" style={{ maxWidth: 720, width: "92%" }}>
+              <div className="modal-header">
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <AlertCircle size={17} style={{ color: "#dc2626" }} />
+                    <h2 style={{ margin: 0, fontSize: 16 }}>
+                      Expired &amp; Expiring Batches ({expiredItems.length + expiringSoonItems.length})
+                    </h2>
+                  </div>
+                  <p className="modal-sub">
+                    Batches that are already expired or approaching expiration within 60 days.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="modal-close"
+                  onClick={() => setAlertModal(null)}>
+                  <X size={15} />
+                </button>
+              </div>
+
+              <div style={{ padding: "0 0 12px 0" }}>
+                <div className="search-wrap" style={{ width: "100%", marginBottom: 12, height: 38 }}>
+                  <Search size={14} style={{ flexShrink: 0 }} />
+                  <input
+                    type="search"
+                    placeholder="Search product name, SKU, or batch number..."
+                    value={alertSearch}
+                    onChange={(e) => setAlertSearch(e.target.value)}
+                    style={{ border: "none", background: "transparent", boxShadow: "none", outline: "none", padding: 0, height: "100%", fontSize: 12 }}
+                  />
+                </div>
+
+                <div
+                  className="table-scroll"
+                  style={{
+                    maxHeight: 380,
+                    overflowY: "auto",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: 10,
+                  }}>
+                  <table className="data-table" style={{ width: "100%" }}>
+                    <thead>
+                      <tr>
+                        <th>Product &amp; SKU</th>
+                        <th>Batch #</th>
+                        <th style={{ textAlign: "right" }}>Quantity</th>
+                        <th>Expiry Date</th>
+                        <th>Status</th>
+                        <th style={{ textAlign: "center" }}>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {expiredItems
+                        .flatMap((p) => {
+                          const info = getProductStatusData(p);
+                          return info.expiredBatches.map((b) => ({ p, b, isExpired: true }));
+                        })
+                        .concat(
+                          expiringSoonItems.flatMap((p) => {
+                            const info = getProductStatusData(p);
+                            return info.expiringSoonBatches.map((b) => ({ p, b, isExpired: false }));
+                          }),
+                        )
+                        .filter(({ p, b }) => {
+                          if (!alertSearch) return true;
+                          const q = alertSearch.toLowerCase();
+                          return (
+                            p.name.toLowerCase().includes(q) ||
+                            p.sku.toLowerCase().includes(q) ||
+                            b.batchNumber.toLowerCase().includes(q)
+                          );
+                        })
+                        .map(({ p, b, isExpired }) => (
+                          <tr key={`${p.id}-${b.batchNumber}`}>
+                            <td>
+                              <strong style={{ display: "block" }}>{p.name}</strong>
+                              <span className="muted" style={{ fontSize: 11 }}>{p.sku}</span>
+                            </td>
+                            <td>
+                              <code>{b.batchNumber}</code>
+                            </td>
+                            <td style={{ textAlign: "right" }}>
+                              <strong>{b.quantity} units</strong>
+                            </td>
+                            <td style={{ color: isExpired ? "#dc2626" : "#b45309", fontWeight: 600 }}>
+                              {b.expiryDate}
+                            </td>
+                            <td>
+                              <span
+                                className={`pill ${isExpired ? "danger" : "warning"}`}
+                                style={{ fontSize: 10 }}>
+                                {isExpired ? "EXPIRED" : "EXPIRING SOON"}
+                              </span>
+                            </td>
+                            <td style={{ textAlign: "center" }}>
+                              <button
+                                type="button"
+                                className="button soft"
+                                style={{ padding: "3px 8px", fontSize: 11 }}
+                                onClick={() => {
+                                  setAlertModal(null);
+                                  handleOpenStockOut(p);
+                                }}>
+                                <ArrowUpRight size={12} style={{ marginRight: 4 }} /> Dispose
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      {expiredItems.length === 0 && expiringSoonItems.length === 0 && (
+                        <tr>
+                          <td colSpan={6} style={{ textAlign: "center", padding: 24 }} className="muted">
+                            No expired or expiring products found in inventory.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </div>,
           document.body,
