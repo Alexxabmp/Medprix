@@ -36,6 +36,7 @@ export function AppShell({
 }) {
   const [location] = useLocation();
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const roleKey = role.toLowerCase();
   const pageName =
     location === "/dashboard"
       ? "Dashboard"
@@ -155,14 +156,14 @@ export function AppShell({
         <main className="content">
           <Switch>
             <Route path="/">
-              {role === "cashier" ? (
+              {roleKey === "cashier" ? (
                 <CashierDashboardPage onToast={onToast} />
               ) : (
                 <DashboardPage onToast={onToast} />
               )}
             </Route>
             <Route path="/dashboard">
-              {role === "cashier" ? (
+              {roleKey === "cashier" ? (
                 <CashierDashboardPage onToast={onToast} />
               ) : (
                 <DashboardPage onToast={onToast} />

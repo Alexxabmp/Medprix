@@ -202,7 +202,7 @@ export default function InventoryPage({
   ).toLowerCase();
 
   const isAdmin = role === "admin";
-  const isFrontDesk = role === "frontDesk";
+  const isFrontDesk = role === "frontdesk";
   const isCashier = role === "cashier";
 
   const canViewAlerts = isAdmin || isFrontDesk;
@@ -237,7 +237,7 @@ export default function InventoryPage({
       }
       setIsBackendConnected(false);
     } catch (err) {
-      console.warn("Backend not reachable, using offline cache:", err);
+      console.warn("Backend not reachable:", err);
       setIsBackendConnected(false);
     } finally {
       setIsLoading(false);
