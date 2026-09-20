@@ -202,7 +202,7 @@ export default function InventoryPage({
   ).toLowerCase();
 
   const isAdmin = role === "admin";
-  const isFrontDesk = role === "frontdesk";
+  const isFrontDesk = role === "frontDesk";
   const isCashier = role === "cashier";
 
   const canViewAlerts = isAdmin || isFrontDesk;
@@ -235,6 +235,7 @@ export default function InventoryPage({
           return;
         }
       }
+      setIsBackendConnected(false);
     } catch (err) {
       console.warn("Backend not reachable, using offline cache:", err);
       setIsBackendConnected(false);
@@ -374,7 +375,7 @@ export default function InventoryPage({
       product.name.toLowerCase().includes(q) ||
       product.genericName.toLowerCase().includes(q) ||
       product.sku.toLowerCase().includes(q) ||
-      product.category.toLowerCase().includes(q) ||
+      (product.category || "").toLowerCase().includes(q) ||
       product.batches.some((b) => b.batchNumber.toLowerCase().includes(q));
 
     const matchesStatus =
@@ -385,24 +386,26 @@ export default function InventoryPage({
       (statusFilter === "Expiring Soon" && info.isExpiringSoon) ||
       (statusFilter === "Expired" && info.isExpired);
 
+    const normalizedCategory = product.category?.trim() || "None";
     const matchesCategory =
-      categoryFilter === "All categories" || product.category === categoryFilter;
+      categoryFilter === "All categories" || normalizedCategory === categoryFilter;
 
     return matchesSearch && matchesStatus && matchesCategory;
   });
 
-  // Categories list
-  const categories = [
-    "All categories",
-    "Pain relief",
-    "Antibiotics",
-    "Vitamins",
-    "Respiratory",
-    "Allergy",
-    "Dermatology",
-    "Gastrointestinal",
-    "Cardiovascular",
-  ];
+  const availableCategories = Array.from(
+    new Set(
+      items
+        .map((product) => product.category?.trim())
+        .filter((category): category is string => Boolean(category)),
+    ),
+  ).sort((a, b) => a.localeCompare(b));
+  const hasUncategorized = items.some((product) => !product.category?.trim());
+  const categoryOptions =
+    availableCategories.length > 0
+      ? [...availableCategories, ...(hasUncategorized ? ["None"] : [])]
+      : ["None"];
+  const categories = ["All categories", ...categoryOptions];
 
   // Summary counts
   const totalStockCount = items.reduce(
@@ -416,7 +419,7 @@ export default function InventoryPage({
       name: "",
       genericName: "",
       sku: `MED-${Math.floor(1000 + Math.random() * 9000)}`,
-      category: "Pain relief",
+      category: availableCategories[0] || "",
       price: "₱10.00",
       cost: "₱6.00",
       isDangerousDrug: false,
@@ -453,7 +456,7 @@ export default function InventoryPage({
       name: newProd.name.trim(),
       genericName: newProd.genericName.trim() || newProd.name.trim(),
       sku: newProd.sku.trim().toUpperCase(),
-      category: newProd.category,
+      category: newProd.category.trim(),
       price: priceFormatted,
       costPrice: costFormatted,
       isDangerousDrug: newProd.isDangerousDrug,
@@ -518,7 +521,7 @@ export default function InventoryPage({
       name: editProdData.name.trim(),
       genericName: editProdData.genericName.trim(),
       sku: editProdData.sku.trim().toUpperCase(),
-      category: editProdData.category,
+      category: editProdData.category.trim(),
       price: priceFormatted,
       costPrice: costFormatted,
       isDangerousDrug: editProdData.isDangerousDrug,
@@ -543,7 +546,26 @@ export default function InventoryPage({
       onToast(`Updated product details for "${editProdData.name}"`);
     } catch (err) {
       console.error("Edit product failed:", err);
-      onToast("Couldn't reach the server. Changes were not saved.");
+      setItems((current) =>
+        current.map((product) =>
+          product.id === editProduct.id
+            ? updateProductStock({
+              ...product,
+              name: payload.name,
+              genericName: payload.genericName || payload.name,
+              sku: payload.sku,
+              category: payload.category,
+              price: priceFormatted,
+              cost: costFormatted,
+              isDangerousDrug: payload.isDangerousDrug,
+              reorder: payload.reorder,
+            })
+            : product,
+        ),
+      );
+      setEditProduct(null);
+      setIsBackendConnected(false);
+      onToast(`Updated product details for "${editProdData.name}" offline`);
     }
   };
 
@@ -1075,7 +1097,7 @@ export default function InventoryPage({
                           {product.sku}
                         </span>
                       </td>
-                      <td className="muted">{product.category}</td>
+                      <td className="muted">{product.category?.trim() || "None"}</td>
                       <td style={{ textAlign: "right" }}>
                         <strong>{product.price}</strong>
                       </td>
@@ -1505,13 +1527,11 @@ export default function InventoryPage({
                       onChange={(e) =>
                         setNewProd({ ...newProd, category: e.target.value })
                       }>
-                      {categories
-                        .filter((c) => c !== "All categories")
-                        .map((c) => (
-                          <option key={c} value={c}>
-                            {c}
-                          </option>
-                        ))}
+                      {categoryOptions.map((c) => (
+                        <option key={c} value={c === "None" ? "" : c}>
+                          {c}
+                        </option>
+                      ))}
                     </select>
                   </div>
                   <div className="field">
@@ -1548,18 +1568,42 @@ export default function InventoryPage({
                       }
                     />
                   </div>
-                  <div className="field full-width" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <input
-                      type="checkbox"
-                      id="new-product-dangerous"
-                      checked={newProd.isDangerousDrug}
-                      onChange={(e) =>
-                        setNewProd({ ...newProd, isDangerousDrug: e.target.checked })
-                      }
-                    />
-                    <label htmlFor="new-product-dangerous" style={{ margin: 0 }}>
-                      Dangerous Drug (requires controlled tracking)
-                    </label>
+                  <div className="field full-width">
+                    <label>Controlled Item</label>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        minHeight: 39,
+                        border: "1px solid hsl(var(--border))",
+                        borderRadius: 11,
+                        background: "hsl(var(--surface-soft))",
+                        padding: "8px 11px",
+                      }}>
+                      <div>
+                        <strong style={{ display: "block", fontSize: 12 }}>
+                          Dangerous drug
+                        </strong>
+                        <span className="muted" style={{ fontSize: 10 }}>
+                          Requires controlled tracking
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className={`toggle ${newProd.isDangerousDrug ? "on" : ""}`}
+                        aria-pressed={newProd.isDangerousDrug}
+                        aria-label="Toggle dangerous drug tracking"
+                        onClick={() =>
+                          setNewProd({
+                            ...newProd,
+                            isDangerousDrug: !newProd.isDangerousDrug,
+                          })
+                        }>
+                        <span />
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -1719,13 +1763,11 @@ export default function InventoryPage({
                           category: e.target.value,
                         })
                       }>
-                      {categories
-                        .filter((c) => c !== "All categories")
-                        .map((c) => (
-                          <option key={c} value={c}>
-                            {c}
-                          </option>
-                        ))}
+                      {categoryOptions.map((c) => (
+                        <option key={c} value={c === "None" ? "" : c}>
+                          {c}
+                        </option>
+                      ))}
                     </select>
                   </div>
                   <div className="field">
@@ -1766,25 +1808,42 @@ export default function InventoryPage({
                       }
                     />
                   </div>
-                  <div
-                    className="field full-width"
-                    style={{
-                      display: "flex",
-                      alignItems:
-                        "center",
-                      gap: 8
-                    }}>
-                    <input
-                      type="checkbox"
-                      id="edit-product-dangerous"
-                      checked={editProdData.isDangerousDrug}
-                      onChange={(e) =>
-                        setEditProdData({ ...editProdData, isDangerousDrug: e.target.checked })
-                      }
-                    />
-                    <label htmlFor="edit-product-dangerous" style={{ margin: 0 }}>
-                      Dangerous Drug (requires controlled tracking)
-                    </label>
+                  <div className="field full-width">
+                    <label>Controlled Item</label>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        minHeight: 39,
+                        border: "1px solid hsl(var(--border))",
+                        borderRadius: 11,
+                        background: "hsl(var(--surface-soft))",
+                        padding: "8px 11px",
+                      }}>
+                      <div>
+                        <strong style={{ display: "block", fontSize: 12 }}>
+                          Dangerous drug
+                        </strong>
+                        <span className="muted" style={{ fontSize: 10 }}>
+                          Requires controlled tracking
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className={`toggle ${editProdData.isDangerousDrug ? "on" : ""}`}
+                        aria-pressed={editProdData.isDangerousDrug}
+                        aria-label="Toggle dangerous drug tracking"
+                        onClick={() =>
+                          setEditProdData({
+                            ...editProdData,
+                            isDangerousDrug: !editProdData.isDangerousDrug,
+                          })
+                        }>
+                        <span />
+                      </button>
+                    </div>
                   </div>
                 </div>
 
