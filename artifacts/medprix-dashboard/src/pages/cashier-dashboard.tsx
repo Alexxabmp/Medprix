@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import {
   CalendarDays,
   Check,
@@ -13,30 +13,56 @@ import {
   X,
 } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
-import { products } from "@/lib/data";
-import type { ToastFn } from "@/lib/types";
+import type { ProductItem, ToastFn } from "@/lib/types";
+
+type CartItem = {
+  id: string;
+  name: string;
+  sku: string;
+  price: number;
+  qty: number;
+};
+
+function getProductStock(product: ProductItem): number {
+  return product.batches.reduce((sum, batch) => sum + (Number(batch.quantity) || 0), 0);
+}
+
+function getProductPrice(product: ProductItem): number {
+  return parseFloat(product.price.replace("₱", "").replace(",", "")) || 0;
+}
+
+function formatPeso(value: number): string {
+  return `₱${value.toFixed(2)}`;
+}
+
+function getBatchAllocations(product: ProductItem, quantity: number) {
+  let remaining = quantity;
+  const allocations: { batchNumber: string; quantity: number }[] = [];
+  const batches = [...product.batches]
+    .filter((batch) => Number(batch.quantity) > 0)
+    .sort(
+      (a, b) =>
+        new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime(),
+    );
+
+  for (const batch of batches) {
+    if (remaining <= 0) break;
+    const allocated = Math.min(Number(batch.quantity), remaining);
+    allocations.push({ batchNumber: batch.batchNumber, quantity: allocated });
+    remaining -= allocated;
+  }
+
+  return remaining === 0 ? allocations : null;
+}
 
 export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
-  const [selectedProductId, setSelectedProductId] = useState(products[0].id);
+  const [products, setProducts] = useState<ProductItem[]>([]);
+  const [selectedProductId, setSelectedProductId] = useState("");
+  const [isLoadingProducts, setIsLoadingProducts] = useState(true);
+  const [productLoadError, setProductLoadError] = useState("");
+  const [productSearch, setProductSearch] = useState("");
   const [qty, setQty] = useState(1);
-  const [cart, setCart] = useState<
-    { id: string; name: string; sku: string; price: number; qty: number }[]
-  >([
-    {
-      id: "p1",
-      name: "Paracetamol 500mg",
-      sku: "MED-0421",
-      price: 5.0,
-      qty: 10,
-    },
-    {
-      id: "p4",
-      name: "Cough relief syrup",
-      sku: "MED-0552",
-      price: 145.0,
-      qty: 1,
-    },
-  ]);
+  const [cart, setCart] = useState<CartItem[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<"Cash" | "GCash" | "Card">(
     "Cash",
   );
@@ -47,6 +73,56 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
   const [searchReceipt, setSearchReceipt] = useState("");
   const [showShiftModal, setShowShiftModal] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<any | null>(null);
+
+  const fetchProducts = async () => {
+    try {
+      setIsLoadingProducts(true);
+      setProductLoadError("");
+      const response = await fetch("http://localhost:5000/api/inventory", {
+        credentials: "include",
+      });
+      const contentType = response.headers.get("content-type");
+      if (!response.ok || !contentType?.includes("application/json")) {
+        throw new Error("Inventory API unavailable");
+      }
+      const data = await response.json();
+      const liveProducts = Array.isArray(data.products) ? data.products : [];
+      setProducts(liveProducts);
+      setSelectedProductId((current) =>
+        current && liveProducts.some((product: ProductItem) => product.id === current)
+          ? current
+          : liveProducts[0]?.id || "",
+      );
+    } catch {
+      setProducts([]);
+      setSelectedProductId("");
+      setProductLoadError("No live inventory products available.");
+    } finally {
+      setIsLoadingProducts(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchProducts();
+  }, []);
+
+  const filteredProducts = products.filter((product) => {
+    const q = productSearch.toLowerCase();
+    return (
+      !q ||
+      product.name.toLowerCase().includes(q) ||
+      product.genericName.toLowerCase().includes(q) ||
+      product.sku.toLowerCase().includes(q) ||
+      product.category.toLowerCase().includes(q)
+    );
+  });
+
+  useEffect(() => {
+    if (filteredProducts.length === 0) return;
+    if (!filteredProducts.some((product) => product.id === selectedProductId)) {
+      setSelectedProductId(filteredProducts[0].id);
+    }
+  }, [filteredProducts, selectedProductId]);
 
   const [receipts, setReceipts] = useState([
     {
@@ -99,9 +175,21 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
 
   const handleAddToCart = () => {
     const prod = products.find((p) => p.id === selectedProductId);
-    if (!prod) return;
-    const numericPrice =
-      parseFloat(prod.price.replace("₱", "").replace(",", "")) || 0;
+    if (!prod) {
+      onToast("Select a live inventory product first");
+      return;
+    }
+    const availableStock = getProductStock(prod);
+    if (availableStock <= 0) {
+      onToast(`${prod.name} is out of stock`);
+      return;
+    }
+    const existing = cart.find((item) => item.id === prod.id);
+    if ((existing?.qty || 0) + qty > availableStock) {
+      onToast(`Only ${availableStock} unit(s) available for ${prod.name}`);
+      return;
+    }
+    const numericPrice = getProductPrice(prod);
 
     const existingIndex = cart.findIndex((item) => item.id === prod.id);
     if (existingIndex > -1) {
@@ -133,7 +221,13 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
       cart
         .map((item) => {
           if (item.id === id) {
+            const product = products.find((p) => p.id === id);
+            const availableStock = product ? getProductStock(product) : item.qty;
             const newQty = item.qty + delta;
+            if (newQty > availableStock) {
+              onToast(`Only ${availableStock} unit(s) available for ${item.name}`);
+              return item;
+            }
             return newQty > 0 ? { ...item, qty: newQty } : null;
           }
           return item;
@@ -142,7 +236,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
     );
   };
 
-  const handleCheckout = (e: FormEvent) => {
+  const handleCheckout = async (e: FormEvent) => {
     e.preventDefault();
     if (cart.length === 0) {
       onToast("Cannot checkout an empty cart");
@@ -153,6 +247,19 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
       return;
     }
 
+    const allocations = cart.map((item) => {
+      const product = products.find((p) => p.id === item.id);
+      if (!product) return { item, product: null, batches: null };
+      return { item, product, batches: getBatchAllocations(product, item.qty) };
+    });
+
+    const unavailable = allocations.find((entry) => !entry.product || !entry.batches);
+    if (unavailable) {
+      onToast(`Insufficient live stock for ${unavailable.item.name}`);
+      await fetchProducts();
+      return;
+    }
+
     const nextNumber = 9402 + receipts.length - 4;
     const newId = `CS-${nextNumber}`;
     const now = new Date();
@@ -160,6 +267,47 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
       hour: "2-digit",
       minute: "2-digit",
     });
+    const dateTime = now.toLocaleString([], {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    const cashierName =
+      localStorage.getItem("medprix-fullname") ||
+      localStorage.getItem("medprix-username") ||
+      "Cashier";
+
+    try {
+      for (const entry of allocations) {
+        if (!entry.product || !entry.batches) continue;
+
+        for (const batch of entry.batches) {
+          const response = await fetch(
+            `http://localhost:5000/api/inventory/products/${entry.product.id}/stock-out`,
+            {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                batchNumber: batch.batchNumber,
+                quantity: batch.quantity,
+                reason: `Retail sale ${newId}`,
+              }),
+            },
+          );
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(data.error || `Failed to deduct ${entry.item.name}`);
+          }
+        }
+      }
+    } catch (error) {
+      await fetchProducts();
+      onToast(error instanceof Error ? error.message : "Could not complete stock deduction");
+      return;
+    }
 
     const newReceipt = {
       id: newId,
@@ -168,13 +316,73 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
       total: total,
       method: paymentMethod,
       discount: discountType,
-      cashier: "Maria Santos",
+      cashier: cashierName,
       status: "Completed",
     };
+
+    const transactionPayload = {
+      transactionNumber: newId,
+      dateTime,
+      user: cashierName,
+      businessType: "Retail",
+      customer: "Walk-in Customer",
+      total: formatPeso(total),
+      subtotal: formatPeso(subtotal),
+      discount: formatPeso(discountAmount),
+      vat: formatPeso(vat),
+      amountReceived:
+        paymentMethod === "Cash" ? formatPeso(tenderedNum) : formatPeso(total),
+      change: formatPeso(changeDue),
+      payment: paymentMethod,
+      status: "Completed",
+      items: cart.map((item) => ({
+        product: item.name,
+        quantity: item.qty,
+        unitPrice: formatPeso(item.price),
+        subtotal: formatPeso(item.price * item.qty),
+      })),
+    };
+
+    fetch("http://localhost:5000/api/admin/transactions", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(transactionPayload),
+    }).catch(() => {});
+
+    fetch("http://localhost:5000/api/admin/system-logs", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user: cashierName,
+        role: "Cashier",
+        action: "Sales Transaction",
+        module: "Sales POS",
+        description: `Completed retail receipt ${newId} (${formatPeso(total)})`,
+        status: "Success",
+        deviceIp: "POS Terminal 1",
+      }),
+    }).catch(() => {});
+
+    fetch("http://localhost:5000/api/admin/user-activities", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user: cashierName,
+        role: "Cashier",
+        activity: "Transaction completed",
+        module: "Sales & Wholesale Activity",
+        description: `Processed retail receipt ${newId} (${formatPeso(total)})`,
+        flag: "Normal",
+      }),
+    }).catch(() => {});
 
     setReceipts([newReceipt, ...receipts]);
     setCart([]);
     setCashTendered("");
+    await fetchProducts();
     onToast(
       `Sale completed! Receipt ${newId} printed.${isDiscountEligible ? ` ${discountType} discount applied.` : ""} Change: ₱${changeDue.toFixed(2)}`,
     );
@@ -247,7 +455,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1fr 90px auto",
+            gridTemplateColumns: "minmax(220px, .8fr) minmax(260px, 1fr) 90px auto",
             gap: 12,
             alignItems: "flex-end",
             padding: "14px 16px",
@@ -258,19 +466,50 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
           }}>
           <div>
             <label style={{ fontSize: 11, fontWeight: 600, color: "hsl(var(--muted))", display: "block", marginBottom: 5 }}>
+              Search Product
+            </label>
+            <div className="search-wrap" style={{ height: 39 }}>
+              <Search size={15} />
+              <input
+                data-testid="input-pos-product-search"
+                type="search"
+                placeholder="Search product, SKU, category..."
+                value={productSearch}
+                onChange={(e) => setProductSearch(e.target.value)}
+              />
+            </div>
+          </div>
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 600, color: "hsl(var(--muted))", display: "block", marginBottom: 5 }}>
               Select Product / Medicine *
             </label>
             <select
               className="select"
               value={selectedProductId}
               onChange={(e) => setSelectedProductId(e.target.value)}
+              disabled={isLoadingProducts || filteredProducts.length === 0}
               style={{ width: "100%", height: 39 }}>
-              {products.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} ({p.sku}) — {p.price} [Stock: {p.stock}]
+              {filteredProducts.length === 0 ? (
+                <option value="">
+                  {isLoadingProducts
+                    ? "Loading live inventory..."
+                    : products.length === 0
+                      ? "No live products available"
+                      : "No products match your search"}
                 </option>
-              ))}
+              ) : (
+                filteredProducts.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({p.sku}) - {p.price} [Stock: {getProductStock(p)}]
+                  </option>
+                ))
+              )}
             </select>
+            {productLoadError && (
+              <div className="muted" style={{ fontSize: 10, marginTop: 6 }}>
+                {productLoadError}
+              </div>
+            )}
           </div>
           <div>
             <label style={{ fontSize: 11, fontWeight: 600, color: "hsl(var(--muted))", display: "block", marginBottom: 5, textAlign: "center" }}>
@@ -301,6 +540,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
             <button
               type="button"
               className="button dark"
+              disabled={isLoadingProducts || filteredProducts.length === 0}
               style={{ height: 39, padding: "0 18px", display: "inline-flex", alignItems: "center", gap: 6 }}
               onClick={handleAddToCart}>
               <Plus size={15} /> Add to Cart

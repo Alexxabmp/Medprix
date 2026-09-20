@@ -380,6 +380,31 @@ router.get("/admin/transactions/:id", (req, res) => {
   return res.json(item);
 });
 
+router.post("/admin/transactions", (req, res) => {
+  const nextId =
+    initialTransactions.reduce((max, transaction) => Math.max(max, transaction.id), 0) + 1;
+  const transaction: UserTransaction = {
+    id: nextId,
+    transactionNumber: req.body.transactionNumber || `TRX-${String(nextId).padStart(4, "0")}`,
+    dateTime: req.body.dateTime || new Date().toLocaleString(),
+    user: req.body.user || "Cashier",
+    businessType: req.body.businessType === "Wholesale" ? "Wholesale" : "Retail",
+    customer: req.body.customer || "Walk-in Customer",
+    total: req.body.total || "₱0.00",
+    subtotal: req.body.subtotal || "₱0.00",
+    discount: req.body.discount || "₱0.00",
+    vat: req.body.vat || "₱0.00",
+    amountReceived: req.body.amountReceived || "₱0.00",
+    change: req.body.change || "₱0.00",
+    payment: req.body.payment || "Cash",
+    status: req.body.status || "Completed",
+    items: Array.isArray(req.body.items) ? req.body.items : [],
+  };
+
+  initialTransactions.unshift(transaction);
+  return res.status(201).json(transaction);
+});
+
 // GET /api/admin/system-logs
 router.get("/admin/system-logs", (req, res) => {
   const { search, status, module: mod } = req.query;
@@ -410,6 +435,24 @@ router.get("/admin/system-logs", (req, res) => {
   }
 
   return res.json(results);
+});
+
+router.post("/admin/system-logs", (req, res) => {
+  const nextId = initialSystemLogs.reduce((max, log) => Math.max(max, log.id), 0) + 1;
+  const log: SystemLog = {
+    id: nextId,
+    dateTime: req.body.dateTime || new Date().toLocaleString(),
+    user: req.body.user || "System",
+    role: req.body.role || "Cashier",
+    action: req.body.action || "Transaction",
+    module: req.body.module || "Sales POS",
+    description: req.body.description || "System event recorded",
+    status: req.body.status === "Failed" ? "Failed" : "Success",
+    deviceIp: req.body.deviceIp || "POS Terminal 1",
+  };
+
+  initialSystemLogs.unshift(log);
+  return res.status(201).json(log);
 });
 
 // GET /api/admin/user-activities
@@ -447,6 +490,27 @@ router.get("/admin/user-activities", (req, res) => {
   }
 
   return res.json(results);
+});
+
+router.post("/admin/user-activities", (req, res) => {
+  const nextId =
+    initialUserActivities.reduce((max, activity) => Math.max(max, activity.id), 0) + 1;
+  const activity: UserActivity = {
+    id: nextId,
+    dateTime: req.body.dateTime || new Date().toLocaleString(),
+    user: req.body.user || "Cashier",
+    role: req.body.role || "Cashier",
+    activity: req.body.activity || "Transaction completed",
+    module: req.body.module || "Sales & Wholesale Activity",
+    description: req.body.description || "User activity recorded",
+    flag:
+      req.body.flag === "Suspicious" || req.body.flag === "Flagged"
+        ? req.body.flag
+        : "Normal",
+  };
+
+  initialUserActivities.unshift(activity);
+  return res.status(201).json(activity);
 });
 
 export default router;
