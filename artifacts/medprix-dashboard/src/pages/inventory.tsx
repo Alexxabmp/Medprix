@@ -16,6 +16,7 @@ import {
   CircleDollarSign,
   Clock3,
   Download,
+  Ellipsis,
   Eye,
   Layers,
   MoreHorizontal,
@@ -85,6 +86,19 @@ function getBatchStatusData(batch: ProductBatch, product: ProductItem) {
 
 function getProductTotalStock(product: ProductItem): number {
   return product.batches.reduce((sum, b) => sum + (Number(b.quantity) || 0), 0);
+}
+function updateProductStock(product: ProductItem): ProductItem {
+  const stock = getProductTotalStock(product);
+  return {
+    ...product,
+    stock,
+    status:
+      stock === 0
+        ? "Out of stock"
+        : stock <= product.reorder
+          ? "Low stock"
+          : "Available",
+  };
 }
 
 function getProductStatusData(product: ProductItem) {
@@ -218,9 +232,8 @@ export default function InventoryPage({
         if (data.products && Array.isArray(data.products)) {
           setItems(data.products);
           setIsBackendConnected(true);
+          return;
         }
-      } else {
-        setIsBackendConnected(false);
       }
     } catch (err) {
       console.warn("Backend not reachable, using offline cache:", err);
@@ -1151,7 +1164,7 @@ export default function InventoryPage({
                             onClick={() => setViewProduct(product)}
                             title="View product & batches"
                             data-testid={`button-view-${product.id}`}>
-                            <Eye size={12} /> View
+                            <Eye size={12} />
                           </button>
 
                           {/* More Action Dropdown - ADMIN, FRONT DESK, CASHIER */}
@@ -1170,7 +1183,7 @@ export default function InventoryPage({
                                   }}
                                   title="More actions"
                                   data-testid={`button-more-action-${product.id}`}>
-                                  More Action <ChevronDown size={12} />
+                                  <Ellipsis size={12} />
                                 </button>
                               </DropdownMenuPrimitive.Trigger>
 
@@ -1753,7 +1766,14 @@ export default function InventoryPage({
                       }
                     />
                   </div>
-                  <div className="field full-width" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div 
+                    className="field full-width" 
+                    style={{ 
+                      display: "flex",
+                      alignItems:
+                      "center",
+                      gap: 8 
+                    }}>
                     <input
                       type="checkbox"
                       id="edit-product-dangerous"
