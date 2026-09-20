@@ -541,7 +541,6 @@ export default function InventoryPage({
         ),
       );
       setEditProduct(null);
-      setIsBackendConnected(false);
       onToast(`Updated product details for "${editProdData.name}" offline`);
     }
   };

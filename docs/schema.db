@@ -1,0 +1,596 @@
+-- Enable UUID extension (standard in PostgreSQL and Supabase)
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- ==============================================================================
+-- HELPER FUNCTIONS & TRIGGERS
+-- ==============================================================================
+
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ==============================================================================
+-- ENUMS
+-- ==============================================================================
+
+DO $$ BEGIN
+    CREATE TYPE user_role_enum AS ENUM ('Admin', 'Cashier', 'FrontDesk');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE transaction_status_enum AS ENUM ('Pending', 'Completed', 'Cancelled', 'Voided');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE stock_movement_type_enum AS ENUM ('StockIn', 'StockOut', 'Sale', 'Adjustment', 'Disposal', 'Return');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE alert_type_enum AS ENUM ('LowStock', 'NearExpiry', 'Expired');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE alert_severity_enum AS ENUM ('Low', 'Medium', 'High', 'Critical');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE po_status_enum AS ENUM ('Draft', 'Pending', 'Approved', 'Submitted', 'Fulfilled', 'Cancelled');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE delivery_status_enum AS ENUM ('Pending', 'Received', 'Partial', 'Inspected', 'Rejected');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE wholesale_order_status_enum AS ENUM ('Pending', 'Confirmed', 'Processing', 'Delivered', 'Cancelled');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE delivery_schedule_status_enum AS ENUM ('Scheduled', 'InTransit', 'Completed', 'Failed', 'Cancelled');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE log_status_enum AS ENUM ('Success', 'Failed', 'Warning');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
+-- ==============================================================================
+-- 5. SYSTEM ADMINISTRATION & USER MANAGEMENT SYSTEM
+-- ==============================================================================
+
+CREATE TABLE IF NOT EXISTS roles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  role_name VARCHAR(100) NOT NULL UNIQUE,
+  description TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS permissions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  module_name VARCHAR(100) NOT NULL,
+  permission_type VARCHAR(100) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT uq_permissions_module_type UNIQUE (module_name, permission_type)
+);
+
+CREATE TABLE IF NOT EXISTS users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  username VARCHAR(100) NOT NULL UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  full_name VARCHAR(255) NOT NULL,
+  contact_number VARCHAR(50),
+  email VARCHAR(255) UNIQUE,
+  employee_code VARCHAR(50),
+  role user_role_enum NOT NULL DEFAULT 'Cashier',
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_login TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TRIGGER trg_users_updated_at
+BEFORE UPDATE ON users
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TABLE IF NOT EXISTS user_roles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role_id UUID NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+  assigned_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT uq_user_roles UNIQUE (user_id, role_id)
+);
+
+CREATE TABLE IF NOT EXISTS role_permissions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  role_id UUID NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+  permission_id UUID NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
+  granted_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT uq_role_permissions UNIQUE (role_id, permission_id)
+);
+
+CREATE TABLE IF NOT EXISTS system_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    action_type VARCHAR(100) NOT NULL,
+    module VARCHAR(100) NOT NULL,
+    description TEXT NOT NULL,
+    status log_status_enum NOT NULL DEFAULT 'Success',
+    device_ip VARCHAR(50),
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS backup_records (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  initiated_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  backup_date TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  file_path TEXT NOT NULL,
+  status VARCHAR(50) NOT NULL DEFAULT 'Completed'
+);
+
+-- ==============================================================================
+-- 2. INVENTORY AND EXPIRY MANAGEMENT SYSTEM
+-- ==============================================================================
+
+CREATE TABLE IF NOT EXISTS products (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  product_name VARCHAR(255) NOT NULL,
+  generic_name VARCHAR(255) NOT NULL,
+  category VARCHAR(100) NOT NULL,
+  is_dangerous_drug BOOLEAN NOT NULL DEFAULT FALSE,
+  selling_price NUMERIC(12, 2) NOT NULL DEFAULT 0.00 CHECK (selling_price >= 0),
+  cost_price NUMERIC(12, 2) NOT NULL DEFAULT 0.00 CHECK (cost_price >= 0),
+  minimum_stock_level INT NOT NULL DEFAULT 0 CHECK (minimum_stock_level >= 0),
+  current_stock INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TRIGGER trg_products_updated_at
+BEFORE UPDATE ON products
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TABLE IF NOT EXISTS batch_info (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  batch_number VARCHAR(100) NOT NULL,
+  expiration_date DATE NOT NULL,
+  quantity_remaining INT NOT NULL DEFAULT 0 CHECK (quantity_remaining >= 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT uq_product_batch UNIQUE (product_id, batch_number)
+);
+
+CREATE TRIGGER trg_batch_info_updated_at
+BEFORE UPDATE ON batch_info
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TABLE IF NOT EXISTS stock_movements (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  batch_id UUID REFERENCES batch_info(id) ON DELETE SET NULL,
+  movement_type stock_movement_type_enum NOT NULL,
+  quantity INT NOT NULL,
+  movement_date TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  reference_id UUID,
+  notes TEXT
+);
+
+CREATE TABLE IF NOT EXISTS inventory_alerts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  batch_id UUID REFERENCES batch_info(id) ON DELETE SET NULL,
+  alert_type alert_type_enum NOT NULL,
+  severity alert_severity_enum NOT NULL DEFAULT 'Medium',
+  triggered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  is_resolved BOOLEAN NOT NULL DEFAULT FALSE,
+  resolved_at TIMESTAMPTZ
+);
+
+-- ==============================================================================
+-- 1. SALES AND DISPENSING SYSTEM
+-- ==============================================================================
+
+CREATE TABLE IF NOT EXISTS customers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  customer_name VARCHAR(255) NOT NULL,
+  discount_type VARCHAR(100) DEFAULT 'Regular',
+  id_number VARCHAR(100),
+  contact_number VARCHAR(50),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TRIGGER trg_customers_updated_at
+BEFORE UPDATE ON customers
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TABLE IF NOT EXISTS transactions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  cashier_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  customer_id UUID REFERENCES customers(id) ON DELETE SET NULL,
+  transaction_date TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  status transaction_status_enum NOT NULL DEFAULT 'Completed',
+  gross_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+  total_discount NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+  vat_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+  net_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+  amount_tendered NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+  change_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+  payment_method VARCHAR(50) NOT NULL DEFAULT 'Cash',
+  void_reason TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TRIGGER trg_transactions_updated_at
+BEFORE UPDATE ON transactions
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TABLE IF NOT EXISTS transaction_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  transaction_id UUID NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+  batch_id UUID REFERENCES batch_info(id) ON DELETE SET NULL,
+  quantity INT NOT NULL CHECK (quantity > 0),
+  unit_price_at_sale NUMERIC(12, 2) NOT NULL CHECK (unit_price_at_sale >= 0),
+  subtotal NUMERIC(12, 2) NOT NULL CHECK (subtotal >= 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS discounts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    transaction_id UUID NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+    discount_type VARCHAR(100) NOT NULL,
+    discount_rate NUMERIC(5, 2) NOT NULL DEFAULT 0.00 CHECK (discount_rate >= 0),
+    discount_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00 CHECK (discount_amount >= 0),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS receipts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    transaction_id UUID NOT NULL UNIQUE REFERENCES transactions(id) ON DELETE CASCADE,
+    receipt_number VARCHAR(100) NOT NULL UNIQUE,
+    issued_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ==============================================================================
+-- 3. SUPPLIER AND PROCUREMENT MANAGEMENT SYSTEM
+-- ==============================================================================
+
+CREATE TABLE IF NOT EXISTS suppliers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    supplier_name VARCHAR(255) NOT NULL,
+    contact_person VARCHAR(255),
+    contact_number VARCHAR(50),
+    email VARCHAR(255),
+    address TEXT,
+    payment_terms VARCHAR(100),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TRIGGER trg_suppliers_updated_at
+BEFORE UPDATE ON suppliers
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TABLE IF NOT EXISTS purchase_orders (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    supplier_id UUID NOT NULL REFERENCES suppliers(id) ON DELETE RESTRICT,
+    po_number VARCHAR(100) NOT NULL UNIQUE,
+    order_date TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    status po_status_enum NOT NULL DEFAULT 'Pending',
+    total_order_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00 CHECK (total_order_amount >= 0),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TRIGGER trg_purchase_orders_updated_at
+BEFORE UPDATE ON purchase_orders
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TABLE IF NOT EXISTS po_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    po_id UUID NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
+    product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+    quantity_ordered INT NOT NULL CHECK (quantity_ordered > 0),
+    unit_cost NUMERIC(12, 2) NOT NULL DEFAULT 0.00 CHECK (unit_cost >= 0),
+    line_total NUMERIC(12, 2) NOT NULL DEFAULT 0.00 CHECK (line_total >= 0),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS supplier_deliveries (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    po_id UUID NOT NULL REFERENCES purchase_orders(id) ON DELETE RESTRICT,
+    delivery_date TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    delivery_status delivery_status_enum NOT NULL DEFAULT 'Received',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS delivery_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    delivery_id UUID NOT NULL REFERENCES supplier_deliveries(id) ON DELETE CASCADE,
+    product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+    batch_number VARCHAR(100) NOT NULL,
+    expiration_date DATE NOT NULL,
+    quantity_delivered INT NOT NULL CHECK (quantity_delivered > 0),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS supplier_invoices (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    po_id UUID REFERENCES purchase_orders(id) ON DELETE SET NULL,
+    supplier_id UUID NOT NULL REFERENCES suppliers(id) ON DELETE RESTRICT,
+    invoice_number VARCHAR(100) NOT NULL UNIQUE,
+    due_date DATE NOT NULL,
+    invoice_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00 CHECK (invoice_amount >= 0),
+    is_paid BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS accounts_payable (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    supplier_id UUID NOT NULL REFERENCES suppliers(id) ON DELETE RESTRICT,
+    invoice_id UUID NOT NULL UNIQUE REFERENCES supplier_invoices(id) ON DELETE CASCADE,
+    total_owed NUMERIC(12, 2) NOT NULL DEFAULT 0.00 CHECK (total_owed >= 0),
+    total_paid NUMERIC(12, 2) NOT NULL DEFAULT 0.00 CHECK (total_paid >= 0),
+    balance NUMERIC(12, 2) NOT NULL DEFAULT 0.00 CHECK (balance >= 0),
+    last_payment_date DATE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TRIGGER trg_accounts_payable_updated_at
+BEFORE UPDATE ON accounts_payable
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TABLE IF NOT EXISTS supplier_payments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    ap_id UUID NOT NULL REFERENCES accounts_payable(id) ON DELETE CASCADE,
+    payment_date TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    amount_paid NUMERIC(12, 2) NOT NULL CHECK (amount_paid > 0),
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ==============================================================================
+-- 4. BUSINESS REPORTING AND MANAGEMENT SYSTEM
+-- ==============================================================================
+
+CREATE TABLE IF NOT EXISTS reports (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    report_type VARCHAR(100) NOT NULL, -- 'Sales', 'Inventory', 'FinancialSummary', 'Income', 'Discount'
+    generated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    date_from DATE NOT NULL,
+    date_to DATE NOT NULL,
+    generated_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    summary_data JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS cash_reconciliations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    reconciliation_date DATE NOT NULL,
+    cashier_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    cash_on_hand NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    total_reported_sales NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    discrepancy_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    has_flagged_inconsistency BOOLEAN NOT NULL DEFAULT FALSE,
+    notes TEXT,
+    reconciled_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS dashboards (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    config JSONB DEFAULT '{}'::jsonb,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ==============================================================================
+-- 6. WHOLESALE AND DISTRIBUTOR SYSTEM
+-- ==============================================================================
+
+CREATE TABLE IF NOT EXISTS wholesale_clients (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_name VARCHAR(255) NOT NULL,
+    contact_person VARCHAR(255),
+    contact_number VARCHAR(50),
+    email VARCHAR(255),
+    address TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TRIGGER trg_wholesale_clients_updated_at
+BEFORE UPDATE ON wholesale_clients
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TABLE IF NOT EXISTS client_contracts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id UUID NOT NULL REFERENCES wholesale_clients(id) ON DELETE CASCADE,
+    effective_date DATE NOT NULL,
+    expiry_date DATE NOT NULL,
+    payment_terms VARCHAR(100),
+    status VARCHAR(50) NOT NULL DEFAULT 'Active',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TRIGGER trg_client_contracts_updated_at
+BEFORE UPDATE ON client_contracts
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TABLE IF NOT EXISTS client_contract_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    contract_id UUID NOT NULL REFERENCES client_contracts(id) ON DELETE CASCADE,
+    product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+    agreed_unit_price NUMERIC(12, 2) NOT NULL CHECK (agreed_unit_price >= 0),
+    CONSTRAINT uq_contract_product UNIQUE (contract_id, product_id)
+);
+
+CREATE TABLE IF NOT EXISTS wholesale_orders (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id UUID NOT NULL REFERENCES wholesale_clients(id) ON DELETE RESTRICT,
+    contract_id UUID REFERENCES client_contracts(id) ON DELETE SET NULL,
+    order_date TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    status wholesale_order_status_enum NOT NULL DEFAULT 'Pending',
+    total_order_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00 CHECK (total_order_amount >= 0),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TRIGGER trg_wholesale_orders_updated_at
+BEFORE UPDATE ON wholesale_orders
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TABLE IF NOT EXISTS wholesale_order_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    order_id UUID NOT NULL REFERENCES wholesale_orders(id) ON DELETE CASCADE,
+    product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+    quantity INT NOT NULL CHECK (quantity > 0),
+    unit_price NUMERIC(12, 2) NOT NULL CHECK (unit_price >= 0),
+    line_total NUMERIC(12, 2) NOT NULL CHECK (line_total >= 0)
+);
+
+CREATE TABLE IF NOT EXISTS delivery_schedules (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    order_id UUID NOT NULL REFERENCES wholesale_orders(id) ON DELETE CASCADE,
+    scheduled_date DATE NOT NULL,
+    status delivery_schedule_status_enum NOT NULL DEFAULT 'Scheduled',
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS delivery_receipts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    order_id UUID NOT NULL REFERENCES wholesale_orders(id) ON DELETE RESTRICT,
+    delivery_date TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    receipt_number VARCHAR(100) NOT NULL UNIQUE,
+    received_by VARCHAR(255),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS delivery_receipt_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    receipt_id UUID NOT NULL REFERENCES delivery_receipts(id) ON DELETE CASCADE,
+    product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+    batch_number VARCHAR(100) NOT NULL,
+    expiration_date DATE NOT NULL,
+    quantity_delivered INT NOT NULL CHECK (quantity_delivered > 0)
+);
+
+CREATE TABLE IF NOT EXISTS accounts_receivable (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id UUID NOT NULL REFERENCES wholesale_clients(id) ON DELETE RESTRICT,
+    order_id UUID NOT NULL UNIQUE REFERENCES wholesale_orders(id) ON DELETE CASCADE,
+    total_owed NUMERIC(12, 2) NOT NULL DEFAULT 0.00 CHECK (total_owed >= 0),
+    total_paid NUMERIC(12, 2) NOT NULL DEFAULT 0.00 CHECK (total_paid >= 0),
+    balance NUMERIC(12, 2) NOT NULL DEFAULT 0.00 CHECK (balance >= 0),
+    due_date DATE NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TRIGGER trg_accounts_receivable_updated_at
+BEFORE UPDATE ON accounts_receivable
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TABLE IF NOT EXISTS ar_payments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    ar_id UUID NOT NULL REFERENCES accounts_receivable(id) ON DELETE CASCADE,
+    payment_date TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    amount_paid NUMERIC(12, 2) NOT NULL CHECK (amount_paid > 0),
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ==============================================================================
+-- INDEXES FOR PERFORMANCE OPTIMIZATION
+-- ==============================================================================
+
+-- Products & Inventory
+CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
+CREATE INDEX IF NOT EXISTS idx_products_generic_name ON products(generic_name);
+CREATE INDEX IF NOT EXISTS idx_batch_info_product_id ON batch_info(product_id);
+CREATE INDEX IF NOT EXISTS idx_batch_info_expiration_date ON batch_info(expiration_date);
+CREATE INDEX IF NOT EXISTS idx_stock_movements_product_id ON stock_movements(product_id);
+CREATE INDEX IF NOT EXISTS idx_stock_movements_batch_id ON stock_movements(batch_id);
+CREATE INDEX IF NOT EXISTS idx_stock_movements_movement_date ON stock_movements(movement_date);
+CREATE INDEX IF NOT EXISTS idx_inventory_alerts_product_id ON inventory_alerts(product_id);
+CREATE INDEX IF NOT EXISTS idx_inventory_alerts_is_resolved ON inventory_alerts(is_resolved);
+
+-- Sales & Transactions
+CREATE INDEX IF NOT EXISTS idx_transactions_cashier_id ON transactions(cashier_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_customer_id ON transactions(customer_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(transaction_date);
+CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(status);
+CREATE INDEX IF NOT EXISTS idx_transaction_items_transaction_id ON transaction_items(transaction_id);
+CREATE INDEX IF NOT EXISTS idx_transaction_items_product_id ON transaction_items(product_id);
+CREATE INDEX IF NOT EXISTS idx_discounts_transaction_id ON discounts(transaction_id);
+
+-- Procurement & Suppliers
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_supplier_id ON purchase_orders(supplier_id);
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_status ON purchase_orders(status);
+CREATE INDEX IF NOT EXISTS idx_po_items_po_id ON po_items(po_id);
+CREATE INDEX IF NOT EXISTS idx_supplier_deliveries_po_id ON supplier_deliveries(po_id);
+CREATE INDEX IF NOT EXISTS idx_delivery_items_delivery_id ON delivery_items(delivery_id);
+CREATE INDEX IF NOT EXISTS idx_supplier_invoices_supplier_id ON supplier_invoices(supplier_id);
+CREATE INDEX IF NOT EXISTS idx_supplier_invoices_po_id ON supplier_invoices(po_id);
+CREATE INDEX IF NOT EXISTS idx_accounts_payable_supplier_id ON accounts_payable(supplier_id);
+CREATE INDEX IF NOT EXISTS idx_accounts_payable_invoice_id ON accounts_payable(invoice_id);
+CREATE INDEX IF NOT EXISTS idx_supplier_payments_ap_id ON supplier_payments(ap_id);
+
+-- Wholesale
+CREATE INDEX IF NOT EXISTS idx_client_contracts_client_id ON client_contracts(client_id);
+CREATE INDEX IF NOT EXISTS idx_wholesale_orders_client_id ON wholesale_orders(client_id);
+CREATE INDEX IF NOT EXISTS idx_wholesale_orders_status ON wholesale_orders(status);
+CREATE INDEX IF NOT EXISTS idx_wholesale_order_items_order_id ON wholesale_order_items(order_id);
+CREATE INDEX IF NOT EXISTS idx_delivery_schedules_order_id ON delivery_schedules(order_id);
+CREATE INDEX IF NOT EXISTS idx_delivery_receipts_order_id ON delivery_receipts(order_id);
+CREATE INDEX IF NOT EXISTS idx_accounts_receivable_client_id ON accounts_receivable(client_id);
+CREATE INDEX IF NOT EXISTS idx_accounts_receivable_order_id ON accounts_receivable(order_id);
+CREATE INDEX IF NOT EXISTS idx_ar_payments_ar_id ON ar_payments(ar_id);
+
+-- User & Logs
+CREATE INDEX IF NOT EXISTS idx_system_logs_user_id ON system_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_system_logs_module ON system_logs(module);
+CREATE INDEX IF NOT EXISTS idx_system_logs_timestamp ON system_logs(timestamp);
+CREATE INDEX IF NOT EXISTS idx_reports_report_type ON reports(report_type);
+CREATE INDEX IF NOT EXISTS idx_reports_date_range ON reports(date_from, date_to);
+CREATE INDEX IF NOT EXISTS idx_cash_reconciliations_date ON cash_reconciliations(reconciliation_date);
