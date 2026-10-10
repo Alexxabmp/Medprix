@@ -70,5 +70,6 @@ app.get("/", (_req, res) => {
 });
 
 app.use("/api", router);
+app.use(router);
 
 export default app;

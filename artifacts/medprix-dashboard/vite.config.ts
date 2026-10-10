@@ -17,13 +17,22 @@ export default defineConfig({
     tailwindcss(),
     runtimeErrorOverlay(),
     {
-      name: 'copy-404-html',
+      name: 'copy-404-and-root-dist',
       closeBundle() {
         const outDir = path.resolve(import.meta.dirname, 'dist');
+        const rootDist = path.resolve(import.meta.dirname, '../../dist');
         const indexPath = path.join(outDir, 'index.html');
         const notFoundPath = path.join(outDir, '404.html');
         if (fs.existsSync(indexPath)) {
           fs.copyFileSync(indexPath, notFoundPath);
+        }
+        try {
+          if (!fs.existsSync(rootDist)) {
+            fs.mkdirSync(rootDist, { recursive: true });
+          }
+          fs.cpSync(outDir, rootDist, { recursive: true });
+        } catch {
+          // ignore if root dist already populated
         }
       },
     },
