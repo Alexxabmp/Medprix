@@ -1,7 +1,7 @@
-﻿import fs from "node:fs";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import mysql from "mysql2/promise";
+import postgres from "postgres";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,30 +25,23 @@ try {
   // Ignore if no .env
 }
 
-interface ColumnInfo {
-  Field: string;
-  Type: string;
-  Null: string;
-  Key: string;
-  Default: string | null;
-  Extra: string;
-}
-
-export async function runMigrations(existingConn?: mysql.Connection) {
+export async function runMigrations(existingSql?: postgres.Sql) {
   const databaseUrl =
-    process.env.DATABASE_URL || "mysql://root:root@localhost:3306/medprix";
+    process.env.DATABASE_URL ||
+    "postgresql://postgres:postgres@localhost:5432/medprix";
 
-  const conn =
-    existingConn || (await mysql.createConnection(databaseUrl));
-  const shouldClose = !existingConn;
+  const sql = existingSql || postgres(databaseUrl);
+  const shouldClose = !existingSql;
 
   try {
-    console.log("Running database migrations...");
+    console.log("Running database migrations for PostgreSQL...");
 
     // Check if 'users' table exists
-    const [tables] = await conn.execute<mysql.RowDataPacket[]>(
-      "SHOW TABLES LIKE 'users'"
-    );
+    const tables = await sql`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public' AND table_name = 'users'
+    `;
 
     if (tables.length === 0) {
       console.log("'users' table does not exist yet. Skipping column migrations.");
@@ -56,47 +49,41 @@ export async function runMigrations(existingConn?: mysql.Connection) {
     }
 
     // Fetch current columns
-    const [columns] = await conn.execute<mysql.RowDataPacket[]>(
-      "SHOW COLUMNS FROM users"
-    );
-    const colList = (columns as unknown as ColumnInfo[]).map((c) => c.Field);
+    const columns = await sql`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_schema = 'public' AND table_name = 'users'
+    `;
+    const colList = columns.map((c) => c.column_name);
 
     // Migrate 'fullName' -> 'full_name' if needed
     if (colList.includes("fullName") && !colList.includes("full_name")) {
       console.log("Migrating column: fullName -> full_name...");
-      await conn.execute(
-        "ALTER TABLE users RENAME COLUMN fullName TO full_name"
-      );
+      await sql`ALTER TABLE users RENAME COLUMN "fullName" TO full_name`;
     }
 
     // Migrate 'contactNumber' -> 'contact_number' if needed
     if (colList.includes("contactNumber") && !colList.includes("contact_number")) {
       console.log("Migrating column: contactNumber -> contact_number...");
-      await conn.execute(
-        "ALTER TABLE users RENAME COLUMN contactNumber TO contact_number"
-      );
+      await sql`ALTER TABLE users RENAME COLUMN "contactNumber" TO contact_number`;
     }
 
     // Migrate 'lastLogin' -> 'last_login' if needed
     if (colList.includes("lastLogin") && !colList.includes("last_login")) {
       console.log("Migrating column: lastLogin -> last_login...");
-      await conn.execute(
-        "ALTER TABLE users RENAME COLUMN lastLogin TO last_login"
-      );
+      await sql`ALTER TABLE users RENAME COLUMN "lastLogin" TO last_login`;
     }
 
     // Add 'is_active' column if missing
     if (!colList.includes("is_active")) {
       console.log("Adding missing column: is_active (default true)...");
-      await conn.execute(
-        "ALTER TABLE users ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1"
-      );
+      await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true`;
     }
 
     console.log("Database migrations completed successfully.");
   } finally {
     if (shouldClose) {
-      await conn.end();
+      await sql.end();
     }
   }
 }

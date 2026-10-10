@@ -8,6 +8,7 @@ import {
   setSessionCookie,
 } from "../lib/session";
 import { requireAuth } from "../middleware/auth";
+import type { UserRoleEnum } from "@workspace/db/schema";
 
 const router: IRouter = Router();
 const invalidLoginResponse = { error: "Invalid username or password." };
@@ -51,9 +52,9 @@ router.post("/login", async (req, res) => {
     }
 
     const token = createSessionToken({
-      id: user.id,
+      id: user.id.toString(),
       username: user.username,
-      role: user.role,
+      role: user.role as UserRoleEnum,
     });
 
     try {

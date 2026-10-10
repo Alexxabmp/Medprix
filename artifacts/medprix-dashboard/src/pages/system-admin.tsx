@@ -53,17 +53,17 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
 
   // Fetch from API backend if available
   useEffect(() => {
-    fetch('http://localhost:5000/api/admin/transactions')
+    fetch('/api/admin/transactions')
       .then((res) => res.json())
       .then((data) => { if (Array.isArray(data) && data.length > 0) setTransactions(data); })
       .catch(() => {});
 
-    fetch('http://localhost:5000/api/admin/system-logs')
+    fetch('/api/admin/system-logs')
       .then((res) => res.json())
       .then((data) => { if (Array.isArray(data) && data.length > 0) setSystemLogs(data); })
       .catch(() => {});
 
-    fetch('http://localhost:5000/api/admin/user-activities')
+    fetch('/api/admin/user-activities')
       .then((res) => res.json())
       .then((data) => { if (Array.isArray(data) && data.length > 0) setUserActivities(data); })
       .catch(() => {});

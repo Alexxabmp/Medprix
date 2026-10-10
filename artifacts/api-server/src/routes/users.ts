@@ -6,7 +6,16 @@ import { eq } from "drizzle-orm";
 
 const router: IRouter = Router();
 
-router.use("/users", requireAuth, requireRole("admin"));
+const VALID_ROLES = ["Admin", "Cashier", "FrontDesk"] as const;
+
+const uuidRegex =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isValidUuid(value: string): boolean {
+  return uuidRegex.test(value);
+}
+
+router.use("/users", requireAuth, requireRole("Admin"));
 
 router.get("/users", async (_req, res) => {
   try {
@@ -22,42 +31,61 @@ router.get("/users", async (_req, res) => {
         lastLogin: usersTable.lastLogin,
       })
       .from(usersTable);
+
     return res.json(users);
-  } catch (err) {
+  } catch {
     return res.status(500).json({ error: "Failed to fetch users." });
   }
 });
 
 router.post("/users", async (req, res) => {
-  const { username, password, role, fullName, contactNumber } = req.body ?? {};
+  const {
+    username,
+    password,
+    role,
+    fullName,
+    contactNumber,
+  } = req.body ?? {};
+
   const normalizedUsername =
     typeof username === "string" ? username.trim() : "";
 
-  if (!normalizedUsername || !password || !role) {
-    return res
-      .status(400)
-      .json({ error: "username, password, and role are required." });
+  if (!normalizedUsername || typeof password !== "string" || !role) {
+    return res.status(400).json({
+      error: "username, password, and role are required.",
+    });
   }
 
   const passwordError = validatePassword(password);
+
   if (passwordError) {
     return res.status(400).json({ error: passwordError });
   }
 
-  if (!["admin", "cashier", "frontdesk"].includes(role)) {
-    return res
-      .status(400)
-      .json({ error: "Role must be admin, cashier, or frontdesk." });
+  if (!VALID_ROLES.includes(role)) {
+    return res.status(400).json({
+      error: "Invalid user role.",
+    });
   }
 
-  if (contactNumber !== undefined && contactNumber !== null && contactNumber !== "") {
+  if (
+    contactNumber !== undefined &&
+    contactNumber !== null &&
+    contactNumber !== ""
+  ) {
     if (typeof contactNumber !== "string") {
-      return res.status(400).json({ error: "Contact number must be a valid string." });
+      return res.status(400).json({
+        error: "Contact number must be a valid string.",
+      });
     }
+
     const cleaned = contactNumber.trim();
     const phoneRegex = /^\+639\d{9}$/;
-    if (!phoneRegex.test(cleaned)) {
-      return res.status(400).json({ error: "Invalid phone number format. Expected +639XXXXXXXXX." });
+
+    if (cleaned && !phoneRegex.test(cleaned)) {
+      return res.status(400).json({
+        error: "Invalid phone number format. Expected +639XXXXXXXXX.",
+      });
     }
   }
 
@@ -66,72 +94,225 @@ router.post("/users", async (req, res) => {
       typeof fullName === "string" && fullName.trim()
         ? fullName.trim()
         : normalizedUsername;
+
     const passwordHash = await hashPassword(password);
-    const [result] = await db.insert(usersTable).values({
-      username: normalizedUsername,
-      password: passwordHash,
-      role,
-      fullName: displayName,
-      contactNumber: contactNumber || null,
-      isActive: true,
-    });
+
+    const [result] = await db
+      .insert(usersTable)
+      .values({
+        username: normalizedUsername,
+        password: passwordHash,
+        role,
+        fullName: displayName,
+        contactNumber: contactNumber?.trim() || null,
+        isActive: true,
+      })
+      .returning();
+
     return res.status(201).json({
-      id: result?.insertId,
-      username: normalizedUsername,
-      fullName: displayName,
-      contactNumber: contactNumber || null,
-      role,
-      isActive: true,
+      id: result.id,
+      username: result.username,
+      fullName: result.fullName,
+      contactNumber: result.contactNumber,
+      role: result.role,
+      isActive: result.isActive,
     });
-  } catch (err) {
-    return res.status(409).json({ error: "Username may already be taken." });
+  } catch {
+    return res.status(409).json({
+      error: "Username is already taken.",
+    });
   }
 });
 
 router.patch("/users/:id", async (req, res) => {
-  const userId = Number(req.params.id);
-  const { role, fullName, contactNumber, isActive } = req.body ?? {};
+  const userId = req.params.id;
 
-  if (!Number.isInteger(userId)) {
-    return res.status(400).json({ error: "Invalid user id." });
+  if (!isValidUuid(userId)) {
+    return res.status(400).json({
+      error: "Invalid user id.",
+    });
   }
-  if (role && !["admin", "cashier", "frontdesk"].includes(role)) {
-    return res
-      .status(400)
-      .json({ error: "Role must be admin, cashier, or frontdesk." });
+
+  const {
+    username,
+    role,
+    fullName,
+    contactNumber,
+    isActive,
+  } = req.body ?? {};
+
+  if (userId === res.locals.user?.id) {
+    if (role !== undefined && role !== res.locals.user.role) {
+      return res.status(400).json({
+        error: "You cannot change your own role.",
+      });
+    }
+
+    if (isActive === false) {
+      return res.status(400).json({
+        error: "You cannot deactivate your own account.",
+      });
+    }
+  }
+
+  if (role !== undefined && !VALID_ROLES.includes(role)) {
+    return res.status(400).json({
+      error: "Invalid user role.",
+    });
+  }
+
+  if (username !== undefined) {
+    if (typeof username !== "string" || !username.trim()) {
+      return res.status(400).json({
+        error: "Username is required.",
+      });
+    }
   }
 
   if (contactNumber !== undefined && contactNumber !== null && contactNumber !== "") {
     if (typeof contactNumber !== "string") {
-      return res.status(400).json({ error: "Contact number must be a valid string." });
+      return res.status(400).json({
+        error: "Contact number must be a valid string.",
+      });
     }
+
     const cleaned = contactNumber.trim();
     const phoneRegex = /^\+639\d{9}$/;
-    if (!phoneRegex.test(cleaned)) {
-      return res.status(400).json({ error: "Invalid phone number format. Expected +639XXXXXXXXX." });
+
+    if (cleaned && !phoneRegex.test(cleaned)) {
+      return res.status(400).json({
+        error: "Invalid phone number format. Expected +639XXXXXXXXX.",
+      });
     }
   }
 
   try {
-    await db
+    const [updatedUser] = await db
       .update(usersTable)
       .set({
-        ...(role ? { role } : {}),
-        ...(fullName ? { fullName } : {}),
-        ...(contactNumber !== undefined ? { contactNumber: contactNumber || null } : {}),
-        ...(isActive !== undefined ? { isActive: Boolean(isActive) } : {}),
+        ...(username !== undefined
+          ? { username: username.trim() }
+          : {}),
+        ...(role !== undefined
+          ? { role }
+          : {}),
+        ...(fullName !== undefined
+          ? { fullName: fullName.trim() }
+          : {}),
+        ...(contactNumber !== undefined
+          ? { contactNumber: contactNumber?.trim() || null }
+          : {}),
+        ...(isActive !== undefined
+          ? { isActive: Boolean(isActive) }
+          : {}),
+        updatedAt: new Date(),
       })
-      .where(eq(usersTable.id, userId));
+      .where(eq(usersTable.id, userId))
+      .returning({
+        id: usersTable.id,
+        username: usersTable.username,
+        fullName: usersTable.fullName,
+        contactNumber: usersTable.contactNumber,
+        role: usersTable.role,
+        isActive: usersTable.isActive,
+        lastLogin: usersTable.lastLogin,
+      });
 
-    return res.json({
-      id: userId,
-      role,
-      fullName,
-      contactNumber,
-      ...(isActive !== undefined ? { isActive: Boolean(isActive) } : {}),
+    if (!updatedUser) {
+      return res.status(404).json({
+        error: "User not found.",
+      });
+    }
+
+    return res.json(updatedUser);
+  } catch {
+    return res.status(409).json({
+      error: "Username is already taken.",
     });
-  } catch (err) {
-    return res.status(500).json({ error: "Failed to update user." });
   }
 });
+
+router.patch("/users/:id/password", async (req, res) => {
+  const userId = req.params.id;
+  const { password } = req.body ?? {};
+
+  if (!isValidUuid(userId)) {
+    return res.status(400).json({
+      error: "Invalid user id.",
+    });
+  }
+
+  if (typeof password !== "string") {
+    return res.status(400).json({
+      error: "Password is required.",
+    });
+  }
+
+  const passwordError = validatePassword(password);
+
+  if (passwordError) {
+    return res.status(400).json({
+      error: passwordError,
+    });
+  }
+
+  try {
+    const passwordHash = await hashPassword(password);
+
+    const [updatedUser] = await db
+      .update(usersTable)
+      .set({
+        password: passwordHash,
+        updatedAt: new Date(),
+      })
+      .where(eq(usersTable.id, userId))
+      .returning({
+        id: usersTable.id,
+      });
+
+    if (!updatedUser) {
+      return res.status(404).json({
+        error: "User not found.",
+      });
+    }
+
+    return res.status(204).send();
+  } catch {
+    return res.status(500).json({
+      error: "Failed to reset password.",
+    });
+  }
+});
+
+router.delete("/users/:id", async (req, res) => {
+  const userId = req.params.id;
+
+  if (!isValidUuid(userId)) {
+    return res.status(400).json({
+      error: "Invalid user id.",
+    });
+  }
+
+  try {
+    const [deletedUser] = await db
+      .delete(usersTable)
+      .where(eq(usersTable.id, userId))
+      .returning({
+        id: usersTable.id,
+      });
+
+    if (!deletedUser) {
+      return res.status(404).json({
+        error: "User not found.",
+      });
+    }
+
+    return res.status(204).send();
+  } catch {
+    return res.status(500).json({
+      error: "Failed to delete user.",
+    });
+  }
+});
+
 export default router;

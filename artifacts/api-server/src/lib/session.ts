@@ -1,12 +1,11 @@
 import crypto from "node:crypto";
 import type { Response } from "express";
-
-export type UserRole = "admin" | "cashier" | "frontdesk";
+import type { UserRoleEnum } from "@workspace/db/schema";
 
 export type SessionUser = {
-  id: number;
+  id: string;
   username: string;
-  role: UserRole;
+  role: UserRoleEnum;
 };
 
 type SessionPayload = SessionUser & {
@@ -93,12 +92,12 @@ export function verifySessionToken(token: string | undefined): SessionUser | nul
   try {
     const payload = JSON.parse(base64UrlDecode(encodedPayload)) as SessionPayload;
     const validRole =
-      payload.role === "admin" ||
-      payload.role === "cashier" ||
-      payload.role === "frontdesk";
+      payload.role === "Admin" ||
+      payload.role === "Cashier" ||
+      payload.role === "FrontDesk";
 
     if (
-      !Number.isInteger(payload.id) ||
+      typeof payload.id !== "string" ||
       typeof payload.username !== "string" ||
       !validRole ||
       !Number.isInteger(payload.expiresAt) ||

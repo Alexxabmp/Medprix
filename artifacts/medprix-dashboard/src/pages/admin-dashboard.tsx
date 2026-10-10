@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+import { useState } from "react";
 import {
   ArrowUpRight,
   BarChart3,
@@ -14,10 +14,44 @@ import { MovementLineGraph } from "@/components/custom-ui/movement-line-graph";
 import { ReportModal } from "@/components/custom-ui/report-modal";
 import { cashMismatches, movementFast, movementSlow } from "@/lib/data";
 import type { ReportType, ToastFn } from "@/lib/types";
+import { usePharmacyTransactions, usePharmacyInventory } from "@/lib/pharmacy-store";
+
+const formatPeso = (val: number) =>
+  `₱${val.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
   const [report, setReport] = useState<ReportType | null>(null);
   const [cashDetailRow, setCashDetailRow] = useState<number | null>(null);
+
+  const { transactions } = usePharmacyTransactions();
+  const { items: inventoryProducts } = usePharmacyInventory();
+
+  const liveDailySales = transactions.reduce((sum, t) => {
+    const val = parseFloat(String(t.total || "0").replace("₱", "").replace(/,/g, "")) || 0;
+    return sum + val;
+  }, 0);
+  const liveTxCount = transactions.length;
+
+  const liveProductCount = inventoryProducts.length;
+  const liveLowStockCount = inventoryProducts.filter((p) => {
+    const stock = Array.isArray(p.batches)
+      ? p.batches.reduce((sum: number, b: any) => sum + (Number(b.quantity) || 0), 0)
+      : (Number(p.stock) || 0);
+    return stock <= (Number(p.reorder) || 10);
+  }).length;
+  const liveTotalStockUnits = inventoryProducts.reduce((sum, p) => {
+    const stock = Array.isArray(p.batches)
+      ? p.batches.reduce((bSum: number, b: any) => bSum + (Number(b.quantity) || 0), 0)
+      : (Number(p.stock) || 0);
+    return sum + stock;
+  }, 0);
+  const liveStockValuation = inventoryProducts.reduce((sum, p) => {
+    const stock = Array.isArray(p.batches)
+      ? p.batches.reduce((bSum: number, b: any) => bSum + (Number(b.quantity) || 0), 0)
+      : (Number(p.stock) || 0);
+    const priceNum = parseFloat(String(p.price || "0").replace("₱", "").replace(/,/g, "")) || 0;
+    return sum + stock * priceNum;
+  }, 0);
 
   return (
     <div>
@@ -41,16 +75,16 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
       <section className="kpi-grid">
         <Kpi
           label="Daily sales"
-          value="₱45,250"
-          change="128 transactions"
+          value={formatPeso(liveDailySales)}
+          change={`${liveTxCount} transactions logged`}
           icon={BarChart3}
           onClick={() => setReport("sales")}
           testId="card-report-sales"
         />
         <Kpi
           label="Inventory"
-          value="850 products"
-          change="95 low stock"
+          value={`${liveProductCount} products`}
+          change={`${liveLowStockCount} low stock`}
           icon={Package}
           onClick={() => setReport("inventory")}
           testId="card-report-inventory"
@@ -65,8 +99,8 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
         />
         <Kpi
           label="Stock value"
-          value="₱825,450"
-          change="4,280 units held"
+          value={formatPeso(liveStockValuation)}
+          change={`${liveTotalStockUnits.toLocaleString()} units held`}
           icon={Boxes}
           onClick={() => setReport("valuation")}
           testId="card-report-valuation"
@@ -187,6 +221,8 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
         <ReportModal
           type={report}
           initialCashDetailRow={cashDetailRow}
+          liveTransactions={transactions}
+          liveProducts={inventoryProducts}
           onClose={() => {
             setReport(null);
             setCashDetailRow(null);

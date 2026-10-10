@@ -26,7 +26,7 @@ export default function UserManagementPage({
   onToast: ToastFn;
 }) {
   const [search, setSearch] = useState("");
-  const [dialog, setDialog] = useState<"create" | "edit" | "reset" | null>(
+  const [dialog, setDialog] = useState<"create" | "edit" | "reset" | "delete" | null>(
     null,
   );
   const [selected, setSelected] = useState<UserRecord | null>(null);
@@ -41,6 +41,7 @@ export default function UserManagementPage({
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [resetError, setResetError] = useState("");
+  const currentUsername = localStorage.getItem("medprix-username");
 
   useEffect(() => {
     if (!dialog) {
@@ -69,11 +70,16 @@ export default function UserManagementPage({
     setDialog("edit");
   };
   const toggleStatus = async (user: UserRecord) => {
+    if (user.username === currentUsername) {
+      onToast("You cannot change your own account status.");
+      return;
+    }
+
     const next = user.status === "Active" ? "Inactive" : "Active";
     const nextIsActive = next === "Active";
     try {
       const response = await fetch(
-        `http://localhost:5000/api/users/${user.id}`,
+        `/api/users/${user.id}`,
         {
           method: "PATCH",
           credentials: "include",
@@ -101,12 +107,12 @@ export default function UserManagementPage({
     if (dialog === "create") {
       const dbRole =
         draft.role === "Administrator"
-          ? "admin"
+          ? "Admin"
           : draft.role === "Front Desk"
-            ? "frontdesk"
-            : "cashier";
+            ? "FrontDesk"
+            : "Cashier";
       try {
-        const response = await fetch("http://localhost:5000/api/users", {
+        const response = await fetch("/api/users", {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
@@ -132,7 +138,7 @@ export default function UserManagementPage({
         setUsers([
           ...users,
           {
-            id: data.id || Date.now(),
+            id: data.id,
             initials,
             name: draft.name,
             username: draft.username,
@@ -148,24 +154,35 @@ export default function UserManagementPage({
         return;
       }
     } else if (selected) {
+      const isEditingSelf = selected.username === currentUsername;
       const dbRole =
         draft.role === "Administrator"
-          ? "admin"
+          ? "Admin"
           : draft.role === "Front Desk"
-            ? "frontdesk"
-            : "cashier";
+            ? "FrontDesk"
+            : "Cashier";
       try {
+        const body: {
+          username: string;
+          fullName: string;
+          contactNumber: string;
+          role?: string;
+        } = {
+          username: draft.username,
+          fullName: draft.name,
+          contactNumber: draft.phone,
+        };
+        if (!isEditingSelf) {
+          body.role = dbRole;
+        }
+
         const response = await fetch(
-          `http://localhost:5000/api/users/${selected.id}`,
+          `/api/users/${selected.id}`,
           {
             method: "PATCH",
             credentials: "include",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              role: dbRole,
-              fullName: draft.name,
-              contactNumber: draft.phone,
-            }),
+            body: JSON.stringify(body),
           },
         );
         if (!response.ok) {
@@ -181,18 +198,18 @@ export default function UserManagementPage({
         users.map((user) =>
           user.id === selected.id
             ? {
-                ...user,
-                name: draft.name,
-                username: draft.username,
-                role: draft.role,
-                phone: draft.phone,
-                initials: draft.name
-                  .split(" ")
-                  .map((part) => part[0])
-                  .join("")
-                  .slice(0, 2)
-                  .toUpperCase(),
-              }
+              ...user,
+              name: draft.name,
+              username: draft.username,
+              role: isEditingSelf ? user.role : draft.role,
+              phone: draft.phone,
+              initials: draft.name
+                .split(" ")
+                .map((part) => part[0])
+                .join("")
+                .slice(0, 2)
+                .toUpperCase(),
+            }
             : user,
         ),
       );
@@ -202,14 +219,42 @@ export default function UserManagementPage({
     setDialog(null);
     return;
   };
-  const remove = (user: UserRecord) => {
-    if (window.confirm(`Remove ${user.name} from Medprix?`)) {
-      setUsers(users.filter((item) => item.id !== user.id));
+  const openDelete = (user: UserRecord) => {
+    setSelected(user);
+    setDialog("delete");
+  };
+
+  const remove = async () => {
+    if (!selected) return;
+    const userToRemove = selected;
+
+    try {
+      const response = await fetch(
+        `/api/users/${userToRemove.id}`,
+        {
+          method: "DELETE",
+          credentials: "include",
+        },
+      );
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        onToast(data.error ?? "Failed to delete user.");
+        return;
+      }
+
+      setUsers(users.filter((item) => item.id !== userToRemove.id));
+      setDialog(null);
+      setSelected(null);
       onToast("User account removed");
+    } catch {
+      onToast("Could not reach the server.");
     }
   };
-  const reset = (event: FormEvent) => {
+  const reset = async (event: FormEvent) => {
     event.preventDefault();
+    if (!selected) return;
     if (password.length < 8) {
       setResetError("Password must be at least 8 characters.");
       return;
@@ -218,13 +263,31 @@ export default function UserManagementPage({
       setResetError("Passwords do not match.");
       return;
     }
-    setResetError("");
-    setDialog(null);
-    setPassword("");
-    setConfirmPassword("");
-    setShowPassword(false);
-    setShowConfirmPassword(false);
-    onToast(`Password successfully updated for ${selected?.name}`);
+    try {
+      const response = await fetch(
+        `/api/users/${selected.id}/password`,
+        {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password }),
+        },
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setResetError(data.error ?? "Failed to reset password.");
+        return;
+      }
+      setResetError("");
+      setDialog(null);
+      setPassword("");
+      setConfirmPassword("");
+      setShowPassword(false);
+      setShowConfirmPassword(false);
+      onToast(`Password successfully updated for ${selected.name}`);
+    } catch {
+      setResetError("Could not reach the server.");
+    }
   };
   const shown = users.filter((user) =>
     `${user.name} ${user.username} ${user.role}`
@@ -271,7 +334,7 @@ export default function UserManagementPage({
             <input
               data-testid="input-user-search"
               type="search"
-              placeholder="Search name, email, or role..."
+              placeholder="Search name or role..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -293,7 +356,10 @@ export default function UserManagementPage({
               </tr>
             </thead>
             <tbody>
-              {shown.map((user) => (
+              {shown.map((user) => {
+                const isCurrentUser = user.username === currentUsername;
+
+                return (
                 <tr key={user.id} data-testid={`row-user-${user.id}`}>
                   <td>
                     <div className="product-cell">
@@ -323,17 +389,22 @@ export default function UserManagementPage({
                       style={{ height: 30, padding: "0 8px" }}
                       data-testid={`select-role-${user.id}`}
                       value={user.role}
+                      disabled={isCurrentUser}
                       onChange={async (e) => {
+                        if (isCurrentUser) {
+                          onToast("You cannot change your own role.");
+                          return;
+                        }
                         const newRoleLabel = e.target.value;
                         const dbRole =
                           newRoleLabel === "Administrator"
-                            ? "admin"
+                            ? "Admin"
                             : newRoleLabel === "Front Desk"
-                              ? "frontdesk"
-                              : "cashier";
+                              ? "FrontDesk"
+                              : "Cashier";
                         try {
                           const response = await fetch(
-                            `http://localhost:5000/api/users/${user.id}`,
+                            `/api/users/${user.id}`,
                             {
                               method: "PATCH",
                               credentials: "include",
@@ -365,6 +436,11 @@ export default function UserManagementPage({
                       <option>Front Desk</option>
                       <option>Cashier</option>
                     </select>
+                    {isCurrentUser && (
+                      <div className="muted" style={{ fontSize: 10, marginTop: 5 }}>
+                        Your own role is locked.
+                      </div>
+                    )}
                   </td>
                   <td className="muted">{user.phone || "\u2014"}</td>
                   <td>
@@ -379,10 +455,20 @@ export default function UserManagementPage({
                         data-testid={`toggle-status-${user.id}`}
                         aria-pressed={user.status === "Active"}
                         onClick={() => toggleStatus(user)}
-                        title={`Set ${user.status === "Active" ? "inactive" : "active"}`}>
+                        disabled={isCurrentUser}
+                        title={
+                          isCurrentUser
+                            ? "You cannot deactivate your own account"
+                            : `Set ${user.status === "Active" ? "inactive" : "active"}`
+                        }>
                         <span />
                       </button>
                     </div>
+                    {isCurrentUser && (
+                      <div className="muted" style={{ fontSize: 10, marginTop: 5 }}>
+                        Your own status is locked.
+                      </div>
+                    )}
                   </td>
                   <td className="muted">{user.lastActive}</td>
                   <td>
@@ -413,13 +499,14 @@ export default function UserManagementPage({
                         className="icon-button"
                         data-testid={`button-delete-user-${user.id}`}
                         aria-label={`Delete ${user.name}`}
-                        onClick={() => remove(user)}>
+                        onClick={() => openDelete(user)}>
                         <Trash2 size={13} />
                       </button>
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
           {shown.length === 0 && (
@@ -438,6 +525,7 @@ export default function UserManagementPage({
           setDraft={setDraft}
           onClose={() => setDialog(null)}
           onSubmit={submitUser}
+          isCurrentUser={selected?.username === currentUsername}
         />
       )}
       {dialog === "reset" &&
@@ -553,6 +641,63 @@ export default function UserManagementPage({
           </div>,
           document.body,
         )}
+      {dialog === "delete" &&
+        selected &&
+        createPortal(
+          <div
+            className="modal-backdrop"
+            onMouseDown={(event) =>
+              event.currentTarget === event.target && setDialog(null)
+            }>
+            <div className="modal dialog" data-testid="modal-delete-user">
+              <div className="modal-header">
+                <div>
+                  <h2>Delete user account</h2>
+                  <p className="modal-sub">
+                    Remove {selected.name} from Medprix.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="modal-close"
+                  data-testid="button-close-delete-user"
+                  onClick={() => setDialog(null)}>
+                  <X size={16} />
+                </button>
+              </div>
+              <div
+                style={{
+                  border: "1px solid hsl(var(--border))",
+                  borderRadius: 11,
+                  background: "hsl(var(--surface-soft))",
+                  padding: 12,
+                  fontSize: 12,
+                }}>
+                <strong>{selected.name}</strong>
+                <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+                  {selected.username} - {selected.role} - {selected.status}
+                </div>
+              </div>
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  className="button soft"
+                  onClick={() => setDialog(null)}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="button dark"
+                  data-testid="button-confirm-delete-user"
+                  style={{ background: "#dc2626", borderColor: "#dc2626", color: "#fff" }}
+                  onClick={remove}>
+                  <Trash2 size={13} /> Delete account
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
@@ -574,6 +719,7 @@ function UserDialog({
   setDraft,
   onClose,
   onSubmit,
+  isCurrentUser = false,
 }: {
   title: string;
   isCreate: boolean;
@@ -586,6 +732,7 @@ function UserDialog({
   }) => void;
   onClose: () => void;
   onSubmit: (event: FormEvent, password: string) => void;
+  isCurrentUser?: boolean;
 }) {
   const [showPwd, setShowPwd] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -605,7 +752,7 @@ function UserDialog({
 
     const cleaned = draft.phone.trim();
     const phoneRegex = /^\+639\d{9}$/;
-    if (!phoneRegex.test(cleaned)) {
+    if (cleaned && !phoneRegex.test(cleaned)) {
       setFormError("Invalid phone number format.");
       return;
     }
@@ -688,12 +835,19 @@ function UserDialog({
               id="user-role"
               data-testid="select-user-role"
               value={draft.role}
+              disabled={isCurrentUser}
               onChange={(e) => setDraft({ ...draft, role: e.target.value })}>
               <option>Administrator</option>
               <option>Front Desk</option>
               <option>Cashier</option>
             </select>
           </div>
+          <div></div>
+          {isCurrentUser && (
+            <div className="muted" style={{ fontSize: 10 }}>
+              Your own role cannot be changed from this account.
+            </div>
+          )}
           {isCreate && (
             <>
               <div className="field" style={{ position: "relative" }}>

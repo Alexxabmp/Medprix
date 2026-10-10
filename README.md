@@ -1,6 +1,6 @@
 # Medprix — Pharmacy Operations & Management Dashboard
 
-A full-stack pharmacy management platform built with React 19, TypeScript, Express 5, and Drizzle ORM (MySQL). It streamlines day-to-day operations including point-of-sale activities, real-time inventory and stock tracking, supplier management, purchase order procurement, wholesale invoicing, and embedded financial/operational analytics. Made for Software Engineering 2.
+A full-stack pharmacy management platform built with React 19, TypeScript, Express 5, and Drizzle ORM (PostgreSQL). It streamlines day-to-day operations including point-of-sale activities, real-time inventory and stock tracking, supplier management, purchase order procurement, wholesale invoicing, and embedded financial/operational analytics. Made for Software Engineering 2.
 
 ---
 
@@ -43,7 +43,7 @@ Medprix/
 │   ├── api-client-react/     # Generated React Query hooks from OpenAPI spec
 │   ├── api-spec/             # OpenAPI YAML definition and Orval config
 │   ├── api-zod/              # Generated Zod validation schemas
-│   └── db/                   # Drizzle ORM schema & MySQL connection pool
+│   └── db/                   # Drizzle ORM schema & PostgreSQL connection pool
 ├── scripts/                  # Maintenance & utility scripts
 ├── package.json              # Root workspace manifest & scripts
 ├── pnpm-workspace.yaml       # pnpm workspace configuration
@@ -56,7 +56,7 @@ Medprix/
 
 - **Frontend:** React 19, TypeScript, Vite 7, Tailwind CSS v4, Radix UI primitives, Lucide React, Wouter, TanStack React Query, Recharts.
 - **Backend:** Node.js 24, Express 5, TypeScript, esbuild, Pino logging (`pino-http`, `pino-pretty`).
-- **Database & ORM:** MySQL 8.0+, Drizzle ORM, Drizzle Kit.
+- **Database & ORM:** PostgreSQL 15+, Drizzle ORM, Drizzle Kit.
 - **Validation & Codegen:** Zod, Orval (OpenAPI to React Query + Zod).
 
 ---
@@ -65,7 +65,7 @@ Medprix/
 
 - **Node.js**: `v20.x` or `v24.x` (recommended)
 - **Package Manager**: `npm` (v10+) or `pnpm` (v9+)
-- **Database**: `MySQL 8.0+`
+- **Database**: `PostgreSQL 15+`
 
 ---
 
@@ -79,7 +79,7 @@ For local development, keep an uncommitted `.env` file at the repository root, n
 
 | Variable | Description | Example |
 | :--- | :--- | :--- |
-| `DATABASE_URL` | MySQL connection string for Drizzle ORM | `mysql://root:password@localhost:3306/medprix` |
+| `DATABASE_URL` | PostgreSQL connection string for Drizzle ORM | `postgresql://postgres:password@localhost:5432/medprix` |
 | `SESSION_SECRET` | Secret used to sign login session cookies. Required in production. | `use-a-long-random-secret` |
 
 ### Optional / Service-Specific Variables
@@ -123,17 +123,17 @@ Do not commit `.env`. Load the needed values into your shell before running work
 
 ```bash
 # Windows PowerShell
-$env:DATABASE_URL="mysql://root:yourpassword@localhost:3306/medprix"
+$env:DATABASE_URL="postgresql://postgres:yourpassword@localhost:5432/medprix"
 $env:SESSION_SECRET="replace-with-a-long-random-secret"
 
 # Linux / macOS Bash / Git Bash
-export DATABASE_URL="mysql://root:yourpassword@localhost:3306/medprix"
+export DATABASE_URL="postgresql://postgres:yourpassword@localhost:5432/medprix"
 export SESSION_SECRET="replace-with-a-long-random-secret"
 ```
 
 ### 3. Initialize the Database
 
-Push the Drizzle ORM schema to your MySQL database
+Push the Drizzle ORM schema to your PostgreSQL database
 
 ```bash
 npm run push --workspace=@workspace/db
@@ -143,6 +143,18 @@ Or using `pnpm`:
 
 ```bash
 pnpm --filter @workspace/db run push
+```
+
+### 3.5. Seed the Database with Sample Data
+
+After pushing the schema, you can populate the database with sample data for testing:
+
+```bash
+# Using npm
+npm run seed -w @/workspace/db
+
+# Or using pnpm
+pnpm --filter @workspace/db run seed
 ```
 
 ### 4. Run in Development Mode
@@ -172,6 +184,7 @@ This starts:
 | `npm run typecheck` | Typechecks all libraries and sub-packages (`tsc --build`). |
 | `npm run push --workspace=@workspace/db` | Pushes Drizzle schema directly to the database. |
 | `npm run push-force --workspace=@workspace/db` | Pushes schema changes with forced migration. |
+| `npm run fresh --workspace=@workspace/db` | (DESTRUCTIVE) purges the entire database, recreates Drizzle files, reinstalls triggers, seeds db with mock data |
 | `npm run codegen --workspace=@workspace/api-spec` | Regenerates React Query hooks & Zod schemas from `openapi.yaml`. |
 | `npm run start --workspace=@workspace/api-server` | Starts the bundled production API server. |
 | `npm run serve --workspace=@workspace/medprix-dashboard` | Previews the built frontend dashboard locally. |
@@ -205,15 +218,14 @@ pnpm --filter @workspace/api-spec run codegen
 ### 1. `DATABASE_URL must be set` Error
 - Ensure `DATABASE_URL` is loaded into the process environment before running the backend or database migrations.
 - A root `.env` file is useful for local reference, but this repo does not auto-load it.
-- Verify the MySQL service is active and the database name exists.
+- Verify the PostgreSQL service is active and the database name exists.
 
-### 2. `Cannot connect to MySQL database`
-- Ensure MySQL is running on the target port (default `3306`).
-- Verify credentials and check user permissions:
+### 2. `Cannot connect to PostgreSQL database`
+- Ensure PostgreSQL is running on the target port (default `5432`).
+- Verify credentials and create the database if needed:
   ```sql
-  CREATE DATABASE IF NOT EXISTS medprix;
-  GRANT ALL PRIVILEGES ON medprix.* TO 'your_user'@'localhost';
-  FLUSH PRIVILEGES;
+  CREATE DATABASE medprix;
+  GRANT ALL PRIVILEGES ON DATABASE medprix TO your_user;
   ```
 
 ### 3. `Could not reach the server. Is the backend running?`

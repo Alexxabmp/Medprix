@@ -45,7 +45,7 @@ function AppContent() {
   }, [dark]);
 
   const fetchUsers = () => {
-    fetch("http://localhost:5000/api/users", { credentials: "include" })
+    fetch("/api/users", { credentials: "include" })
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
       .then((data: any[]) => {
         if (!Array.isArray(data)) return;
@@ -63,19 +63,19 @@ function AppContent() {
             name,
             username: user.username,
             role:
-              user.role === "admin"
+              user.role === "Admin"
                 ? "Administrator"
-                : user.role === "frontdesk"
+                : user.role === "FrontDesk"
                   ? "Front Desk"
                   : "Cashier",
             status: user.isActive === false ? "Inactive" : "Active",
             lastActive: user.lastLogin
               ? new Date(user.lastLogin).toLocaleString([], {
-                  month: "short",
-                  day: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
+                month: "short",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
               : "Never",
             phone: user.contactNumber || "",
           };
@@ -88,7 +88,7 @@ function AppContent() {
   };
 
   useEffect(() => {
-    if (!session || role !== "admin") return;
+    if (!session || role !== "Admin") return;
     fetchUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, role]);
@@ -96,7 +96,7 @@ function AppContent() {
   useEffect(() => {
     if (!session) return;
 
-    fetch("http://localhost:5000/api/me", { credentials: "include" })
+    fetch("/api/me", { credentials: "include" })
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
       .then((data) => {
         localStorage.setItem("medprix-role", data.role);
@@ -160,10 +160,10 @@ function AppContent() {
           onToast={notify}
           role={role}
           onLogout={() => {
-            fetch("http://localhost:5000/api/logout", {
+            fetch("/api/logout", {
               method: "POST",
               credentials: "include",
-            }).catch(() => {});
+            }).catch(() => { });
             localStorage.removeItem("medprix-session");
             localStorage.removeItem("medprix-role");
             localStorage.removeItem("medprix-username");

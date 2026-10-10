@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, Route, Switch, useLocation } from "wouter";
 import { Moon, Pill, Sun, UserCog, X } from "lucide-react";
 import { navGroups } from "@/lib/data";
 import type { ToastFn, UserRecord } from "@/lib/types";
+import { prefetchPharmacyData } from "@/lib/pharmacy-store";
 
 import DashboardPage from "@/pages/admin-dashboard";
 import CashierDashboardPage from "@/pages/cashier-dashboard";
@@ -36,12 +37,17 @@ export function AppShell({
 }) {
   const [location] = useLocation();
   const [showUserMenu, setShowUserMenu] = useState(false);
+
+  useEffect(() => {
+    prefetchPharmacyData();
+  }, []);
+  const roleKey = role.toLowerCase();
   const pageName =
     location === "/dashboard"
       ? "Dashboard"
       : (navGroups
-          .flatMap((group) => group.items)
-          .find((item) => item.href === location)?.label ?? "Dashboard");
+        .flatMap((group) => group.items)
+        .find((item) => item.href === location)?.label ?? "Dashboard");
 
   const storedFullName = localStorage.getItem("medprix-fullname");
   const storedUsername = localStorage.getItem("medprix-username");
@@ -53,9 +59,9 @@ export function AppShell({
     .slice(0, 2)
     .toUpperCase();
   const displayTitle =
-    role === "admin"
+    role === "Admin"
       ? "Administrator"
-      : role === "frontdesk"
+      : role === "FrontDesk"
         ? "Front Desk"
         : "Cashier";
   const currentUser = {
@@ -155,14 +161,14 @@ export function AppShell({
         <main className="content">
           <Switch>
             <Route path="/">
-              {role === "cashier" ? (
+              {roleKey === "cashier" ? (
                 <CashierDashboardPage onToast={onToast} />
               ) : (
                 <DashboardPage onToast={onToast} />
               )}
             </Route>
             <Route path="/dashboard">
-              {role === "cashier" ? (
+              {roleKey === "cashier" ? (
                 <CashierDashboardPage onToast={onToast} />
               ) : (
                 <DashboardPage onToast={onToast} />
