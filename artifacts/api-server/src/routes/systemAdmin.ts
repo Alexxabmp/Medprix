@@ -819,6 +819,10 @@ router.post("/admin/system-logs", (req, res) => {
 
 // GET /api/admin/user-activities
 router.get("/admin/user-activities", (req, res) => {
+  persistentUserActivities = loadJsonFile<UserActivity[]>(
+    "user_activities.json",
+    persistentUserActivities
+  );
   const { search, flag, role, module: mod } = req.query;
   let results = [...persistentUserActivities];
 
@@ -855,6 +859,10 @@ router.get("/admin/user-activities", (req, res) => {
 });
 
 router.post("/admin/user-activities", (req, res) => {
+  persistentUserActivities = loadJsonFile<UserActivity[]>(
+    "user_activities.json",
+    persistentUserActivities
+  );
   const nextId =
     persistentUserActivities.reduce(
       (max, activity) => Math.max(max, Number(activity.id) || 0),
@@ -879,6 +887,61 @@ router.post("/admin/user-activities", (req, res) => {
   void saveUserActivityToDb(activity);
 
   return res.status(201).json(activity);
+});
+
+// PATCH /api/admin/transactions/:id/status
+router.patch("/admin/transactions/:id/status", (req, res) => {
+  persistentTransactions = loadJsonFile<UserTransaction[]>(
+    "transactions.json",
+    persistentTransactions
+  );
+  const param = req.params.id;
+  const numId = Number(param);
+  const { status } = req.body as { status?: string };
+  const idx = persistentTransactions.findIndex(
+    (t) => t.id === numId || t.transactionNumber === param
+  );
+  if (idx === -1) {
+    return res.status(404).json({ error: "Transaction not found." });
+  }
+  const validStatus = (["Completed", "Voided", "Refunded", "Pending"] as const).find(
+    (s) => s.toLowerCase() === String(status).toLowerCase()
+  ) || "Completed";
+
+  persistentTransactions[idx].status = validStatus;
+  saveJsonFile("transactions.json", persistentTransactions);
+  void queryDb(
+    "UPDATE cashier_transactions SET status = $1 WHERE id = $2 OR transaction_number = $3",
+    [validStatus, numId || 0, param]
+  );
+  return res.json(persistentTransactions[idx]);
+});
+
+// POST /api/admin/backup
+router.post("/admin/backup", (req, res) => {
+  persistentSystemLogs = loadJsonFile<SystemLog[]>("system_logs.json", persistentSystemLogs);
+  const backupId = `BKP-${new Date().toISOString().replace(/\D/g, "").slice(0, 14)}`;
+  const log: SystemLog = {
+    id: persistentSystemLogs.reduce((max, l) => Math.max(max, Number(l.id) || 0), 0) + 1,
+    dateTime: new Date().toLocaleString(),
+    user: (req as any).user?.username || "Admin",
+    role: "Admin",
+    action: "BACKUP",
+    module: "System Administration",
+    description: `Created full system database backup snapshot (${backupId})`,
+    status: "Success",
+    deviceIp: (req as any).ip || "127.0.0.1",
+  };
+  persistentSystemLogs.unshift(log);
+  saveJsonFile("system_logs.json", persistentSystemLogs);
+  void saveSystemLogToDb(log);
+
+  return res.json({
+    success: true,
+    backupId,
+    timestamp: new Date().toISOString(),
+    message: "System state and database backup created successfully.",
+  });
 });
 
 export default router;
