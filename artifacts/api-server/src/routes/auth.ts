@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, usersTable } from "@workspace/db";
+import { db, usersTable, systemLogsTable, userActivitiesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { validatePassword, verifyPassword } from "../lib/password";
 import {
@@ -9,7 +9,7 @@ import {
 } from "../lib/session";
 import { requireAuth } from "../middleware/auth";
 import type { UserRoleEnum } from "@workspace/db/schema";
-
+import { recordSystemLog, recordUserActivity } from "./systemAdmin";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -59,13 +59,69 @@ router.post("/login", async (req, res) => {
       role: user.role as UserRoleEnum,
     });
 
+    const now = new Date();
+    const clientIp = String(req.ip || req.headers["x-forwarded-for"] || "127.0.0.1").slice(0, 50);
+
+    // 1. Update user last login and active timestamp in database
     try {
       await db
         .update(usersTable)
-        .set({ lastLogin: new Date() })
+        .set({ lastLogin: now, updatedAt: now })
         .where(eq(usersTable.id, user.id));
     } catch (updateErr) {
-      logger.warn({ updateErr }, "Could not update lastLogin on user");
+      logger.warn({ updateErr }, "Could not update lastLogin on user in database");
+    }
+
+    // 2. Audit system log and user activity in database on every login
+    try {
+      await db.insert(systemLogsTable).values({
+        userId: user.id,
+        actionType: "LOGIN",
+        module: "Authentication",
+        description: `User ${user.fullName || user.username} (${user.role}) logged in successfully`,
+        status: "Success",
+        deviceIp: clientIp,
+        timestamp: now,
+      });
+    } catch (logErr) {
+      logger.warn({ logErr }, "Could not write systemLog on login to DB");
+    }
+
+    try {
+      await db.insert(userActivitiesTable).values({
+        userId: user.id,
+        activity: "User Login",
+        module: "🔐 Authentication",
+        description: `User ${user.fullName || user.username} logged into Medprix workspace`,
+        flag: "Normal",
+        timestamp: now,
+      });
+    } catch (actErr) {
+      logger.warn({ actErr }, "Could not write userActivity on login to DB");
+    }
+
+    // 3. Keep system administrator logs and activities updated
+    try {
+      recordSystemLog({
+        user: user.fullName || user.username,
+        role: user.role,
+        action: "LOGIN",
+        module: "Authentication",
+        description: `User ${user.fullName || user.username} logged into system`,
+        status: "Success",
+        deviceIp: clientIp,
+      });
+
+      recordUserActivity({
+        user: user.fullName || user.username,
+        role: user.role,
+        activity: "User Login",
+        module: "🔐 Authentication",
+        description: `User ${user.fullName || user.username} logged into workspace`,
+        flag: "Normal",
+      });
+    } catch (fileErr) {
+      logger.warn({ fileErr }, "Could not record system audit in storage");
     }
 
     setSessionCookie(res, token);
@@ -94,4 +150,3 @@ router.post("/logout", (_req, res) => {
 });
 
 export default router;
-

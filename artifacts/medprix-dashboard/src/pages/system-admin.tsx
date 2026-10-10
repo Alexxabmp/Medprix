@@ -393,12 +393,6 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
               value={String(transactions.filter((t) => t.businessType === "Retail").length)}
               caption="Walk-in POS transactions"
             />
-            <Summary
-              label="Completed"
-              value={String(transactions.filter((t) => t.status === "Completed").length)}
-              caption="Settled transactions"
-              tone="neutral"
-            />
           </div>
 
           <section className="surface-card table-card">

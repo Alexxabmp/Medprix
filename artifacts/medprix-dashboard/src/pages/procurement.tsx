@@ -602,12 +602,6 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
           caption={`${money(totalOpenValue)} committed`}
         />
         <Summary
-          label="Draft orders"
-          value={String(orders.filter((order) => order.status === "Draft").length)}
-          caption="Draft purchase orders"
-          tone="neutral"
-        />
-        <Summary
           label="Awaiting approval"
           value={String(orders.filter((order) => order.status === "Pending").length)}
           caption="Needs your review"

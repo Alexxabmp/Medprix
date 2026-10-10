@@ -505,6 +505,71 @@ async function saveUserActivityToDb(a: UserActivity) {
   }
 }
 
+export function recordSystemLog(logInput: {
+  user: string;
+  role?: string;
+  action: string;
+  module: string;
+  description: string;
+  status?: "Success" | "Failed";
+  deviceIp?: string;
+}) {
+  persistentSystemLogs = loadJsonFile<SystemLog[]>("system_logs.json", persistentSystemLogs);
+  const nextId =
+    persistentSystemLogs.reduce((max, log) => Math.max(max, Number(log.id) || 0), 0) + 1;
+  const log: SystemLog = {
+    id: nextId,
+    dateTime: new Date().toLocaleString(),
+    user: logInput.user || "System",
+    role: logInput.role || "Cashier",
+    action: logInput.action || "Event",
+    module: logInput.module || "System",
+    description: logInput.description || "System log event",
+    status: logInput.status === "Failed" ? "Failed" : "Success",
+    deviceIp: logInput.deviceIp || "127.0.0.1",
+  };
+  persistentSystemLogs.unshift(log);
+  saveJsonFile("system_logs.json", persistentSystemLogs);
+  void saveSystemLogToDb(log);
+  return log;
+}
+
+export function recordUserActivity(actInput: {
+  user: string;
+  role?: string;
+  activity: string;
+  module: string;
+  description: string;
+  flag?: "Normal" | "Suspicious" | "Flagged";
+}) {
+  persistentUserActivities = loadJsonFile<UserActivity[]>(
+    "user_activities.json",
+    persistentUserActivities
+  );
+  const nextId =
+    persistentUserActivities.reduce(
+      (max, activity) => Math.max(max, Number(activity.id) || 0),
+      0
+    ) + 1;
+  const activity: UserActivity = {
+    id: nextId,
+    dateTime: new Date().toLocaleString(),
+    user: actInput.user || "Cashier",
+    role: actInput.role || "Cashier",
+    activity: actInput.activity || "Activity",
+    module: actInput.module || "Workspace Activity",
+    description: actInput.description || "User activity recorded",
+    flag:
+      actInput.flag === "Suspicious" || actInput.flag === "Flagged"
+        ? actInput.flag
+        : "Normal",
+  };
+  persistentUserActivities.unshift(activity);
+  saveJsonFile("user_activities.json", persistentUserActivities);
+  void saveUserActivityToDb(activity);
+  return activity;
+}
+
 async function syncWithDatabase() {
   try {
     // 1. Ensure tables exist in case of fresh DB
