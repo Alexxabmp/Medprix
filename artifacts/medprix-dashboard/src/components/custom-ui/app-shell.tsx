@@ -4,6 +4,10 @@ import { Moon, Pill, Sun, UserCog, X } from "lucide-react";
 import { navGroups } from "@/lib/data";
 import type { ToastFn, UserRecord } from "@/lib/types";
 import { prefetchPharmacyData } from "@/lib/pharmacy-store";
+import {
+  fetchAccountsPayable,
+  fetchSupplierRecords,
+} from "@/lib/supplier-store";
 
 import DashboardPage from "@/pages/admin-dashboard";
 import CashierDashboardPage from "@/pages/cashier-dashboard";
@@ -40,7 +44,11 @@ export function AppShell({
 
   useEffect(() => {
     prefetchPharmacyData();
+    void fetchSupplierRecords().catch(() => undefined);
   }, []);
+      void fetchAccountsPayable().catch(() => undefined);
+    }
+  }, [role]);
   const roleKey = role.toLowerCase();
   const pageName =
     location === "/dashboard"
