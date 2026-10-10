@@ -23,9 +23,36 @@ export default defineConfig({
         const rootDist = path.resolve(import.meta.dirname, '../../dist');
         const indexPath = path.join(outDir, 'index.html');
         const notFoundPath = path.join(outDir, '404.html');
+
         if (fs.existsSync(indexPath)) {
           fs.copyFileSync(indexPath, notFoundPath);
+
+          const appRoutes = [
+            'login',
+            'dashboard',
+            'pos',
+            'review',
+            'inventory',
+            'supplier',
+            'procurement',
+            'wholesale',
+            'system-ad',
+            'user-management',
+          ];
+
+          for (const route of appRoutes) {
+            // 1. Create route/index.html
+            const routeDir = path.join(outDir, route);
+            if (!fs.existsSync(routeDir)) {
+              fs.mkdirSync(routeDir, { recursive: true });
+            }
+            fs.copyFileSync(indexPath, path.join(routeDir, 'index.html'));
+
+            // 2. Create route.html
+            fs.copyFileSync(indexPath, path.join(outDir, `${route}.html`));
+          }
         }
+
         try {
           if (!fs.existsSync(rootDist)) {
             fs.mkdirSync(rootDist, { recursive: true });
