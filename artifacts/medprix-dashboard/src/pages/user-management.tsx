@@ -79,7 +79,7 @@ export default function UserManagementPage({
     const nextIsActive = next === "Active";
     try {
       const response = await fetch(
-        `http://localhost:5000/api/users/${user.id}`,
+        `/api/users/${user.id}`,
         {
           method: "PATCH",
           credentials: "include",
@@ -112,7 +112,7 @@ export default function UserManagementPage({
             ? "FrontDesk"
             : "Cashier";
       try {
-        const response = await fetch("http://localhost:5000/api/users", {
+        const response = await fetch("/api/users", {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
@@ -177,7 +177,7 @@ export default function UserManagementPage({
         }
 
         const response = await fetch(
-          `http://localhost:5000/api/users/${selected.id}`,
+          `/api/users/${selected.id}`,
           {
             method: "PATCH",
             credentials: "include",
@@ -230,7 +230,7 @@ export default function UserManagementPage({
 
     try {
       const response = await fetch(
-        `http://localhost:5000/api/users/${userToRemove.id}`,
+        `/api/users/${userToRemove.id}`,
         {
           method: "DELETE",
           credentials: "include",
@@ -265,7 +265,7 @@ export default function UserManagementPage({
     }
     try {
       const response = await fetch(
-        `http://localhost:5000/api/users/${selected.id}/password`,
+        `/api/users/${selected.id}/password`,
         {
           method: "PATCH",
           credentials: "include",
@@ -404,7 +404,7 @@ export default function UserManagementPage({
                               : "Cashier";
                         try {
                           const response = await fetch(
-                            `http://localhost:5000/api/users/${user.id}`,
+                            `/api/users/${user.id}`,
                             {
                               method: "PATCH",
                               credentials: "include",

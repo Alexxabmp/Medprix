@@ -25,7 +25,7 @@ export default function SupplierPage({ onToast }: { onToast: ToastFn }) {
       try {
         setIsLoading(true);
         setError("");
-        const response = await fetch("http://localhost:5000/api/suppliers", {
+        const response = await fetch("/api/suppliers", {
           credentials: "include",
         });
         const data = await response.json().catch(() => ({}));

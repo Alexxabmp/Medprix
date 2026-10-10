@@ -1,4 +1,4 @@
-﻿import { useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { ArrowUpRight, Eye, EyeOff, Pill } from "lucide-react";
 
 export default function LoginPage({ onLogin }: { onLogin: () => void }) {
@@ -14,7 +14,7 @@ export default function LoginPage({ onLogin }: { onLogin: () => void }) {
       return;
     }
     try {
-      const response = await fetch("http://localhost:5000/api/login", {
+      const response = await fetch("/api/login", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },

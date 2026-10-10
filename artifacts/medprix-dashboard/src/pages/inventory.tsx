@@ -447,7 +447,7 @@ export default function InventoryPage({
     };
 
     try {
-      const res = await fetch("http://localhost:5000/api/inventory/products", {
+      const res = await fetch("/api/inventory/products", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -506,7 +506,7 @@ export default function InventoryPage({
     };
 
     try {
-      const res = await fetch(`http://localhost:5000/api/inventory/products/${editProduct.id}`, {
+      const res = await fetch(`/api/inventory/products/${editProduct.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -575,7 +575,7 @@ export default function InventoryPage({
     };
 
     try {
-      const res = await fetch(`http://localhost:5000/api/inventory/products/${batchProduct.id}/batches`, {
+      const res = await fetch(`/api/inventory/products/${batchProduct.id}/batches`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newBatch),
@@ -616,7 +616,7 @@ export default function InventoryPage({
     }
 
     try {
-      const res = await fetch(`http://localhost:5000/api/inventory/products/${stockInProduct.id}/stock-in`, {
+      const res = await fetch(`/api/inventory/products/${stockInProduct.id}/stock-in`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -675,7 +675,7 @@ export default function InventoryPage({
     }
 
     try {
-      const res = await fetch(`http://localhost:5000/api/inventory/products/${stockOutProduct.id}/stock-out`, {
+      const res = await fetch(`/api/inventory/products/${stockOutProduct.id}/stock-out`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

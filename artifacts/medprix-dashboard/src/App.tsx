@@ -45,7 +45,7 @@ function AppContent() {
   }, [dark]);
 
   const fetchUsers = () => {
-    fetch("http://localhost:5000/api/users", { credentials: "include" })
+    fetch("/api/users", { credentials: "include" })
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
       .then((data: any[]) => {
         if (!Array.isArray(data)) return;
@@ -96,7 +96,7 @@ function AppContent() {
   useEffect(() => {
     if (!session) return;
 
-    fetch("http://localhost:5000/api/me", { credentials: "include" })
+    fetch("/api/me", { credentials: "include" })
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
       .then((data) => {
         localStorage.setItem("medprix-role", data.role);
@@ -160,7 +160,7 @@ function AppContent() {
           onToast={notify}
           role={role}
           onLogout={() => {
-            fetch("http://localhost:5000/api/logout", {
+            fetch("/api/logout", {
               method: "POST",
               credentials: "include",
             }).catch(() => { });

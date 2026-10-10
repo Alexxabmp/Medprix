@@ -84,11 +84,11 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
       setIsLoading(true);
       setError("");
       const responses = await Promise.all([
-        fetch("http://localhost:5000/api/suppliers", { credentials: "include" }),
-        fetch("http://localhost:5000/api/inventory", { credentials: "include" }),
-        fetch("http://localhost:5000/api/purchase-orders", { credentials: "include" }),
-        fetch("http://localhost:5000/api/supplier-deliveries", { credentials: "include" }),
-        fetch("http://localhost:5000/api/supplier-invoices", { credentials: "include" }),
+        fetch("/api/suppliers", { credentials: "include" }),
+        fetch("/api/inventory", { credentials: "include" }),
+        fetch("/api/purchase-orders", { credentials: "include" }),
+        fetch("/api/supplier-deliveries", { credentials: "include" }),
+        fetch("/api/supplier-invoices", { credentials: "include" }),
       ]);
       const payloads = await Promise.all(
         responses.map((response) => response.json().catch(() => ({}))),
@@ -130,7 +130,7 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
 
   const updateStatus = async (orderId: string, nextStatus: string) => {
     try {
-      const response = await fetch(`http://localhost:5000/api/purchase-orders/${orderId}/status`, {
+      const response = await fetch(`/api/purchase-orders/${orderId}/status`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -165,7 +165,7 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
 
     try {
       setIsSaving(true);
-      const response = await fetch("http://localhost:5000/api/purchase-orders", {
+      const response = await fetch("/api/purchase-orders", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -201,7 +201,7 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
     event.preventDefault();
     try {
       setIsSaving(true);
-      const response = await fetch("http://localhost:5000/api/supplier-deliveries", {
+      const response = await fetch("/api/supplier-deliveries", {
         method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ poId: deliveryForm.poId, deliveryDate: deliveryForm.deliveryDate, deliveryStatus: deliveryForm.deliveryStatus, items: [{ productId: deliveryForm.productId, batchNumber: deliveryForm.batchNumber, expirationDate: deliveryForm.expirationDate, quantityDelivered: Number(deliveryForm.quantityDelivered) }] }),
       });
@@ -217,7 +217,7 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
     event.preventDefault();
     try {
       setIsSaving(true);
-      const response = await fetch("http://localhost:5000/api/supplier-invoices", {
+      const response = await fetch("/api/supplier-invoices", {
         method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...invoiceForm, poId: invoiceForm.poId || null, invoiceAmount: Number(invoiceForm.invoiceAmount) }),
       });
@@ -231,7 +231,7 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
 
   const updateInvoiceStatus = async (invoiceId: string, nextStatus: string) => {
     try {
-      const response = await fetch(`http://localhost:5000/api/supplier-invoices/${invoiceId}/status`, {
+      const response = await fetch(`/api/supplier-invoices/${invoiceId}/status`, {
         method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: nextStatus }),
       });
       const data = await response.json().catch(() => ({}));
