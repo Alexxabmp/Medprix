@@ -1,13 +1,31 @@
 {
-  "version": 2,
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "api-server": {
+      "root": "artifacts/api-server",
+      "framework": "express"
+    },
+    "medprix-dashboard": {
+      "root": "artifacts/medprix-dashboard",
+      "framework": "vite"
+    },
+    "mockup-sandbox": {
+      "root": "artifacts/mockup-sandbox",
+      "framework": "vite"
+    }
+  },
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/api"
+      "destination": {
+        "service": "api-server"
+      }
     },
     {
       "source": "/(.*)",
-      "destination": "/index.html"
+      "destination": {
+        "service": "medprix-dashboard"
+      }
     }
   ]
 }
