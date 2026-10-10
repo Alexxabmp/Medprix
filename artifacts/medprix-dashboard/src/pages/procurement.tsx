@@ -1,21 +1,39 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
-import { Check, Plus, Trash2, X } from "lucide-react";
+import { Check, Eye, Package, Plus, Trash2, X, ArrowRight } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import { Summary } from "@/components/custom-ui/summary-card";
 import type { ToastFn } from "@/lib/types";
 import { fetchInventoryData } from "@/lib/pharmacy-store";
+import { products as initialFallbackProducts } from "@/lib/data";
 
 type Supplier = { id: string; name: string };
-type Product = { id: string; name: string; sku: string };
+type Product = {
+  id: string;
+  name: string;
+  sku: string;
+  price?: string;
+  cost?: string;
+};
+type LineItemDetail = {
+  id: string;
+  productId: string;
+  product: string;
+  sku: string;
+  quantityOrdered: number;
+  unitCost: string;
+  lineTotal: string;
+};
 type PurchaseOrder = {
   id: string;
   poNumber: string;
+  supplierId?: string;
   supplier: string;
   orderDate: string;
   status: string;
   totalOrderAmount: string;
   itemCount: number;
+  items?: LineItemDetail[];
 };
 type DeliveryItem = {
   id: string;
@@ -57,9 +75,20 @@ const initialOrders: PurchaseOrder[] = [
     poNumber: "PO-2026-0001",
     supplier: "Mindanao MedSupply Corp.",
     orderDate: new Date().toISOString(),
-    status: "Submitted",
+    status: "Draft",
     totalOrderAmount: "15000.00",
     itemCount: 1,
+    items: [
+      {
+        id: "10101010-1010-1010-1010-101010101010",
+        productId: "p1",
+        product: "Paracetamol 500mg",
+        sku: "MED-0421",
+        quantityOrdered: 500,
+        unitCost: "30.00",
+        lineTotal: "15000.00",
+      },
+    ],
   },
 ];
 
@@ -133,7 +162,25 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
   const [suppliers, setSuppliers] = useState<Supplier[]>(() =>
     getStored("medprix_procurement_suppliers", initialSuppliers)
   );
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<Product[]>(() => {
+    const cached = getStored<any[]>("medprix_cached_inventory", []);
+    if (cached.length > 0) {
+      return cached.map((p) => ({
+        id: p.id,
+        name: p.name,
+        sku: p.sku,
+        price: p.price,
+        cost: p.cost || p.price,
+      }));
+    }
+    return initialFallbackProducts.map((p) => ({
+      id: p.id,
+      name: p.name,
+      sku: p.sku,
+      price: p.price,
+      cost: (p as any).cost || p.price,
+    }));
+  });
   const [deliveries, setDeliveries] = useState<Delivery[]>(() =>
     getStored("medprix_procurement_deliveries", initialDeliveries)
   );
@@ -145,6 +192,7 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isDeliveryOpen, setIsDeliveryOpen] = useState(false);
   const [isInvoiceOpen, setIsInvoiceOpen] = useState(false);
+  const [selectedOrderForItems, setSelectedOrderForItems] = useState<PurchaseOrder | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [supplierId, setSupplierId] = useState("");
   const [poNumber, setPoNumber] = useState("");
@@ -157,7 +205,7 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
     deliveryStatus: "Received",
     productId: "",
     batchNumber: "",
-    expirationDate: "",
+    expirationDate: "2028-12-31",
     quantityDelivered: "1",
   });
   const [invoiceForm, setInvoiceForm] = useState({
@@ -190,8 +238,15 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
       }
       if (invRes?.ok) {
         const d = await invRes.json();
-        if (Array.isArray(d.products)) {
-          setProducts(d.products.map((p: any) => ({ id: p.id, name: p.name, sku: p.sku })));
+        if (Array.isArray(d.products) && d.products.length > 0) {
+          const prods = d.products.map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            sku: p.sku,
+            price: p.price,
+            cost: p.cost || p.price,
+          }));
+          setProducts(prods);
         }
       }
       if (poRes?.ok) {
@@ -200,7 +255,13 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
           const localOrders = getStored("medprix_procurement_orders", orders);
           const merged = [...d.purchaseOrders];
           for (const lo of localOrders) {
-            if (!merged.some((m) => m.id === lo.id || m.poNumber === lo.poNumber)) {
+            const matchIndex = merged.findIndex((m) => m.id === lo.id || m.poNumber === lo.poNumber);
+            if (matchIndex >= 0) {
+              // Preserve local items if server didn't provide them
+              if ((!merged[matchIndex].items || merged[matchIndex].items.length === 0) && lo.items) {
+                merged[matchIndex].items = lo.items;
+              }
+            } else {
               merged.unshift(lo);
             }
           }
@@ -252,7 +313,7 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
   );
   const totalOpenValue = orders
     .filter((order) => !["Fulfilled", "Cancelled"].includes(order.status))
-    .reduce((total, order) => total + Number(order.totalOrderAmount), 0);
+    .reduce((total, order) => total + Number(order.totalOrderAmount || 0), 0);
   const runningTotal = lineItems.reduce(
     (total, item) => total + (Number(item.quantityOrdered) || 0) * (Number(item.unitCost) || 0),
     0,
@@ -262,6 +323,10 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
     const updated = orders.map((o) => (o.id === orderId ? { ...o, status: nextStatus } : o));
     setOrders(updated);
     saveStored("medprix_procurement_orders", updated);
+
+    if (selectedOrderForItems && selectedOrderForItems.id === orderId) {
+      setSelectedOrderForItems({ ...selectedOrderForItems, status: nextStatus });
+    }
 
     try {
       fetch(`/api/purchase-orders/${orderId}/status`, {
@@ -273,6 +338,25 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
       onToast("Purchase order status updated.");
     } catch {
       onToast("Updated locally.");
+    }
+  };
+
+  const openItemsModal = async (order: PurchaseOrder) => {
+    setSelectedOrderForItems(order);
+    if (!order.items || order.items.length === 0) {
+      try {
+        const res = await fetch(`/api/purchase-orders/${order.id}/items`, { credentials: "include" });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.items) && data.items.length > 0) {
+            const updatedOrder = { ...order, items: data.items, itemCount: data.items.length };
+            setSelectedOrderForItems(updatedOrder);
+            const updatedOrders = orders.map((o) => (o.id === order.id ? updatedOrder : o));
+            setOrders(updatedOrders);
+            saveStored("medprix_procurement_orders", updatedOrders);
+          }
+        }
+      } catch {}
     }
   };
 
@@ -292,15 +376,35 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
     }
 
     const suppObj = suppliers.find((s) => s.id === supplierId);
-    const finalPoNum = poNumber.trim() || `PO-${new Date().getFullYear()}-${String(orders.length + 1).padStart(4, "0")}`;
+    const finalPoNum =
+      poNumber.trim() ||
+      `PO-${new Date().getFullYear()}-${String(orders.length + 1).padStart(4, "0")}`;
+
+    const resolvedLineItems: LineItemDetail[] = lineItems.map((item) => {
+      const prod = products.find((p) => p.id === item.productId);
+      const qty = Number(item.quantityOrdered) || 1;
+      const cost = Number(item.unitCost) || 0;
+      return {
+        id: `item-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        productId: item.productId,
+        product: prod?.name || "Medical Item",
+        sku: prod?.sku || "",
+        quantityOrdered: qty,
+        unitCost: String(cost),
+        lineTotal: String(qty * cost),
+      };
+    });
+
     const newOrder: PurchaseOrder = {
       id: `po-${Date.now()}`,
       poNumber: finalPoNum,
+      supplierId,
       supplier: suppObj?.name || "Selected Supplier",
       orderDate: new Date().toISOString(),
-      status: "Submitted",
+      status: "Draft",
       totalOrderAmount: String(runningTotal),
       itemCount: lineItems.length,
+      items: resolvedLineItems,
     };
 
     const nextOrders = [newOrder, ...orders];
@@ -311,7 +415,7 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
     setSupplierId("");
     setPoNumber("");
     setLineItems([{ productId: "", quantityOrdered: "1", unitCost: "0" }]);
-    onToast("Purchase order created.");
+    onToast("Purchase order created with Draft status.");
 
     try {
       setIsSaving(true);
@@ -322,6 +426,7 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
         body: JSON.stringify({
           supplierId,
           poNumber: finalPoNum,
+          status: "Draft",
           items: lineItems.map((item) => ({
             productId: item.productId,
             quantityOrdered: Number(item.quantityOrdered),
@@ -349,7 +454,9 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
         {
           id: `deli-${Date.now()}`,
           product: prodObj?.name || "Medical Item",
-          batchNumber: deliveryForm.batchNumber.trim().toUpperCase(),
+          batchNumber: (
+            deliveryForm.batchNumber.trim() || `BATCH-${Date.now().toString().slice(-6)}`
+          ).toUpperCase(),
           expirationDate: deliveryForm.expirationDate || "2028-12-31",
           quantityDelivered: Number(deliveryForm.quantityDelivered) || 1,
         },
@@ -360,9 +467,13 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
     setDeliveries(nextDeliveries);
     saveStored("medprix_procurement_deliveries", nextDeliveries);
 
+    if (poObj && deliveryForm.deliveryStatus === "Received" && poObj.status !== "Cancelled") {
+      void updateStatus(poObj.id, "Fulfilled");
+    }
+
     setIsDeliveryOpen(false);
     void fetchInventoryData(true);
-    onToast("Receiving report created.");
+    onToast("Receiving report created and stock updated.");
 
     try {
       setIsSaving(true);
@@ -491,6 +602,12 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
           caption={`${money(totalOpenValue)} committed`}
         />
         <Summary
+          label="Draft orders"
+          value={String(orders.filter((order) => order.status === "Draft").length)}
+          caption="Draft purchase orders"
+          tone="neutral"
+        />
+        <Summary
           label="Awaiting approval"
           value={String(orders.filter((order) => order.status === "Pending").length)}
           caption="Needs your review"
@@ -522,7 +639,7 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
           <div className="table-tools">
             <div>
               <h2 className="card-title">Purchase orders</h2>
-              <p className="card-subtitle">Latest orders and delivery status</p>
+              <p className="card-subtitle">Latest orders, line items, and delivery status</p>
             </div>
             <select
               className="select"
@@ -545,13 +662,14 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
                   <th>Items</th>
                   <th>Value</th>
                   <th>Status</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {tableMessage(6) ||
+                {tableMessage(7) ||
                   (filteredOrders.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="muted">
+                      <td colSpan={7} className="muted">
                         No purchase orders found.
                       </td>
                     </tr>
@@ -565,7 +683,16 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
                         <td className="muted">
                           {new Date(order.orderDate).toLocaleDateString()}
                         </td>
-                        <td>{order.itemCount}</td>
+                        <td>
+                          <button
+                            type="button"
+                            className="pill neutral"
+                            style={{ cursor: "pointer", border: "1px solid rgba(0,0,0,0.1)" }}
+                            onClick={() => void openItemsModal(order)}>
+                            <Package size={12} style={{ marginRight: 4 }} />
+                            {order.itemCount || (order.items?.length ?? 1)} item(s)
+                          </button>
+                        </td>
                         <td>
                           <strong>{money(order.totalOrderAmount)}</strong>
                         </td>
@@ -581,6 +708,15 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
                               <option key={item}>{item}</option>
                             ))}
                           </select>
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="button soft"
+                            style={{ fontSize: 12, padding: "4px 8px" }}
+                            onClick={() => void openItemsModal(order)}>
+                            <Eye size={12} style={{ marginRight: 4 }} /> View items
+                          </button>
                         </td>
                       </tr>
                     ))
@@ -719,6 +855,130 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
         </section>
       )}
 
+      {/* PO Items Modal */}
+      {selectedOrderForItems &&
+        createPortal(
+          <div
+            className="modal-backdrop"
+            data-testid="modal-po-items"
+            onMouseDown={(event) =>
+              event.currentTarget === event.target && setSelectedOrderForItems(null)
+            }>
+            <div className="modal dialog" style={{ maxWidth: 640 }}>
+              <div className="modal-header">
+                <div>
+                  <h2>Purchase order items</h2>
+                  <p className="modal-sub">
+                    {selectedOrderForItems.poNumber} • {selectedOrderForItems.supplier}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="modal-close"
+                  onClick={() => setSelectedOrderForItems(null)}>
+                  <X size={16} />
+                </button>
+              </div>
+              <div style={{ margin: "12px 0 20px 0" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    padding: "10px 14px",
+                    background: "rgba(0,0,0,0.03)",
+                    borderRadius: 8,
+                    marginBottom: 14,
+                    fontSize: 13,
+                  }}>
+                  <div>
+                    <strong>Status:</strong>{" "}
+                    <span className="pill neutral">{selectedOrderForItems.status}</span>
+                  </div>
+                  <div>
+                    <strong>Placed:</strong>{" "}
+                    {new Date(selectedOrderForItems.orderDate).toLocaleDateString()}
+                  </div>
+                  <div>
+                    <strong>Total:</strong>{" "}
+                    <strong>{money(selectedOrderForItems.totalOrderAmount)}</strong>
+                  </div>
+                </div>
+
+                <div className="table-scroll">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Product</th>
+                        <th>SKU</th>
+                        <th>Qty ordered</th>
+                        <th>Unit cost</th>
+                        <th>Line total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedOrderForItems.items && selectedOrderForItems.items.length > 0 ? (
+                        selectedOrderForItems.items.map((item) => (
+                          <tr key={item.id}>
+                            <td>
+                              <strong>{item.product}</strong>
+                            </td>
+                            <td>{item.sku || "N/A"}</td>
+                            <td>{item.quantityOrdered}</td>
+                            <td>{money(item.unitCost)}</td>
+                            <td>
+                              <strong>{money(item.lineTotal)}</strong>
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={5} className="muted">
+                            {selectedOrderForItems.itemCount} item(s) ordered (Total:{" "}
+                            {money(selectedOrderForItems.totalOrderAmount)})
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div
+                className="modal-actions"
+                style={{ display: "flex", justifyContent: "space-between" }}>
+                <button
+                  type="button"
+                  className="button soft"
+                  onClick={() => setSelectedOrderForItems(null)}>
+                  Close
+                </button>
+                <button
+                  type="button"
+                  className="button dark"
+                  onClick={() => {
+                    const ord = selectedOrderForItems;
+                    setSelectedOrderForItems(null);
+                    setDeliveryForm({
+                      poId: ord.id,
+                      deliveryDate: new Date().toISOString().slice(0, 10),
+                      deliveryStatus: "Received",
+                      productId: ord.items?.[0]?.productId || products[0]?.id || "",
+                      batchNumber: `BATCH-${Date.now().toString().slice(-6)}`,
+                      expirationDate: "2028-12-31",
+                      quantityDelivered: ord.items?.[0]
+                        ? String(ord.items[0].quantityOrdered)
+                        : "1",
+                    });
+                    setIsDeliveryOpen(true);
+                  }}>
+                  <Plus size={13} /> Receive delivery for this PO
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* Create Purchase Order Modal */}
       {isCreateOpen &&
         createPortal(
           <div
@@ -731,7 +991,9 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
               <div className="modal-header">
                 <div>
                   <h2>Create purchase order</h2>
-                  <p className="modal-sub">Supplier order details and line items.</p>
+                  <p className="modal-sub">
+                    Supplier order details and line items (starts as <strong>Draft</strong>).
+                  </p>
                 </div>
                 <button
                   type="button"
@@ -794,15 +1056,31 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
                       <select
                         required
                         value={item.productId}
-                        onChange={(event) =>
+                        onChange={(event) => {
+                          const pId = event.target.value;
+                          const selectedProd = products.find((p) => p.id === pId);
+                          let autoCost = item.unitCost;
+                          if (selectedProd && (item.unitCost === "0" || !item.unitCost)) {
+                            const parsedCost = parseFloat(
+                              String(selectedProd.cost || selectedProd.price || "0").replace(
+                                /[^0-9.]/g,
+                                ""
+                              )
+                            );
+                            if (parsedCost > 0) autoCost = String(parsedCost);
+                          }
                           setLineItems(
                             lineItems.map((line, lineIndex) =>
                               lineIndex === index
-                                ? { ...line, productId: event.target.value }
+                                ? {
+                                    ...line,
+                                    productId: pId,
+                                    unitCost: autoCost,
+                                  }
                                 : line
                             )
-                          )
-                        }>
+                          );
+                        }}>
                         <option value="">Select product</option>
                         {products.map((product) => (
                           <option key={product.id} value={product.id}>
@@ -866,7 +1144,7 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
               <div className="modal-actions">
                 <strong>Total: {money(runningTotal)}</strong>
                 <button className="button dark" type="submit" disabled={isSaving}>
-                  <Check size={13} /> {isSaving ? "Creating..." : "Create purchase order"}
+                  <Check size={13} /> {isSaving ? "Creating..." : "Create Draft purchase order"}
                 </button>
               </div>
             </form>
@@ -874,6 +1152,7 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
           document.body
         )}
 
+      {/* Add Receiving Report Modal */}
       {isDeliveryOpen &&
         createPortal(
           <div
@@ -903,13 +1182,24 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
                   <select
                     required
                     value={deliveryForm.poId}
-                    onChange={(event) =>
-                      setDeliveryForm({ ...deliveryForm, poId: event.target.value })
-                    }>
+                    onChange={(event) => {
+                      const selectedPoId = event.target.value;
+                      const order = orders.find((o) => o.id === selectedPoId);
+                      const firstItem = order?.items?.[0];
+                      setDeliveryForm({
+                        ...deliveryForm,
+                        poId: selectedPoId,
+                        productId:
+                          firstItem?.productId || deliveryForm.productId || (products[0]?.id ?? ""),
+                        quantityDelivered: firstItem
+                          ? String(firstItem.quantityOrdered)
+                          : deliveryForm.quantityDelivered,
+                      });
+                    }}>
                     <option value="">Select purchase order</option>
                     {orders.map((order) => (
                       <option key={order.id} value={order.id}>
-                        {order.poNumber} - {order.supplier}
+                        {order.poNumber} - {order.supplier} ({order.status})
                       </option>
                     ))}
                   </select>
@@ -925,8 +1215,8 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
                         deliveryStatus: event.target.value,
                       })
                     }>
-                    <option>Pending</option>
                     <option>Received</option>
+                    <option>Pending</option>
                     <option>Partial</option>
                     <option>Inspected</option>
                     <option>Rejected</option>
@@ -969,6 +1259,7 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
                   <label>Batch number *</label>
                   <input
                     required
+                    placeholder="e.g. BATCH-2026-01"
                     value={deliveryForm.batchNumber}
                     onChange={(event) =>
                       setDeliveryForm({
@@ -1019,6 +1310,7 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
           document.body
         )}
 
+      {/* Add Supplier Invoice Modal */}
       {isInvoiceOpen &&
         createPortal(
           <div

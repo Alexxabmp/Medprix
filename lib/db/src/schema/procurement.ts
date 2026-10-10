@@ -55,7 +55,7 @@ export const purchaseOrdersTable = pgTable(
       .references(() => suppliersTable.id, { onDelete: "restrict" }),
     poNumber: varchar("po_number", { length: 100 }).notNull().unique("purchase_orders_po_number_key"),
     orderDate: timestamp("order_date", { withTimezone: true }).notNull().defaultNow(),
-    status: poStatusEnum("status").notNull().default("Pending"),
+    status: poStatusEnum("status").notNull().default("Draft"),
     totalOrderAmount: money("total_order_amount").notNull().default("0.00"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

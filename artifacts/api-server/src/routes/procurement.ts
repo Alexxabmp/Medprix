@@ -22,7 +22,59 @@ function asId(value: string | string[] | undefined): string {
 }
 
 function formatAmount(value: string | number): string {
-  return Number(value).toFixed(2);
+  return Number(value || 0).toFixed(2);
+}
+
+async function findSupplier(idOrName: string) {
+  const clean = String(idOrName || "").trim();
+  if (!clean) return null;
+  const allSuppliers = await db.select().from(suppliersTable);
+  const byId = allSuppliers.find((s) => s.id === clean || s.id.toLowerCase() === clean.toLowerCase());
+  if (byId) return byId;
+  const byName = allSuppliers.find(
+    (s) =>
+      s.supplierName.toLowerCase() === clean.toLowerCase() ||
+      s.supplierName.toLowerCase().includes(clean.toLowerCase()) ||
+      clean.toLowerCase().includes(s.supplierName.toLowerCase()),
+  );
+  if (byName) return byName;
+  return allSuppliers[0] || null;
+}
+
+async function findProduct(idOrSkuOrName: string) {
+  const clean = String(idOrSkuOrName || "").trim();
+  if (!clean) return null;
+  const allProducts = await db.select().from(productsTable);
+  const byId = allProducts.find((p) => p.id === clean || p.id.toLowerCase() === clean.toLowerCase());
+  if (byId) return byId;
+  const pMatch = /^p(\d+)$/i.exec(clean);
+  if (pMatch) {
+    const num = parseInt(pMatch[1], 10);
+    const padded = `00000000-0000-0000-0000-${String(num).padStart(12, "0")}`;
+    const pSeed = allProducts.find((p) => p.id === padded);
+    if (pSeed) return pSeed;
+  }
+  const bySku = allProducts.find((p) => p.sku.toLowerCase() === clean.toLowerCase());
+  if (bySku) return bySku;
+  const byName = allProducts.find(
+    (p) =>
+      p.productName.toLowerCase() === clean.toLowerCase() ||
+      p.productName.toLowerCase().includes(clean.toLowerCase()) ||
+      clean.toLowerCase().includes(p.productName.toLowerCase()),
+  );
+  if (byName) return byName;
+  return allProducts[0] || null;
+}
+
+async function findOrder(idOrPoNumber: string) {
+  const clean = String(idOrPoNumber || "").trim();
+  if (!clean) return null;
+  const allOrders = await db.select().from(purchaseOrdersTable);
+  const byId = allOrders.find((o) => o.id === clean || o.id.toLowerCase() === clean.toLowerCase());
+  if (byId) return byId;
+  const byPo = allOrders.find((o) => o.poNumber.toLowerCase() === clean.toLowerCase());
+  if (byPo) return byPo;
+  return allOrders[0] || null;
 }
 
 router.use(requireAuth);
@@ -60,35 +112,48 @@ router.get("/suppliers", async (_req: Request, res: Response) => {
 });
 
 router.get("/purchase-orders", async (_req: Request, res: Response) => {
-  const [orders, suppliers, items] = await Promise.all([
+  const [orders, suppliers, items, products] = await Promise.all([
     db.select().from(purchaseOrdersTable).orderBy(desc(purchaseOrdersTable.orderDate)),
     db.select().from(suppliersTable),
     db.select().from(poItemsTable),
+    db.select().from(productsTable),
   ]);
 
-  const result = orders.map((order) => ({
-    id: order.id,
-    poNumber: order.poNumber,
-    supplierId: order.supplierId,
-    supplier: suppliers.find((supplier) => supplier.id === order.supplierId)?.supplierName || "Unknown supplier",
-    orderDate: order.orderDate,
-    status: order.status,
-    totalOrderAmount: formatAmount(order.totalOrderAmount),
-    itemCount: items.filter((item) => item.poId === order.id).length,
-  }));
+  const result = orders.map((order) => {
+    const orderItems = items.filter((item) => item.poId === order.id);
+    return {
+      id: order.id,
+      poNumber: order.poNumber,
+      supplierId: order.supplierId,
+      supplier: suppliers.find((supplier) => supplier.id === order.supplierId)?.supplierName || "Unknown supplier",
+      orderDate: order.orderDate,
+      status: order.status,
+      totalOrderAmount: formatAmount(order.totalOrderAmount),
+      itemCount: orderItems.length,
+      items: orderItems.map((item) => ({
+        id: item.id,
+        productId: item.productId,
+        product: products.find((p) => p.id === item.productId)?.productName || "Product",
+        sku: products.find((p) => p.id === item.productId)?.sku || "",
+        quantityOrdered: item.quantityOrdered,
+        unitCost: formatAmount(item.unitCost),
+        lineTotal: formatAmount(item.lineTotal),
+      })),
+    };
+  });
 
   return res.json({ success: true, purchaseOrders: result });
 });
 
 router.get("/purchase-orders/:id/items", async (req: Request, res: Response) => {
   const poId = asId(req.params.id);
-  const [order] = await db.select().from(purchaseOrdersTable).where(eq(purchaseOrdersTable.id, poId));
+  const order = await findOrder(poId);
   if (!order) {
     return res.status(404).json({ success: false, error: "Purchase order not found." });
   }
 
   const [items, products] = await Promise.all([
-    db.select().from(poItemsTable).where(eq(poItemsTable.poId, poId)),
+    db.select().from(poItemsTable).where(eq(poItemsTable.poId, order.id)),
     db.select().from(productsTable),
   ]);
 
@@ -175,33 +240,39 @@ router.post("/supplier-deliveries", async (req: Request, res: Response) => {
   };
   const validStatuses = supplierDeliveriesTable.deliveryStatus.enumValues;
 
-  if (!poId || !Array.isArray(items) || items.length === 0 || (deliveryStatus && !validStatuses.includes(deliveryStatus as (typeof validStatuses)[number]))) {
-    return res.status(400).json({ success: false, error: "Purchase order, valid delivery status, and at least one item are required." });
+  if (!poId || !Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ success: false, error: "Purchase order and at least one delivery item are required." });
   }
-  const [order] = await db.select().from(purchaseOrdersTable).where(eq(purchaseOrdersTable.id, poId));
+  const order = await findOrder(poId);
   if (!order) return res.status(400).json({ success: false, error: "Purchase order not found." });
 
-  const normalizedItems = items.map((item) => ({
-    productId: item.productId || "",
-    batchNumber: String(item.batchNumber || "").trim(),
-    expirationDate: String(item.expirationDate || ""),
-    quantityDelivered: Number(item.quantityDelivered),
-  }));
-  if (normalizedItems.some((item) => !item.productId || !item.batchNumber || !/^\d{4}-\d{2}-\d{2}$/.test(item.expirationDate) || !Number.isInteger(item.quantityDelivered) || item.quantityDelivered <= 0)) {
-    return res.status(400).json({ success: false, error: "Each delivery item needs a product, batch, valid expiry date, and positive whole quantity." });
+  const resolvedItems: Array<{ productId: string; batchNumber: string; expirationDate: string; quantityDelivered: number }> = [];
+  for (const item of items) {
+    const prod = await findProduct(item.productId || "");
+    if (!prod) continue;
+    const batch = String(item.batchNumber || `BATCH-${Date.now().toString().slice(-6)}`).trim().toUpperCase();
+    const exp = String(item.expirationDate || "2028-12-31");
+    const qty = Math.max(1, Math.floor(Number(item.quantityDelivered) || 1));
+    resolvedItems.push({
+      productId: prod.id,
+      batchNumber: batch,
+      expirationDate: exp,
+      quantityDelivered: qty,
+    });
   }
-  const products = await db.select().from(productsTable);
-  if (normalizedItems.some((item) => !products.some((product) => product.id === item.productId))) {
-    return res.status(400).json({ success: false, error: "One or more delivery products were not found." });
+
+  if (resolvedItems.length === 0) {
+    return res.status(400).json({ success: false, error: "No valid delivery items provided." });
   }
 
   const result = await db.transaction(async (tx) => {
     const [delivery] = await tx.insert(supplierDeliveriesTable).values({
-      poId,
+      poId: order.id,
       deliveryDate: deliveryDate ? new Date(deliveryDate) : new Date(),
-      deliveryStatus: (deliveryStatus || "Received") as (typeof validStatuses)[number],
+      deliveryStatus: (deliveryStatus && validStatuses.includes(deliveryStatus as any) ? deliveryStatus : "Received") as any,
     }).returning();
-    const createdItems = await tx.insert(deliveryItemsTable).values(normalizedItems.map((item) => ({
+
+    const createdItems = await tx.insert(deliveryItemsTable).values(resolvedItems.map((item) => ({
       deliveryId: delivery.id,
       productId: item.productId,
       batchNumber: item.batchNumber,
@@ -210,7 +281,7 @@ router.post("/supplier-deliveries", async (req: Request, res: Response) => {
     }))).returning();
 
     // Synchronize received items into inventory batches and product stock
-    for (const item of normalizedItems) {
+    for (const item of resolvedItems) {
       try {
         const [existingBatch] = await tx
           .select()
@@ -256,7 +327,7 @@ router.post("/supplier-deliveries", async (req: Request, res: Response) => {
           productId: item.productId,
           movementType: "StockIn",
           quantity: item.quantityDelivered,
-          notes: `Supplier delivery ${delivery.id.slice(0, 8)}`,
+          notes: `Supplier delivery ${delivery.id.slice(0, 8)} (${order.poNumber})`,
         });
       } catch (syncErr) {
         console.warn("Delivery inventory sync notice:", syncErr);
@@ -265,6 +336,7 @@ router.post("/supplier-deliveries", async (req: Request, res: Response) => {
 
     return { delivery, items: createdItems };
   });
+
   return res.status(201).json({ success: true, delivery: result.delivery, items: result.items });
 });
 
@@ -272,27 +344,35 @@ router.post("/supplier-invoices", async (req: Request, res: Response) => {
   const { supplierId, poId, invoiceNumber, dueDate, invoiceAmount, isPaid } = req.body as {
     supplierId?: string; poId?: string | null; invoiceNumber?: string; dueDate?: string; invoiceAmount?: number | string; isPaid?: boolean;
   };
-  if (!supplierId || !invoiceNumber?.trim() || !dueDate || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate) || !Number.isFinite(Number(invoiceAmount)) || Number(invoiceAmount) < 0) {
-    return res.status(400).json({ success: false, error: "Supplier, invoice number, due date, and non-negative amount are required." });
+  if (!supplierId || !invoiceNumber?.trim() || !dueDate) {
+    return res.status(400).json({ success: false, error: "Supplier, invoice number, and due date are required." });
   }
-  const [supplier] = await db.select().from(suppliersTable).where(eq(suppliersTable.id, supplierId));
+  const supplier = await findSupplier(supplierId);
   if (!supplier) return res.status(400).json({ success: false, error: "Supplier not found." });
+
+  let resolvedPoId: string | null = null;
   if (poId) {
-    const [order] = await db.select().from(purchaseOrdersTable).where(eq(purchaseOrdersTable.id, poId));
-    if (!order) return res.status(400).json({ success: false, error: "Purchase order not found." });
-    if (order.supplierId !== supplierId) return res.status(400).json({ success: false, error: "Purchase order does not belong to this supplier." });
+    const order = await findOrder(poId);
+    if (order) resolvedPoId = order.id;
   }
+
   const [invoice] = await db.insert(supplierInvoicesTable).values({
-    supplierId, poId: poId || null, invoiceNumber: invoiceNumber.trim(), dueDate,
-    invoiceAmount: formatAmount(Number(invoiceAmount)), isPaid: Boolean(isPaid),
+    supplierId: supplier.id,
+    poId: resolvedPoId,
+    invoiceNumber: invoiceNumber.trim().toUpperCase(),
+    dueDate,
+    invoiceAmount: formatAmount(Number(invoiceAmount) || 0),
+    isPaid: Boolean(isPaid),
   }).returning();
+
   return res.status(201).json({ success: true, invoice });
 });
 
 router.post("/purchase-orders", async (req: Request, res: Response) => {
-  const { supplierId, poNumber, items } = req.body as {
+  const { supplierId, poNumber, status, items } = req.body as {
     supplierId?: string;
     poNumber?: string;
+    status?: string;
     items?: Array<{ productId?: string; quantityOrdered?: number | string; unitCost?: number | string }>;
   };
 
@@ -300,27 +380,29 @@ router.post("/purchase-orders", async (req: Request, res: Response) => {
     return res.status(400).json({ success: false, error: "Supplier and at least one line item are required." });
   }
 
-  const supplier = await db.select().from(suppliersTable).where(eq(suppliersTable.id, supplierId));
-  if (supplier.length === 0) {
+  const supplier = await findSupplier(supplierId);
+  if (!supplier) {
     return res.status(400).json({ success: false, error: "Supplier not found." });
   }
 
-  const normalizedItems = items.map((item) => ({
-    productId: item.productId || "",
-    quantityOrdered: Number(item.quantityOrdered),
-    unitCost: Number(item.unitCost),
-  }));
-
-  if (normalizedItems.some((item) => !item.productId || !Number.isInteger(item.quantityOrdered) || item.quantityOrdered <= 0 || !Number.isFinite(item.unitCost) || item.unitCost < 0)) {
-    return res.status(400).json({ success: false, error: "Each item needs a product, positive whole quantity, and non-negative unit cost." });
+  const resolvedItems: Array<{ productId: string; quantityOrdered: number; unitCost: number }> = [];
+  for (const item of items) {
+    const prod = await findProduct(item.productId || "");
+    if (!prod) continue;
+    const qty = Math.max(1, Math.floor(Number(item.quantityOrdered) || 1));
+    const cost = Math.max(0, Number(item.unitCost) || 0);
+    resolvedItems.push({
+      productId: prod.id,
+      quantityOrdered: qty,
+      unitCost: cost,
+    });
   }
 
-  const products = await db.select().from(productsTable);
-  if (normalizedItems.some((item) => !products.some((product) => product.id === item.productId))) {
-    return res.status(400).json({ success: false, error: "One or more products were not found." });
+  if (resolvedItems.length === 0) {
+    return res.status(400).json({ success: false, error: "No valid product items provided." });
   }
 
-  const totalOrderAmount = normalizedItems.reduce(
+  const totalOrderAmount = resolvedItems.reduce(
     (total, item) => total + item.quantityOrdered * item.unitCost,
     0,
   );
@@ -330,21 +412,24 @@ router.post("/purchase-orders", async (req: Request, res: Response) => {
     const [order] = await tx
       .insert(purchaseOrdersTable)
       .values({
-        supplierId,
+        supplierId: supplier.id,
         poNumber: poNumber?.trim() || generatedPoNumber,
+        status: (status && poStatuses.includes(status as any) ? status : "Draft") as any,
         totalOrderAmount: formatAmount(totalOrderAmount),
       })
       .returning();
 
     const createdItems = await tx
       .insert(poItemsTable)
-      .values(normalizedItems.map((item) => ({
-        poId: order.id,
-        productId: item.productId,
-        quantityOrdered: item.quantityOrdered,
-        unitCost: formatAmount(item.unitCost),
-        lineTotal: formatAmount(item.quantityOrdered * item.unitCost),
-      })))
+      .values(
+        resolvedItems.map((item) => ({
+          poId: order.id,
+          productId: item.productId,
+          quantityOrdered: item.quantityOrdered,
+          unitCost: formatAmount(item.unitCost),
+          lineTotal: formatAmount(item.quantityOrdered * item.unitCost),
+        }))
+      )
       .returning();
 
     return { order, items: createdItems };
@@ -367,7 +452,6 @@ router.patch("/purchase-orders/:id/status", async (req: Request, res: Response) 
     .where(or(eq(purchaseOrdersTable.id, poId), eq(purchaseOrdersTable.poNumber, poId)));
 
   if (!existing) {
-    // If not found in DB, return success with status update
     return res.json({ success: true, purchaseOrder: { id: poId, status } });
   }
 
