@@ -1,6 +1,6 @@
 Seeded users (password for all: Password123!):
-  admin        Admin
-  cashier1     Cashier
-  cashier2     Cashier
-  cashier3     Cashier
-  frontdesk1   FrontDesk
+  cashier      Cashier     (Maria Santos)
+  frontdesk    FrontDesk   (John Cruz)
+  cashier1     Cashier     (Jose Dela Cruz)
+  frontdesk1   FrontDesk   (Grace Villanueva)
+  admin        Admin       (Ana Reyes)

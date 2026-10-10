@@ -238,10 +238,10 @@ function buildData(passwordHash: string) {
   // ── Users, roles, permissions ────────────────────────────────────────────
   const userDefs = [
     { username: "admin", full_name: "Ana Reyes", role: "Admin", code: "EMP-001", ip: "192.168.1.10" },
-    { username: "cashier1", full_name: "Jose Dela Cruz", role: "Cashier", code: "EMP-002", ip: "192.168.1.11" },
-    { username: "cashier2", full_name: "Liza Mendoza", role: "Cashier", code: "EMP-003", ip: "192.168.1.12" },
-    { username: "cashier3", full_name: "Carlo Bautista", role: "Cashier", code: "EMP-004", ip: "192.168.1.13" },
-    { username: "frontdesk1", full_name: "Grace Villanueva", role: "FrontDesk", code: "EMP-005", ip: "192.168.1.20" },
+    { username: "cashier", full_name: "Maria Santos", role: "Cashier", code: "EMP-002", ip: "192.168.1.11" },
+    { username: "frontdesk", full_name: "John Cruz", role: "FrontDesk", code: "EMP-003", ip: "192.168.1.20" },
+    { username: "cashier1", full_name: "Jose Dela Cruz", role: "Cashier", code: "EMP-004", ip: "192.168.1.12" },
+    { username: "frontdesk1", full_name: "Grace Villanueva", role: "FrontDesk", code: "EMP-005", ip: "192.168.1.21" },
   ] as const;
   const users = userDefs.map((u) => ({ ...u, id: randomUUID() }));
   const admin = users[0]!;
