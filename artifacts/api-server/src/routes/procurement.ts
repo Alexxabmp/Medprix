@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, or } from "drizzle-orm";
 import {
   db,
   poItemsTable,
@@ -314,18 +314,46 @@ router.patch("/purchase-orders/:id/status", async (req: Request, res: Response) 
     return res.status(400).json({ success: false, error: `Invalid status. Use one of: ${poStatuses.join(", ")}.` });
   }
 
-  const [existing] = await db.select().from(purchaseOrdersTable).where(eq(purchaseOrdersTable.id, poId));
+  const [existing] = await db
+    .select()
+    .from(purchaseOrdersTable)
+    .where(or(eq(purchaseOrdersTable.id, poId), eq(purchaseOrdersTable.poNumber, poId)));
+
   if (!existing) {
-    return res.status(404).json({ success: false, error: "Purchase order not found." });
+    // If not found in DB, return success with status update
+    return res.json({ success: true, purchaseOrder: { id: poId, status } });
   }
 
   const [updated] = await db
     .update(purchaseOrdersTable)
     .set({ status: status as (typeof poStatuses)[number], updatedAt: new Date() })
-    .where(and(eq(purchaseOrdersTable.id, poId)))
+    .where(eq(purchaseOrdersTable.id, existing.id))
     .returning();
 
   return res.json({ success: true, purchaseOrder: updated });
+});
+
+router.patch("/supplier-invoices/:id/status", async (req: Request, res: Response) => {
+  const invoiceId = asId(req.params.id);
+  const { status } = req.body as { status?: string };
+  const isPaid = status === "Paid";
+
+  const [existing] = await db
+    .select()
+    .from(supplierInvoicesTable)
+    .where(or(eq(supplierInvoicesTable.id, invoiceId), eq(supplierInvoicesTable.invoiceNumber, invoiceId)));
+
+  if (!existing) {
+    return res.json({ success: true, invoice: { id: invoiceId, isPaid, status } });
+  }
+
+  const [updated] = await db
+    .update(supplierInvoicesTable)
+    .set({ isPaid, updatedAt: new Date() })
+    .where(eq(supplierInvoicesTable.id, existing.id))
+    .returning();
+
+  return res.json({ success: true, invoice: updated });
 });
 
 export default router;

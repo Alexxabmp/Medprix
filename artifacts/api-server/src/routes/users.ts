@@ -9,10 +9,10 @@ const router: IRouter = Router();
 const VALID_ROLES = ["Admin", "Cashier", "FrontDesk"] as const;
 
 const uuidRegex =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isValidUuid(value: string): boolean {
-  return uuidRegex.test(value);
+  return typeof value === "string" && uuidRegex.test(value);
 }
 
 router.use("/users", requireAuth, requireRole("Admin"));
@@ -38,6 +38,43 @@ router.get("/users", async (_req, res) => {
   }
 });
 
+function normalizeRole(roleInput: any): "Admin" | "Cashier" | "FrontDesk" | null {
+  if (typeof roleInput !== "string") return null;
+  const lower = roleInput.trim().toLowerCase().replace(/[\s_-]/g, "");
+  if (lower === "admin" || lower === "administrator") return "Admin";
+  if (lower === "cashier") return "Cashier";
+  if (lower === "frontdesk" || lower === "frontdeskstaff") return "FrontDesk";
+  return null;
+}
+
+function normalizePhone(phoneInput: any): string | null {
+  if (
+    phoneInput === undefined ||
+    phoneInput === null ||
+    phoneInput === "" ||
+    phoneInput === "—" ||
+    phoneInput === "\u2014"
+  ) {
+    return null;
+  }
+  if (typeof phoneInput !== "string") return null;
+  const cleaned = phoneInput.trim();
+  const digits = cleaned.replace(/\D/g, "");
+  if (digits.startsWith("639") && digits.length === 12) {
+    return `+${digits}`;
+  }
+  if (digits.startsWith("09") && digits.length === 11) {
+    return `+63${digits.slice(1)}`;
+  }
+  if (digits.startsWith("9") && digits.length === 10) {
+    return `+63${digits}`;
+  }
+  if (/^\+639\d{9}$/.test(cleaned)) {
+    return cleaned;
+  }
+  return null;
+}
+
 router.post("/users", async (req, res) => {
   const {
     username,
@@ -57,36 +94,15 @@ router.post("/users", async (req, res) => {
   }
 
   const passwordError = validatePassword(password);
-
   if (passwordError) {
     return res.status(400).json({ error: passwordError });
   }
 
-  if (!VALID_ROLES.includes(role)) {
+  const validRole = normalizeRole(role);
+  if (!validRole) {
     return res.status(400).json({
-      error: "Invalid user role.",
+      error: "Invalid user role. Choose Administrator, Cashier, or Front Desk.",
     });
-  }
-
-  if (
-    contactNumber !== undefined &&
-    contactNumber !== null &&
-    contactNumber !== ""
-  ) {
-    if (typeof contactNumber !== "string") {
-      return res.status(400).json({
-        error: "Contact number must be a valid string.",
-      });
-    }
-
-    const cleaned = contactNumber.trim();
-    const phoneRegex = /^\+639\d{9}$/;
-
-    if (cleaned && !phoneRegex.test(cleaned)) {
-      return res.status(400).json({
-        error: "Invalid phone number format. Expected +639XXXXXXXXX.",
-      });
-    }
   }
 
   try {
@@ -102,9 +118,9 @@ router.post("/users", async (req, res) => {
       .values({
         username: normalizedUsername,
         password: passwordHash,
-        role,
+        role: validRole,
         fullName: displayName,
-        contactNumber: contactNumber?.trim() || null,
+        contactNumber: normalizePhone(contactNumber),
         isActive: true,
       })
       .returning();
@@ -124,14 +140,8 @@ router.post("/users", async (req, res) => {
   }
 });
 
-router.patch("/users/:id", async (req, res) => {
+const handleUpdateUser = async (req: any, res: any) => {
   const userId = req.params.id;
-
-  if (!isValidUuid(userId)) {
-    return res.status(400).json({
-      error: "Invalid user id.",
-    });
-  }
 
   const {
     username,
@@ -141,11 +151,32 @@ router.patch("/users/:id", async (req, res) => {
     isActive,
   } = req.body ?? {};
 
-  if (userId === res.locals.user?.id) {
-    if (role !== undefined && role !== res.locals.user.role) {
-      return res.status(400).json({
-        error: "You cannot change your own role.",
-      });
+  // Check target user
+  const [targetUser] = await db
+    .select()
+    .from(usersTable)
+    .where(
+      isValidUuid(userId)
+        ? eq(usersTable.id, userId)
+        : eq(usersTable.username, userId),
+    );
+
+  if (!targetUser) {
+    return res.status(404).json({ error: "User not found." });
+  }
+
+  // Prevent admin from deactivating or demoting self
+  if (
+    targetUser.username === res.locals.user?.username ||
+    targetUser.id === res.locals.user?.id
+  ) {
+    if (role !== undefined) {
+      const parsedRole = normalizeRole(role);
+      if (parsedRole && parsedRole !== res.locals.user.role) {
+        return res.status(400).json({
+          error: "You cannot change your own role.",
+        });
+      }
     }
 
     if (isActive === false) {
@@ -155,33 +186,20 @@ router.patch("/users/:id", async (req, res) => {
     }
   }
 
-  if (role !== undefined && !VALID_ROLES.includes(role)) {
-    return res.status(400).json({
-      error: "Invalid user role.",
-    });
+  let finalRole = undefined;
+  if (role !== undefined) {
+    finalRole = normalizeRole(role);
+    if (!finalRole) {
+      return res.status(400).json({
+        error: "Invalid user role.",
+      });
+    }
   }
 
   if (username !== undefined) {
     if (typeof username !== "string" || !username.trim()) {
       return res.status(400).json({
         error: "Username is required.",
-      });
-    }
-  }
-
-  if (contactNumber !== undefined && contactNumber !== null && contactNumber !== "") {
-    if (typeof contactNumber !== "string") {
-      return res.status(400).json({
-        error: "Contact number must be a valid string.",
-      });
-    }
-
-    const cleaned = contactNumber.trim();
-    const phoneRegex = /^\+639\d{9}$/;
-
-    if (cleaned && !phoneRegex.test(cleaned)) {
-      return res.status(400).json({
-        error: "Invalid phone number format. Expected +639XXXXXXXXX.",
       });
     }
   }
@@ -193,21 +211,21 @@ router.patch("/users/:id", async (req, res) => {
         ...(username !== undefined
           ? { username: username.trim() }
           : {}),
-        ...(role !== undefined
-          ? { role }
+        ...(finalRole !== undefined
+          ? { role: finalRole }
           : {}),
         ...(fullName !== undefined
           ? { fullName: fullName.trim() }
           : {}),
         ...(contactNumber !== undefined
-          ? { contactNumber: contactNumber?.trim() || null }
+          ? { contactNumber: normalizePhone(contactNumber) }
           : {}),
         ...(isActive !== undefined
           ? { isActive: Boolean(isActive) }
           : {}),
         updatedAt: new Date(),
       })
-      .where(eq(usersTable.id, userId))
+      .where(eq(usersTable.id, targetUser.id))
       .returning({
         id: usersTable.id,
         username: usersTable.username,
@@ -218,19 +236,16 @@ router.patch("/users/:id", async (req, res) => {
         lastLogin: usersTable.lastLogin,
       });
 
-    if (!updatedUser) {
-      return res.status(404).json({
-        error: "User not found.",
-      });
-    }
-
     return res.json(updatedUser);
   } catch {
     return res.status(409).json({
       error: "Username is already taken.",
     });
   }
-});
+};
+
+router.patch("/users/:id", handleUpdateUser);
+router.put("/users/:id", handleUpdateUser);
 
 router.patch("/users/:id/password", async (req, res) => {
   const userId = req.params.id;
