@@ -347,6 +347,18 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 function getStorageDir(): string {
+  const isServerless = Boolean(
+    process.env["VERCEL"] || process.env["AWS_LAMBDA_FUNCTION_NAME"]
+  );
+  if (isServerless) {
+    const tmpStorage = path.join("/tmp", ".storage");
+    if (!fs.existsSync(tmpStorage)) {
+      try {
+        fs.mkdirSync(tmpStorage, { recursive: true });
+      } catch {}
+    }
+    return tmpStorage;
+  }
   const candidates = [
     path.resolve(process.cwd(), "lib/db/.storage"),
     path.resolve(process.cwd(), "../../lib/db/.storage"),
@@ -390,10 +402,14 @@ function loadJsonFile<T>(filename: string, fallback: T): T {
 
 function saveJsonFile(filename: string, data: any): void {
   try {
-    const filePath = path.join(getStorageDir(), filename);
+    const dir = getStorageDir();
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    const filePath = path.join(dir, filename);
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
   } catch (err) {
-    console.error(`Error writing ${filename} to storage:`, err);
+    console.warn(`Storage notice for ${filename}:`, err);
   }
 }
 

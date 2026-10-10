@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { db, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, or } from "drizzle-orm";
 import {
   readSessionCookie,
   verifySessionToken,
@@ -33,11 +33,17 @@ export async function requireAuth(
         id: usersTable.id,
         username: usersTable.username,
         role: usersTable.role,
+        isActive: usersTable.isActive,
       })
       .from(usersTable)
-      .where(eq(usersTable.id, session.id));
+      .where(
+        or(
+          eq(usersTable.username, session.username),
+          eq(usersTable.id, session.id),
+        ),
+      );
 
-    if (!user || user.username !== session.username) {
+    if (!user || user.isActive === false) {
       return res.status(401).json({ error: "Authentication required." });
     }
 

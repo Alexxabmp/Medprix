@@ -36,11 +36,11 @@ export async function autoInitPglite(pg: PGlite) {
     if (Number(userRes.rows[0]?.count) === 0) {
       const hash = await bcrypt.hash("Password123!", 10);
       const users = [
-        { id: randomUUID(), username: "admin", full_name: "Ana Reyes", role: "Admin" },
-        { id: randomUUID(), username: "frontdesk1", full_name: "Grace Villanueva", role: "FrontDesk" },
-        { id: randomUUID(), username: "cashier1", full_name: "Jose Dela Cruz", role: "Cashier" },
-        { id: randomUUID(), username: "cashier", full_name: "Maria Santos", role: "Cashier" },
-        { id: randomUUID(), username: "frontdesk", full_name: "John Cruz", role: "FrontDesk" },
+        { id: "11111111-1111-1111-1111-111111111111", username: "admin", full_name: "Ana Reyes", role: "Admin" },
+        { id: "22222222-2222-2222-2222-222222222222", username: "frontdesk1", full_name: "Grace Villanueva", role: "FrontDesk" },
+        { id: "33333333-3333-3333-3333-333333333333", username: "cashier1", full_name: "Jose Dela Cruz", role: "Cashier" },
+        { id: "44444444-4444-4444-4444-444444444444", username: "cashier", full_name: "Maria Santos", role: "Cashier" },
+        { id: "55555555-5555-5555-5555-555555555555", username: "frontdesk", full_name: "John Cruz", role: "FrontDesk" },
       ];
 
       for (const u of users) {
@@ -53,9 +53,9 @@ export async function autoInitPglite(pg: PGlite) {
 
       // Seed suppliers
       const suppliers = [
-        { id: randomUUID(), name: "Mindanao MedSupply Corp.", person: "Ramon Aquino", terms: "Net 30" },
-        { id: randomUUID(), name: "Davao Pharma Distributors Inc.", person: "Teresita Lim", terms: "Net 15" },
-        { id: randomUUID(), name: "Southern Health Wholesale", person: "Antonio Uy", terms: "Net 45" },
+        { id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", name: "Mindanao MedSupply Corp.", person: "Ramon Aquino", terms: "Net 30" },
+        { id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", name: "Davao Pharma Distributors Inc.", person: "Teresita Lim", terms: "Net 15" },
+        { id: "cccccccc-cccc-cccc-cccc-cccccccccccc", name: "Southern Health Wholesale", person: "Antonio Uy", terms: "Net 45" },
       ];
       for (const s of suppliers) {
         await pg.query(
@@ -67,12 +67,12 @@ export async function autoInitPglite(pg: PGlite) {
 
       // Seed products
       const products = [
-        { id: randomUUID(), sku: "MED-0421", name: "Paracetamol 500mg", generic: "Acetaminophen", cat: "Pain relief", price: "12.50", cost: "6.00", min: 200, stock: 450 },
-        { id: randomUUID(), sku: "MED-0892", name: "Amoxicillin 500mg", generic: "Amoxicillin Trihydrate", cat: "Antibiotics", price: "18.75", cost: "9.50", min: 100, stock: 85 },
-        { id: randomUUID(), sku: "MED-0144", name: "Ibuprofen 400mg", generic: "Ibuprofen", cat: "Pain relief", price: "14.00", cost: "7.20", min: 80, stock: 120 },
-        { id: randomUUID(), sku: "MED-0551", name: "Cetirizine 10mg", generic: "Cetirizine Dihydrochloride", cat: "Antihistamines", price: "9.25", cost: "4.10", min: 150, stock: 310 },
-        { id: randomUUID(), sku: "MED-0733", name: "Metformin 500mg", generic: "Metformin Hydrochloride", cat: "Chronic care", price: "8.50", cost: "3.80", min: 250, stock: 520 },
-        { id: randomUUID(), sku: "MED-0912", name: "Omeprazole 20mg", generic: "Omeprazole", cat: "Digestive", price: "22.00", cost: "11.00", min: 60, stock: 40 },
+        { id: "00000000-0000-0000-0000-000000000001", sku: "MED-0421", name: "Paracetamol 500mg", generic: "Acetaminophen", cat: "Pain relief", price: "12.50", cost: "6.00", min: 200, stock: 450 },
+        { id: "00000000-0000-0000-0000-000000000002", sku: "MED-0892", name: "Amoxicillin 500mg", generic: "Amoxicillin Trihydrate", cat: "Antibiotics", price: "18.75", cost: "9.50", min: 100, stock: 85 },
+        { id: "00000000-0000-0000-0000-000000000003", sku: "MED-0144", name: "Ibuprofen 400mg", generic: "Ibuprofen", cat: "Pain relief", price: "14.00", cost: "7.20", min: 80, stock: 120 },
+        { id: "00000000-0000-0000-0000-000000000004", sku: "MED-0551", name: "Cetirizine 10mg", generic: "Cetirizine Dihydrochloride", cat: "Antihistamines", price: "9.25", cost: "4.10", min: 150, stock: 310 },
+        { id: "00000000-0000-0000-0000-000000000005", sku: "MED-0733", name: "Metformin 500mg", generic: "Metformin Hydrochloride", cat: "Chronic care", price: "8.50", cost: "3.80", min: 250, stock: 520 },
+        { id: "00000000-0000-0000-0000-000000000006", sku: "MED-0912", name: "Omeprazole 20mg", generic: "Omeprazole", cat: "Digestive", price: "22.00", cost: "11.00", min: 60, stock: 40 },
       ];
       for (const p of products) {
         await pg.query(
@@ -83,12 +83,12 @@ export async function autoInitPglite(pg: PGlite) {
         await pg.query(
           `INSERT INTO batch_info (id, product_id, batch_number, expiration_date, quantity_remaining, supplier)
            VALUES ($1, $2, $3, $4, $5, $6)`,
-          [randomUUID(), p.id, `BATCH-${p.sku}-01`, "2027-08-31", p.stock, "Mindanao MedSupply Corp."],
+          [`30303030-3030-3030-3030-${p.id.slice(-12)}`, p.id, `BATCH-${p.sku}-01`, "2027-08-31", p.stock, "Mindanao MedSupply Corp."],
         );
       }
 
       // Sample Purchase Order
-      const poId = randomUUID();
+      const poId = "dddddddd-dddd-dddd-dddd-dddddddddddd";
       await pg.query(
         `INSERT INTO purchase_orders (id, supplier_id, po_number, status, total_order_amount)
          VALUES ($1, $2, $3, $4, $5)`,
@@ -97,10 +97,10 @@ export async function autoInitPglite(pg: PGlite) {
       await pg.query(
         `INSERT INTO po_items (id, po_id, product_id, quantity_ordered, unit_cost, line_total)
          VALUES ($1, $2, $3, $4, $5, $6)`,
-        [randomUUID(), poId, products[0].id, 1000, "6.00", "6000.00"],
+        ["eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee", poId, products[0].id, 1000, "6.00", "6000.00"],
       );
 
-      const delId = randomUUID();
+      const delId = "ffffffff-ffff-ffff-ffff-ffffffffffff";
       await pg.query(
         `INSERT INTO supplier_deliveries (id, po_id, delivery_date, delivery_status)
          VALUES ($1, $2, now(), 'Received')`,
@@ -109,13 +109,13 @@ export async function autoInitPglite(pg: PGlite) {
       await pg.query(
         `INSERT INTO delivery_items (id, delivery_id, product_id, batch_number, expiration_date, quantity_delivered)
          VALUES ($1, $2, $3, $4, '2027-08-31', 500)`,
-        [randomUUID(), delId, products[0].id, `BATCH-${products[0].sku}-01`],
+        ["10101010-1010-1010-1010-101010101010", delId, products[0].id, `BATCH-${products[0].sku}-01`],
       );
 
       await pg.query(
         `INSERT INTO supplier_invoices (id, supplier_id, po_id, invoice_number, due_date, invoice_amount, is_paid)
          VALUES ($1, $2, $3, 'INV-2026-001', '2026-10-31', '15000.00', false)`,
-        [randomUUID(), suppliers[0].id, poId],
+        ["20202020-2020-2020-2020-202020202020", suppliers[0].id, poId],
       );
     }
 
