@@ -26,7 +26,10 @@ function initDb() {
   }
 
   // Fallback: Local persistent embedded PostgreSQL via PGlite
-  const pgDir = path.resolve(__dirname, "../.pgdata");
+  const isServerless = Boolean(process.env["VERCEL"] || process.env["AWS_LAMBDA_FUNCTION_NAME"]);
+  const pgDir = isServerless
+    ? path.join("/tmp", ".pgdata")
+    : path.resolve(__dirname, "../.pgdata");
   if (!fs.existsSync(pgDir)) {
     fs.mkdirSync(pgDir, { recursive: true });
   }

@@ -1,11 +1,7 @@
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import bcrypt from "bcrypt";
 import type { PGlite } from "@electric-sql/pglite";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { INITIAL_SCHEMA_SQL } from "./schema-sql";
 
 export async function autoInitPglite(pg: PGlite) {
   try {
@@ -21,27 +17,16 @@ export async function autoInitPglite(pg: PGlite) {
     }
 
     if (!hasTables) {
-      const candidates = [
-        path.resolve(__dirname, "../drizzle/0000_fuzzy_shinko_yamashiro.sql"),
-        path.resolve(process.cwd(), "lib/db/drizzle/0000_fuzzy_shinko_yamashiro.sql"),
-      ];
-      let sqlFile = "";
-      for (const c of candidates) {
-        if (fs.existsSync(c)) {
-          sqlFile = c;
-          break;
-        }
-      }
+      const statements = INITIAL_SCHEMA_SQL
+        .split("--> statement-breakpoint")
+        .map((s) => s.trim())
+        .filter(Boolean);
 
-      if (sqlFile) {
-        const rawSql = fs.readFileSync(sqlFile, "utf8");
-        const statements = rawSql
-          .split("--> statement-breakpoint")
-          .map((s) => s.trim())
-          .filter(Boolean);
-
-        for (const stmt of statements) {
+      for (const stmt of statements) {
+        try {
           await pg.exec(stmt);
+        } catch (stmtErr) {
+          // Ignore duplicate types/tables if partially executed
         }
       }
     }
