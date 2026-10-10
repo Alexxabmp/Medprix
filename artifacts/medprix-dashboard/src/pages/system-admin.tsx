@@ -428,7 +428,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                 </div>
               </div>
 
-              <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <select
                   className="select"
                   value={trxFilterStatus}
@@ -443,7 +443,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                 <button
                   type="button"
                   className="button soft"
-                  style={{ fontSize: 12 }}
+                  style={{ fontSize: 12, flexShrink: 0, whiteSpace: "nowrap" }}
                   onClick={exportTransactionsCsv}>
                   <Download size={13} /> Export CSV
                 </button>

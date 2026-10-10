@@ -14,7 +14,10 @@ import { MovementLineGraph } from "@/components/custom-ui/movement-line-graph";
 import { ReportModal } from "@/components/custom-ui/report-modal";
 import { cashMismatches, movementFast, movementSlow } from "@/lib/data";
 import type { ReportType, ToastFn } from "@/lib/types";
-import { usePharmacyTransactions, usePharmacyInventory } from "@/lib/pharmacy-store";
+import {
+  usePharmacyTransactions,
+  usePharmacyInventory,
+} from "@/lib/pharmacy-store";
 
 const formatPeso = (val: number) =>
   `₱${val.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -22,12 +25,16 @@ const formatPeso = (val: number) =>
 export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
   const [report, setReport] = useState<ReportType | null>(null);
   const [cashDetailRow, setCashDetailRow] = useState<number | null>(null);
-
   const { transactions } = usePharmacyTransactions();
   const { items: inventoryProducts } = usePharmacyInventory();
 
   const liveDailySales = transactions.reduce((sum, t) => {
-    const val = parseFloat(String(t.total || "0").replace("₱", "").replace(/,/g, "")) || 0;
+    const val =
+      parseFloat(
+        String(t.total || "0")
+          .replace("₱", "")
+          .replace(/,/g, ""),
+      ) || 0;
     return sum + val;
   }, 0);
   const liveTxCount = transactions.length;
@@ -35,26 +42,40 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
   const liveProductCount = inventoryProducts.length;
   const liveLowStockCount = inventoryProducts.filter((p) => {
     const stock = Array.isArray(p.batches)
-      ? p.batches.reduce((sum: number, b: any) => sum + (Number(b.quantity) || 0), 0)
-      : (Number(p.stock) || 0);
+      ? p.batches.reduce(
+          (sum: number, b: any) => sum + (Number(b.quantity) || 0),
+          0,
+        )
+      : Number(p.stock) || 0;
     return stock <= (Number(p.reorder) || 10);
   }).length;
   const liveTotalStockUnits = inventoryProducts.reduce((sum, p) => {
     const stock = Array.isArray(p.batches)
-      ? p.batches.reduce((bSum: number, b: any) => bSum + (Number(b.quantity) || 0), 0)
-      : (Number(p.stock) || 0);
+      ? p.batches.reduce(
+          (bSum: number, b: any) => bSum + (Number(b.quantity) || 0),
+          0,
+        )
+      : Number(p.stock) || 0;
     return sum + stock;
   }, 0);
   const liveStockValuation = inventoryProducts.reduce((sum, p) => {
     const stock = Array.isArray(p.batches)
-      ? p.batches.reduce((bSum: number, b: any) => bSum + (Number(b.quantity) || 0), 0)
-      : (Number(p.stock) || 0);
-    const priceNum = parseFloat(String(p.price || "0").replace("₱", "").replace(/,/g, "")) || 0;
+      ? p.batches.reduce(
+          (bSum: number, b: any) => bSum + (Number(b.quantity) || 0),
+          0,
+        )
+      : Number(p.stock) || 0;
+    const priceNum =
+      parseFloat(
+        String(p.price || "0")
+          .replace("₱", "")
+          .replace(/,/g, ""),
+      ) || 0;
     return sum + stock * priceNum;
   }, 0);
 
   return (
-    <div>
+    <div className="grid grid-cols-1 gap-5">
       <PageHeading
         title="Hello, Admin!"
         description="Here's the shape of your pharmacy today."
@@ -107,7 +128,6 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
         />
       </section>
 
-      {/* Bar chart box — product movement */}
       <section
         className="surface-card chart-card"
         style={{ cursor: "pointer" }}
@@ -140,7 +160,7 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
       </section>
 
       {/* Two list cards — cash mismatch + fast movers */}
-      <div className="dashboard-lower">
+      <div className="grid grid-cols-1 md:grid-cols-[1.45fr_1fr] gap-4">
         {/* Left: cash mismatch */}
         <section className="surface-card list-card">
           <div className="card-header">
