@@ -121,7 +121,28 @@ export async function fetchInventoryData(force = false): Promise<ProductItem[]> 
     if (res.ok) {
       const data = await res.json();
       if (data && Array.isArray(data.products) && data.products.length > 0) {
-        globalInventory = data.products;
+        const localInv = getLocalInventory() || [];
+        if (localInv.length > 0) {
+          // Merge server data with local inventory so stock deductions are never lost
+          globalInventory = data.products.map((serverProd: ProductItem) => {
+            const localProd = localInv.find(
+              (lp) => lp.id === serverProd.id || lp.sku === serverProd.sku
+            );
+            if (!localProd) return serverProd;
+
+            // Preserve lower stock if items were sold locally
+            const minStock = Math.min(Number(serverProd.stock), Number(localProd.stock));
+            return {
+              ...serverProd,
+              stock: minStock,
+              batches: localProd.batches && localProd.batches.length > 0 ? localProd.batches : serverProd.batches,
+              status: minStock === 0 ? "Out of stock" : minStock <= serverProd.reorder ? "Low stock" : "Available",
+            };
+          });
+        } else {
+          globalInventory = data.products;
+        }
+
         saveLocalInventory(globalInventory);
         isBackendConnected = true;
         notifyInventory();
@@ -144,8 +165,32 @@ export async function fetchTransactionsData(force = false): Promise<any[]> {
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data)) {
-        globalTransactions = data;
-        globalReceipts = mapTransactionsToReceipts(data);
+        const localTx = getLocalTransactions() || [];
+        const mergedMap = new Map<string, any>();
+
+        // 1. Add server transactions
+        for (const t of data) {
+          const key = t.transactionNumber || `TRX-${t.id}`;
+          mergedMap.set(key, t);
+        }
+
+        // 2. Preserve any newly created local transactions
+        for (const t of localTx) {
+          const key = t.transactionNumber || `TRX-${t.id}`;
+          if (!mergedMap.has(key)) {
+            mergedMap.set(key, t);
+          }
+        }
+
+        // Sort so newest transactions stay at top
+        const mergedList = Array.from(mergedMap.values()).sort((a, b) => {
+          const idA = Number(a.id) || 0;
+          const idB = Number(b.id) || 0;
+          return idB - idA;
+        });
+
+        globalTransactions = mergedList;
+        globalReceipts = mapTransactionsToReceipts(mergedList);
         saveLocalTransactions(globalTransactions);
         notifyTransactions();
         return globalTransactions;
@@ -212,8 +257,15 @@ export function deductProductStock(
 }
 
 export function recordTransaction(transaction: any) {
-  const currentTx = globalTransactions ?? [];
-  const updatedTx = [transaction, ...currentTx.filter((t) => t.id !== transaction.id && t.transactionNumber !== transaction.transactionNumber)];
+  const currentTx = globalTransactions ?? getLocalTransactions() ?? [];
+  const updatedTx = [
+    transaction,
+    ...currentTx.filter(
+      (t) =>
+        t.id !== transaction.id &&
+        t.transactionNumber !== transaction.transactionNumber
+    ),
+  ];
   setCachedTransactions(updatedTx);
 }
 
