@@ -10,6 +10,8 @@ import {
 import { requireAuth } from "../middleware/auth";
 import type { UserRoleEnum } from "@workspace/db/schema";
 
+import { logger } from "../lib/logger";
+
 const router: IRouter = Router();
 const invalidLoginResponse = { error: "Invalid username or password." };
 const dummyPasswordHash =
@@ -62,8 +64,8 @@ router.post("/login", async (req, res) => {
         .update(usersTable)
         .set({ lastLogin: new Date() })
         .where(eq(usersTable.id, user.id));
-    } catch {
-      // Do not reject an otherwise valid login because audit metadata failed.
+    } catch (updateErr) {
+      logger.warn({ updateErr }, "Could not update lastLogin on user");
     }
 
     setSessionCookie(res, token);
@@ -75,7 +77,8 @@ router.post("/login", async (req, res) => {
       fullName: user.fullName,
       contactNumber: user.contactNumber,
     });
-  } catch {
+  } catch (err) {
+    logger.error({ err }, "Login error in auth route");
     return res.status(500).json({ error: "Login failed." });
   }
 });

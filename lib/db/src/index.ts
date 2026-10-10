@@ -25,15 +25,22 @@ function initDb() {
     return drizzlePg(client, { schema });
   }
 
-  // Fallback: Local persistent embedded PostgreSQL via PGlite
-  const isServerless = Boolean(process.env["VERCEL"] || process.env["AWS_LAMBDA_FUNCTION_NAME"]);
-  const pgDir = isServerless
-    ? path.join("/tmp", ".pgdata")
-    : path.resolve(__dirname, "../.pgdata");
-  if (!fs.existsSync(pgDir)) {
-    fs.mkdirSync(pgDir, { recursive: true });
+  // Embedded PostgreSQL via PGlite
+  let client: PGlite;
+  try {
+    const isServerless = Boolean(process.env["VERCEL"] || process.env["AWS_LAMBDA_FUNCTION_NAME"]);
+    if (isServerless) {
+      client = new PGlite();
+    } else {
+      const pgDir = path.resolve(__dirname, "../.pgdata");
+      if (!fs.existsSync(pgDir)) {
+        fs.mkdirSync(pgDir, { recursive: true });
+      }
+      client = new PGlite(pgDir);
+    }
+  } catch {
+    client = new PGlite();
   }
-  const client = new PGlite(pgDir);
   rawClient = client;
   initPromise = autoInitPglite(client);
   return drizzlePglite(client, { schema });

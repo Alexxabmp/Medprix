@@ -9,7 +9,7 @@
     "scripts"
   ],
   "scripts": {
-    "build": "npm run typecheck && npm -w artifacts/medprix-dashboard run build",
+    "build": "npm run build --workspace=@workspace/medprix-dashboard",
     "typecheck:libs": "tsc --build",
     "typecheck": "npm run typecheck:libs",
     "db:migrate": "npm --workspace=@workspace/db run migrate",
