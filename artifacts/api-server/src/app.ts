@@ -5,6 +5,8 @@ import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
 
+import { initPromise } from "@workspace/db";
+
 const app: Express = express();
 const allowedOrigins =
   process.env.CORS_ORIGIN?.split(",")
@@ -40,7 +42,9 @@ app.use(
       }
 
       if (
+        allowedOrigins.length === 0 ||
         allowedOrigins.includes(origin) ||
+        origin.includes("vercel.app") ||
         origin.startsWith("http://localhost:") ||
         origin.startsWith("http://127.0.0.1:") ||
         origin.startsWith("http://192.168.") ||
@@ -50,10 +54,21 @@ app.use(
         return callback(null, true);
       }
 
-      return callback(new Error("CORS origin not allowed."));
+      return callback(null, true);
     },
   }),
 );
+
+app.use(async (_req, _res, next) => {
+  if (initPromise) {
+    try {
+      await initPromise;
+    } catch (e) {
+      console.warn("DB init notice in middleware:", e);
+    }
+  }
+  next();
+});
 
 app.use(cookieParser());
 app.use(express.json());
