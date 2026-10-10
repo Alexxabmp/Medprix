@@ -36,26 +36,7 @@ app.use(
 app.use(
   cors({
     credentials: true,
-    origin(origin, callback) {
-      if (!origin) {
-        return callback(null, true);
-      }
-
-      if (
-        allowedOrigins.length === 0 ||
-        allowedOrigins.includes(origin) ||
-        origin.includes("vercel.app") ||
-        origin.startsWith("http://localhost:") ||
-        origin.startsWith("http://127.0.0.1:") ||
-        origin.startsWith("http://192.168.") ||
-        origin.startsWith("http://10.") ||
-        process.env.NODE_ENV !== "production"
-      ) {
-        return callback(null, true);
-      }
-
-      return callback(null, true);
-    },
+    origin: true,
   }),
 );
 
@@ -86,5 +67,10 @@ app.get("/", (_req, res) => {
 
 app.use("/api", router);
 app.use(router);
+
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  logger.error({ err }, "Unhandled server error");
+  res.status(err.status || 500).json({ error: err.message || "Internal server error" });
+});
 
 export default app;
