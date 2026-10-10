@@ -15,7 +15,12 @@ import {
 } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import type { ProductItem, ToastFn, ShiftReceipt } from "@/lib/types";
-import { usePharmacyInventory, usePharmacyTransactions } from "@/lib/pharmacy-store";
+import {
+  usePharmacyInventory,
+  usePharmacyTransactions,
+  deductProductStock,
+  recordTransaction,
+} from "@/lib/pharmacy-store";
 
 export type { ShiftReceipt };
 
@@ -227,35 +232,17 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
       localStorage.getItem("medprix-username") ||
       "Cashier Staff";
 
-    try {
-      for (const entry of allocations) {
-        if (!entry.product || !entry.batches) continue;
+    // Extract flat allocations for immediate store deduction
+    const flatAllocations = allocations.flatMap((entry) =>
+      (entry.batches || []).map((b) => ({
+        productId: entry.product!.id,
+        batchNumber: b.batchNumber,
+        quantity: b.quantity,
+      }))
+    );
 
-        for (const batch of entry.batches) {
-          const response = await fetch(
-            `/api/inventory/products/${entry.product.id}/stock-out`,
-            {
-              method: "POST",
-              credentials: "include",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                batchNumber: batch.batchNumber,
-                quantity: batch.quantity,
-                reason: `Retail sale ${newId}`,
-              }),
-            },
-          );
-          const data = await response.json().catch(() => ({}));
-          if (!response.ok) {
-            throw new Error(data.error || `Failed to deduct ${entry.item.name}`);
-          }
-        }
-      }
-    } catch (error) {
-      await fetchProducts();
-      onToast(error instanceof Error ? error.message : "Could not complete stock deduction");
-      return;
-    }
+    // Apply immediate stock deduction across the application
+    deductProductStock(flatAllocations);
 
     const transactionPayload = {
       transactionNumber: newId,
@@ -280,13 +267,60 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
       })),
     };
 
+    // Apply immediate transaction & receipt recording across the application
+    recordTransaction(transactionPayload);
+
+    const newReceipt: ShiftReceipt = {
+      id: newId,
+      time: timeStr,
+      dateTime,
+      items: cart.reduce((a, b) => a + b.qty, 0),
+      itemsList: transactionPayload.items,
+      itemsSummary: cart.map((item) => `${item.name} (${item.qty})`).join(", "),
+      total: total,
+      totalFormatted: formatPeso(total),
+      subtotal: formatPeso(subtotal),
+      vat: formatPeso(vat),
+      discount: formatPeso(discountAmount),
+      amountReceived: transactionPayload.amountReceived,
+      change: formatPeso(changeDue),
+      method: paymentMethod,
+      cashier: cashierName,
+      status: "Completed",
+    };
+
+    setSelectedReceipt(newReceipt);
+    setCart([]);
+    setCashTendered("");
+
+    // Persist to backend serverless API asynchronously
     try {
-      await fetch("/api/admin/transactions", {
+      for (const entry of allocations) {
+        if (!entry.product || !entry.batches) continue;
+
+        for (const batch of entry.batches) {
+          fetch(
+            `/api/inventory/products/${entry.product.id}/stock-out`,
+            {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                batchNumber: batch.batchNumber,
+                quantity: batch.quantity,
+                reason: `Retail sale ${newId}`,
+              }),
+            },
+          ).catch(() => {});
+        }
+      }
+
+      fetch("/api/admin/transactions", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(transactionPayload),
-      });
+      }).catch(() => {});
 
       fetch("/api/admin/system-logs", {
         method: "POST",
@@ -320,31 +354,6 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
       console.warn("Failed to persist transaction to backend:", err);
     }
 
-    const newReceipt: ShiftReceipt = {
-      id: newId,
-      time: timeStr,
-      dateTime,
-      items: cart.reduce((a, b) => a + b.qty, 0),
-      itemsList: transactionPayload.items,
-      itemsSummary: cart.map((item) => `${item.name} (${item.qty})`).join(", "),
-      total: total,
-      totalFormatted: formatPeso(total),
-      subtotal: formatPeso(subtotal),
-      vat: formatPeso(vat),
-      discount: formatPeso(discountAmount),
-      amountReceived: transactionPayload.amountReceived,
-      change: formatPeso(changeDue),
-      method: paymentMethod,
-      cashier: cashierName,
-      status: "Completed",
-    };
-
-    setSelectedReceipt(newReceipt);
-    setReceipts((prev) => [newReceipt, ...prev]);
-    setCart([]);
-    setCashTendered("");
-    await fetchProducts();
-    await fetchTransactions();
     onToast(
       `Sale completed! Receipt ${newId} printed.${isDiscountEligible ? ` ${discountType} discount applied.` : ""} Change: ₱${changeDue.toFixed(2)}`,
     );

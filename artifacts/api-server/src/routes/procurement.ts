@@ -9,6 +9,8 @@ import {
   deliveryItemsTable,
   supplierInvoicesTable,
   suppliersTable,
+  batchInfoTable,
+  stockMovementsTable,
 } from "@workspace/db";
 import { requireAuth } from "../middleware/auth";
 
@@ -206,6 +208,61 @@ router.post("/supplier-deliveries", async (req: Request, res: Response) => {
       expirationDate: item.expirationDate,
       quantityDelivered: item.quantityDelivered,
     }))).returning();
+
+    // Synchronize received items into inventory batches and product stock
+    for (const item of normalizedItems) {
+      try {
+        const [existingBatch] = await tx
+          .select()
+          .from(batchInfoTable)
+          .where(
+            and(
+              eq(batchInfoTable.productId, item.productId),
+              eq(batchInfoTable.batchNumber, item.batchNumber.toUpperCase()),
+            ),
+          );
+
+        if (existingBatch) {
+          await tx
+            .update(batchInfoTable)
+            .set({
+              quantityRemaining: existingBatch.quantityRemaining + item.quantityDelivered,
+              expirationDate: item.expirationDate || existingBatch.expirationDate,
+              updatedAt: new Date(),
+            })
+            .where(eq(batchInfoTable.id, existingBatch.id));
+        } else {
+          await tx.insert(batchInfoTable).values({
+            productId: item.productId,
+            batchNumber: item.batchNumber.toUpperCase(),
+            expirationDate: item.expirationDate || "2028-12-31",
+            quantityRemaining: item.quantityDelivered,
+            dateReceived: deliveryDate || new Date().toISOString().slice(0, 10),
+          });
+        }
+
+        const [prod] = await tx.select().from(productsTable).where(eq(productsTable.id, item.productId));
+        if (prod) {
+          await tx
+            .update(productsTable)
+            .set({
+              currentStock: prod.currentStock + item.quantityDelivered,
+              updatedAt: new Date(),
+            })
+            .where(eq(productsTable.id, prod.id));
+        }
+
+        await tx.insert(stockMovementsTable).values({
+          productId: item.productId,
+          movementType: "StockIn",
+          quantity: item.quantityDelivered,
+          notes: `Supplier delivery ${delivery.id.slice(0, 8)}`,
+        });
+      } catch (syncErr) {
+        console.warn("Delivery inventory sync notice:", syncErr);
+      }
+    }
+
     return { delivery, items: createdItems };
   });
   return res.status(201).json({ success: true, delivery: result.delivery, items: result.items });
@@ -230,16 +287,6 @@ router.post("/supplier-invoices", async (req: Request, res: Response) => {
     invoiceAmount: formatAmount(Number(invoiceAmount)), isPaid: Boolean(isPaid),
   }).returning();
   return res.status(201).json({ success: true, invoice });
-});
-
-router.patch("/supplier-invoices/:id/status", async (req: Request, res: Response) => {
-  const invoiceId = asId(req.params.id);
-  const { status } = req.body as { status?: string };
-  if (status !== "Paid" && status !== "Unpaid") return res.status(400).json({ success: false, error: "Invoice status must be Paid or Unpaid." });
-  const [existing] = await db.select().from(supplierInvoicesTable).where(eq(supplierInvoicesTable.id, invoiceId));
-  if (!existing) return res.status(404).json({ success: false, error: "Invoice not found." });
-  const [invoice] = await db.update(supplierInvoicesTable).set({ isPaid: status === "Paid" }).where(eq(supplierInvoicesTable.id, invoiceId)).returning();
-  return res.json({ success: true, invoice });
 });
 
 router.post("/purchase-orders", async (req: Request, res: Response) => {

@@ -653,6 +653,10 @@ void syncWithDatabase();
 
 // GET /api/admin/transactions
 router.get("/admin/transactions", (req, res) => {
+  persistentTransactions = loadJsonFile<UserTransaction[]>(
+    "transactions.json",
+    persistentTransactions
+  );
   const { businessType, search, status } = req.query;
   let results = [...persistentTransactions];
 
@@ -684,6 +688,10 @@ router.get("/admin/transactions", (req, res) => {
 
 // GET /api/admin/transactions/:id
 router.get("/admin/transactions/:id", (req, res) => {
+  persistentTransactions = loadJsonFile<UserTransaction[]>(
+    "transactions.json",
+    persistentTransactions
+  );
   const id = Number(req.params.id);
   const item = persistentTransactions.find((t) => t.id === id);
   if (!item) {
@@ -693,6 +701,10 @@ router.get("/admin/transactions/:id", (req, res) => {
 });
 
 router.post("/admin/transactions", (req, res) => {
+  persistentTransactions = loadJsonFile<UserTransaction[]>(
+    "transactions.json",
+    persistentTransactions
+  );
   const nextId =
     persistentTransactions.reduce(
       (max, transaction) => Math.max(max, Number(transaction.id) || 0),
@@ -726,6 +738,10 @@ router.post("/admin/transactions", (req, res) => {
 });
 
 router.delete("/admin/transactions/:id", (req, res) => {
+  persistentTransactions = loadJsonFile<UserTransaction[]>(
+    "transactions.json",
+    persistentTransactions
+  );
   const param = req.params.id;
   const numId = Number(param);
   const idx = persistentTransactions.findIndex(
@@ -745,6 +761,10 @@ router.delete("/admin/transactions/:id", (req, res) => {
 
 // GET /api/admin/system-logs
 router.get("/admin/system-logs", (req, res) => {
+  persistentSystemLogs = loadJsonFile<SystemLog[]>(
+    "system_logs.json",
+    persistentSystemLogs
+  );
   const { search, status, module: mod } = req.query;
   let results = [...persistentSystemLogs];
 

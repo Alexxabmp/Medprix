@@ -4,6 +4,7 @@ import { Check, Plus, Trash2, X } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import { Summary } from "@/components/custom-ui/summary-card";
 import type { ToastFn } from "@/lib/types";
+import { fetchInventoryData } from "@/lib/pharmacy-store";
 
 type Supplier = { id: string; name: string };
 type Product = { id: string; name: string; sku: string };
@@ -209,6 +210,7 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
       if (!response.ok) { onToast(data.error || "Failed to create receiving report."); return; }
       setIsDeliveryOpen(false);
       await loadData();
+      void fetchInventoryData(true);
       onToast("Receiving report created.");
     } catch { onToast("Could not reach the server."); } finally { setIsSaving(false); }
   };
