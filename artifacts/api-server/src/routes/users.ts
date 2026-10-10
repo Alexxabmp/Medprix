@@ -140,6 +140,30 @@ router.post("/users", async (req, res) => {
   }
 });
 
+async function findUser(userIdOrUsername: string) {
+  const clean = String(userIdOrUsername || "").trim();
+  if (!clean) return null;
+
+  const [direct] = await db
+    .select()
+    .from(usersTable)
+    .where(
+      isValidUuid(clean)
+        ? eq(usersTable.id, clean)
+        : eq(usersTable.username, clean),
+    );
+  if (direct) return direct;
+
+  const all = await db.select().from(usersTable);
+  return (
+    all.find(
+      (u) =>
+        u.id.toLowerCase() === clean.toLowerCase() ||
+        u.username.toLowerCase() === clean.toLowerCase(),
+    ) || null
+  );
+}
+
 const handleUpdateUser = async (req: any, res: any) => {
   const userId = req.params.id;
 
@@ -152,14 +176,7 @@ const handleUpdateUser = async (req: any, res: any) => {
   } = req.body ?? {};
 
   // Check target user
-  const [targetUser] = await db
-    .select()
-    .from(usersTable)
-    .where(
-      isValidUuid(userId)
-        ? eq(usersTable.id, userId)
-        : eq(usersTable.username, userId),
-    );
+  const targetUser = await findUser(userId);
 
   if (!targetUser) {
     return res.status(404).json({ error: "User not found." });
@@ -251,9 +268,10 @@ router.patch("/users/:id/password", async (req, res) => {
   const userId = req.params.id;
   const { password } = req.body ?? {};
 
-  if (!isValidUuid(userId)) {
-    return res.status(400).json({
-      error: "Invalid user id.",
+  const targetUser = await findUser(userId);
+  if (!targetUser) {
+    return res.status(404).json({
+      error: "User not found.",
     });
   }
 
@@ -264,7 +282,6 @@ router.patch("/users/:id/password", async (req, res) => {
   }
 
   const passwordError = validatePassword(password);
-
   if (passwordError) {
     return res.status(400).json({
       error: passwordError,
@@ -274,22 +291,13 @@ router.patch("/users/:id/password", async (req, res) => {
   try {
     const passwordHash = await hashPassword(password);
 
-    const [updatedUser] = await db
+    await db
       .update(usersTable)
       .set({
         password: passwordHash,
         updatedAt: new Date(),
       })
-      .where(eq(usersTable.id, userId))
-      .returning({
-        id: usersTable.id,
-      });
-
-    if (!updatedUser) {
-      return res.status(404).json({
-        error: "User not found.",
-      });
-    }
+      .where(eq(usersTable.id, targetUser.id));
 
     return res.status(204).send();
   } catch {
@@ -302,25 +310,26 @@ router.patch("/users/:id/password", async (req, res) => {
 router.delete("/users/:id", async (req, res) => {
   const userId = req.params.id;
 
-  if (!isValidUuid(userId)) {
+  const targetUser = await findUser(userId);
+  if (!targetUser) {
+    return res.status(404).json({
+      error: "User not found.",
+    });
+  }
+
+  if (
+    targetUser.username === res.locals.user?.username ||
+    targetUser.id === res.locals.user?.id
+  ) {
     return res.status(400).json({
-      error: "Invalid user id.",
+      error: "You cannot delete your own account.",
     });
   }
 
   try {
-    const [deletedUser] = await db
+    await db
       .delete(usersTable)
-      .where(eq(usersTable.id, userId))
-      .returning({
-        id: usersTable.id,
-      });
-
-    if (!deletedUser) {
-      return res.status(404).json({
-        error: "User not found.",
-      });
-    }
+      .where(eq(usersTable.id, targetUser.id));
 
     return res.status(204).send();
   } catch {

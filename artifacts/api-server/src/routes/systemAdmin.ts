@@ -348,15 +348,18 @@ const __dirname = path.dirname(__filename);
 
 function getStorageDir(): string {
   const isServerless = Boolean(
-    process.env["VERCEL"] || process.env["AWS_LAMBDA_FUNCTION_NAME"]
+    process.env["VERCEL"] ||
+    process.env["AWS_LAMBDA_FUNCTION_NAME"] ||
+    process.cwd().includes("/var/task") ||
+    (process.platform !== "win32" && process.env.NODE_ENV === "production")
   );
   if (isServerless) {
     const tmpStorage = path.join("/tmp", ".storage");
-    if (!fs.existsSync(tmpStorage)) {
-      try {
+    try {
+      if (!fs.existsSync(tmpStorage)) {
         fs.mkdirSync(tmpStorage, { recursive: true });
-      } catch {}
-    }
+      }
+    } catch {}
     return tmpStorage;
   }
   const candidates = [
@@ -366,21 +369,21 @@ function getStorageDir(): string {
     path.resolve(__dirname, "../../../../lib/db/.storage"),
   ];
   for (const c of candidates) {
-    if (fs.existsSync(path.dirname(c))) {
-      if (!fs.existsSync(c)) {
-        try {
-          fs.mkdirSync(c, { recursive: true });
-        } catch {}
-      }
-      return c;
-    }
-  }
-  const fallback = path.resolve(process.cwd(), ".storage");
-  if (!fs.existsSync(fallback)) {
     try {
-      fs.mkdirSync(fallback, { recursive: true });
+      if (fs.existsSync(path.dirname(c))) {
+        if (!fs.existsSync(c)) {
+          fs.mkdirSync(c, { recursive: true });
+        }
+        return c;
+      }
     } catch {}
   }
+  const fallback = path.resolve(process.cwd(), ".storage");
+  try {
+    if (!fs.existsSync(fallback)) {
+      fs.mkdirSync(fallback, { recursive: true });
+    }
+  } catch {}
   return fallback;
 }
 
@@ -394,8 +397,8 @@ function loadJsonFile<T>(filename: string, fallback: T): T {
         return parsed as T;
       }
     }
-  } catch (err) {
-    console.error(`Error reading ${filename} from storage:`, err);
+  } catch {
+    // Return in-memory fallback on read error
   }
   return fallback;
 }
@@ -408,8 +411,8 @@ function saveJsonFile(filename: string, data: any): void {
     }
     const filePath = path.join(dir, filename);
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
-  } catch (err) {
-    console.warn(`Storage notice for ${filename}:`, err);
+  } catch {
+    // Silently continue if disk write is unsupported on serverless
   }
 }
 
@@ -430,15 +433,17 @@ let persistentUserActivities: UserActivity[] = loadJsonFile<UserActivity[]>(
 );
 
 // If file was not on disk yet, write initial data to seed the file
-if (!fs.existsSync(path.join(getStorageDir(), "transactions.json"))) {
-  saveJsonFile("transactions.json", persistentTransactions);
-}
-if (!fs.existsSync(path.join(getStorageDir(), "system_logs.json"))) {
-  saveJsonFile("system_logs.json", persistentSystemLogs);
-}
-if (!fs.existsSync(path.join(getStorageDir(), "user_activities.json"))) {
-  saveJsonFile("user_activities.json", persistentUserActivities);
-}
+try {
+  if (!fs.existsSync(path.join(getStorageDir(), "transactions.json"))) {
+    saveJsonFile("transactions.json", persistentTransactions);
+  }
+  if (!fs.existsSync(path.join(getStorageDir(), "system_logs.json"))) {
+    saveJsonFile("system_logs.json", persistentSystemLogs);
+  }
+  if (!fs.existsSync(path.join(getStorageDir(), "user_activities.json"))) {
+    saveJsonFile("user_activities.json", persistentUserActivities);
+  }
+} catch {}
 
 async function saveTransactionToDb(t: UserTransaction) {
   try {

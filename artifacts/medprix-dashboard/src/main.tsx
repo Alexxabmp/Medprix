@@ -1,3 +1,4 @@
+import '@/lib/api-setup';
 import { createRoot } from 'react-dom/client';
 
 import App from './App';
