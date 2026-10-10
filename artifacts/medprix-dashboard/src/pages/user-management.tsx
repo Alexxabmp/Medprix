@@ -20,10 +20,12 @@ export default function UserManagementPage({
   users,
   setUsers,
   onToast,
+  refreshUsers,
 }: {
   users: UserRecord[];
   setUsers: (users: UserRecord[]) => void;
   onToast: ToastFn;
+  refreshUsers?: () => void;
 }) {
   const [search, setSearch] = useState("");
   const [dialog, setDialog] = useState<"create" | "edit" | "reset" | "delete" | null>(
@@ -65,7 +67,7 @@ export default function UserManagementPage({
       name: user.name,
       username: user.username,
       role: user.role,
-      phone: user.phone,
+      phone: user.phone && user.phone !== "—" && user.phone !== "\u2014" ? user.phone : "",
     });
     setDialog("edit");
   };
@@ -95,6 +97,7 @@ export default function UserManagementPage({
       setUsers(
         users.map((u) => (u.id === user.id ? { ...u, status: next } : u)),
       );
+      refreshUsers?.();
       onToast(`${user.name} is now ${next.toLowerCase()}`);
     } catch {
       onToast("Could not reach the server.");
@@ -103,6 +106,9 @@ export default function UserManagementPage({
   const submitUser = async (event: FormEvent, password = "") => {
     event.preventDefault();
     if (!draft.name.trim() || !draft.username.trim()) return;
+
+    const rawPhone = draft.phone.trim();
+    const validPhone = rawPhone && rawPhone !== "—" && rawPhone !== "\u2014" ? rawPhone : null;
 
     if (dialog === "create") {
       const dbRole =
@@ -117,10 +123,10 @@ export default function UserManagementPage({
           credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            username: draft.username,
+            username: draft.username.trim(),
             password,
-            fullName: draft.name,
-            contactNumber: draft.phone,
+            fullName: draft.name.trim(),
+            contactNumber: validPhone,
             role: dbRole,
           }),
         });
@@ -130,6 +136,7 @@ export default function UserManagementPage({
           return;
         }
         const initials = draft.name
+          .trim()
           .split(" ")
           .map((part) => part[0])
           .join("")
@@ -140,14 +147,15 @@ export default function UserManagementPage({
           {
             id: data.id,
             initials,
-            name: draft.name,
-            username: draft.username,
+            name: draft.name.trim(),
+            username: draft.username.trim(),
             role: draft.role,
             status: "Active",
-            lastActive: "Just now",
-            phone: draft.phone,
+            lastActive: "Never",
+            phone: validPhone || "",
           },
         ]);
+        refreshUsers?.();
         onToast("Account created");
       } catch {
         onToast("Could not create user. Please check your session.");
@@ -165,12 +173,12 @@ export default function UserManagementPage({
         const body: {
           username: string;
           fullName: string;
-          contactNumber: string;
+          contactNumber: string | null;
           role?: string;
         } = {
-          username: draft.username,
-          fullName: draft.name,
-          contactNumber: draft.phone,
+          username: draft.username.trim(),
+          fullName: draft.name.trim(),
+          contactNumber: validPhone,
         };
         if (!isEditingSelf) {
           body.role = dbRole;
@@ -199,11 +207,12 @@ export default function UserManagementPage({
           user.id === selected.id
             ? {
               ...user,
-              name: draft.name,
-              username: draft.username,
+              name: draft.name.trim(),
+              username: draft.username.trim(),
               role: isEditingSelf ? user.role : draft.role,
-              phone: draft.phone,
+              phone: validPhone || "",
               initials: draft.name
+                .trim()
                 .split(" ")
                 .map((part) => part[0])
                 .join("")
@@ -213,6 +222,7 @@ export default function UserManagementPage({
             : user,
         ),
       );
+      refreshUsers?.();
       onToast("User profile updated");
     }
 
@@ -245,6 +255,7 @@ export default function UserManagementPage({
       }
 
       setUsers(users.filter((item) => item.id !== userToRemove.id));
+      refreshUsers?.();
       setDialog(null);
       setSelected(null);
       onToast("User account removed");
@@ -430,6 +441,7 @@ export default function UserManagementPage({
                               : item,
                           ),
                         );
+                        refreshUsers?.();
                         onToast("Role updated");
                       }}>
                       <option>Administrator</option>
@@ -752,8 +764,8 @@ function UserDialog({
 
     const cleaned = draft.phone.trim();
     const phoneRegex = /^\+639\d{9}$/;
-    if (cleaned && !phoneRegex.test(cleaned)) {
-      setFormError("Invalid phone number format.");
+    if (cleaned && cleaned !== "—" && cleaned !== "\u2014" && !phoneRegex.test(cleaned)) {
+      setFormError("Invalid phone number format. Expected +639XXXXXXXXX or leave blank.");
       return;
     }
     if (isCreate) {
