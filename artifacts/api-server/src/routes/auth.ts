@@ -76,6 +76,7 @@ router.post("/login", async (req, res) => {
       role: user.role,
       fullName: user.fullName,
       contactNumber: user.contactNumber,
+      token,
     });
   } catch (err) {
     logger.error({ err }, "Login error in auth route");

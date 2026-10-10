@@ -21,7 +21,15 @@ export async function requireAuth(
   res: Response,
   next: NextFunction,
 ) {
-  const session = verifySessionToken(readSessionCookie(req.cookies));
+  const authHeader = req.headers.authorization;
+  const bearerToken = authHeader?.startsWith("Bearer ")
+    ? authHeader.slice(7).trim()
+    : undefined;
+
+  const cookieToken = readSessionCookie(req.cookies);
+  const token = bearerToken || cookieToken;
+
+  const session = verifySessionToken(token);
 
   if (!session) {
     return res.status(401).json({ error: "Authentication required." });

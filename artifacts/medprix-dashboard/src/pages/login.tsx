@@ -26,6 +26,9 @@ export default function LoginPage({ onLogin }: { onLogin: () => void }) {
         return;
       }
       const data = await response.json();
+      if (data.token) {
+        localStorage.setItem("medprix-token", data.token);
+      }
       localStorage.setItem("medprix-role", data.role);
       localStorage.setItem("medprix-username", data.username ?? username);
       localStorage.setItem("medprix-fullname", data.fullName ?? username);

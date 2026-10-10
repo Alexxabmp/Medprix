@@ -96,21 +96,33 @@ function AppContent() {
   useEffect(() => {
     if (!session) return;
 
-    fetch("/api/me", { credentials: "include" })
-      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
-      .then((data) => {
-        localStorage.setItem("medprix-role", data.role);
-        localStorage.setItem("medprix-username", data.username);
-        setRole(data.role);
+    const token = localStorage.getItem("medprix-token");
+    fetch("/api/me", {
+      credentials: "include",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(async (res) => {
+        if (res.status === 401 || res.status === 403) {
+          throw new Error("Unauthorized");
+        }
+        if (res.ok) {
+          const data = await res.json();
+          localStorage.setItem("medprix-role", data.role);
+          localStorage.setItem("medprix-username", data.username);
+          setRole(data.role);
+        }
       })
-      .catch(() => {
-        localStorage.removeItem("medprix-session");
-        localStorage.removeItem("medprix-role");
-        localStorage.removeItem("medprix-username");
-        localStorage.removeItem("medprix-fullname");
-        setSession(false);
-        setRole("");
-        setLocation("/login");
+      .catch((err) => {
+        if (err.message === "Unauthorized") {
+          localStorage.removeItem("medprix-session");
+          localStorage.removeItem("medprix-role");
+          localStorage.removeItem("medprix-username");
+          localStorage.removeItem("medprix-fullname");
+          localStorage.removeItem("medprix-token");
+          setSession(false);
+          setRole("");
+          setLocation("/login");
+        }
       });
   }, [session, setLocation]);
 

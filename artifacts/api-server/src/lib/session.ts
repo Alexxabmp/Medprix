@@ -113,19 +113,23 @@ export function verifySessionToken(token: string | undefined): SessionUser | nul
 }
 
 export function setSessionCookie(res: Response, token: string): void {
+  const isProd = process.env.NODE_ENV === "production";
   res.cookie(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    sameSite: isProd ? "none" : "lax",
+    secure: isProd,
     maxAge: getSessionTtlSeconds() * 1000,
+    path: "/",
   });
 }
 
 export function clearSessionCookie(res: Response): void {
+  const isProd = process.env.NODE_ENV === "production";
   res.clearCookie(SESSION_COOKIE_NAME, {
     httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    sameSite: isProd ? "none" : "lax",
+    secure: isProd,
+    path: "/",
   });
 }
 
