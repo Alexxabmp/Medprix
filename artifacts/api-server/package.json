@@ -11,9 +11,11 @@
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
+    "@types/bcryptjs": "^2.4.6",
     "@workspace/api-zod": "*",
     "@workspace/db": "*",
     "bcrypt": "^6.0.0",
+    "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "drizzle-orm": "^0.45.2",

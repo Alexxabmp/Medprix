@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import type { PGlite } from "@electric-sql/pglite";
 import { INITIAL_SCHEMA_SQL } from "./schema-sql";
 
