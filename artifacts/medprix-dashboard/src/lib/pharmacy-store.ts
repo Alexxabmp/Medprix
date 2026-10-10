@@ -143,10 +143,11 @@ export async function fetchInventoryData(force = false): Promise<ProductItem[]> 
           globalInventory = data.products;
         }
 
-        saveLocalInventory(globalInventory);
+        const resolvedInventory = globalInventory || initialFallbackProducts;
+        saveLocalInventory(resolvedInventory);
         isBackendConnected = true;
         notifyInventory();
-        return globalInventory;
+        return resolvedInventory;
       }
     }
   } catch (err) {

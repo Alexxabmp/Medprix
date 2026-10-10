@@ -854,7 +854,6 @@ function UserDialog({
               <option>Cashier</option>
             </select>
           </div>
-          <div></div>
           {isCurrentUser && (
             <div className="muted" style={{ fontSize: 10 }}>
               Your own role cannot be changed from this account.
