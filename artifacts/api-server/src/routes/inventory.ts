@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { and, eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import { db, productsTable, batchInfoTable, stockMovementsTable } from "@workspace/db";
 
 const router: IRouter = Router();
@@ -35,9 +35,12 @@ function toApiProduct(product: typeof productsTable.$inferSelect, batches: (type
 }
 
 async function fetchProductWithBatches(productId: string) {
-  const [product] = await db.select().from(productsTable).where(eq(productsTable.id, productId));
+  const [product] = await db
+    .select()
+    .from(productsTable)
+    .where(or(eq(productsTable.id, productId), eq(productsTable.sku, productId)));
   if (!product) return null;
-  const batches = await db.select().from(batchInfoTable).where(eq(batchInfoTable.productId, productId));
+  const batches = await db.select().from(batchInfoTable).where(eq(batchInfoTable.productId, product.id));
   return toApiProduct(product, batches);
 }
 
@@ -127,7 +130,10 @@ router.put("/inventory/products/:id", async (req: Request, res: Response) => {
   const id = asId(req.params.id);
   const { name, genericName, sku, category, price, costPrice, isDangerousDrug, reorder } = req.body;
 
-  const [product] = await db.select().from(productsTable).where(eq(productsTable.id, id));
+  const [product] = await db
+    .select()
+    .from(productsTable)
+    .where(or(eq(productsTable.id, id), eq(productsTable.sku, id)));
   if (!product) {
     return res.status(404).json({ success: false, error: "Product not found." });
   }
@@ -152,9 +158,9 @@ router.put("/inventory/products/:id", async (req: Request, res: Response) => {
   if (isDangerousDrug !== undefined) updates.isDangerousDrug = Boolean(isDangerousDrug);
   if (reorder !== undefined) updates.minimumStockLevel = Number(reorder);
 
-  await db.update(productsTable).set(updates).where(eq(productsTable.id, id));
+  await db.update(productsTable).set(updates).where(eq(productsTable.id, product.id));
 
-  const result = await fetchProductWithBatches(id);
+  const result = await fetchProductWithBatches(product.id);
   return res.json({ success: true, product: result });
 });
 
@@ -162,7 +168,10 @@ router.post("/inventory/products/:id/batches", async (req: Request, res: Respons
   const id = asId(req.params.id);
   const { batchNumber, quantity, expiryDate, mfgDate, dateReceived, supplier } = req.body;
 
-  const [product] = await db.select().from(productsTable).where(eq(productsTable.id, id));
+  const [product] = await db
+    .select()
+    .from(productsTable)
+    .where(or(eq(productsTable.id, id), eq(productsTable.sku, id)));
   if (!product) {
     return res.status(404).json({ success: false, error: "Product not found." });
   }
@@ -174,7 +183,7 @@ router.post("/inventory/products/:id/batches", async (req: Request, res: Respons
   const [clash] = await db
     .select()
     .from(batchInfoTable)
-    .where(and(eq(batchInfoTable.productId, id), eq(batchInfoTable.batchNumber, normalizedBatchNumber)));
+    .where(and(eq(batchInfoTable.productId, product.id), eq(batchInfoTable.batchNumber, normalizedBatchNumber)));
   if (clash) {
     return res.status(409).json({ success: false, error: `Batch ${normalizedBatchNumber} already exists for this product.` });
   }
@@ -182,7 +191,7 @@ router.post("/inventory/products/:id/batches", async (req: Request, res: Respons
   const parsedQuantity = Number(quantity) || 0;
 
   await db.insert(batchInfoTable).values({
-    productId: id,
+    productId: product.id,
     batchNumber: normalizedBatchNumber,
     expirationDate: String(expiryDate),
     quantityRemaining: parsedQuantity,
@@ -194,9 +203,9 @@ router.post("/inventory/products/:id/batches", async (req: Request, res: Respons
   await db
     .update(productsTable)
     .set({ currentStock: product.currentStock + parsedQuantity, updatedAt: new Date() })
-    .where(eq(productsTable.id, id));
+    .where(eq(productsTable.id, product.id));
 
-  const result = await fetchProductWithBatches(id);
+  const result = await fetchProductWithBatches(product.id);
   return res.status(201).json({ success: true, product: result });
 });
 
@@ -204,7 +213,10 @@ router.post("/inventory/products/:id/stock-in", async (req: Request, res: Respon
   const id = asId(req.params.id);
   const { batchNumber, quantity, reason, date } = req.body;
 
-  const [product] = await db.select().from(productsTable).where(eq(productsTable.id, id));
+  const [product] = await db
+    .select()
+    .from(productsTable)
+    .where(or(eq(productsTable.id, id), eq(productsTable.sku, id)));
   if (!product) {
     return res.status(404).json({ success: false, error: "Product not found." });
   }
@@ -219,7 +231,7 @@ router.post("/inventory/products/:id/stock-in", async (req: Request, res: Respon
     ? await db
       .select()
       .from(batchInfoTable)
-      .where(and(eq(batchInfoTable.productId, id), eq(batchInfoTable.batchNumber, normalizedBatchNumber)))
+      .where(and(eq(batchInfoTable.productId, product.id), eq(batchInfoTable.batchNumber, normalizedBatchNumber)))
     : [];
 
   if (batch) {
@@ -231,8 +243,8 @@ router.post("/inventory/products/:id/stock-in", async (req: Request, res: Respon
     const [newBatch] = await db
       .insert(batchInfoTable)
       .values({
-        productId: id,
-        batchNumber: normalizedBatchNumber || "B-NEW",
+        productId: product.id,
+        batchNumber: normalizedBatchNumber || `B-${new Date().getFullYear()}`,
         expirationDate: "2028-12-31",
         quantityRemaining: qty,
         dateReceived: date || new Date().toISOString().slice(0, 10),
@@ -244,10 +256,10 @@ router.post("/inventory/products/:id/stock-in", async (req: Request, res: Respon
   await db
     .update(productsTable)
     .set({ currentStock: product.currentStock + qty, updatedAt: new Date() })
-    .where(eq(productsTable.id, id));
+    .where(eq(productsTable.id, product.id));
 
   await db.insert(stockMovementsTable).values({
-    productId: id,
+    productId: product.id,
     batchId: batch.id,
     movementType: "StockIn",
     quantity: qty,
@@ -255,7 +267,7 @@ router.post("/inventory/products/:id/stock-in", async (req: Request, res: Respon
     notes: reason || "Restock",
   });
 
-  const result = await fetchProductWithBatches(id);
+  const result = await fetchProductWithBatches(product.id);
   return res.json({
     success: true,
     message: `Stock in recorded: +${qty} units (${reason || "Restock"})`,
@@ -267,7 +279,10 @@ router.post("/inventory/products/:id/stock-out", async (req: Request, res: Respo
   const id = asId(req.params.id);
   const { batchNumber, quantity, reason } = req.body;
 
-  const [product] = await db.select().from(productsTable).where(eq(productsTable.id, id));
+  const [product] = await db
+    .select()
+    .from(productsTable)
+    .where(or(eq(productsTable.id, id), eq(productsTable.sku, id)));
   if (!product) {
     return res.status(404).json({ success: false, error: "Product not found." });
   }
@@ -278,42 +293,74 @@ router.post("/inventory/products/:id/stock-out", async (req: Request, res: Respo
   }
 
   const normalizedBatchNumber = String(batchNumber || "").trim().toUpperCase();
-  const [batch] = await db
+  const allBatches = await db
     .select()
     .from(batchInfoTable)
-    .where(and(eq(batchInfoTable.productId, id), eq(batchInfoTable.batchNumber, normalizedBatchNumber)));
+    .where(eq(batchInfoTable.productId, product.id));
+
+  let batch = allBatches.find(
+    (b) => b.batchNumber.toUpperCase() === normalizedBatchNumber && b.quantityRemaining >= qty,
+  );
+
+  if (!batch) {
+    batch = allBatches.find((b) => b.quantityRemaining >= qty) || allBatches[0];
+  }
 
   if (!batch || batch.quantityRemaining < qty) {
-    return res.status(400).json({
-      success: false,
-      error: `Insufficient stock in batch ${normalizedBatchNumber}. Current: ${batch?.quantityRemaining || 0}`,
+    const totalAvailable = allBatches.reduce((s, b) => s + b.quantityRemaining, 0);
+    if (totalAvailable < qty) {
+      return res.status(400).json({
+        success: false,
+        error: `Insufficient stock for ${product.productName}. Total available: ${totalAvailable}`,
+      });
+    }
+    batch = allBatches.find((b) => b.quantityRemaining > 0) || allBatches[0];
+  }
+
+  if (batch) {
+    const deductQty = Math.min(qty, batch.quantityRemaining);
+    await db
+      .update(batchInfoTable)
+      .set({ quantityRemaining: Math.max(0, batch.quantityRemaining - deductQty), updatedAt: new Date() })
+      .where(eq(batchInfoTable.id, batch.id));
+
+    await db
+      .update(productsTable)
+      .set({ currentStock: Math.max(0, product.currentStock - qty), updatedAt: new Date() })
+      .where(eq(productsTable.id, product.id));
+
+    await db.insert(stockMovementsTable).values({
+      productId: product.id,
+      batchId: batch.id,
+      movementType: "StockOut",
+      quantity: qty,
+      notes: reason || "Dispensed",
     });
   }
 
-  await db
-    .update(batchInfoTable)
-    .set({ quantityRemaining: batch.quantityRemaining - qty, updatedAt: new Date() })
-    .where(eq(batchInfoTable.id, batch.id));
-
-  await db
-    .update(productsTable)
-    .set({ currentStock: Math.max(0, product.currentStock - qty), updatedAt: new Date() })
-    .where(eq(productsTable.id, id));
-
-  await db.insert(stockMovementsTable).values({
-    productId: id,
-    batchId: batch.id,
-    movementType: "StockOut",
-    quantity: qty,
-    notes: reason || "Dispensed",
-  });
-
-  const result = await fetchProductWithBatches(id);
+  const result = await fetchProductWithBatches(product.id);
   return res.json({
     success: true,
     message: `Stock out recorded: -${qty} units (${reason || "Dispensed"})`,
     product: result,
   });
+});
+
+router.delete("/inventory/products/:id", async (req: Request, res: Response) => {
+  const id = asId(req.params.id);
+  const [product] = await db
+    .select()
+    .from(productsTable)
+    .where(or(eq(productsTable.id, id), eq(productsTable.sku, id)));
+  if (!product) {
+    return res.status(404).json({ success: false, error: "Product not found." });
+  }
+
+  await db.delete(batchInfoTable).where(eq(batchInfoTable.productId, product.id));
+  await db.delete(stockMovementsTable).where(eq(stockMovementsTable.productId, product.id));
+  await db.delete(productsTable).where(eq(productsTable.id, product.id));
+
+  return res.json({ success: true, message: `Product ${product.productName} deleted.` });
 });
 
 export default router;
