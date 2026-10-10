@@ -153,8 +153,9 @@ function expiryStatus(date: string) {
   return { label: "Valid", tone: "success" };
 }
 
-export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
-  const [activeSection, setActiveSection] = useState("Purchase Order Monitoring");
+export default function ProcurementPage({ onToast, currentRole }: { onToast: ToastFn; currentRole: string }) {
+  const canManagePurchasing = currentRole === "Admin" || currentRole === "FrontDesk";
+  const [activeSection, setActiveSection] = useState(currentRole === "Cashier" ? "Receiving Report Management" : "Purchase Order Monitoring");
   const [status, setStatus] = useState("All orders");
   const [orders, setOrders] = useState<PurchaseOrder[]>(() =>
     getStored("medprix_procurement_orders", initialOrders)
@@ -375,51 +376,13 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
       return;
     }
 
-    const suppObj = suppliers.find((s) => s.id === supplierId);
     const finalPoNum =
       poNumber.trim() ||
       `PO-${new Date().getFullYear()}-${String(orders.length + 1).padStart(4, "0")}`;
 
-    const resolvedLineItems: LineItemDetail[] = lineItems.map((item) => {
-      const prod = products.find((p) => p.id === item.productId);
-      const qty = Number(item.quantityOrdered) || 1;
-      const cost = Number(item.unitCost) || 0;
-      return {
-        id: `item-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-        productId: item.productId,
-        product: prod?.name || "Medical Item",
-        sku: prod?.sku || "",
-        quantityOrdered: qty,
-        unitCost: String(cost),
-        lineTotal: String(qty * cost),
-      };
-    });
-
-    const newOrder: PurchaseOrder = {
-      id: `po-${Date.now()}`,
-      poNumber: finalPoNum,
-      supplierId,
-      supplier: suppObj?.name || "Selected Supplier",
-      orderDate: new Date().toISOString(),
-      status: "Draft",
-      totalOrderAmount: String(runningTotal),
-      itemCount: lineItems.length,
-      items: resolvedLineItems,
-    };
-
-    const nextOrders = [newOrder, ...orders];
-    setOrders(nextOrders);
-    saveStored("medprix_procurement_orders", nextOrders);
-
-    setIsCreateOpen(false);
-    setSupplierId("");
-    setPoNumber("");
-    setLineItems([{ productId: "", quantityOrdered: "1", unitCost: "0" }]);
-    onToast("Purchase order created with Draft status.");
-
     try {
       setIsSaving(true);
-      fetch("/api/purchase-orders", {
+      const response = await fetch("/api/purchase-orders", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -433,7 +396,17 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
             unitCost: Number(item.unitCost),
           })),
         }),
-      }).catch(() => {});
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Failed to create purchase order.");
+      setIsCreateOpen(false);
+      setSupplierId("");
+      setPoNumber("");
+      setLineItems([{ productId: "", quantityOrdered: "1", unitCost: "0" }]);
+      await loadData();
+      onToast("Purchase order created with Draft status.");
+    } catch (requestError) {
+      onToast(requestError instanceof Error ? requestError.message : "Failed to create purchase order.");
     } finally {
       setIsSaving(false);
     }
@@ -441,43 +414,9 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
 
   const submitDelivery = async (event: FormEvent) => {
     event.preventDefault();
-    const poObj = orders.find((o) => o.id === deliveryForm.poId);
-    const prodObj = products.find((p) => p.id === deliveryForm.productId);
-
-    const newDelivery: Delivery = {
-      id: `del-${Date.now()}`,
-      poNumber: poObj?.poNumber || "PO Direct",
-      supplier: poObj?.supplier || "Direct Supplier",
-      deliveryDate: deliveryForm.deliveryDate || new Date().toISOString(),
-      deliveryStatus: deliveryForm.deliveryStatus || "Received",
-      items: [
-        {
-          id: `deli-${Date.now()}`,
-          product: prodObj?.name || "Medical Item",
-          batchNumber: (
-            deliveryForm.batchNumber.trim() || `BATCH-${Date.now().toString().slice(-6)}`
-          ).toUpperCase(),
-          expirationDate: deliveryForm.expirationDate || "2028-12-31",
-          quantityDelivered: Number(deliveryForm.quantityDelivered) || 1,
-        },
-      ],
-    };
-
-    const nextDeliveries = [newDelivery, ...deliveries];
-    setDeliveries(nextDeliveries);
-    saveStored("medprix_procurement_deliveries", nextDeliveries);
-
-    if (poObj && deliveryForm.deliveryStatus === "Received" && poObj.status !== "Cancelled") {
-      void updateStatus(poObj.id, "Fulfilled");
-    }
-
-    setIsDeliveryOpen(false);
-    void fetchInventoryData(true);
-    onToast("Receiving report created and stock updated.");
-
     try {
       setIsSaving(true);
-      fetch("/api/supplier-deliveries", {
+      const response = await fetch("/api/supplier-deliveries", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -494,7 +433,14 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
             },
           ],
         }),
-      }).catch(() => {});
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Failed to create receiving report.");
+      setIsDeliveryOpen(false);
+      await Promise.all([loadData(), fetchInventoryData(true)]);
+      onToast("Receiving report created and inventory updated.");
+    } catch (requestError) {
+      onToast(requestError instanceof Error ? requestError.message : "Failed to create receiving report.");
     } finally {
       setIsSaving(false);
     }
@@ -502,29 +448,9 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
 
   const submitInvoice = async (event: FormEvent) => {
     event.preventDefault();
-    const suppObj = suppliers.find((s) => s.id === invoiceForm.supplierId);
-    const poObj = orders.find((o) => o.id === invoiceForm.poId);
-
-    const newInvoice: Invoice = {
-      id: `inv-${Date.now()}`,
-      invoiceNumber: invoiceForm.invoiceNumber.trim().toUpperCase(),
-      supplier: suppObj?.name || "Supplier",
-      poNumber: poObj?.poNumber || null,
-      dueDate: invoiceForm.dueDate,
-      invoiceAmount: String(Number(invoiceForm.invoiceAmount) || 0),
-      status: invoiceForm.isPaid ? "Paid" : "Unpaid",
-    };
-
-    const nextInvoices = [newInvoice, ...invoices];
-    setInvoices(nextInvoices);
-    saveStored("medprix_procurement_invoices", nextInvoices);
-
-    setIsInvoiceOpen(false);
-    onToast("Supplier invoice created.");
-
     try {
       setIsSaving(true);
-      fetch("/api/supplier-invoices", {
+      const response = await fetch("/api/supplier-invoices", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -533,29 +459,17 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
           poId: invoiceForm.poId || null,
           invoiceAmount: Number(invoiceForm.invoiceAmount),
         }),
-      }).catch(() => {});
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Failed to create supplier invoice.");
+      setIsInvoiceOpen(false);
+      setInvoiceForm({ supplierId: "", poId: "", invoiceNumber: "", dueDate: "", invoiceAmount: "0", isPaid: false });
+      await loadData();
+      onToast("Supplier invoice and payable created.");
+    } catch (requestError) {
+      onToast(requestError instanceof Error ? requestError.message : "Failed to create supplier invoice.");
     } finally {
       setIsSaving(false);
-    }
-  };
-
-  const updateInvoiceStatus = async (invoiceId: string, nextStatus: string) => {
-    const updated = invoices.map((inv) =>
-      inv.id === invoiceId ? { ...inv, status: nextStatus } : inv
-    );
-    setInvoices(updated);
-    saveStored("medprix_procurement_invoices", updated);
-
-    try {
-      fetch(`/api/supplier-invoices/${invoiceId}/status`, {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: nextStatus }),
-      }).catch(() => {});
-      onToast("Invoice status updated.");
-    } catch {
-      onToast("Status updated locally.");
     }
   };
 
@@ -584,14 +498,14 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
       <PageHeading
         title="Procurement"
         description="Keep purchasing predictable from request to receiving."
-        action={
+        action={canManagePurchasing ? (
           <button
             className="button dark"
             data-testid="button-create-po"
             onClick={() => setIsCreateOpen(true)}>
             <Plus size={14} /> Create purchase order
           </button>
-        }
+        ) : undefined}
       />
       <div className="summary-strip">
         <Summary
@@ -618,7 +532,7 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
           "Purchase Order Monitoring",
           "Receiving Report Management",
           "Purchase Invoice Monitoring",
-        ].map((section) => (
+        ].filter((section) => canManagePurchasing || section === "Receiving Report Management").map((section) => (
           <button
             key={section}
             className={`button ${activeSection === section ? "dark" : "soft"}`}
@@ -691,7 +605,7 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
                           <strong>{money(order.totalOrderAmount)}</strong>
                         </td>
                         <td>
-                          <select
+                          {canManagePurchasing ? <select
                             className="select"
                             data-testid={`select-status-${order.id}`}
                             value={order.status}
@@ -701,7 +615,7 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
                             {poStatuses.map((item) => (
                               <option key={item}>{item}</option>
                             ))}
-                          </select>
+                          </select> : <span className="pill neutral">{order.status}</span>}
                         </td>
                         <td>
                           <button
@@ -829,17 +743,7 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
                         <td>
                           <strong>{money(invoice.invoiceAmount)}</strong>
                         </td>
-                        <td>
-                          <select
-                            className="select"
-                            value={invoice.status}
-                            onChange={(event) =>
-                              void updateInvoiceStatus(invoice.id, event.target.value)
-                            }>
-                            <option>Paid</option>
-                            <option>Unpaid</option>
-                          </select>
-                        </td>
+                        <td><span className={`pill ${invoice.status === "Paid" ? "success" : "warning"}`}>{invoice.status}</span></td>
                       </tr>
                     ))
                   ))}
