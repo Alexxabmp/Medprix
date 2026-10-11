@@ -14,16 +14,32 @@ type SessionPayload = SessionUser & {
 
 const SESSION_COOKIE_NAME = "medprix_session";
 const DEFAULT_SESSION_TTL_SECONDS = 60 * 60 * 8;
+const MIN_SESSION_SECRET_LENGTH = 32;
 
-function getSessionSecret(): string {
-  const secret = process.env.SESSION_SECRET;
+function resolveSessionSecret(): string {
+  const secret = process.env.SESSION_SECRET?.trim();
 
-  if (secret) {
+  if (secret && secret.length >= MIN_SESSION_SECRET_LENGTH) {
     return secret;
   }
 
-  return "medprix-pharmacy-secure-session-secret-key-2026";
+  const isDeployedEnvironment =
+    process.env.NODE_ENV === "production" ||
+    Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+
+  if (isDeployedEnvironment) {
+    throw new Error(
+      `SESSION_SECRET must be set to at least ${MIN_SESSION_SECRET_LENGTH} characters in deployed environments.`,
+    );
+  }
+
+  console.warn(
+    `SESSION_SECRET is missing or shorter than ${MIN_SESSION_SECRET_LENGTH} characters; using a temporary development secret. Sessions will be invalidated when the server restarts.`,
+  );
+  return crypto.randomBytes(48).toString("base64url");
 }
+
+const SESSION_SECRET = resolveSessionSecret();
 
 function getSessionTtlSeconds(): number {
   const ttl = Number(process.env.SESSION_TTL_SECONDS);
@@ -45,7 +61,7 @@ function base64UrlDecode(value: string): string {
 
 function sign(payload: string): string {
   return crypto
-    .createHmac("sha256", getSessionSecret())
+    .createHmac("sha256", SESSION_SECRET)
     .update(payload)
     .digest("base64url");
 }
