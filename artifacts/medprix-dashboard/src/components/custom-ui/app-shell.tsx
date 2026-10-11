@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { lazy, Suspense, useState, useEffect } from "react";
 import { Link, Route, Switch, useLocation } from "wouter";
 import { Moon, Pill, Sun, UserCog, X } from "lucide-react";
 import { getDefaultRoute, navGroups } from "@/lib/data";
@@ -9,16 +9,17 @@ import {
   fetchSupplierRecords,
 } from "@/lib/supplier-store";
 
-import DashboardPage from "@/pages/admin-dashboard";
-import CashierDashboardPage from "@/pages/cashier-dashboard";
-import CashierReviewPage from "@/pages/cashier-review-page";
-import InventoryPage from "@/pages/inventory";
-import SupplierPage from "@/pages/supplier";
-import ProcurementPage from "@/pages/procurement";
-import WholesalePage from "@/pages/wholesale";
-import SystemAdminPage from "@/pages/system-admin";
-import UserManagementPage from "@/pages/user-management";
 import NotFound from "@/pages/not-found";
+
+const DashboardPage = lazy(() => import("@/pages/admin-dashboard"));
+const CashierDashboardPage = lazy(() => import("@/pages/cashier-dashboard"));
+const CashierReviewPage = lazy(() => import("@/pages/cashier-review-page"));
+const InventoryPage = lazy(() => import("@/pages/inventory"));
+const SupplierPage = lazy(() => import("@/pages/supplier"));
+const ProcurementPage = lazy(() => import("@/pages/procurement"));
+const WholesalePage = lazy(() => import("@/pages/wholesale"));
+const SystemAdminPage = lazy(() => import("@/pages/system-admin"));
+const UserManagementPage = lazy(() => import("@/pages/user-management"));
 
 export function AppShell({
   dark,
@@ -175,55 +176,57 @@ export function AppShell({
           </div>
         </header>
         <main className="content">
-          <Switch>
-            <Route path="/">
-              {roleKey === "admin" ? (
-                <DashboardPage onToast={onToast} />
-              ) : roleKey === "cashier" ? (
+          <Suspense fallback={<div className="muted">Loading page...</div>}>
+            <Switch>
+              <Route path="/">
+                {roleKey === "admin" ? (
+                  <DashboardPage onToast={onToast} />
+                ) : roleKey === "cashier" ? (
+                  <CashierDashboardPage onToast={onToast} />
+                ) : null}
+              </Route>
+              <Route path="/dashboard">
+                {roleKey === "admin" ? (
+                  <DashboardPage onToast={onToast} />
+                ) : roleKey === "cashier" ? (
+                  <CashierDashboardPage onToast={onToast} />
+                ) : null}
+              </Route>
+              <Route path="/pos">
                 <CashierDashboardPage onToast={onToast} />
-              ) : null}
-            </Route>
-            <Route path="/dashboard">
-              {roleKey === "admin" ? (
-                <DashboardPage onToast={onToast} />
-              ) : roleKey === "cashier" ? (
-                <CashierDashboardPage onToast={onToast} />
-              ) : null}
-            </Route>
-            <Route path="/pos">
-              <CashierDashboardPage onToast={onToast} />
-            </Route>
-            <Route path="/review">
-              <CashierReviewPage onToast={onToast} />
-            </Route>
-            <Route path="/inventory">
-              <InventoryPage onToast={onToast} currentRole={role} />
-            </Route>
-            <Route path="/supplier">
-              <SupplierPage onToast={onToast} currentRole={role} />
-            </Route>
-            <Route path="/procurement">
-              {roleKey === "admin" || roleKey === "frontdesk" ? (
-                <ProcurementPage onToast={onToast} currentRole={role} />
-              ) : (
-                <NotFound />
-              )}
-            </Route>
-            <Route path="/wholesale">
-              <WholesalePage onToast={onToast} />
-            </Route>
-            <Route path="/system-ad">
-              <SystemAdminPage onToast={onToast} />
-            </Route>
-            <Route path="/user-management">
-              <UserManagementPage
-                users={users}
-                setUsers={setUsers}
-                onToast={onToast}
-              />
-            </Route>
-            <Route component={NotFound} />
-          </Switch>
+              </Route>
+              <Route path="/review">
+                <CashierReviewPage onToast={onToast} />
+              </Route>
+              <Route path="/inventory">
+                <InventoryPage onToast={onToast} currentRole={role} />
+              </Route>
+              <Route path="/supplier">
+                <SupplierPage onToast={onToast} currentRole={role} />
+              </Route>
+              <Route path="/procurement">
+                {roleKey === "admin" || roleKey === "frontdesk" ? (
+                  <ProcurementPage onToast={onToast} currentRole={role} />
+                ) : (
+                  <NotFound />
+                )}
+              </Route>
+              <Route path="/wholesale">
+                <WholesalePage onToast={onToast} />
+              </Route>
+              <Route path="/system-ad">
+                <SystemAdminPage onToast={onToast} />
+              </Route>
+              <Route path="/user-management">
+                <UserManagementPage
+                  users={users}
+                  setUsers={setUsers}
+                  onToast={onToast}
+                />
+              </Route>
+              <Route component={NotFound} />
+            </Switch>
+          </Suspense>
         </main>
       </div>
     </div>
