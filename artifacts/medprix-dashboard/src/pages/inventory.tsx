@@ -40,6 +40,26 @@ import { Summary } from "@/components/custom-ui/summary-card";
 import { suppliers } from "@/lib/data";
 import type { ProductItem, ProductBatch, ToastFn } from "@/lib/types";
 
+const MAX_STOCK_MOVEMENT_QUANTITY = 1_000_000;
+
+function validateStockMovementQuantity(value: string):
+  | { ok: true; quantity: number }
+  | { ok: false; error: string } {
+  if (!value.trim()) return { ok: false, error: "Quantity is required" };
+
+  const quantity = Number(value);
+  if (!Number.isFinite(quantity)) return { ok: false, error: "Quantity must be a valid number" };
+  if (!Number.isInteger(quantity)) return { ok: false, error: "Quantity must be a whole number" };
+  if (quantity <= 0) return { ok: false, error: "Quantity must be greater than zero" };
+  if (quantity > MAX_STOCK_MOVEMENT_QUANTITY) {
+    return {
+      ok: false,
+      error: `Quantity cannot exceed ${MAX_STOCK_MOVEMENT_QUANTITY.toLocaleString()} units`,
+    };
+  }
+  return { ok: true, quantity };
+}
+
 function getBatchExpiryStatus(expiryDateStr: string, qty: number) {
   if (qty <= 0) return { status: "Depleted", tone: "neutral" };
   const expiry = new Date(expiryDateStr);
@@ -368,6 +388,18 @@ export default function InventoryPage({
       categoryFilter === "All categories" || normalizedCategory === categoryFilter;
 
     return matchesSearch && matchesStatus && matchesCategory;
+  }).sort((a, b) => {
+    const nameComparison = a.name.localeCompare(b.name, undefined, {
+      sensitivity: "base",
+      numeric: true,
+    });
+    if (nameComparison !== 0) return nameComparison;
+
+    const skuComparison = a.sku.localeCompare(b.sku, undefined, {
+      sensitivity: "base",
+      numeric: true,
+    });
+    return skuComparison !== 0 ? skuComparison : a.id.localeCompare(b.id);
   });
 
   const availableCategories = Array.from(
@@ -609,11 +641,12 @@ export default function InventoryPage({
   const handleSaveStockIn = async (e: FormEvent) => {
     e.preventDefault();
     if (!stockInProduct) return;
-    const qty = parseInt(stockInData.quantity, 10);
-    if (!qty || qty <= 0) {
-      onToast("Please enter a valid positive quantity");
+    const validation = validateStockMovementQuantity(stockInData.quantity);
+    if (!validation.ok) {
+      onToast(validation.error);
       return;
     }
+    const qty = validation.quantity;
 
     try {
       const res = await fetch(`/api/inventory/products/${stockInProduct.id}/stock-in`, {
@@ -659,11 +692,12 @@ export default function InventoryPage({
   const handleSaveStockOut = async (e: FormEvent) => {
     e.preventDefault();
     if (!stockOutProduct) return;
-    const qty = parseInt(stockOutData.quantity, 10);
-    if (!qty || qty <= 0) {
-      onToast("Please enter a valid positive quantity");
+    const validation = validateStockMovementQuantity(stockOutData.quantity);
+    if (!validation.ok) {
+      onToast(validation.error);
       return;
     }
+    const qty = validation.quantity;
 
     const targetBatch = stockOutProduct.batches.find(
       (b) => b.batchNumber === stockOutData.batchNumber,
@@ -1853,6 +1887,8 @@ export default function InventoryPage({
                     <input
                       type="number"
                       min="1"
+                      max={MAX_STOCK_MOVEMENT_QUANTITY}
+                      step="1"
                       required
                       value={stockInData.quantity}
                       onChange={(e) =>
@@ -1862,6 +1898,9 @@ export default function InventoryPage({
                         })
                       }
                     />
+                    <span className="field-hint">
+                      Whole units only · maximum {MAX_STOCK_MOVEMENT_QUANTITY.toLocaleString()}
+                    </span>
                   </div>
                   <div className="field">
                     <label>Date *</label>
@@ -1951,6 +1990,13 @@ export default function InventoryPage({
                     <input
                       type="number"
                       min="1"
+                      max={Math.min(
+                        MAX_STOCK_MOVEMENT_QUANTITY,
+                        stockOutProduct.batches.find(
+                          (batch) => batch.batchNumber === stockOutData.batchNumber,
+                        )?.quantity || MAX_STOCK_MOVEMENT_QUANTITY,
+                      )}
+                      step="1"
                       required
                       value={stockOutData.quantity}
                       onChange={(e) =>
@@ -1960,6 +2006,7 @@ export default function InventoryPage({
                         })
                       }
                     />
+                    <span className="field-hint">Whole units only</span>
                   </div>
                   <div className="field">
                     <label>Date *</label>

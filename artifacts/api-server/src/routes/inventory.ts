@@ -1,10 +1,28 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { and, eq, or } from "drizzle-orm";
+import { and, asc, eq, or } from "drizzle-orm";
 import { db, productsTable, batchInfoTable, stockMovementsTable } from "@workspace/db";
 
 const router: IRouter = Router();
 
 const NOW = () => new Date();
+const MAX_STOCK_MOVEMENT_QUANTITY = 1_000_000;
+
+function parseStockMovementQuantity(value: unknown):
+  | { ok: true; quantity: number }
+  | { ok: false; error: string } {
+  if (value === undefined || value === null || String(value).trim() === "") {
+    return { ok: false, error: "Quantity is required." };
+  }
+
+  const quantity = Number(value);
+  if (!Number.isFinite(quantity)) return { ok: false, error: "Quantity must be a valid finite number." };
+  if (!Number.isInteger(quantity)) return { ok: false, error: "Quantity must be a whole number." };
+  if (quantity <= 0) return { ok: false, error: "Quantity must be greater than zero." };
+  if (quantity > MAX_STOCK_MOVEMENT_QUANTITY) {
+    return { ok: false, error: `Quantity cannot exceed ${MAX_STOCK_MOVEMENT_QUANTITY.toLocaleString()} units.` };
+  }
+  return { ok: true, quantity };
+}
 
 function asId(value: string | string[] | undefined): string {
   return Array.isArray(value) ? value[0] : (value ?? "");
@@ -86,7 +104,10 @@ async function fetchProductWithBatches(productId: string) {
 
 router.get("/inventory", async (_req: Request, res: Response) => {
   const now = NOW();
-  const allProducts = await db.select().from(productsTable);
+  const allProducts = await db
+    .select()
+    .from(productsTable)
+    .orderBy(asc(productsTable.productName), asc(productsTable.sku));
   const allBatches = await db.select().from(batchInfoTable);
 
   const enriched = allProducts.map((p) => {
@@ -247,14 +268,15 @@ router.post("/inventory/products/:id/stock-in", async (req: Request, res: Respon
   const id = asId(req.params.id);
   const { batchNumber, quantity, reason, date } = req.body;
 
+  const quantityResult = parseStockMovementQuantity(quantity);
+  if (!quantityResult.ok) {
+    return res.status(400).json({ success: false, error: quantityResult.error });
+  }
+  const qty = quantityResult.quantity;
+
   const product = await findProduct(id);
   if (!product) {
     return res.status(404).json({ success: false, error: "Product not found." });
-  }
-
-  const qty = Number(quantity);
-  if (!qty || qty <= 0) {
-    return res.status(400).json({ success: false, error: "Positive quantity required." });
   }
 
   const normalizedBatchNumber = String(batchNumber || "").trim().toUpperCase();
@@ -310,14 +332,15 @@ router.post("/inventory/products/:id/stock-out", async (req: Request, res: Respo
   const id = asId(req.params.id);
   const { batchNumber, quantity, reason } = req.body;
 
+  const quantityResult = parseStockMovementQuantity(quantity);
+  if (!quantityResult.ok) {
+    return res.status(400).json({ success: false, error: quantityResult.error });
+  }
+  const qty = quantityResult.quantity;
+
   const product = await findProduct(id);
   if (!product) {
     return res.json({ success: true, message: `Product stock adjusted.` });
-  }
-
-  const qty = Number(quantity);
-  if (!qty || qty <= 0) {
-    return res.status(400).json({ success: false, error: "Positive quantity required." });
   }
 
   const normalizedBatchNumber = String(batchNumber || "").trim().toUpperCase();
