@@ -57,7 +57,7 @@ export const navGroups = [
         href: "/procurement",
         label: "Procurement",
         icon: ShoppingCart,
-        roles: ["Admin", "FrontDesk"],
+        roles: ["Admin", "FrontDesk", "Cashier"],
       },
       {
         href: "/wholesale",

@@ -5,6 +5,7 @@ import { PageHeading } from "@/components/custom-ui/page-heading";
 import { Summary } from "@/components/custom-ui/summary-card";
 import type { ToastFn } from "@/lib/types";
 import { fetchInventoryData } from "@/lib/pharmacy-store";
+import { fetchAccountsPayable } from "@/lib/supplier-store";
 import { products as initialFallbackProducts } from "@/lib/data";
 
 type Supplier = { id: string; name: string };
@@ -153,8 +154,9 @@ function expiryStatus(date: string) {
   return { label: "Valid", tone: "success" };
 }
 
-export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
-  const [activeSection, setActiveSection] = useState("Purchase Order Monitoring");
+export default function ProcurementPage({ onToast, currentRole }: { onToast: ToastFn; currentRole: string }) {
+  const canManagePurchasing = currentRole === "Admin" || currentRole === "FrontDesk";
+  const [activeSection, setActiveSection] = useState(currentRole === "Cashier" ? "Receiving Report Management" : "Purchase Order Monitoring");
   const [status, setStatus] = useState("All orders");
   const [orders, setOrders] = useState<PurchaseOrder[]>(() =>
     getStored("medprix_procurement_orders", initialOrders)
@@ -187,8 +189,14 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
   const [invoices, setInvoices] = useState<Invoice[]>(() =>
     getStored("medprix_procurement_invoices", initialInvoices)
   );
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [loadingSections, setLoadingSections] = useState({
+    orders: false,
+    deliveries: false,
+    invoices: false,
+  });
+  const [isInvoiceRefreshing, setIsInvoiceRefreshing] = useState(false);
+  const [invoiceRefreshError, setInvoiceRefreshError] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isDeliveryOpen, setIsDeliveryOpen] = useState(false);
   const [isInvoiceOpen, setIsInvoiceOpen] = useState(false);
@@ -218,26 +226,26 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
   });
 
   const loadData = async () => {
-    try {
-      setIsLoading(true);
-      setError("");
-      const [suppRes, invRes, poRes, delRes, invcRes] = await Promise.all([
-        fetch("/api/suppliers", { credentials: "include" }).catch(() => null),
-        fetch("/api/inventory", { credentials: "include" }).catch(() => null),
-        fetch("/api/purchase-orders", { credentials: "include" }).catch(() => null),
-        fetch("/api/supplier-deliveries", { credentials: "include" }).catch(() => null),
-        fetch("/api/supplier-invoices", { credentials: "include" }).catch(() => null),
-      ]);
+    setError("");
+    setLoadingSections({ orders: true, deliveries: true, invoices: true });
 
-      if (suppRes?.ok) {
-        const d = await suppRes.json();
+    const loadSuppliers = async () => {
+      const response = await fetch("/api/suppliers", { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to refresh suppliers.");
+      if (response.ok) {
+        const d = await response.json();
         if (Array.isArray(d.suppliers) && d.suppliers.length > 0) {
           setSuppliers(d.suppliers);
           saveStored("medprix_procurement_suppliers", d.suppliers);
         }
       }
-      if (invRes?.ok) {
-        const d = await invRes.json();
+    };
+
+    const loadProducts = async () => {
+      const response = await fetch("/api/inventory", { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to refresh inventory.");
+      if (response.ok) {
+        const d = await response.json();
         if (Array.isArray(d.products) && d.products.length > 0) {
           const prods = d.products.map((p: any) => ({
             id: p.id,
@@ -249,8 +257,13 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
           setProducts(prods);
         }
       }
-      if (poRes?.ok) {
-        const d = await poRes.json();
+    };
+
+    const loadOrders = async () => {
+      try {
+        const response = await fetch("/api/purchase-orders", { credentials: "include" });
+        if (!response.ok) throw new Error("Failed to refresh purchase orders.");
+        const d = await response.json();
         if (Array.isArray(d.purchaseOrders)) {
           const localOrders = getStored("medprix_procurement_orders", orders);
           const merged = [...d.purchaseOrders];
@@ -268,9 +281,16 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
           setOrders(merged);
           saveStored("medprix_procurement_orders", merged);
         }
+      } finally {
+        setLoadingSections((current) => ({ ...current, orders: false }));
       }
-      if (delRes?.ok) {
-        const d = await delRes.json();
+    };
+
+    const loadDeliveries = async () => {
+      try {
+        const response = await fetch("/api/supplier-deliveries", { credentials: "include" });
+        if (!response.ok) throw new Error("Failed to refresh receiving reports.");
+        const d = await response.json();
         if (Array.isArray(d.deliveries)) {
           const localDels = getStored("medprix_procurement_deliveries", deliveries);
           const merged = [...d.deliveries];
@@ -282,9 +302,17 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
           setDeliveries(merged);
           saveStored("medprix_procurement_deliveries", merged);
         }
+      } finally {
+        setLoadingSections((current) => ({ ...current, deliveries: false }));
       }
-      if (invcRes?.ok) {
-        const d = await invcRes.json();
+    };
+
+    const loadInvoices = async () => {
+      setIsInvoiceRefreshing(true);
+      try {
+        const response = await fetch("/api/supplier-invoices", { credentials: "include" });
+        if (!response.ok) throw new Error("Failed to refresh supplier invoices.");
+        const d = await response.json();
         if (Array.isArray(d.invoices)) {
           const localInvs = getStored("medprix_procurement_invoices", invoices);
           const merged = [...d.invoices];
@@ -296,11 +324,21 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
           setInvoices(merged);
           saveStored("medprix_procurement_invoices", merged);
         }
+      } finally {
+        setLoadingSections((current) => ({ ...current, invoices: false }));
+        setIsInvoiceRefreshing(false);
       }
-    } catch {
-      // Keep state from local cache
-    } finally {
-      setIsLoading(false);
+    };
+
+    const results = await Promise.allSettled([
+      loadSuppliers(),
+      loadProducts(),
+      loadOrders(),
+      loadDeliveries(),
+      loadInvoices(),
+    ]);
+    if (results.some((result) => result.status === "rejected")) {
+      setError("Some procurement data could not be refreshed. Cached data remains available.");
     }
   };
 
@@ -375,51 +413,13 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
       return;
     }
 
-    const suppObj = suppliers.find((s) => s.id === supplierId);
     const finalPoNum =
       poNumber.trim() ||
       `PO-${new Date().getFullYear()}-${String(orders.length + 1).padStart(4, "0")}`;
 
-    const resolvedLineItems: LineItemDetail[] = lineItems.map((item) => {
-      const prod = products.find((p) => p.id === item.productId);
-      const qty = Number(item.quantityOrdered) || 1;
-      const cost = Number(item.unitCost) || 0;
-      return {
-        id: `item-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-        productId: item.productId,
-        product: prod?.name || "Medical Item",
-        sku: prod?.sku || "",
-        quantityOrdered: qty,
-        unitCost: String(cost),
-        lineTotal: String(qty * cost),
-      };
-    });
-
-    const newOrder: PurchaseOrder = {
-      id: `po-${Date.now()}`,
-      poNumber: finalPoNum,
-      supplierId,
-      supplier: suppObj?.name || "Selected Supplier",
-      orderDate: new Date().toISOString(),
-      status: "Draft",
-      totalOrderAmount: String(runningTotal),
-      itemCount: lineItems.length,
-      items: resolvedLineItems,
-    };
-
-    const nextOrders = [newOrder, ...orders];
-    setOrders(nextOrders);
-    saveStored("medprix_procurement_orders", nextOrders);
-
-    setIsCreateOpen(false);
-    setSupplierId("");
-    setPoNumber("");
-    setLineItems([{ productId: "", quantityOrdered: "1", unitCost: "0" }]);
-    onToast("Purchase order created with Draft status.");
-
     try {
       setIsSaving(true);
-      fetch("/api/purchase-orders", {
+      const response = await fetch("/api/purchase-orders", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -433,7 +433,17 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
             unitCost: Number(item.unitCost),
           })),
         }),
-      }).catch(() => {});
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Failed to create purchase order.");
+      setIsCreateOpen(false);
+      setSupplierId("");
+      setPoNumber("");
+      setLineItems([{ productId: "", quantityOrdered: "1", unitCost: "0" }]);
+      await loadData();
+      onToast("Purchase order created with Draft status.");
+    } catch (requestError) {
+      onToast(requestError instanceof Error ? requestError.message : "Failed to create purchase order.");
     } finally {
       setIsSaving(false);
     }
@@ -441,43 +451,9 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
 
   const submitDelivery = async (event: FormEvent) => {
     event.preventDefault();
-    const poObj = orders.find((o) => o.id === deliveryForm.poId);
-    const prodObj = products.find((p) => p.id === deliveryForm.productId);
-
-    const newDelivery: Delivery = {
-      id: `del-${Date.now()}`,
-      poNumber: poObj?.poNumber || "PO Direct",
-      supplier: poObj?.supplier || "Direct Supplier",
-      deliveryDate: deliveryForm.deliveryDate || new Date().toISOString(),
-      deliveryStatus: deliveryForm.deliveryStatus || "Received",
-      items: [
-        {
-          id: `deli-${Date.now()}`,
-          product: prodObj?.name || "Medical Item",
-          batchNumber: (
-            deliveryForm.batchNumber.trim() || `BATCH-${Date.now().toString().slice(-6)}`
-          ).toUpperCase(),
-          expirationDate: deliveryForm.expirationDate || "2028-12-31",
-          quantityDelivered: Number(deliveryForm.quantityDelivered) || 1,
-        },
-      ],
-    };
-
-    const nextDeliveries = [newDelivery, ...deliveries];
-    setDeliveries(nextDeliveries);
-    saveStored("medprix_procurement_deliveries", nextDeliveries);
-
-    if (poObj && deliveryForm.deliveryStatus === "Received" && poObj.status !== "Cancelled") {
-      void updateStatus(poObj.id, "Fulfilled");
-    }
-
-    setIsDeliveryOpen(false);
-    void fetchInventoryData(true);
-    onToast("Receiving report created and stock updated.");
-
     try {
       setIsSaving(true);
-      fetch("/api/supplier-deliveries", {
+      const response = await fetch("/api/supplier-deliveries", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -494,7 +470,14 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
             },
           ],
         }),
-      }).catch(() => {});
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Failed to create receiving report.");
+      setIsDeliveryOpen(false);
+      await Promise.all([loadData(), fetchInventoryData(true)]);
+      onToast("Receiving report created and inventory updated.");
+    } catch (requestError) {
+      onToast(requestError instanceof Error ? requestError.message : "Failed to create receiving report.");
     } finally {
       setIsSaving(false);
     }
@@ -502,29 +485,9 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
 
   const submitInvoice = async (event: FormEvent) => {
     event.preventDefault();
-    const suppObj = suppliers.find((s) => s.id === invoiceForm.supplierId);
-    const poObj = orders.find((o) => o.id === invoiceForm.poId);
-
-    const newInvoice: Invoice = {
-      id: `inv-${Date.now()}`,
-      invoiceNumber: invoiceForm.invoiceNumber.trim().toUpperCase(),
-      supplier: suppObj?.name || "Supplier",
-      poNumber: poObj?.poNumber || null,
-      dueDate: invoiceForm.dueDate,
-      invoiceAmount: String(Number(invoiceForm.invoiceAmount) || 0),
-      status: invoiceForm.isPaid ? "Paid" : "Unpaid",
-    };
-
-    const nextInvoices = [newInvoice, ...invoices];
-    setInvoices(nextInvoices);
-    saveStored("medprix_procurement_invoices", nextInvoices);
-
-    setIsInvoiceOpen(false);
-    onToast("Supplier invoice created.");
-
     try {
       setIsSaving(true);
-      fetch("/api/supplier-invoices", {
+      const response = await fetch("/api/supplier-invoices", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -533,34 +496,62 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
           poId: invoiceForm.poId || null,
           invoiceAmount: Number(invoiceForm.invoiceAmount),
         }),
-      }).catch(() => {});
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Failed to create supplier invoice.");
+      const createdInvoice = data.invoice as Invoice | undefined;
+      if (createdInvoice?.id) {
+        setInvoices((current) => {
+          const next = [
+            createdInvoice,
+            ...current.filter(
+              (invoice) =>
+                invoice.id !== createdInvoice.id &&
+                invoice.invoiceNumber !== createdInvoice.invoiceNumber,
+            ),
+          ];
+          saveStored("medprix_procurement_invoices", next);
+          return next;
+        });
+      }
+      setIsInvoiceOpen(false);
+      setInvoiceForm({ supplierId: "", poId: "", invoiceNumber: "", dueDate: "", invoiceAmount: "0", isPaid: false });
+      onToast("Supplier invoice and payable created.");
+      void refreshInvoicesAndPayables();
+    } catch (requestError) {
+      onToast(requestError instanceof Error ? requestError.message : "Failed to create supplier invoice.");
     } finally {
       setIsSaving(false);
     }
   };
 
-  const updateInvoiceStatus = async (invoiceId: string, nextStatus: string) => {
-    const updated = invoices.map((inv) =>
-      inv.id === invoiceId ? { ...inv, status: nextStatus } : inv
-    );
-    setInvoices(updated);
-    saveStored("medprix_procurement_invoices", updated);
-
+  const refreshInvoicesAndPayables = async () => {
+    setIsInvoiceRefreshing(true);
+    setInvoiceRefreshError("");
     try {
-      fetch(`/api/supplier-invoices/${invoiceId}/status`, {
-        method: "PATCH",
+      const response = await fetch("/api/supplier-invoices", {
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: nextStatus }),
-      }).catch(() => {});
-      onToast("Invoice status updated.");
-    } catch {
-      onToast("Status updated locally.");
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Failed to refresh invoices.");
+      if (Array.isArray(data.invoices)) {
+        setInvoices(data.invoices);
+        saveStored("medprix_procurement_invoices", data.invoices);
+      }
+      await fetchAccountsPayable();
+    } catch (requestError) {
+      setInvoiceRefreshError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Invoice refresh failed. Cached invoices are still shown.",
+      );
+    } finally {
+      setIsInvoiceRefreshing(false);
     }
   };
 
-  const tableMessage = (columns: number) => {
-    if (isLoading && orders.length === 0)
+  const tableMessage = (columns: number, loading: boolean, itemCount: number) => {
+    if (loading && itemCount === 0)
       return (
         <tr>
           <td colSpan={columns} className="muted">
@@ -568,7 +559,7 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
           </td>
         </tr>
       );
-    if (error && orders.length === 0)
+    if (error && itemCount === 0)
       return (
         <tr>
           <td colSpan={columns} className="muted">
@@ -584,14 +575,14 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
       <PageHeading
         title="Procurement"
         description="Keep purchasing predictable from request to receiving."
-        action={
+        action={canManagePurchasing ? (
           <button
             className="button dark"
             data-testid="button-create-po"
             onClick={() => setIsCreateOpen(true)}>
             <Plus size={14} /> Create purchase order
           </button>
-        }
+        ) : undefined}
       />
       <div className="summary-strip">
         <Summary
@@ -613,12 +604,12 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
           caption="Recorded supplier deliveries"
         />
       </div>
-      <div className="table-tools" style={{ marginBottom: 16 }}>
+      <div className="table-tools supplier-invoices" style={{ marginBottom: 16 }}>
         {[
           "Purchase Order Monitoring",
           "Receiving Report Management",
           "Purchase Invoice Monitoring",
-        ].map((section) => (
+        ].filter((section) => canManagePurchasing || section === "Receiving Report Management").map((section) => (
           <button
             key={section}
             className={`button ${activeSection === section ? "dark" : "soft"}`}
@@ -660,7 +651,7 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
                 </tr>
               </thead>
               <tbody>
-                {tableMessage(7) ||
+                {tableMessage(7, loadingSections.orders, orders.length) ||
                   (filteredOrders.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="muted">
@@ -691,7 +682,7 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
                           <strong>{money(order.totalOrderAmount)}</strong>
                         </td>
                         <td>
-                          <select
+                          {canManagePurchasing ? <select
                             className="select"
                             data-testid={`select-status-${order.id}`}
                             value={order.status}
@@ -701,7 +692,7 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
                             {poStatuses.map((item) => (
                               <option key={item}>{item}</option>
                             ))}
-                          </select>
+                          </select> : <span className="pill neutral">{order.status}</span>}
                         </td>
                         <td>
                           <button
@@ -746,7 +737,7 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
                 </tr>
               </thead>
               <tbody>
-                {tableMessage(7) ||
+                {tableMessage(7, loadingSections.deliveries, deliveries.length) ||
                   (deliveries.flatMap((delivery) =>
                     delivery.items.map((item) => ({ delivery, item }))
                   ).length === 0 ? (
@@ -763,7 +754,7 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
                           <tr key={item.id}>
                             <td>
                               {delivery.poNumber}
-                              <div className="muted" style={{ fontSize: 10 }}>
+                              <div className="muted" style={{ fontSize: 12 }}>
                                 {new Date(delivery.deliveryDate).toLocaleDateString()}
                               </div>
                             </td>
@@ -793,10 +784,27 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
               <h2 className="card-title">Supplier invoices</h2>
               <p className="card-subtitle">Outstanding and settled purchase invoices</p>
             </div>
-            <button className="button dark" onClick={() => setIsInvoiceOpen(true)}>
-              <Plus size={14} /> Add invoice
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {isInvoiceRefreshing && (
+                <span className="muted" role="status">Refreshing…</span>
+              )}
+              <button className="button dark" onClick={() => setIsInvoiceOpen(true)}>
+                <Plus size={14} /> Add invoice
+              </button>
+            </div>
           </div>
+          {invoiceRefreshError && (
+            <div className="inline-error" role="alert">
+              <span>{invoiceRefreshError} Cached invoice data remains available.</span>
+              <button
+                type="button"
+                className="button soft"
+                disabled={isInvoiceRefreshing}
+                onClick={() => void refreshInvoicesAndPayables()}>
+                Retry
+              </button>
+            </div>
+          )}
           <div className="table-scroll">
             <table className="data-table">
               <thead>
@@ -810,7 +818,7 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
                 </tr>
               </thead>
               <tbody>
-                {tableMessage(6) ||
+                {tableMessage(6, loadingSections.invoices, invoices.length) ||
                   (invoices.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="muted">
@@ -829,17 +837,7 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
                         <td>
                           <strong>{money(invoice.invoiceAmount)}</strong>
                         </td>
-                        <td>
-                          <select
-                            className="select"
-                            value={invoice.status}
-                            onChange={(event) =>
-                              void updateInvoiceStatus(invoice.id, event.target.value)
-                            }>
-                            <option>Paid</option>
-                            <option>Unpaid</option>
-                          </select>
-                        </td>
+                        <td><span className={`pill ${invoice.status === "Paid" ? "success" : "warning"}`}>{invoice.status}</span></td>
                       </tr>
                     ))
                   ))}
@@ -1135,10 +1133,10 @@ export default function ProcurementPage({ onToast }: { onToast: ToastFn }) {
                   </div>
                 ))}
               </div>
-              <div className="modal-actions">
+              <div className="modal-actions items-center">
                 <strong>Total: {money(runningTotal)}</strong>
                 <button className="button dark" type="submit" disabled={isSaving}>
-                  <Check size={13} /> {isSaving ? "Creating..." : "Create Draft purchase order"}
+                  <Check size={13} /> {isSaving ? "Creating..." : "Create Draft Purchase Order"}
                 </button>
               </div>
             </form>

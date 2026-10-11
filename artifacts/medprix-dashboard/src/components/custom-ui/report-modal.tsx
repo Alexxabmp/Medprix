@@ -384,7 +384,7 @@ export function ReportModal({
                         <button
                           className="button soft"
                           style={{
-                            fontSize: 11,
+                            fontSize: 12,
                             padding: "4px 10px",
                             height: "auto",
                           }}

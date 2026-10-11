@@ -96,7 +96,7 @@ export default function LoginPage({ onLogin }: { onLogin: () => void }) {
         </div>
         {error && (
           <p
-            style={{ color: "#b34f45", margin: "10px 0 0", fontSize: 11 }}
+            style={{ color: "#b34f45", margin: "10px 0 0", fontSize: 12 }}
             data-testid="status-login-error"
           >
             {error}

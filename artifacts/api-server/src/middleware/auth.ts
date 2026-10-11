@@ -71,3 +71,14 @@ export function requireRole(role: UserRoleEnum) {
     return next();
   };
 }
+
+export function requireRoles(...roles: UserRoleEnum[]) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const role = res.locals.user?.role;
+    if (!role || !roles.includes(role)) {
+      return res.status(403).json({ error: "Insufficient permissions." });
+    }
+
+    return next();
+  };
+}

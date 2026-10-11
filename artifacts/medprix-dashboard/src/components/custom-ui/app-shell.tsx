@@ -1,9 +1,13 @@
 import { useState, useEffect } from "react";
 import { Link, Route, Switch, useLocation } from "wouter";
 import { Moon, Pill, Sun, UserCog, X } from "lucide-react";
-import { navGroups } from "@/lib/data";
+import { getDefaultRoute, navGroups } from "@/lib/data";
 import type { ToastFn, UserRecord } from "@/lib/types";
 import { prefetchPharmacyData } from "@/lib/pharmacy-store";
+import {
+  fetchAccountsPayable,
+  fetchSupplierRecords,
+} from "@/lib/supplier-store";
 
 import DashboardPage from "@/pages/admin-dashboard";
 import CashierDashboardPage from "@/pages/cashier-dashboard";
@@ -40,14 +44,19 @@ export function AppShell({
 
   useEffect(() => {
     prefetchPharmacyData();
-  }, []);
+    void fetchSupplierRecords().catch(() => undefined);
+    if (role === "Admin" || role === "FrontDesk") {
+      void fetchAccountsPayable().catch(() => undefined);
+    }
+  }, [role]);
   const roleKey = role.toLowerCase();
+  const homeHref = getDefaultRoute(role);
   const pageName =
     location === "/dashboard"
       ? "Dashboard"
       : (navGroups
-        .flatMap((group) => group.items)
-        .find((item) => item.href === location)?.label ?? "Dashboard");
+          .flatMap((group) => group.items)
+          .find((item) => item.href === location)?.label ?? "Dashboard");
 
   const storedFullName = localStorage.getItem("medprix-fullname");
   const storedUsername = localStorage.getItem("medprix-username");
@@ -76,9 +85,10 @@ export function AppShell({
         <header className="topbar">
           <div className="topbar-left">
             <Link
-              href="/dashboard"
+              href={homeHref}
               className="brand"
-              data-testid="link-medprix-home">
+              data-testid="link-medprix-home"
+            >
               <span className="brand-mark">
                 <Pill size={16} strokeWidth={2.4} />
               </span>
@@ -88,7 +98,8 @@ export function AppShell({
           <nav
             className="top-nav"
             aria-label="Primary navigation"
-            data-testid="nav-primary">
+            data-testid="nav-primary"
+          >
             {navGroups
               .flatMap((group) => group.items)
               .filter((item) => item.roles.includes(role))
@@ -97,7 +108,8 @@ export function AppShell({
                   key={href}
                   href={href}
                   data-testid={`link-${label.toLowerCase().replaceAll(" ", "-")}`}
-                  className={`top-nav-item ${location === href ? "active" : ""}`}>
+                  className={`top-nav-item ${location === href ? "active" : ""}`}
+                >
                   {label}
                 </Link>
               ))}
@@ -107,7 +119,8 @@ export function AppShell({
               className="icon-button"
               data-testid="button-theme-toggle"
               aria-label="Toggle dark mode"
-              onClick={() => setDark(!dark)}>
+              onClick={() => setDark(!dark)}
+            >
               {dark ? <Sun size={16} /> : <Moon size={16} />}
             </button>
             <div className="user-menu-wrap">
@@ -115,7 +128,8 @@ export function AppShell({
                 className="avatar"
                 data-testid="avatar-admin"
                 aria-label="User menu"
-                onClick={() => setShowUserMenu((v) => !v)}>
+                onClick={() => setShowUserMenu((v) => !v)}
+              >
                 {currentUser.initials}
               </button>
               {showUserMenu && (
@@ -134,7 +148,8 @@ export function AppShell({
                           border: 0,
                           boxShadow: "none",
                           fontSize: 13,
-                        }}>
+                        }}
+                      >
                         {currentUser.initials}
                       </span>
                       <div>
@@ -149,7 +164,8 @@ export function AppShell({
                       onClick={() => {
                         setShowUserMenu(false);
                         onLogout();
-                      }}>
+                      }}
+                    >
                       <X size={14} /> Log out
                     </button>
                   </div>
@@ -161,18 +177,18 @@ export function AppShell({
         <main className="content">
           <Switch>
             <Route path="/">
-              {roleKey === "cashier" ? (
-                <CashierDashboardPage onToast={onToast} />
-              ) : (
+              {roleKey === "admin" ? (
                 <DashboardPage onToast={onToast} />
-              )}
+              ) : roleKey === "cashier" ? (
+                <CashierDashboardPage onToast={onToast} />
+              ) : null}
             </Route>
             <Route path="/dashboard">
-              {roleKey === "cashier" ? (
-                <CashierDashboardPage onToast={onToast} />
-              ) : (
+              {roleKey === "admin" ? (
                 <DashboardPage onToast={onToast} />
-              )}
+              ) : roleKey === "cashier" ? (
+                <CashierDashboardPage onToast={onToast} />
+              ) : null}
             </Route>
             <Route path="/pos">
               <CashierDashboardPage onToast={onToast} />
@@ -184,10 +200,10 @@ export function AppShell({
               <InventoryPage onToast={onToast} currentRole={role} />
             </Route>
             <Route path="/supplier">
-              <SupplierPage onToast={onToast} />
+              <SupplierPage onToast={onToast} currentRole={role} />
             </Route>
             <Route path="/procurement">
-              <ProcurementPage onToast={onToast} />
+              <ProcurementPage onToast={onToast} currentRole={role} />
             </Route>
             <Route path="/wholesale">
               <WholesalePage onToast={onToast} />
