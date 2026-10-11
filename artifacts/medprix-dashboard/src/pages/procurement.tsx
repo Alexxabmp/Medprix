@@ -719,9 +719,11 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               <h2 className="card-title">Receiving reports</h2>
               <p className="card-subtitle">Stock-in records with batch and expiry monitoring</p>
             </div>
-            <button className="button dark" onClick={() => setIsDeliveryOpen(true)}>
-              <Plus size={14} /> Add receiving report
-            </button>
+            {canManagePurchasing && (
+              <button className="button dark" onClick={() => setIsDeliveryOpen(true)}>
+                <Plus size={14} /> Add receiving report
+              </button>
+            )}
           </div>
           <div className="table-scroll">
             <table className="data-table">

@@ -44,8 +44,8 @@ export function AppShell({
 
   useEffect(() => {
     prefetchPharmacyData();
-    void fetchSupplierRecords().catch(() => undefined);
     if (role === "Admin" || role === "FrontDesk") {
+      void fetchSupplierRecords().catch(() => undefined);
       void fetchAccountsPayable().catch(() => undefined);
     }
   }, [role]);
@@ -203,7 +203,11 @@ export function AppShell({
               <SupplierPage onToast={onToast} currentRole={role} />
             </Route>
             <Route path="/procurement">
-              <ProcurementPage onToast={onToast} currentRole={role} />
+              {roleKey === "admin" || roleKey === "frontdesk" ? (
+                <ProcurementPage onToast={onToast} currentRole={role} />
+              ) : (
+                <NotFound />
+              )}
             </Route>
             <Route path="/wholesale">
               <WholesalePage onToast={onToast} />
