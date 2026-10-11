@@ -5,6 +5,7 @@ import { PageHeading } from "@/components/custom-ui/page-heading";
 import { Summary } from "@/components/custom-ui/summary-card";
 import type { ToastFn } from "@/lib/types";
 import { fetchInventoryData } from "@/lib/pharmacy-store";
+import { fetchAccountsPayable } from "@/lib/supplier-store";
 import { products as initialFallbackProducts } from "@/lib/data";
 
 type Supplier = { id: string; name: string };
@@ -188,8 +189,14 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
   const [invoices, setInvoices] = useState<Invoice[]>(() =>
     getStored("medprix_procurement_invoices", initialInvoices)
   );
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [loadingSections, setLoadingSections] = useState({
+    orders: false,
+    deliveries: false,
+    invoices: false,
+  });
+  const [isInvoiceRefreshing, setIsInvoiceRefreshing] = useState(false);
+  const [invoiceRefreshError, setInvoiceRefreshError] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isDeliveryOpen, setIsDeliveryOpen] = useState(false);
   const [isInvoiceOpen, setIsInvoiceOpen] = useState(false);
@@ -219,26 +226,26 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
   });
 
   const loadData = async () => {
-    try {
-      setIsLoading(true);
-      setError("");
-      const [suppRes, invRes, poRes, delRes, invcRes] = await Promise.all([
-        fetch("/api/suppliers", { credentials: "include" }).catch(() => null),
-        fetch("/api/inventory", { credentials: "include" }).catch(() => null),
-        fetch("/api/purchase-orders", { credentials: "include" }).catch(() => null),
-        fetch("/api/supplier-deliveries", { credentials: "include" }).catch(() => null),
-        fetch("/api/supplier-invoices", { credentials: "include" }).catch(() => null),
-      ]);
+    setError("");
+    setLoadingSections({ orders: true, deliveries: true, invoices: true });
 
-      if (suppRes?.ok) {
-        const d = await suppRes.json();
+    const loadSuppliers = async () => {
+      const response = await fetch("/api/suppliers", { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to refresh suppliers.");
+      if (response.ok) {
+        const d = await response.json();
         if (Array.isArray(d.suppliers) && d.suppliers.length > 0) {
           setSuppliers(d.suppliers);
           saveStored("medprix_procurement_suppliers", d.suppliers);
         }
       }
-      if (invRes?.ok) {
-        const d = await invRes.json();
+    };
+
+    const loadProducts = async () => {
+      const response = await fetch("/api/inventory", { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to refresh inventory.");
+      if (response.ok) {
+        const d = await response.json();
         if (Array.isArray(d.products) && d.products.length > 0) {
           const prods = d.products.map((p: any) => ({
             id: p.id,
@@ -250,8 +257,13 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
           setProducts(prods);
         }
       }
-      if (poRes?.ok) {
-        const d = await poRes.json();
+    };
+
+    const loadOrders = async () => {
+      try {
+        const response = await fetch("/api/purchase-orders", { credentials: "include" });
+        if (!response.ok) throw new Error("Failed to refresh purchase orders.");
+        const d = await response.json();
         if (Array.isArray(d.purchaseOrders)) {
           const localOrders = getStored("medprix_procurement_orders", orders);
           const merged = [...d.purchaseOrders];
@@ -269,9 +281,16 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
           setOrders(merged);
           saveStored("medprix_procurement_orders", merged);
         }
+      } finally {
+        setLoadingSections((current) => ({ ...current, orders: false }));
       }
-      if (delRes?.ok) {
-        const d = await delRes.json();
+    };
+
+    const loadDeliveries = async () => {
+      try {
+        const response = await fetch("/api/supplier-deliveries", { credentials: "include" });
+        if (!response.ok) throw new Error("Failed to refresh receiving reports.");
+        const d = await response.json();
         if (Array.isArray(d.deliveries)) {
           const localDels = getStored("medprix_procurement_deliveries", deliveries);
           const merged = [...d.deliveries];
@@ -283,9 +302,17 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
           setDeliveries(merged);
           saveStored("medprix_procurement_deliveries", merged);
         }
+      } finally {
+        setLoadingSections((current) => ({ ...current, deliveries: false }));
       }
-      if (invcRes?.ok) {
-        const d = await invcRes.json();
+    };
+
+    const loadInvoices = async () => {
+      setIsInvoiceRefreshing(true);
+      try {
+        const response = await fetch("/api/supplier-invoices", { credentials: "include" });
+        if (!response.ok) throw new Error("Failed to refresh supplier invoices.");
+        const d = await response.json();
         if (Array.isArray(d.invoices)) {
           const localInvs = getStored("medprix_procurement_invoices", invoices);
           const merged = [...d.invoices];
@@ -297,11 +324,21 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
           setInvoices(merged);
           saveStored("medprix_procurement_invoices", merged);
         }
+      } finally {
+        setLoadingSections((current) => ({ ...current, invoices: false }));
+        setIsInvoiceRefreshing(false);
       }
-    } catch {
-      // Keep state from local cache
-    } finally {
-      setIsLoading(false);
+    };
+
+    const results = await Promise.allSettled([
+      loadSuppliers(),
+      loadProducts(),
+      loadOrders(),
+      loadDeliveries(),
+      loadInvoices(),
+    ]);
+    if (results.some((result) => result.status === "rejected")) {
+      setError("Some procurement data could not be refreshed. Cached data remains available.");
     }
   };
 
@@ -462,10 +499,25 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Failed to create supplier invoice.");
+      const createdInvoice = data.invoice as Invoice | undefined;
+      if (createdInvoice?.id) {
+        setInvoices((current) => {
+          const next = [
+            createdInvoice,
+            ...current.filter(
+              (invoice) =>
+                invoice.id !== createdInvoice.id &&
+                invoice.invoiceNumber !== createdInvoice.invoiceNumber,
+            ),
+          ];
+          saveStored("medprix_procurement_invoices", next);
+          return next;
+        });
+      }
       setIsInvoiceOpen(false);
       setInvoiceForm({ supplierId: "", poId: "", invoiceNumber: "", dueDate: "", invoiceAmount: "0", isPaid: false });
-      await loadData();
       onToast("Supplier invoice and payable created.");
+      void refreshInvoicesAndPayables();
     } catch (requestError) {
       onToast(requestError instanceof Error ? requestError.message : "Failed to create supplier invoice.");
     } finally {
@@ -473,8 +525,33 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
     }
   };
 
-  const tableMessage = (columns: number) => {
-    if (isLoading && orders.length === 0)
+  const refreshInvoicesAndPayables = async () => {
+    setIsInvoiceRefreshing(true);
+    setInvoiceRefreshError("");
+    try {
+      const response = await fetch("/api/supplier-invoices", {
+        credentials: "include",
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Failed to refresh invoices.");
+      if (Array.isArray(data.invoices)) {
+        setInvoices(data.invoices);
+        saveStored("medprix_procurement_invoices", data.invoices);
+      }
+      await fetchAccountsPayable();
+    } catch (requestError) {
+      setInvoiceRefreshError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Invoice refresh failed. Cached invoices are still shown.",
+      );
+    } finally {
+      setIsInvoiceRefreshing(false);
+    }
+  };
+
+  const tableMessage = (columns: number, loading: boolean, itemCount: number) => {
+    if (loading && itemCount === 0)
       return (
         <tr>
           <td colSpan={columns} className="muted">
@@ -482,7 +559,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
           </td>
         </tr>
       );
-    if (error && orders.length === 0)
+    if (error && itemCount === 0)
       return (
         <tr>
           <td colSpan={columns} className="muted">
@@ -527,7 +604,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
           caption="Recorded supplier deliveries"
         />
       </div>
-      <div className="table-tools" style={{ marginBottom: 16 }}>
+      <div className="table-tools supplier-invoices" style={{ marginBottom: 16 }}>
         {[
           "Purchase Order Monitoring",
           "Receiving Report Management",
@@ -574,7 +651,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 </tr>
               </thead>
               <tbody>
-                {tableMessage(7) ||
+                {tableMessage(7, loadingSections.orders, orders.length) ||
                   (filteredOrders.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="muted">
@@ -660,7 +737,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 </tr>
               </thead>
               <tbody>
-                {tableMessage(7) ||
+                {tableMessage(7, loadingSections.deliveries, deliveries.length) ||
                   (deliveries.flatMap((delivery) =>
                     delivery.items.map((item) => ({ delivery, item }))
                   ).length === 0 ? (
@@ -677,7 +754,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                           <tr key={item.id}>
                             <td>
                               {delivery.poNumber}
-                              <div className="muted" style={{ fontSize: 10 }}>
+                              <div className="muted" style={{ fontSize: 12 }}>
                                 {new Date(delivery.deliveryDate).toLocaleDateString()}
                               </div>
                             </td>
@@ -707,10 +784,27 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               <h2 className="card-title">Supplier invoices</h2>
               <p className="card-subtitle">Outstanding and settled purchase invoices</p>
             </div>
-            <button className="button dark" onClick={() => setIsInvoiceOpen(true)}>
-              <Plus size={14} /> Add invoice
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {isInvoiceRefreshing && (
+                <span className="muted" role="status">Refreshing…</span>
+              )}
+              <button className="button dark" onClick={() => setIsInvoiceOpen(true)}>
+                <Plus size={14} /> Add invoice
+              </button>
+            </div>
           </div>
+          {invoiceRefreshError && (
+            <div className="inline-error" role="alert">
+              <span>{invoiceRefreshError} Cached invoice data remains available.</span>
+              <button
+                type="button"
+                className="button soft"
+                disabled={isInvoiceRefreshing}
+                onClick={() => void refreshInvoicesAndPayables()}>
+                Retry
+              </button>
+            </div>
+          )}
           <div className="table-scroll">
             <table className="data-table">
               <thead>
@@ -724,7 +818,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 </tr>
               </thead>
               <tbody>
-                {tableMessage(6) ||
+                {tableMessage(6, loadingSections.invoices, invoices.length) ||
                   (invoices.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="muted">
@@ -1039,10 +1133,10 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                   </div>
                 ))}
               </div>
-              <div className="modal-actions">
+              <div className="modal-actions items-center">
                 <strong>Total: {money(runningTotal)}</strong>
                 <button className="button dark" type="submit" disabled={isSaving}>
-                  <Check size={13} /> {isSaving ? "Creating..." : "Create Draft purchase order"}
+                  <Check size={13} /> {isSaving ? "Creating..." : "Create Draft Purchase Order"}
                 </button>
               </div>
             </form>

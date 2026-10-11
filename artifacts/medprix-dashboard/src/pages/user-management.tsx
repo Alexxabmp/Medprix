@@ -350,7 +350,7 @@ export default function UserManagementPage({
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <span className="muted" style={{ fontSize: 11 }}>
+          <span className="muted" style={{ fontSize: 12 }}>
             {shown.length} accounts
           </span>
         </div>
@@ -388,7 +388,7 @@ export default function UserManagementPage({
                       </span>
                       <div>
                         <strong>{user.name}</strong>
-                        <div className="muted" style={{ fontSize: 10 }}>
+                        <div className="muted" style={{ fontSize: 12 }}>
                           {user.username}
                         </div>
                       </div>
@@ -449,7 +449,7 @@ export default function UserManagementPage({
                       <option>Cashier</option>
                     </select>
                     {isCurrentUser && (
-                      <div className="muted" style={{ fontSize: 10, marginTop: 5 }}>
+                      <div className="muted" style={{ fontSize: 12, marginTop: 5 }}>
                         Your own role is locked.
                       </div>
                     )}
@@ -477,7 +477,7 @@ export default function UserManagementPage({
                       </button>
                     </div>
                     {isCurrentUser && (
-                      <div className="muted" style={{ fontSize: 10, marginTop: 5 }}>
+                      <div className="muted" style={{ fontSize: 12, marginTop: 5 }}>
                         Your own status is locked.
                       </div>
                     )}
@@ -635,7 +635,7 @@ export default function UserManagementPage({
                 <p
                   style={{
                     color: "#FF453A",
-                    fontSize: 11,
+                    fontSize: 12,
                     margin: "10px 0 0",
                   }}>
                   {resetError}
@@ -686,7 +686,7 @@ export default function UserManagementPage({
                   fontSize: 12,
                 }}>
                 <strong>{selected.name}</strong>
-                <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+                <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
                   {selected.username} - {selected.role} - {selected.status}
                 </div>
               </div>
@@ -855,7 +855,7 @@ function UserDialog({
             </select>
           </div>
           {isCurrentUser && (
-            <div className="muted" style={{ fontSize: 10 }}>
+            <div className="muted" style={{ fontSize: 12 }}>
               Your own role cannot be changed from this account.
             </div>
           )}
@@ -923,7 +923,7 @@ function UserDialog({
           )}
         </div>
         {formError && (
-          <p style={{ color: "#FF453A", fontSize: 11, margin: "10px 0 0" }}>
+          <p style={{ color: "#FF453A", fontSize: 12, margin: "10px 0 0" }}>
             {formError}
           </p>
         )}

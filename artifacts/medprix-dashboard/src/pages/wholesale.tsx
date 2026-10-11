@@ -131,7 +131,7 @@ export default function WholesalePage({ onToast }: { onToast: ToastFn }) {
                         style={{
                           height: 30,
                           padding: "0 28px 0 12px",
-                          fontSize: 11,
+                          fontSize: 12,
                           fontWeight: 600,
                           borderRadius: 99,
                           border: "1px solid hsl(var(--border))",

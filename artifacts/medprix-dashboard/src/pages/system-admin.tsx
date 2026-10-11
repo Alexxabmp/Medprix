@@ -415,7 +415,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                       key={type}
                       type="button"
                       className={`button ${trxFilterType === type ? "dark" : "soft"}`}
-                      style={{ padding: "6px 12px", fontSize: 11 }}
+                      style={{ padding: "6px 12px", fontSize: 12 }}
                       onClick={() => setTrxFilterType(type)}
                       data-testid={`filter-trx-type-${type.toLowerCase()}`}>
                       {type === "All"
@@ -502,7 +502,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                         <button
                           type="button"
                           className="button soft"
-                          style={{ padding: "5px 12px", fontSize: 11 }}
+                          style={{ padding: "5px 12px", fontSize: 12 }}
                           onClick={() => setSelectedTrx(trx)}
                           data-testid={`button-view-trx-${trx.id}`}>
                           <Eye size={12} /> View
@@ -600,7 +600,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                       <td className="muted">{log.dateTime}</td>
                       <td>
                         <strong>{log.user}</strong>{" "}
-                        <span className="muted" style={{ fontSize: 10 }}>
+                        <span className="muted" style={{ fontSize: 12 }}>
                           ({log.role})
                         </span>
                       </td>
@@ -611,13 +611,13 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                             className={`pill ${
                               log.status === "Success" ? "success" : "danger"
                             }`}
-                            style={{ fontSize: 9 }}>
+                            style={{ fontSize: 12 }}>
                             {log.status}
                           </span>
                         </div>
                       </td>
                       <td>
-                        <span className="muted" style={{ fontSize: 11 }}>
+                        <span className="muted" style={{ fontSize: 12 }}>
                           {log.module}
                         </span>
                       </td>
@@ -625,7 +625,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                         <button
                           type="button"
                           className="button soft"
-                          style={{ padding: "5px 12px", fontSize: 11 }}
+                          style={{ padding: "5px 12px", fontSize: 12 }}
                           onClick={() => setSelectedLog(log)}
                           data-testid={`button-see-details-${log.id}`}>
                           See details <ArrowUpRight size={11} />
@@ -701,7 +701,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                     key={mod}
                     type="button"
                     className={`button ${activityModuleFilter === mod ? "dark" : "soft"}`}
-                    style={{ padding: "6px 10px", fontSize: 10, whiteSpace: "nowrap" }}
+                    style={{ padding: "6px 10px", fontSize: 12, whiteSpace: "nowrap" }}
                     onClick={() => setActivityModuleFilter(mod)}
                     data-testid={`filter-mod-${mod.slice(0, 5)}`}>
                     {mod === "All" ? "All modules" : mod}
@@ -740,18 +740,18 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                               className={`pill ${
                                 act.flag === "Flagged" ? "danger" : "warning"
                               }`}
-                              style={{ fontSize: 9 }}>
+                              style={{ fontSize: 12 }}>
                               {act.flag}
                             </span>
                           )}
                         </div>
                       </td>
                       <td>
-                        <span className="muted" style={{ fontSize: 11 }}>
+                        <span className="muted" style={{ fontSize: 12 }}>
                           {act.module}
                         </span>
                       </td>
-                      <td style={{ maxWidth: 360, whiteSpace: "normal", fontSize: 11 }}>
+                      <td style={{ maxWidth: 360, whiteSpace: "normal", fontSize: 12 }}>
                         {act.description}
                       </td>
                     </tr>
@@ -814,7 +814,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                   <h4
                     style={{
                       margin: 0,
-                      fontSize: 11,
+                      fontSize: 12,
                       textTransform: "uppercase",
                       letterSpacing: ".08em",
                       color: "hsl(var(--muted))",
@@ -850,7 +850,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                     fontSize: 12,
                   }}>
                   <div>
-                    <span className="muted" style={{ display: "block", fontSize: 11, marginBottom: 2 }}>
+                    <span className="muted" style={{ display: "block", fontSize: 12, marginBottom: 2 }}>
                       Transaction ID:
                     </span>{" "}
                     <strong style={{ color: "hsl(var(--foreground))" }}>
@@ -858,7 +858,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                     </strong>
                   </div>
                   <div>
-                    <span className="muted" style={{ display: "block", fontSize: 11, marginBottom: 2 }}>
+                    <span className="muted" style={{ display: "block", fontSize: 12, marginBottom: 2 }}>
                       Date &amp; time:
                     </span>{" "}
                     <strong style={{ color: "hsl(var(--foreground))" }}>
@@ -866,7 +866,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                     </strong>
                   </div>
                   <div>
-                    <span className="muted" style={{ display: "block", fontSize: 11, marginBottom: 2 }}>
+                    <span className="muted" style={{ display: "block", fontSize: 12, marginBottom: 2 }}>
                       Processed by:
                     </span>{" "}
                     <strong style={{ color: "hsl(var(--foreground))" }}>
@@ -874,19 +874,19 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                     </strong>
                   </div>
                   <div>
-                    <span className="muted" style={{ display: "block", fontSize: 11, marginBottom: 2 }}>
+                    <span className="muted" style={{ display: "block", fontSize: 12, marginBottom: 2 }}>
                       Business type:
                     </span>{" "}
                     <span
                       className={`pill ${
                         selectedTrx.businessType === "Wholesale" ? "warning" : "neutral"
                       }`}
-                      style={{ fontSize: 9 }}>
+                      style={{ fontSize: 12 }}>
                       {selectedTrx.businessType}
                     </span>
                   </div>
                   <div style={{ gridColumn: "1 / -1" }}>
-                    <span className="muted" style={{ display: "block", fontSize: 11, marginBottom: 2 }}>
+                    <span className="muted" style={{ display: "block", fontSize: 12, marginBottom: 2 }}>
                       Customer:
                     </span>{" "}
                     <strong style={{ color: "hsl(var(--foreground))" }}>
@@ -901,7 +901,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                 <h4
                   style={{
                     margin: "0 0 10px",
-                    fontSize: 11,
+                    fontSize: 12,
                     textTransform: "uppercase",
                     letterSpacing: ".08em",
                     color: "hsl(var(--muted))",
@@ -964,7 +964,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                 <h4
                   style={{
                     margin: "0 0 12px",
-                    fontSize: 11,
+                    fontSize: 12,
                     textTransform: "uppercase",
                     letterSpacing: ".08em",
                     color: "hsl(var(--muted))",

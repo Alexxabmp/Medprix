@@ -127,7 +127,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                 <Receipt size={15} />
                 <h3 className="card-title" style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Today's Shift Sales</h3>
               </div>
-              <span className="pill neutral" style={{ fontSize: 10 }}>Feature 1</span>
+              <span className="pill neutral" style={{ fontSize: 12 }}>Feature 1</span>
             </div>
             <p className="muted" style={{ fontSize: 12, margin: 0, lineHeight: 1.5 }}>
               View total sales made during your active shift, receipt counts, and revenue breakdown by payment method.
@@ -137,9 +137,9 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
           <div style={{ marginTop: 20, paddingTop: 14, borderTop: "1px solid hsl(var(--border))", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div>
               <div style={{ fontSize: 20, fontWeight: 700 }}>{formatPeso(totalSales)}</div>
-              <span className="muted" style={{ fontSize: 11 }}>{totalReceiptsCount} receipts completed</span>
+              <span className="muted" style={{ fontSize: 12 }}>{totalReceiptsCount} receipts completed</span>
             </div>
-            <button className="button dark" style={{ padding: "6px 14px", fontSize: 11 }}>
+            <button className="button dark" style={{ padding: "6px 14px", fontSize: 12 }}>
               Open feature <ArrowUpRight size={12} />
             </button>
           </div>
@@ -158,7 +158,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                 <CircleDollarSign size={15} />
                 <h3 className="card-title" style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Cash in Drawer</h3>
               </div>
-              <span className="pill neutral" style={{ fontSize: 10 }}>Feature 2</span>
+              <span className="pill neutral" style={{ fontSize: 12 }}>Feature 2</span>
             </div>
             <p className="muted" style={{ fontSize: 12, margin: 0, lineHeight: 1.5 }}>
               Monitor physical cash float, incoming cash transactions, mid-day safe drops, and expected cash in the register.
@@ -168,9 +168,9 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
           <div style={{ marginTop: 20, paddingTop: 14, borderTop: "1px solid hsl(var(--border))", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div>
               <div style={{ fontSize: 20, fontWeight: 700 }}>{formatPeso(currentExpectedCash)}</div>
-              <span className="muted" style={{ fontSize: 11 }}>Float: ₱5,000.00 · Cash sales: {formatPeso(cashSalesTotal)}</span>
+              <span className="muted" style={{ fontSize: 12 }}>Float: ₱5,000.00 · Cash sales: {formatPeso(cashSalesTotal)}</span>
             </div>
-            <button className="button dark" style={{ padding: "6px 14px", fontSize: 11 }}>
+            <button className="button dark" style={{ padding: "6px 14px", fontSize: 12 }}>
               Open feature <ArrowUpRight size={12} />
             </button>
           </div>
@@ -189,7 +189,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                 <Receipt size={15} />
                 <h3 className="card-title" style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Shift Receipts Log</h3>
               </div>
-              <span className="pill neutral" style={{ fontSize: 10 }}>Feature 3</span>
+              <span className="pill neutral" style={{ fontSize: 12 }}>Feature 3</span>
             </div>
             <p className="muted" style={{ fontSize: 12, margin: 0, lineHeight: 1.5 }}>
               Transactions recorded during current shift. Search receipt numbers, inspect itemized sales, and audit cashier receipts.
@@ -199,9 +199,9 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
           <div style={{ marginTop: 20, paddingTop: 14, borderTop: "1px solid hsl(var(--border))", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div>
               <div style={{ fontSize: 20, fontWeight: 700 }}>{totalReceiptsCount} Receipts Logged</div>
-              <span className="muted" style={{ fontSize: 11 }}>Total {formatPeso(totalSales)} recorded</span>
+              <span className="muted" style={{ fontSize: 12 }}>Total {formatPeso(totalSales)} recorded</span>
             </div>
-            <button className="button dark" style={{ padding: "6px 14px", fontSize: 11 }}>
+            <button className="button dark" style={{ padding: "6px 14px", fontSize: 12 }}>
               Open feature <ArrowUpRight size={12} />
             </button>
           </div>
@@ -220,7 +220,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                 <ShieldCheck size={15} />
                 <h3 className="card-title" style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Till Status</h3>
               </div>
-              <span className="pill neutral" style={{ fontSize: 10 }}>Feature 4</span>
+              <span className="pill neutral" style={{ fontSize: 12 }}>Feature 4</span>
             </div>
             <p className="muted" style={{ fontSize: 12, margin: 0, lineHeight: 1.5 }}>
               Check live cash till balance status (Balanced, Over, Short), discrepancy checks, and supervisor verification logs.
@@ -230,12 +230,12 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
           <div style={{ marginTop: 20, paddingTop: 14, borderTop: "1px solid hsl(var(--border))", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span className="pill success" style={{ fontSize: 11 }}>Balanced</span>
+                <span className="pill success" style={{ fontSize: 12 }}>Balanced</span>
                 <span style={{ fontSize: 13, fontWeight: 600 }}>₱0.00 variance</span>
               </div>
-              <span className="muted" style={{ fontSize: 11 }}>Verified today</span>
+              <span className="muted" style={{ fontSize: 12 }}>Verified today</span>
             </div>
-            <button className="button dark" style={{ padding: "6px 14px", fontSize: 11 }}>
+            <button className="button dark" style={{ padding: "6px 14px", fontSize: 12 }}>
               Open feature <ArrowUpRight size={12} />
             </button>
           </div>
@@ -269,58 +269,58 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
             {/* Shift Overview Metrics */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 18 }}>
               <div style={{ background: "hsl(var(--surface-soft))", border: "1px solid hsl(var(--border))", borderRadius: 14, padding: "14px 16px" }}>
-                <span className="muted" style={{ fontSize: 11, display: "block" }}>Total shift sales</span>
+                <span className="muted" style={{ fontSize: 12, display: "block" }}>Total shift sales</span>
                 <strong style={{ display: "block", fontSize: 20, marginTop: 4, color: "hsl(var(--foreground))", letterSpacing: "-.04em" }}>{formatPeso(totalSales)}</strong>
-                <span style={{ color: "#34C759", fontSize: 10, fontWeight: 600 }}>Across all payment modes</span>
+                <span style={{ color: "#34C759", fontSize: 12, fontWeight: 600 }}>Across all payment modes</span>
               </div>
               <div style={{ background: "hsl(var(--surface-soft))", border: "1px solid hsl(var(--border))", borderRadius: 14, padding: "14px 16px" }}>
-                <span className="muted" style={{ fontSize: 11, display: "block" }}>Transactions</span>
+                <span className="muted" style={{ fontSize: 12, display: "block" }}>Transactions</span>
                 <strong style={{ display: "block", fontSize: 20, marginTop: 4, color: "hsl(var(--foreground))", letterSpacing: "-.04em" }}>{totalReceiptsCount} Orders</strong>
-                <span className="muted" style={{ fontSize: 10 }}>Completed transactions</span>
+                <span className="muted" style={{ fontSize: 12 }}>Completed transactions</span>
               </div>
               <div style={{ background: "hsl(var(--surface-soft))", border: "1px solid hsl(var(--border))", borderRadius: 14, padding: "14px 16px" }}>
-                <span className="muted" style={{ fontSize: 11, display: "block" }}>Average basket</span>
+                <span className="muted" style={{ fontSize: 12, display: "block" }}>Average basket</span>
                 <strong style={{ display: "block", fontSize: 20, marginTop: 4, color: "hsl(var(--foreground))", letterSpacing: "-.04em" }}>{formatPeso(avgBasket)}</strong>
-                <span className="muted" style={{ fontSize: 10 }}>Per customer order</span>
+                <span className="muted" style={{ fontSize: 12 }}>Per customer order</span>
               </div>
             </div>
 
             {/* Sales Breakdown by Payment Method */}
             <div style={{ marginBottom: 18 }}>
-              <h4 style={{ margin: "0 0 10px", fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "hsl(var(--muted))", fontWeight: 700 }}>
+              <h4 style={{ margin: "0 0 10px", fontSize: 12, textTransform: "uppercase", letterSpacing: ".08em", color: "hsl(var(--muted))", fontWeight: 700 }}>
                 Payment Method Breakdown
               </h4>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
                 <div style={{ border: "1px solid hsl(var(--border))", borderRadius: 12, padding: "12px 14px", background: "hsl(var(--surface))" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                     <span style={{ fontSize: 12, fontWeight: 600 }}>Cash</span>
-                    <span className="pill success" style={{ fontSize: 9 }}>{cashReceipts.length} sale(s)</span>
+                    <span className="pill success" style={{ fontSize: 12 }}>{cashReceipts.length} sale(s)</span>
                   </div>
                   <strong style={{ fontSize: 16 }}>{formatPeso(cashSalesTotal)}</strong>
-                  <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>{cashPct}% of total</div>
+                  <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>{cashPct}% of total</div>
                 </div>
                 <div style={{ border: "1px solid hsl(var(--border))", borderRadius: 12, padding: "12px 14px", background: "hsl(var(--surface))" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                     <span style={{ fontSize: 12, fontWeight: 600 }}>GCash</span>
-                    <span className="pill neutral" style={{ fontSize: 9 }}>{gcashReceipts.length} sale(s)</span>
+                    <span className="pill neutral" style={{ fontSize: 12 }}>{gcashReceipts.length} sale(s)</span>
                   </div>
                   <strong style={{ fontSize: 16 }}>{formatPeso(gcashSalesTotal)}</strong>
-                  <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>{gcashPct}% of total</div>
+                  <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>{gcashPct}% of total</div>
                 </div>
                 <div style={{ border: "1px solid hsl(var(--border))", borderRadius: 12, padding: "12px 14px", background: "hsl(var(--surface))" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                     <span style={{ fontSize: 12, fontWeight: 600 }}>Card</span>
-                    <span className="pill neutral" style={{ fontSize: 9 }}>{cardReceipts.length} sale(s)</span>
+                    <span className="pill neutral" style={{ fontSize: 12 }}>{cardReceipts.length} sale(s)</span>
                   </div>
                   <strong style={{ fontSize: 16 }}>{formatPeso(cardSalesTotal)}</strong>
-                  <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>{cardPct}% of total</div>
+                  <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>{cardPct}% of total</div>
                 </div>
               </div>
             </div>
 
             {/* Completed Transactions Table */}
             <div>
-              <h4 style={{ margin: "0 0 10px", fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "hsl(var(--muted))", fontWeight: 700 }}>
+              <h4 style={{ margin: "0 0 10px", fontSize: 12, textTransform: "uppercase", letterSpacing: ".08em", color: "hsl(var(--muted))", fontWeight: 700 }}>
                 Completed Shift Transactions
               </h4>
               <div className="table-scroll" style={{ border: "1px solid hsl(var(--border))", borderRadius: 12, overflowX: "auto" }}>
@@ -381,7 +381,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
 
             {/* Expected Cash Card */}
             <div style={{ background: "hsl(var(--surface-soft))", border: "1px solid hsl(var(--border))", padding: "16px 18px", borderRadius: 14, marginBottom: 18 }}>
-              <h4 style={{ margin: "0 0 12px", fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "hsl(var(--muted))", fontWeight: 700 }}>
+              <h4 style={{ margin: "0 0 12px", fontSize: 12, textTransform: "uppercase", letterSpacing: ".08em", color: "hsl(var(--muted))", fontWeight: 700 }}>
                 Drawer Reconciliation Breakdown
               </h4>
               <div style={{ display: "grid", gap: 8, fontSize: 12 }}>
@@ -407,7 +407,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
 
             {/* Physical Cash Denominations Table */}
             <div>
-              <h4 style={{ margin: "0 0 10px", fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "hsl(var(--muted))", fontWeight: 700 }}>
+              <h4 style={{ margin: "0 0 10px", fontSize: 12, textTransform: "uppercase", letterSpacing: ".08em", color: "hsl(var(--muted))", fontWeight: 700 }}>
                 Drawer Count Reference (Denominations)
               </h4>
               <div className="table-scroll" style={{ border: "1px solid hsl(var(--border))", borderRadius: 12, overflowX: "auto" }}>
@@ -472,10 +472,10 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                   placeholder="Search receipt #, method..."
                   value={searchReceipt}
                   onChange={(e) => setSearchReceipt(e.target.value)}
-                  style={{ border: "none", background: "transparent", boxShadow: "none", outline: "none", padding: 0, height: "100%", fontSize: 11 }}
+                  style={{ border: "none", background: "transparent", boxShadow: "none", outline: "none", padding: 0, height: "100%", fontSize: 12 }}
                 />
               </div>
-              <span className="muted" style={{ fontSize: 11 }}>
+              <span className="muted" style={{ fontSize: 12 }}>
                 Showing {filteredShiftReceipts.length} recorded receipt(s)
               </span>
             </div>
@@ -497,12 +497,12 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                     <tr key={r.id}>
                       <td>
                         <strong>{r.id}</strong>
-                        <div className="muted" style={{ fontSize: 10 }}>{r.items} items</div>
+                        <div className="muted" style={{ fontSize: 12 }}>{r.items} items</div>
                       </td>
                       <td className="muted">{r.time}</td>
-                      <td style={{ fontSize: 11 }}>{r.itemsSummary}</td>
+                      <td style={{ fontSize: 12 }}>{r.itemsSummary}</td>
                       <td>
-                        <span className={`pill ${r.method === "Cash" ? "success" : "neutral"}`} style={{ fontSize: 10, padding: "2px 8px" }}>
+                        <span className={`pill ${r.method === "Cash" ? "success" : "neutral"}`} style={{ fontSize: 12, padding: "2px 8px" }}>
                           {r.method}
                         </span>
                       </td>
@@ -563,32 +563,32 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
 
             {/* Current Till Status Card */}
             <div style={{ background: "hsl(var(--surface-soft))", border: "1px solid hsl(var(--border))", padding: "16px 18px", borderRadius: 14, marginBottom: 18 }}>
-              <h4 style={{ margin: "0 0 12px", fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "hsl(var(--muted))", fontWeight: 700 }}>
+              <h4 style={{ margin: "0 0 12px", fontSize: 12, textTransform: "uppercase", letterSpacing: ".08em", color: "hsl(var(--muted))", fontWeight: 700 }}>
                 Till Status Summary
               </h4>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, fontSize: 12 }}>
                 <div>
-                  <span className="muted" style={{ display: "block", fontSize: 11, marginBottom: 2 }}>Till Status:</span>
-                  <span className="pill success" style={{ fontSize: 11 }}>Balanced</span>
+                  <span className="muted" style={{ display: "block", fontSize: 12, marginBottom: 2 }}>Till Status:</span>
+                  <span className="pill success" style={{ fontSize: 12 }}>Balanced</span>
                 </div>
                 <div>
-                  <span className="muted" style={{ display: "block", fontSize: 11, marginBottom: 2 }}>Discrepancy (Over / Short):</span>
+                  <span className="muted" style={{ display: "block", fontSize: 12, marginBottom: 2 }}>Discrepancy (Over / Short):</span>
                   <strong style={{ color: "#34C759" }}>₱0.00 (Balanced)</strong>
                 </div>
                 <div>
-                  <span className="muted" style={{ display: "block", fontSize: 11, marginBottom: 2 }}>Expected Cash:</span>
+                  <span className="muted" style={{ display: "block", fontSize: 12, marginBottom: 2 }}>Expected Cash:</span>
                   <strong style={{ color: "hsl(var(--foreground))" }}>{formatPeso(currentExpectedCash)}</strong>
                 </div>
                 <div>
-                  <span className="muted" style={{ display: "block", fontSize: 11, marginBottom: 2 }}>Physical Count:</span>
+                  <span className="muted" style={{ display: "block", fontSize: 12, marginBottom: 2 }}>Physical Count:</span>
                   <strong style={{ color: "hsl(var(--foreground))" }}>{formatPeso(currentExpectedCash)}</strong>
                 </div>
                 <div>
-                  <span className="muted" style={{ display: "block", fontSize: 11, marginBottom: 2 }}>Last Verification Time:</span>
+                  <span className="muted" style={{ display: "block", fontSize: 12, marginBottom: 2 }}>Last Verification Time:</span>
                   <strong style={{ color: "hsl(var(--foreground))" }}>Active Shift</strong>
                 </div>
                 <div>
-                  <span className="muted" style={{ display: "block", fontSize: 11, marginBottom: 2 }}>Verified by Supervisor:</span>
+                  <span className="muted" style={{ display: "block", fontSize: 12, marginBottom: 2 }}>Verified by Supervisor:</span>
                   <strong style={{ color: "hsl(var(--foreground))" }}>Admin Verified</strong>
                 </div>
               </div>
@@ -596,7 +596,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
 
             {/* Verification History Log */}
             <div>
-              <h4 style={{ margin: "0 0 10px", fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "hsl(var(--muted))", fontWeight: 700 }}>
+              <h4 style={{ margin: "0 0 10px", fontSize: 12, textTransform: "uppercase", letterSpacing: ".08em", color: "hsl(var(--muted))", fontWeight: 700 }}>
                 Till Reconciliation History (Today)
               </h4>
               <div className="table-scroll" style={{ border: "1px solid hsl(var(--border))", borderRadius: 12, overflowX: "auto" }}>
@@ -681,7 +681,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                   <span className="muted">Items Summary</span>
                   <span
                     style={{
-                      fontSize: 11,
+                      fontSize: 12,
                       textAlign: "right",
                       maxWidth: 240,
                     }}>

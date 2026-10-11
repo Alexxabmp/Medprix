@@ -108,12 +108,25 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
     );
   });
 
+  const selectedProduct = products.find((product) => product.id === selectedProductId);
+  const selectedProductStock = selectedProduct ? getProductStock(selectedProduct) : 0;
+  const selectedCartQuantity = cart.find((item) => item.id === selectedProductId)?.qty || 0;
+  const selectedAvailableStock = Math.max(0, selectedProductStock - selectedCartQuantity);
+  const getCartAvailableStock = (item: CartItem) => {
+    const product = products.find((entry) => entry.id === item.id);
+    return product ? getProductStock(product) : item.qty;
+  };
+
   useEffect(() => {
     if (filteredProducts.length === 0) return;
     if (!filteredProducts.some((product) => product.id === selectedProductId)) {
       setSelectedProductId(filteredProducts[0].id);
     }
   }, [filteredProducts, selectedProductId]);
+
+  useEffect(() => {
+    setQty((current) => Math.max(1, Math.min(current, Math.max(1, selectedAvailableStock))));
+  }, [selectedProductId, selectedAvailableStock]);
 
 
   const subtotal = cart.reduce((acc, item) => acc + item.price * item.qty, 0);
@@ -133,13 +146,14 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
       return;
     }
     const availableStock = getProductStock(prod);
-    if (availableStock <= 0) {
-      onToast(`${prod.name} is out of stock`);
+    const existing = cart.find((item) => item.id === prod.id);
+    const remainingStock = Math.max(0, availableStock - (existing?.qty || 0));
+    if (remainingStock <= 0) {
+      onToast(`${prod.name} has no more stock available to add`);
       return;
     }
-    const existing = cart.find((item) => item.id === prod.id);
-    if ((existing?.qty || 0) + qty > availableStock) {
-      onToast(`Only ${availableStock} unit(s) available for ${prod.name}`);
+    if (!Number.isInteger(qty) || qty < 1 || qty > remainingStock) {
+      onToast(`Enter a whole quantity from 1 to ${remainingStock} for ${prod.name}`);
       return;
     }
     const numericPrice = getProductPrice(prod);
@@ -169,23 +183,38 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
     setCart(cart.filter((item) => item.id !== id));
   };
 
-  const handleUpdateCartQty = (id: string, delta: number) => {
-    setCart(
-      cart
-        .map((item) => {
-          if (item.id === id) {
-            const product = products.find((p) => p.id === id);
-            const availableStock = product ? getProductStock(product) : item.qty;
-            const newQty = item.qty + delta;
-            if (newQty > availableStock) {
-              onToast(`Only ${availableStock} unit(s) available for ${item.name}`);
-              return item;
-            }
-            return newQty > 0 ? { ...item, qty: newQty } : null;
-          }
-          return item;
-        })
-        .filter(Boolean) as typeof cart,
+  const handleUpdateCartQty = (id: string, requestedValue: number | string) => {
+    const item = cart.find((entry) => entry.id === id);
+    if (!item) return;
+
+    const isTypedValue = typeof requestedValue === "string";
+    if (isTypedValue && !requestedValue.trim()) return;
+    const requestedQuantity = Number(requestedValue);
+
+    if (requestedQuantity <= 0) {
+      if (isTypedValue) {
+        onToast("Cart quantity must be at least 1");
+        return;
+      }
+      handleRemoveFromCart(id);
+      return;
+    }
+
+    const product = products.find((entry) => entry.id === id);
+    const availableStock = product ? getProductStock(product) : item.qty;
+    if (!Number.isFinite(requestedQuantity) || !Number.isInteger(requestedQuantity)) {
+      onToast("Cart quantity must be a whole number");
+      return;
+    }
+    if (requestedQuantity > availableStock) {
+      onToast(`Only ${availableStock} unit(s) available for ${item.name}`);
+      return;
+    }
+
+    setCart((current) =>
+      current.map((entry) =>
+        entry.id === id ? { ...entry, qty: requestedQuantity } : entry,
+      ),
     );
   };
 
@@ -394,7 +423,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
 
       {/* Full-Screen Counter Sale Checkout Layout */}
       <section className="surface-card" style={{ padding: "22px 24px", width: "100%", borderRadius: 20 }}>
-        <div className="card-header" style={{ marginBottom: 18, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div className="card-header pos-card-header" style={{ marginBottom: 18, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
             <h2
               className="card-title"
@@ -407,7 +436,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             {cart.length > 0 && (
-              <span className="pill neutral" style={{ fontSize: 11 }}>
+              <span className="pill neutral" style={{ fontSize: 12 }}>
                 {cart.reduce((a, b) => a + b.qty, 0)} items in cart
               </span>
             )}
@@ -425,6 +454,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
 
         {/* Product Selection Form Bar */}
         <div
+          className="pos-product-bar"
           style={{
             display: "grid",
             gridTemplateColumns: "minmax(220px, .8fr) minmax(260px, 1fr) 90px auto",
@@ -437,7 +467,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
             marginBottom: 20,
           }}>
           <div>
-            <label style={{ fontSize: 11, fontWeight: 600, color: "hsl(var(--muted))", display: "block", marginBottom: 5 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "hsl(var(--muted))", display: "block", marginBottom: 5 }}>
               Search Product
             </label>
             <div className="search-wrap" style={{ height: 39 }}>
@@ -452,13 +482,16 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
             </div>
           </div>
           <div>
-            <label style={{ fontSize: 11, fontWeight: 600, color: "hsl(var(--muted))", display: "block", marginBottom: 5 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "hsl(var(--muted))", display: "block", marginBottom: 5 }}>
               Select Product / Medicine *
             </label>
             <select
               className="select"
               value={selectedProductId}
-              onChange={(e) => setSelectedProductId(e.target.value)}
+              onChange={(e) => {
+                setSelectedProductId(e.target.value);
+                setQty(1);
+              }}
               disabled={isLoadingProducts || filteredProducts.length === 0}
               style={{ width: "100%", height: 39 }}>
               {filteredProducts.length === 0 ? (
@@ -478,23 +511,27 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
               )}
             </select>
             {productLoadError && (
-              <div className="muted" style={{ fontSize: 10, marginTop: 6 }}>
+              <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
                 {productLoadError}
               </div>
             )}
           </div>
-          <div>
-            <label style={{ fontSize: 11, fontWeight: 600, color: "hsl(var(--muted))", display: "block", marginBottom: 5, textAlign: "center" }}>
+          <div className="">
+            <label style={{ fontSize: 12, fontWeight: 600, color: "hsl(var(--muted))", display: "block", marginBottom: 5, textAlign: "start" }}>
               Quantity
             </label>
             <input
               type="number"
               min="1"
-              max="99"
+              max={Math.max(1, selectedAvailableStock)}
+              step="1"
               value={qty}
-              onChange={(e) =>
-                setQty(Math.max(1, parseInt(e.target.value) || 1))
-              }
+              disabled={!selectedProduct || selectedAvailableStock === 0}
+              onChange={(e) => {
+                const nextQuantity = Number(e.target.value);
+                if (!Number.isInteger(nextQuantity)) return;
+                setQty(Math.max(1, Math.min(nextQuantity, selectedAvailableStock)));
+              }}
               style={{
                 width: "100%",
                 height: 39,
@@ -509,10 +546,15 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
             />
           </div>
           <div>
+            <div className="quantity-limit" aria-live="polite">
+              {selectedProduct
+                ? `${selectedAvailableStock} available to add`
+                : "Select a product"}
+            </div>
             <button
               type="button"
               className="button dark"
-              disabled={isLoadingProducts || filteredProducts.length === 0}
+              disabled={isLoadingProducts || filteredProducts.length === 0 || selectedAvailableStock === 0}
               style={{ height: 39, padding: "0 18px", display: "inline-flex", alignItems: "center", gap: 6 }}
               onClick={handleAddToCart}>
               <Plus size={15} /> Add to Cart
@@ -525,7 +567,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
           {/* Left: Cart Items Table */}
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-              <h4 style={{ margin: 0, fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "hsl(var(--muted))", fontWeight: 700 }}>
+              <h4 style={{ margin: 0, fontSize: 12, textTransform: "uppercase", letterSpacing: ".08em", color: "hsl(var(--muted))", fontWeight: 700 }}>
                 Transaction Items ({cart.length})
               </h4>
             </div>
@@ -574,7 +616,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                       <tr key={item.id}>
                         <td>
                           <strong>{item.name}</strong>
-                          <div className="muted" style={{ fontSize: 10 }}>
+                          <div className="muted" style={{ fontSize: 12 }}>
                             {item.sku}
                           </div>
                         </td>
@@ -600,12 +642,22 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                                 border: 0,
                                 fontWeight: 700,
                               }}
-                              onClick={() => handleUpdateCartQty(item.id, -1)}>
+                              aria-label={`Decrease ${item.name} quantity`}
+                              onClick={() => handleUpdateCartQty(item.id, item.qty - 1)}>
                               -
                             </button>
-                            <span style={{ minWidth: 18, fontWeight: 700, fontSize: 12 }}>
-                              {item.qty}
-                            </span>
+                            <input
+                              className="cart-quantity-input"
+                              type="number"
+                              min="1"
+                              max={Math.max(1, getCartAvailableStock(item))}
+                              step="1"
+                              value={item.qty}
+                              aria-label={`${item.name} quantity`}
+                              onChange={(event) =>
+                                handleUpdateCartQty(item.id, event.target.value)
+                              }
+                            />
                             <button
                               type="button"
                               className="icon-button"
@@ -617,9 +669,13 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                                 border: 0,
                                 fontWeight: 700,
                               }}
-                              onClick={() => handleUpdateCartQty(item.id, 1)}>
+                              aria-label={`Increase ${item.name} quantity`}
+                              onClick={() => handleUpdateCartQty(item.id, item.qty + 1)}>
                               +
                             </button>
+                          </div>
+                          <div className="quantity-limit">
+                            Max {getCartAvailableStock(item)}
                           </div>
                         </td>
                         <td style={{ textAlign: "right" }}>
@@ -664,7 +720,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
               gap: 16,
             }}>
             <div>
-              <h4 style={{ margin: "0 0 12px", fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "hsl(var(--muted))", fontWeight: 700 }}>
+              <h4 style={{ margin: "0 0 12px", fontSize: 12, textTransform: "uppercase", letterSpacing: ".08em", color: "hsl(var(--muted))", fontWeight: 700 }}>
                 Order Summary &amp; Payment
               </h4>
               <div
@@ -726,7 +782,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
             <div>
               <label
                 style={{
-                  fontSize: 11,
+                  fontSize: 12,
                   fontWeight: 600,
                   color: "hsl(var(--muted))",
                   display: "block",
@@ -740,7 +796,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                     key={type}
                     type="button"
                     className={`button ${discountType === type ? "dark" : "soft"}`}
-                    style={{ height: 35, fontSize: 11, padding: "0 4px" }}
+                    style={{ height: 35, fontSize: 12, padding: "0 4px" }}
                     onClick={() => setDiscountType(type)}>
                     {type === "None" ? "Standard (None)" : `${type} (-20%)`}
                   </button>
@@ -752,7 +808,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
             <div>
               <label
                 style={{
-                  fontSize: 11,
+                  fontSize: 12,
                   fontWeight: 600,
                   color: "hsl(var(--muted))",
                   display: "block",
@@ -789,7 +845,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                 <div>
                   <label
                     style={{
-                      fontSize: 11,
+                      fontSize: 12,
                       fontWeight: 600,
                       color: "hsl(var(--muted))",
                       display: "block",
@@ -818,7 +874,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                 <div>
                   <label
                     style={{
-                      fontSize: 11,
+                      fontSize: 12,
                       fontWeight: 600,
                       color: "hsl(var(--muted))",
                       display: "block",
@@ -945,7 +1001,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                   <td>
                     <span
                       className={`pill ${r.method === "Cash" ? "success" : "neutral"}`}
-                      style={{ fontSize: 10 }}>
+                      style={{ fontSize: 12 }}>
                       {r.method}
                     </span>
                   </td>
@@ -953,7 +1009,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                     <strong>{r.totalFormatted || formatPeso(r.total)}</strong>
                   </td>
                   <td>
-                    <span className="pill success" style={{ fontSize: 10 }}>
+                    <span className="pill success" style={{ fontSize: 12 }}>
                       {r.status || "Completed"}
                     </span>
                   </td>
@@ -961,7 +1017,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                     <button
                       type="button"
                       className="button soft"
-                      style={{ padding: "4px 10px", fontSize: 11 }}
+                      style={{ padding: "4px 10px", fontSize: 12 }}
                       onClick={() => setSelectedReceipt(r)}>
                       <Eye size={12} style={{ marginRight: 4 }} /> View
                     </button>
@@ -1028,7 +1084,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                 <span className="muted">Items Summary</span>
                 <span
                   style={{
-                    fontSize: 11,
+                    fontSize: 12,
                     textAlign: "right",
                     maxWidth: 220,
                   }}>

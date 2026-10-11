@@ -197,7 +197,7 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
               <button
                 className="button soft"
                 style={{
-                  fontSize: 11,
+                  fontSize: 12,
                   padding: "4px 10px",
                   height: "auto",
                   flexShrink: 0,
