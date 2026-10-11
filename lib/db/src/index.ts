@@ -20,7 +20,7 @@ export let initPromise: Promise<void> | null = null;
 
 function initDb() {
   if (isPgUrl) {
-    const client = postgres(dbUrl);
+    const client = postgres(dbUrl, { prepare: false });
     rawClient = client;
     return drizzlePg(client, { schema });
   }
