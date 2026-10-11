@@ -1,4 +1,4 @@
-﻿import { movementFast, movementSlow } from "@/lib/data";
+import { movementFast, movementSlow } from "@/lib/data";
 
 export function MovementLineGraph() {
   const paddingLeft = 35;
@@ -43,7 +43,7 @@ export function MovementLineGraph() {
         style={{
           display: "flex",
           gap: 15,
-          fontSize: 10,
+          fontSize: 12,
           color: "hsl(var(--muted))",
           marginBottom: 15,
           justifyContent: "center",
@@ -95,7 +95,7 @@ export function MovementLineGraph() {
                 x={paddingLeft - 8}
                 y={y + 3}
                 textAnchor="end"
-                fontSize="9px"
+                fontSize="12px"
                 fill="hsl(var(--foreground))">
                 {val}
               </text>
@@ -137,7 +137,7 @@ export function MovementLineGraph() {
               x={p.x}
               y={p.y - 10}
               textAnchor="middle"
-              fontSize="9px"
+              fontSize="12px"
               fontWeight="600"
               fill="hsl(var(--foreground))">
               {p.label}
@@ -160,7 +160,7 @@ export function MovementLineGraph() {
               x={p.x}
               y={p.y - 8}
               textAnchor="middle"
-              fontSize="9px"
+              fontSize="12px"
               fontWeight="500"
               fill="hsl(var(--muted))">
               {p.label}
@@ -175,7 +175,7 @@ export function MovementLineGraph() {
               x={getX(i)}
               y={paddingTop + height + 15}
               textAnchor="middle"
-              fontSize="9px"
+              fontSize="12px"
               fill="hsl(var(--foreground))"
               fontWeight="600">
               {`Rank ${i + 1}`}
@@ -184,7 +184,7 @@ export function MovementLineGraph() {
               x={getX(i)}
               y={paddingTop + height + 26}
               textAnchor="middle"
-              fontSize="8.5px"
+              fontSize="12px"
               fill="hsl(var(--muted))"
               style={{ maxWidth: 80 }}>
               {movementFast[i].name.split(" ")[0]} /{" "}

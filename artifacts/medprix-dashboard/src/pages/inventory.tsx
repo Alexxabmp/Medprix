@@ -744,7 +744,7 @@ export default function InventoryPage({
             <button
               type="button"
               className="button soft"
-              style={{ fontSize: 11, padding: "6px 12px", display: "inline-flex", alignItems: "center", gap: 6 }}
+              style={{ fontSize: 12, padding: "6px 12px", display: "inline-flex", alignItems: "center", gap: 6 }}
               onClick={fetchInventory}
               title="Sync inventory with backend database"
               data-testid="button-sync-inventory"
@@ -785,7 +785,7 @@ export default function InventoryPage({
               type="button"
               className="button soft"
               style={{
-                fontSize: 10,
+                fontSize: 12,
                 padding: "2px 8px",
                 height: 22,
                 cursor: "pointer",
@@ -815,7 +815,7 @@ export default function InventoryPage({
               type="button"
               className="button soft"
               style={{
-                fontSize: 10,
+                fontSize: 12,
                 padding: "2px 8px",
                 height: 22,
                 cursor: "pointer",
@@ -921,11 +921,11 @@ export default function InventoryPage({
                             {product.isDangerousDrug && (
                               <span
                                 className="pill danger"
-                                style={{ fontSize: 8, padding: "1px 5px", marginLeft: 6 }}>
+                                style={{ fontSize: 12, padding: "1px 5px", marginLeft: 6 }}>
                                 DD
                               </span>
                             )}
-                            <div className="muted" style={{ fontSize: 10 }}>
+                            <div className="muted" style={{ fontSize: 12 }}>
                               {product.genericName}
                             </div>
                           </div>
@@ -935,7 +935,7 @@ export default function InventoryPage({
                         <span
                           style={{
                             fontFamily: "monospace",
-                            fontSize: 11,
+                            fontSize: 12,
                             fontWeight: 600,
                           }}>
                           {product.sku}
@@ -960,7 +960,7 @@ export default function InventoryPage({
                         <span className="muted">units</span>
                       </td>
                       <td>
-                        <div style={{ fontSize: 11 }}>
+                        <div style={{ fontSize: 12 }}>
                           {product.batches.length === 1 ? (
                             <span>
                               {product.batches[0].batchNumber} (
@@ -978,7 +978,7 @@ export default function InventoryPage({
                         </div>
                       </td>
                       <td>
-                        <div style={{ fontSize: 11 }}>
+                        <div style={{ fontSize: 12 }}>
                           <span
                             style={{
                               color: info.isExpired
@@ -1007,7 +1007,7 @@ export default function InventoryPage({
                             <span
                               key={idx}
                               className={`pill ${badge.tone}`}
-                              style={{ fontSize: 10, padding: "2px 8px" }}>
+                              style={{ fontSize: 12, padding: "2px 8px" }}>
                               {badge.label}
                             </span>
                           ))}
@@ -1026,7 +1026,7 @@ export default function InventoryPage({
                           <button
                             type="button"
                             className="button soft"
-                            style={{ padding: "4px 8px", fontSize: 11 }}
+                            style={{ padding: "4px 8px", fontSize: 12 }}
                             onClick={() => setViewProduct(product)}
                             title="View product & batches"
                             data-testid={`button-view-${product.id}`}>
@@ -1042,7 +1042,7 @@ export default function InventoryPage({
                                   className="button soft"
                                   style={{
                                     padding: "4px 8px",
-                                    fontSize: 11,
+                                    fontSize: 12,
                                     display: "inline-flex",
                                     alignItems: "center",
                                     gap: 4,
@@ -1152,7 +1152,7 @@ export default function InventoryPage({
                   {viewProduct.isDangerousDrug && (
                     <span
                       className="pill danger"
-                      style={{ fontSize: 9, padding: "2px 8px", marginTop: 4, display: "inline-block" }}>
+                      style={{ fontSize: 12, padding: "2px 8px", marginTop: 4, display: "inline-block" }}>
                       DANGEROUS DRUG
                     </span>
                   )}
@@ -1180,7 +1180,7 @@ export default function InventoryPage({
                     padding: "10px 14px",
                     borderRadius: 11,
                   }}>
-                  <div className="muted" style={{ fontSize: 10, fontWeight: 600 }}>
+                  <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
                     Category
                   </div>
                   <strong style={{ fontSize: 13 }}>{viewProduct.category}</strong>
@@ -1196,13 +1196,13 @@ export default function InventoryPage({
                     gap: "6px"
                   }}>
                   <div>
-                    <div className="muted" style={{ fontSize: 10, fontWeight: 600 }}>
+                    <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
                       Unit Price
                     </div>
                     <strong style={{ fontSize: 13 }}>{viewProduct.price}</strong>
                   </div>
                   <div>
-                    <div className="muted" style={{ fontSize: 10, fontWeight: 600 }}>
+                    <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
                       Cost Price
                     </div>
                     <strong style={{ fontSize: 13 }}>{viewProduct.cost}</strong>
@@ -1215,7 +1215,7 @@ export default function InventoryPage({
                     padding: "10px 14px",
                     borderRadius: 11,
                   }}>
-                  <div className="muted" style={{ fontSize: 10, fontWeight: 600 }}>
+                  <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
                     Reorder Level
                   </div>
                   <strong style={{ fontSize: 13 }}>
@@ -1229,7 +1229,7 @@ export default function InventoryPage({
                     padding: "10px 14px",
                     borderRadius: 11,
                   }}>
-                  <div className="muted" style={{ fontSize: 10, fontWeight: 600 }}>
+                  <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
                     Total Stock
                   </div>
                   <strong style={{ fontSize: 13 }}>
@@ -1247,7 +1247,7 @@ export default function InventoryPage({
                     border: "1px solid hsl(var(--border))",
                     borderRadius: 11,
                   }}>
-                  <table className="data-table" style={{ fontSize: 11 }}>
+                  <table className="data-table" style={{ fontSize: 12 }}>
                     <thead>
                       <tr>
                         <th>Batch #</th>
@@ -1282,7 +1282,7 @@ export default function InventoryPage({
                                   <span
                                     key={idx}
                                     className={`pill ${badge.tone}`}
-                                    style={{ fontSize: 9, padding: "1px 6px" }}>
+                                    style={{ fontSize: 12, padding: "1px 6px" }}>
                                     {badge.label}
                                   </span>
                                 ))}
@@ -1430,7 +1430,7 @@ export default function InventoryPage({
                         <strong style={{ display: "block", fontSize: 12 }}>
                           Dangerous drug
                         </strong>
-                        <span className="muted" style={{ fontSize: 10 }}>
+                        <span className="muted" style={{ fontSize: 12 }}>
                           Requires controlled tracking
                         </span>
                       </div>
@@ -1670,7 +1670,7 @@ export default function InventoryPage({
                         <strong style={{ display: "block", fontSize: 12 }}>
                           Dangerous drug
                         </strong>
-                        <span className="muted" style={{ fontSize: 10 }}>
+                        <span className="muted" style={{ fontSize: 12 }}>
                           Requires controlled tracking
                         </span>
                       </div>
@@ -2138,7 +2138,7 @@ export default function InventoryPage({
                             <tr key={p.id}>
                               <td>
                                 <strong style={{ display: "block" }}>{p.name}</strong>
-                                <span className="muted" style={{ fontSize: 11 }}>
+                                <span className="muted" style={{ fontSize: 12 }}>
                                   {p.genericName ? `${p.genericName} • ` : ""}{p.sku}
                                 </span>
                               </td>
@@ -2154,7 +2154,7 @@ export default function InventoryPage({
                               <td>
                                 <span
                                   className={`pill ${stock === 0 ? "danger" : "warning"}`}
-                                  style={{ fontSize: 10 }}>
+                                  style={{ fontSize: 12 }}>
                                   {stock === 0 ? "Out of Stock" : "Low Stock"}
                                 </span>
                               </td>
@@ -2162,7 +2162,7 @@ export default function InventoryPage({
                                 <button
                                   type="button"
                                   className="button soft"
-                                  style={{ padding: "3px 8px", fontSize: 11 }}
+                                  style={{ padding: "3px 8px", fontSize: 12 }}
                                   onClick={() => {
                                     setAlertModal(null);
                                     handleOpenStockIn(p);
@@ -2275,7 +2275,7 @@ export default function InventoryPage({
                           <tr key={`${p.id}-${b.batchNumber}`}>
                             <td>
                               <strong style={{ display: "block" }}>{p.name}</strong>
-                              <span className="muted" style={{ fontSize: 11 }}>{p.sku}</span>
+                              <span className="muted" style={{ fontSize: 12 }}>{p.sku}</span>
                             </td>
                             <td>
                               <code>{b.batchNumber}</code>
@@ -2289,7 +2289,7 @@ export default function InventoryPage({
                             <td>
                               <span
                                 className={`pill ${isExpired ? "danger" : "warning"}`}
-                                style={{ fontSize: 10 }}>
+                                style={{ fontSize: 12 }}>
                                 {isExpired ? "EXPIRED" : "EXPIRING SOON"}
                               </span>
                             </td>
@@ -2297,7 +2297,7 @@ export default function InventoryPage({
                               <button
                                 type="button"
                                 className="button soft"
-                                style={{ padding: "3px 8px", fontSize: 11 }}
+                                style={{ padding: "3px 8px", fontSize: 12 }}
                                 onClick={() => {
                                   setAlertModal(null);
                                   handleOpenStockOut(p);

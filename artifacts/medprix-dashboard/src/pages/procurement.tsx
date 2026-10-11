@@ -754,7 +754,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                           <tr key={item.id}>
                             <td>
                               {delivery.poNumber}
-                              <div className="muted" style={{ fontSize: 10 }}>
+                              <div className="muted" style={{ fontSize: 12 }}>
                                 {new Date(delivery.deliveryDate).toLocaleDateString()}
                               </div>
                             </td>
