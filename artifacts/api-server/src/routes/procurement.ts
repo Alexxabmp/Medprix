@@ -579,16 +579,17 @@ router.get("/supplier-invoices", async (_req: Request, res: Response) => {
     db.select().from(purchaseOrdersTable),
   ]);
 
+  const supplierById = new Map(suppliers.map((supplier) => [supplier.id, supplier]));
+  const orderById = new Map(orders.map((order) => [order.id, order]));
   const result = invoices.map((invoice) => ({
     id: invoice.id,
     invoiceNumber: invoice.invoiceNumber,
     supplierId: invoice.supplierId,
     supplier:
-      suppliers.find((supplier) => supplier.id === invoice.supplierId)
-        ?.supplierName || "Unknown supplier",
+      supplierById.get(invoice.supplierId)?.supplierName || "Unknown supplier",
     poId: invoice.poId,
     poNumber:
-      orders.find((order) => order.id === invoice.poId)?.poNumber || null,
+      (invoice.poId ? orderById.get(invoice.poId)?.poNumber : null) || null,
     dueDate: invoice.dueDate,
     invoiceAmount: formatAmount(invoice.invoiceAmount),
     isPaid: invoice.isPaid,
@@ -812,9 +813,13 @@ router.post(
       return res.status(400).json({ error: "Enter a valid due date." });
 
     let resolvedPoId: string | null = null;
+    let resolvedPoNumber: string | null = null;
     if (poId) {
       const order = await findOrder(poId);
-      if (order) resolvedPoId = order.id;
+      if (order) {
+        resolvedPoId = order.id;
+        resolvedPoNumber = order.poNumber;
+      }
     }
 
     const amount = Number(invoiceAmount);
@@ -847,7 +852,21 @@ router.post(
       return created;
     });
 
-    return res.status(201).json({ success: true, invoice });
+    return res.status(201).json({
+      success: true,
+      invoice: {
+        id: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        supplierId: invoice.supplierId,
+        supplier: supplier.supplierName,
+        poId: invoice.poId,
+        poNumber: resolvedPoNumber,
+        dueDate: invoice.dueDate,
+        invoiceAmount: formatAmount(invoice.invoiceAmount),
+        isPaid: invoice.isPaid,
+        status: invoice.isPaid ? "Paid" : "Unpaid",
+      },
+    });
   },
 );
 
