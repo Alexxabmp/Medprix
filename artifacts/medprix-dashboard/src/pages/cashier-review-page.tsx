@@ -113,7 +113,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
       />
 
       {/* 4 Feature Boxes Grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 16 }}>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {/* 1. Today's Shift Sales */}
         <div
           className="surface-card"

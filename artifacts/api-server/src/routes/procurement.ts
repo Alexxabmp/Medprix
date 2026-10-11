@@ -131,6 +131,7 @@ async function findOrder(idOrPoNumber: string) {
 }
 
 router.use(requireAuth);
+router.use(requireRoles("Admin", "FrontDesk"));
 
 router.post(
   "/suppliers",
@@ -601,7 +602,7 @@ router.get("/supplier-invoices", async (_req: Request, res: Response) => {
 
 router.post(
   "/supplier-deliveries",
-  requireRoles("Admin", "Cashier"),
+  requireRoles("Admin", "FrontDesk"),
   async (req: Request, res: Response) => {
     const { poId, deliveryDate, deliveryStatus, items } = req.body as {
       poId?: string;
