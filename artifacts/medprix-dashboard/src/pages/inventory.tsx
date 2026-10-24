@@ -796,17 +796,6 @@ export default function InventoryPage({
         description="Real-time stock levels, multi-batch tracking, expiry alerts, and stock movements."
         action={
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <button
-              type="button"
-              className="button soft"
-              style={{ fontSize: 12, padding: "6px 12px", display: "inline-flex", alignItems: "center", gap: 6 }}
-              onClick={fetchInventory}
-              title="Sync inventory with backend database"
-              data-testid="button-sync-inventory"
-            >
-              <RefreshCw size={12} className={isLoading ? "animate-spin" : ""} />
-              <span>{isBackendConnected ? "Backend Online" : "Sync Inventory"}</span>
-            </button>
             {canAddProduct && (
               <button
                 className="button dark"
