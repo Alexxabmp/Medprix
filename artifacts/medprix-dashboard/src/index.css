@@ -1237,10 +1237,7 @@ a {
 
 .modal .field input,
 .modal .field select,
-.modal
-  input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not(
-    [type="button"]
-  ),
+.modal input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]),
 .modal select {
   background: hsl(var(--surface-soft));
   border: 1px solid hsl(var(--border));
@@ -1638,6 +1635,7 @@ a {
 }
 
 @media (max-width: 460px) {
+
   .kpi-grid,
   .reports-grid,
   .summary-strip {
@@ -1992,9 +1990,9 @@ a {
 }
 
 .dark .modal-tab.active {
-  background: #0a84ff;
-  border-color: #0a84ff;
-  color: #fff;
+  background: #f5f4f8;
+  border-color: #f5f4f8;
+  color: #000;
 }
 
 @media (max-width: 900px) {
@@ -2123,7 +2121,7 @@ a {
   margin: 4px 0 18px;
 }
 
-.supplier-history-metrics > div {
+.supplier-history-metrics>div {
   position: relative;
   display: grid;
   gap: 5px;
@@ -2162,7 +2160,7 @@ a {
   gap: 10px;
 }
 
-.supplier-profile-grid > div {
+.supplier-profile-grid>div {
   display: grid;
   grid-template-columns: 20px 1fr;
   gap: 4px 8px;
@@ -2211,7 +2209,7 @@ a {
   padding: 3px 12px;
 }
 
-.supplier-payment-list > div {
+.supplier-payment-list>div {
   display: flex;
   justify-content: space-between;
   gap: 12px;
@@ -2220,7 +2218,7 @@ a {
   font-size: var(--text-xs);
 }
 
-.supplier-payment-list > div:last-child {
+.supplier-payment-list>div:last-child {
   border-bottom: 0;
 }
 
@@ -2250,6 +2248,7 @@ a {
 }
 
 @media (max-width: 720px) {
+
   .supplier-history-metrics,
   .supplier-profile-grid,
   .supplier-financial-grid {
