@@ -121,33 +121,11 @@ export async function fetchInventoryData(force = false): Promise<ProductItem[]> 
     if (res.ok) {
       const data = await res.json();
       if (data && Array.isArray(data.products) && data.products.length > 0) {
-        const localInv = getLocalInventory() || [];
-        if (localInv.length > 0) {
-          // Merge server data with local inventory so stock deductions are never lost
-          globalInventory = data.products.map((serverProd: ProductItem) => {
-            const localProd = localInv.find(
-              (lp) => lp.id === serverProd.id || lp.sku === serverProd.sku
-            );
-            if (!localProd) return serverProd;
-
-            // Preserve lower stock if items were sold locally
-            const minStock = Math.min(Number(serverProd.stock), Number(localProd.stock));
-            return {
-              ...serverProd,
-              stock: minStock,
-              batches: localProd.batches && localProd.batches.length > 0 ? localProd.batches : serverProd.batches,
-              status: minStock === 0 ? "Out of stock" : minStock <= serverProd.reorder ? "Low stock" : "Available",
-            };
-          });
-        } else {
-          globalInventory = data.products;
-        }
-
-        const resolvedInventory = globalInventory || initialFallbackProducts;
-        saveLocalInventory(resolvedInventory);
+        globalInventory = data.products;
+        saveLocalInventory(data.products);
         isBackendConnected = true;
         notifyInventory();
-        return resolvedInventory;
+        return data.products;
       }
     }
   } catch (err) {

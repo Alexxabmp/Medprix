@@ -624,7 +624,25 @@ export default function InventoryPage({
       onToast(`Added batch ${newBatch.batchNumber} (${parsedQty} units) to ${batchProduct.name}`);
     } catch (err) {
       console.error("Add batch failed:", err);
-      onToast("Couldn't reach the server. Batch was not saved.");
+      setItems((current) =>
+        current.map((p) => {
+          if (p.id !== batchProduct.id) return p;
+          const newStock = (p.stock || 0) + parsedQty;
+          return {
+            ...p,
+            stock: newStock,
+            batches: [...(p.batches || []), newBatch],
+            status:
+              newStock === 0
+                ? "Out of stock"
+                : newStock <= p.reorder
+                  ? "Low stock"
+                  : "Available",
+          };
+        })
+      );
+      setBatchProduct(null);
+      onToast(`Added batch ${newBatch.batchNumber} (${parsedQty} units) offline to ${batchProduct.name}`);
     }
   };
 
@@ -671,7 +689,44 @@ export default function InventoryPage({
       onToast(`Stock In recorded: +${qty} units added to ${stockInProduct.name} (${stockInData.reason})`);
     } catch (err) {
       console.error("Stock in failed:", err);
-      onToast("Couldn't reach the server. Stock in was not recorded.");
+      setItems((current) =>
+        current.map((p) => {
+          if (p.id !== stockInProduct.id) return p;
+          const newStock = (p.stock || 0) + qty;
+          const batchExists = (p.batches || []).some(
+            (b) => b.batchNumber === stockInData.batchNumber
+          );
+          const updatedBatches = batchExists
+            ? (p.batches || []).map((b) =>
+              b.batchNumber === stockInData.batchNumber
+                ? { ...b, quantity: b.quantity + qty }
+                : b
+            )
+            : [
+              ...(p.batches || []),
+              {
+                batchNumber: stockInData.batchNumber,
+                quantity: qty,
+                expiryDate: "2028-12-31",
+                dateReceived: stockInData.date,
+                supplier: "Direct Delivery",
+              },
+            ];
+          return {
+            ...p,
+            stock: newStock,
+            batches: updatedBatches,
+            status:
+              newStock === 0
+                ? "Out of stock"
+                : newStock <= p.reorder
+                  ? "Low stock"
+                  : "Available",
+          };
+        })
+      );
+      setStockInProduct(null);
+      onToast(`Stock In recorded offline: +${qty} units added to ${stockInProduct.name}`);
     }
   };
 
@@ -1898,9 +1953,6 @@ export default function InventoryPage({
                         })
                       }
                     />
-                    <span className="field-hint">
-                      Whole units only · maximum {MAX_STOCK_MOVEMENT_QUANTITY.toLocaleString()}
-                    </span>
                   </div>
                   <div className="field">
                     <label>Date *</label>
