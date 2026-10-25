@@ -9,6 +9,8 @@ import {
 } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import { DateControl } from "@/components/custom-ui/date-control";
+import { formatCalendarDate, recordsOnDate } from "@/lib/business-date";
+import { useBusinessDate } from "@/lib/use-business-date";
 import { Kpi } from "@/components/custom-ui/kpi-card";
 import { MovementLineGraph } from "@/components/custom-ui/movement-line-graph";
 import { ReportModal } from "@/components/custom-ui/report-modal";
@@ -26,9 +28,11 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
   const [report, setReport] = useState<ReportType | null>(null);
   const [cashDetailRow, setCashDetailRow] = useState<number | null>(null);
   const { transactions } = usePharmacyTransactions();
+  const { date: salesDate, selectDate } = useBusinessDate();
+  const dailyTransactions = recordsOnDate(transactions, salesDate).filter((transaction) => transaction.status === "Completed");
   const { items: inventoryProducts } = usePharmacyInventory();
 
-  const liveDailySales = transactions.reduce((sum, t) => {
+  const liveDailySales = dailyTransactions.reduce((sum, t) => {
     const val =
       parseFloat(
         String(t.total || "0")
@@ -37,7 +41,7 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
       ) || 0;
     return sum + val;
   }, 0);
-  const liveTxCount = transactions.length;
+  const liveTxCount = dailyTransactions.length;
 
   const liveProductCount = inventoryProducts.length;
   const liveLowStockCount = inventoryProducts.filter((p) => {
@@ -80,7 +84,7 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
         title="Hello, Admin!"
         description="Here's the shape of your pharmacy today."
         action={
-          <DateControl label="Select date" testId="control-date" />
+          <DateControl label="Select date" testId="control-date" date={salesDate} onDateChange={selectDate} />
         }
       />
 
@@ -89,7 +93,7 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
         <Kpi
           label="Daily sales"
           value={formatPeso(liveDailySales)}
-          change={`${liveTxCount} transactions logged`}
+          change={`${liveTxCount} completed · ${formatCalendarDate(salesDate)}`}
           icon={BarChart3}
           onClick={() => setReport("sales")}
           testId="card-report-sales"

@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import { DateControl } from "@/components/custom-ui/date-control";
+import { formatCalendarDate, recordsOnDate } from "@/lib/business-date";
+import { useBusinessDate } from "@/lib/use-business-date";
 import { printReceipt } from "@/lib/receipt-print";
 import type { ProductItem, ToastFn, ShiftReceipt } from "@/lib/types";
 import {
@@ -74,6 +76,7 @@ function getBatchAllocations(product: ProductItem, quantity: number) {
 }
 
 export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
+  const { date: shiftDate, selectDate } = useBusinessDate();
   const { items: products, setItems: setProducts, refresh: fetchProducts, loading: isLoadingProducts } = usePharmacyInventory();
   const { receipts, setReceipts, refresh: fetchTransactions } = usePharmacyTransactions();
   const [selectedProductId, setSelectedProductId] = useState("");
@@ -389,7 +392,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
     );
   };
 
-  const filteredReceipts = receipts.filter(
+  const filteredReceipts = recordsOnDate(receipts, shiftDate).filter(
     (r) =>
       r.id.toLowerCase().includes(searchReceipt.toLowerCase()) ||
       r.method.toLowerCase().includes(searchReceipt.toLowerCase()) ||
@@ -409,7 +412,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
               <ShieldCheck size={13} style={{ marginRight: 4 }} /> Register
               Active
             </span>
-            <DateControl label="Shift Date" />
+            <DateControl label="Shift Date" date={shiftDate} onDateChange={selectDate} />
           </div>
         }
       />
@@ -940,7 +943,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
               <Receipt size={16} /> Recent Shift Receipts ({filteredReceipts.length})
             </h3>
             <p className="card-subtitle" style={{ margin: "2px 0 0" }}>
-              Completed transactions from this active register shift.
+              Receipts recorded on {formatCalendarDate(shiftDate)}.
             </p>
           </div>
           <div className="search-wrap" style={{ width: 260 }}>
@@ -1023,7 +1026,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                     colSpan={7}
                     style={{ textAlign: "center", padding: 28 }}
                     className="muted">
-                    No receipts recorded for this shift yet.
+                    No receipts match {formatCalendarDate(shiftDate)} and the current search.
                   </td>
                 </tr>
               )}
