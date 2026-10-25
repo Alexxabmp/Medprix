@@ -21,6 +21,15 @@ export function mapTransactionsToReceipts(data: any[]): ShiftReceipt[] {
         ? t.items.map((it: any) => `${it.product} (${it.quantity})`).join(", ")
         : `${itemCount} item(s)`;
     return {
+      printSource: {
+        transactionNumber: t.transactionNumber,
+        dateTime: t.dateTime,
+        user: t.user,
+        payment: t.payment,
+        status: t.status,
+        total: t.total,
+        itemsSummary: t.itemsSummary,
+      },
       id: t.transactionNumber || `TRX-${t.id}`,
       rawId: t.id,
       time: t.dateTime

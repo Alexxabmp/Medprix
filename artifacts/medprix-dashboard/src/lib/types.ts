@@ -126,6 +126,15 @@ export interface UserActivity {
 }
 
 export interface ShiftReceipt {
+  printSource?: {
+    transactionNumber?: string;
+    dateTime?: string;
+    user?: string;
+    payment?: string;
+    status?: string;
+    total?: string;
+    itemsSummary?: string;
+  };
   id: string;
   rawId?: number;
   time: string;

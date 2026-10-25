@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import { DateControl } from "@/components/custom-ui/date-control";
+import { printReceipt } from "@/lib/receipt-print";
 import type { ProductItem, ToastFn, ShiftReceipt } from "@/lib/types";
 import {
   usePharmacyInventory,
