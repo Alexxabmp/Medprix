@@ -145,7 +145,16 @@ function AppContent() {
   }, [location, session, role, setLocation]);
 
   const notify: ToastFn = (message) => {
-    setToast(message);
+    let safeMessage = message;
+    if (
+      typeof safeMessage === "string" &&
+      /failed query|insert\s+into|select\s+.*from|update\s+.*set|delete\s+from|syntax error/i.test(
+        safeMessage
+      )
+    ) {
+      safeMessage = "An error occurred while saving. Please check your data and try again.";
+    }
+    setToast(safeMessage);
     window.setTimeout(() => setToast(""), 2800);
   };
 

@@ -1,6 +1,5 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
-  CalendarDays,
   Check,
   ClipboardList,
   Download,
@@ -14,12 +13,17 @@ import {
   X,
 } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
+import { DateControl } from "@/components/custom-ui/date-control";
+import { formatCalendarDate, recordsOnDate } from "@/lib/business-date";
+import { useBusinessDate } from "@/lib/use-business-date";
+import { createCheckoutSubmitter } from "@/lib/checkout";
+import { printReceipt } from "@/lib/receipt-print";
 import type { ProductItem, ToastFn, ShiftReceipt } from "@/lib/types";
 import {
   usePharmacyInventory,
   usePharmacyTransactions,
-  deductProductStock,
   recordTransaction,
+  mapTransactionsToReceipts,
 } from "@/lib/pharmacy-store";
 
 export type { ShiftReceipt };
@@ -73,6 +77,7 @@ function getBatchAllocations(product: ProductItem, quantity: number) {
 }
 
 export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
+  const { date: shiftDate, selectDate } = useBusinessDate();
   const { items: products, setItems: setProducts, refresh: fetchProducts, loading: isLoadingProducts } = usePharmacyInventory();
   const { receipts, setReceipts, refresh: fetchTransactions } = usePharmacyTransactions();
   const [selectedProductId, setSelectedProductId] = useState("");
@@ -90,6 +95,10 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
   const [searchReceipt, setSearchReceipt] = useState("");
   const [showShiftModal, setShowShiftModal] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<ShiftReceipt | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitting = useRef(false);
+  const submitCheckout = useRef<ReturnType<typeof createCheckoutSubmitter> | null>(null);
+  if (!submitCheckout.current) submitCheckout.current = createCheckoutSubmitter();
 
   useEffect(() => {
     if (products.length > 0 && !selectedProductId) {
@@ -220,6 +229,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
 
   const handleCheckout = async (e: FormEvent) => {
     e.preventDefault();
+    if (submitting.current) return;
     if (cart.length === 0) {
       onToast("Cannot checkout an empty cart");
       return;
@@ -242,13 +252,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
       return;
     }
 
-    const nextNumber = 9400 + receipts.length + 1;
-    const newId = `CS-${nextNumber}`;
     const now = new Date();
-    const timeStr = now.toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
     const dateTime = now.toLocaleString([], {
       month: "short",
       day: "numeric",
@@ -261,7 +265,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
       localStorage.getItem("medprix-username") ||
       "Cashier Staff";
 
-    // Extract flat allocations for immediate store deduction
+    // Stock-out is submitted only after the payment is confirmed.
     const flatAllocations = allocations.flatMap((entry) =>
       (entry.batches || []).map((b) => ({
         productId: entry.product!.id,
@@ -270,11 +274,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
       }))
     );
 
-    // Apply immediate stock deduction across the application
-    deductProductStock(flatAllocations);
-
     const transactionPayload = {
-      transactionNumber: newId,
       dateTime,
       user: cashierName,
       businessType: "Retail" as const,
@@ -296,99 +296,54 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
       })),
     };
 
-    // Apply immediate transaction & receipt recording across the application
-    recordTransaction(transactionPayload);
-
-    const newReceipt: ShiftReceipt = {
-      id: newId,
-      time: timeStr,
-      dateTime,
-      items: cart.reduce((a, b) => a + b.qty, 0),
-      itemsList: transactionPayload.items,
-      itemsSummary: cart.map((item) => `${item.name} (${item.qty})`).join(", "),
-      total: total,
-      totalFormatted: formatPeso(total),
-      subtotal: formatPeso(subtotal),
-      vat: formatPeso(vat),
-      discount: formatPeso(discountAmount),
-      amountReceived: transactionPayload.amountReceived,
-      change: formatPeso(changeDue),
-      method: paymentMethod,
-      cashier: cashierName,
-      status: "Completed",
-    };
-
-    setSelectedReceipt(newReceipt);
-    setCart([]);
-    setCashTendered("");
-
-    // Persist to backend serverless API asynchronously
+    submitting.current = true;
+    setIsSubmitting(true);
     try {
-      for (const entry of allocations) {
-        if (!entry.product || !entry.batches) continue;
-
-        for (const batch of entry.batches) {
-          fetch(
-            `/api/inventory/products/${entry.product.id}/stock-out`,
-            {
-              method: "POST",
-              credentials: "include",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                batchNumber: batch.batchNumber,
-                quantity: batch.quantity,
-                reason: `Retail sale ${newId}`,
-              }),
-            },
-          ).catch(() => {});
-        }
+      let saved;
+      try {
+        saved = await submitCheckout.current!(transactionPayload);
+      } catch {
+        onToast("Payment could not be confirmed. Your cart is retained. Retry unchanged without reloading this page.");
+        return;
       }
+      recordTransaction(saved);
+      setSelectedReceipt(mapTransactionsToReceipts([saved])[0]);
+      setCart([]);
+      setCashTendered("");
 
-      fetch("/api/admin/transactions", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(transactionPayload),
-      }).catch(() => {});
-
-      fetch("/api/admin/system-logs", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user: cashierName,
-          role: "Cashier",
-          action: "Sales Transaction",
-          module: "Sales POS",
-          description: `Completed retail receipt ${newId} (${formatPeso(total)})`,
-          status: "Success",
-          deviceIp: "POS Terminal 1",
-        }),
-      }).catch(() => {});
-
-      fetch("/api/admin/user-activities", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user: cashierName,
-          role: "Cashier",
-          activity: "Transaction completed",
-          module: "Sales & Wholesale Activity",
-          description: `Processed retail receipt ${newId} (${formatPeso(total)})`,
-          flag: "Normal",
-        }),
-      }).catch(() => {});
-    } catch (err) {
-      console.warn("Failed to persist transaction to backend:", err);
+      // Payment is already saved. Never repeat the sale to repair inventory.
+      const stockResults = await Promise.allSettled(flatAllocations.map(async (allocation) => {
+        const response = await fetch(`/api/inventory/products/${allocation.productId}/stock-out`, {
+          method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ batchNumber: allocation.batchNumber, quantity: allocation.quantity,
+            reason: `Retail sale ${saved.transactionNumber}` }),
+        });
+        if (!response.ok) throw new Error("Stock update failed");
+      }));
+      const stockFailed = stockResults.some((result) => result.status === "rejected");
+      await fetchProducts();
+      if (stockFailed) {
+        onToast(`Payment ${saved.transactionNumber} is saved, but stock needs administrator reconciliation. Do not repeat the sale.`);
+      } else {
+        onToast(`Sale saved. Receipt ${saved.transactionNumber} is ready to print. Change: ${saved.change}`);
+      }
+      void fetchTransactions();
+      for (const [url, details] of [
+        ["/api/admin/system-logs", { role: "Cashier", action: "Sales Transaction", module: "Sales POS",
+          description: `Completed retail receipt ${saved.transactionNumber} (${saved.total})`, status: "Success", deviceIp: "POS Terminal 1" }],
+        ["/api/admin/user-activities", { role: "Cashier", activity: "Transaction completed", module: "Sales & Wholesale Activity",
+          description: `Processed retail receipt ${saved.transactionNumber} (${saved.total})`, flag: "Normal" }],
+      ] as const) {
+        void fetch(url, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user: cashierName, ...details }) }).catch(() => {});
+      }
+    } finally {
+      submitting.current = false;
+      setIsSubmitting(false);
     }
-
-    onToast(
-      `Sale completed! Receipt ${newId} printed.${isDiscountEligible ? ` ${discountType} discount applied.` : ""} Change: ₱${changeDue.toFixed(2)}`,
-    );
   };
 
-  const filteredReceipts = receipts.filter(
+  const filteredReceipts = recordsOnDate(receipts, shiftDate).filter(
     (r) =>
       r.id.toLowerCase().includes(searchReceipt.toLowerCase()) ||
       r.method.toLowerCase().includes(searchReceipt.toLowerCase()) ||
@@ -408,19 +363,12 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
               <ShieldCheck size={13} style={{ marginRight: 4 }} /> Register
               Active
             </span>
-            <label className="date-control" data-testid="control-cashier-date">
-              <CalendarDays size={14} />
-              <span>Shift Date</span>
-              <input
-                type="date"
-                aria-label="Select date"
-                defaultValue="2026-08-31"
-              />
-            </label>
+            <DateControl label="Shift Date" date={shiftDate} onDateChange={selectDate} />
           </div>
         }
       />
 
+      <fieldset disabled={isSubmitting} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, display: "flex", flexDirection: "column", gap: 18 }} aria-busy={isSubmitting}>
       {/* Full-Screen Counter Sale Checkout Layout */}
       <section className="surface-card" style={{ padding: "22px 24px", width: "100%", borderRadius: 20 }}>
         <div className="card-header pos-card-header" style={{ marginBottom: 18, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -904,7 +852,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
             <button
               type="submit"
               className="button dark full"
-              disabled={cart.length === 0}
+              disabled={isSubmitting || cart.length === 0}
               style={{
                 height: 46,
                 fontSize: 14,
@@ -914,7 +862,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                 justifyContent: "center",
                 gap: 8,
               }}>
-              <Receipt size={16} /> Complete &amp; Print Receipt (₱
+              <Receipt size={16} /> {isSubmitting ? "Saving sale" : "Complete & Print Receipt"} (₱
               {total.toFixed(2)})
             </button>
           </form>
@@ -947,7 +895,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
               <Receipt size={16} /> Recent Shift Receipts ({filteredReceipts.length})
             </h3>
             <p className="card-subtitle" style={{ margin: "2px 0 0" }}>
-              Completed transactions from this active register shift.
+              Receipts recorded on {formatCalendarDate(shiftDate)}.
             </p>
           </div>
           <div className="search-wrap" style={{ width: 260 }}>
@@ -1030,7 +978,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                     colSpan={7}
                     style={{ textAlign: "center", padding: 28 }}
                     className="muted">
-                    No receipts recorded for this shift yet.
+                    No receipts match {formatCalendarDate(shiftDate)} and the current search.
                   </td>
                 </tr>
               )}
@@ -1039,6 +987,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
         </div>
       </section>
 
+      </fieldset>
       {/* Modal: Receipt Details & Print */}
       {selectedReceipt && (
         <div
@@ -1138,9 +1087,12 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
               <button
                 type="button"
                 className="button dark"
-                onClick={() => {
-                  onToast(`Printing receipt ${selectedReceipt.id}...`);
-                  window.print();
+                onClick={async () => {
+                  try {
+                    await printReceipt(selectedReceipt);
+                  } catch {
+                    onToast("Could not prepare the receipt. Please try printing again.");
+                  }
                 }}>
                 <Download size={13} style={{ marginRight: 4 }} /> Print Receipt
               </button>

@@ -4,7 +4,7 @@ import { Check, Eye, Package, Plus, Trash2, X, ArrowRight } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import { Summary } from "@/components/custom-ui/summary-card";
 import type { ToastFn } from "@/lib/types";
-import { fetchInventoryData } from "@/lib/pharmacy-store";
+import { fetchInventoryData, usePharmacyInventory } from "@/lib/pharmacy-store";
 import { fetchAccountsPayable } from "@/lib/supplier-store";
 import { products as initialFallbackProducts } from "@/lib/data";
 
@@ -164,6 +164,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
   const [suppliers, setSuppliers] = useState<Supplier[]>(() =>
     getStored("medprix_procurement_suppliers", initialSuppliers)
   );
+  const { items: inventoryItems, refresh: refreshInventory } = usePharmacyInventory();
   const [products, setProducts] = useState<Product[]>(() => {
     const cached = getStored<any[]>("medprix_cached_inventory", []);
     if (cached.length > 0) {
@@ -183,6 +184,20 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
       cost: (p as any).cost || p.price,
     }));
   });
+
+  useEffect(() => {
+    if (inventoryItems && inventoryItems.length > 0) {
+      setProducts(
+        inventoryItems.map((p) => ({
+          id: p.id,
+          name: p.name,
+          sku: p.sku,
+          price: p.price,
+          cost: p.cost || p.price,
+        }))
+      );
+    }
+  }, [inventoryItems]);
   const [deliveries, setDeliveries] = useState<Delivery[]>(() =>
     getStored("medprix_procurement_deliveries", initialDeliveries)
   );
@@ -367,15 +382,20 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
     }
 
     try {
-      fetch(`/api/purchase-orders/${orderId}/status`, {
+      const response = await fetch(`/api/purchase-orders/${orderId}/status`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: nextStatus }),
-      }).catch(() => {});
-      onToast("Purchase order status updated.");
-    } catch {
-      onToast("Updated locally.");
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || "Failed to update purchase order status.");
+      }
+      await Promise.all([loadData(), fetchInventoryData(true)]);
+      onToast(`Purchase order status updated to ${nextStatus}.`);
+    } catch (requestError: any) {
+      onToast(requestError?.message || "Updated locally.");
     }
   };
 
@@ -440,7 +460,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
       setSupplierId("");
       setPoNumber("");
       setLineItems([{ productId: "", quantityOrdered: "1", unitCost: "0" }]);
-      await loadData();
+      await Promise.all([loadData(), fetchInventoryData(true)]);
       onToast("Purchase order created with Draft status.");
     } catch (requestError) {
       onToast(requestError instanceof Error ? requestError.message : "Failed to create purchase order.");
@@ -579,7 +599,10 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
           <button
             className="button dark"
             data-testid="button-create-po"
-            onClick={() => setIsCreateOpen(true)}>
+            onClick={() => {
+              void refreshInventory();
+              setIsCreateOpen(true);
+            }}>
             <Plus size={14} /> Create purchase order
           </button>
         ) : undefined}
@@ -720,7 +743,12 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               <p className="card-subtitle">Stock-in records with batch and expiry monitoring</p>
             </div>
             {canManagePurchasing && (
-              <button className="button dark" onClick={() => setIsDeliveryOpen(true)}>
+              <button
+                className="button dark"
+                onClick={() => {
+                  void refreshInventory();
+                  setIsDeliveryOpen(true);
+                }}>
                 <Plus size={14} /> Add receiving report
               </button>
             )}

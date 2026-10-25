@@ -1237,10 +1237,7 @@ a {
 
 .modal .field input,
 .modal .field select,
-.modal
-  input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not(
-    [type="button"]
-  ),
+.modal input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]),
 .modal select {
   background: hsl(var(--surface-soft));
   border: 1px solid hsl(var(--border));
@@ -1638,6 +1635,7 @@ a {
 }
 
 @media (max-width: 460px) {
+
   .kpi-grid,
   .reports-grid,
   .summary-strip {
@@ -1855,6 +1853,26 @@ a {
   cursor: pointer;
 }
 
+.shift-date-control input::-webkit-calendar-picker-indicator {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.shift-date-control input:focus,
+.shift-date-control input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.shift-date-control:focus-within {
+  background: hsl(var(--surface-soft));
+}
+
 .dashboard-lower {
   grid-template-columns: 1.48fr 0.9fr;
 }
@@ -1992,9 +2010,9 @@ a {
 }
 
 .dark .modal-tab.active {
-  background: #0a84ff;
-  border-color: #0a84ff;
-  color: #fff;
+  background: #f5f4f8;
+  border-color: #f5f4f8;
+  color: #000;
 }
 
 @media (max-width: 900px) {
@@ -2123,7 +2141,7 @@ a {
   margin: 4px 0 18px;
 }
 
-.supplier-history-metrics > div {
+.supplier-history-metrics>div {
   position: relative;
   display: grid;
   gap: 5px;
@@ -2162,7 +2180,7 @@ a {
   gap: 10px;
 }
 
-.supplier-profile-grid > div {
+.supplier-profile-grid>div {
   display: grid;
   grid-template-columns: 20px 1fr;
   gap: 4px 8px;
@@ -2211,7 +2229,7 @@ a {
   padding: 3px 12px;
 }
 
-.supplier-payment-list > div {
+.supplier-payment-list>div {
   display: flex;
   justify-content: space-between;
   gap: 12px;
@@ -2220,7 +2238,7 @@ a {
   font-size: var(--text-xs);
 }
 
-.supplier-payment-list > div:last-child {
+.supplier-payment-list>div:last-child {
   border-bottom: 0;
 }
 
@@ -2250,6 +2268,7 @@ a {
 }
 
 @media (max-width: 720px) {
+
   .supplier-history-metrics,
   .supplier-profile-grid,
   .supplier-financial-grid {

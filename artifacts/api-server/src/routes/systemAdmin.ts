@@ -3,8 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { queryDb, execDb } from "@workspace/db";
+import { createPaymentStore, paymentFromRow, PaymentError } from "../lib/cashier-payments";
 
 const router: IRouter = Router();
+const paymentStore = createPaymentStore(queryDb);
 
 export interface TransactionItem {
   product: string;
@@ -445,40 +447,6 @@ try {
   }
 } catch {}
 
-async function saveTransactionToDb(t: UserTransaction) {
-  try {
-    await queryDb(
-      `INSERT INTO cashier_transactions (
-        transaction_number, date_time, user_name, business_type,
-        customer, total, subtotal, discount, vat,
-        amount_received, change, payment, status, items
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-      ON CONFLICT (transaction_number) DO UPDATE SET
-        total = EXCLUDED.total,
-        status = EXCLUDED.status,
-        items = EXCLUDED.items`,
-      [
-        t.transactionNumber,
-        t.dateTime,
-        t.user,
-        t.businessType,
-        t.customer,
-        t.total,
-        t.subtotal,
-        t.discount,
-        t.vat,
-        t.amountReceived,
-        t.change,
-        t.payment,
-        t.status,
-        JSON.stringify(t.items || []),
-      ]
-    );
-  } catch (err) {
-    console.error("Failed to save cashier transaction to DB:", err);
-  }
-}
-
 async function saveSystemLogToDb(l: SystemLog) {
   try {
     await queryDb(
@@ -617,55 +585,14 @@ async function syncWithDatabase() {
       );
     `);
 
-    // 2. Sync transactions
-    const txRes = await queryDb<any>("SELECT * FROM cashier_transactions ORDER BY id ASC");
-    if (txRes.rows && txRes.rows.length > 0) {
-      const dbTxMap = new Map<string, UserTransaction>();
-      for (const row of txRes.rows) {
-        let items = row.items;
-        if (typeof items === "string") {
-          try {
-            items = JSON.parse(items);
-          } catch {
-            items = [];
-          }
-        }
-        const tx: UserTransaction = {
-          id: Number(row.id),
-          transactionNumber: row.transaction_number,
-          dateTime: row.date_time,
-          user: row.user_name,
-          businessType: (row.business_type === "Wholesale" ? "Wholesale" : "Retail"),
-          customer: row.customer,
-          total: row.total,
-          subtotal: row.subtotal,
-          discount: row.discount,
-          vat: row.vat,
-          amountReceived: row.amount_received,
-          change: row.change,
-          payment: row.payment,
-          status: row.status as any,
-          items: Array.isArray(items) ? items : [],
-        };
-        dbTxMap.set(tx.transactionNumber, tx);
-      }
-
-      for (const fileTx of persistentTransactions) {
-        if (!dbTxMap.has(fileTx.transactionNumber)) {
-          await saveTransactionToDb(fileTx);
-          dbTxMap.set(fileTx.transactionNumber, fileTx);
-        }
-      }
-
-      persistentTransactions = Array.from(dbTxMap.values()).sort(
-        (a, b) => b.id - a.id
-      );
-      saveJsonFile("transactions.json", persistentTransactions);
-    } else {
-      for (const tx of [...persistentTransactions].reverse()) {
-        await saveTransactionToDb(tx);
-      }
+    // 2. Import an empty legacy installation once; subsequent reads are DB-authoritative.
+    const legacyArchive = "transactions-before-db-authority.json";
+    if (!fs.existsSync(path.join(getStorageDir(), legacyArchive))) {
+      saveJsonFile(legacyArchive, persistentTransactions);
     }
+    await paymentStore.importLegacy(persistentTransactions);
+    persistentTransactions = await paymentStore.list();
+    saveJsonFile("transactions.json", persistentTransactions);
 
     // 3. Sync system logs
     const logRes = await queryDb<any>("SELECT * FROM cashier_system_logs ORDER BY id DESC");
@@ -714,14 +641,20 @@ async function syncWithDatabase() {
   }
 }
 
-void syncWithDatabase();
+const paymentStartup = syncWithDatabase();
+
+async function refreshPayments() {
+  await paymentStartup;
+  persistentTransactions = await paymentStore.list();
+  saveJsonFile("transactions.json", persistentTransactions);
+  return persistentTransactions;
+}
 
 // GET /api/admin/transactions
-router.get("/admin/transactions", (req, res) => {
-  persistentTransactions = loadJsonFile<UserTransaction[]>(
-    "transactions.json",
-    persistentTransactions
-  );
+router.get("/admin/transactions", async (req, res) => {
+  try { await refreshPayments(); } catch {
+    return res.status(503).json({ error: "Payment records are temporarily unavailable. Please retry." });
+  }
   const { businessType, search, status } = req.query;
   let results = [...persistentTransactions];
 
@@ -752,11 +685,10 @@ router.get("/admin/transactions", (req, res) => {
 });
 
 // GET /api/admin/transactions/:id
-router.get("/admin/transactions/:id", (req, res) => {
-  persistentTransactions = loadJsonFile<UserTransaction[]>(
-    "transactions.json",
-    persistentTransactions
-  );
+router.get("/admin/transactions/:id", async (req, res) => {
+  try { await refreshPayments(); } catch {
+    return res.status(503).json({ error: "Payment records are temporarily unavailable. Please retry." });
+  }
   const id = Number(req.params.id);
   const item = persistentTransactions.find((t) => t.id === id);
   if (!item) {
@@ -765,63 +697,35 @@ router.get("/admin/transactions/:id", (req, res) => {
   return res.json(item);
 });
 
-router.post("/admin/transactions", (req, res) => {
-  persistentTransactions = loadJsonFile<UserTransaction[]>(
-    "transactions.json",
-    persistentTransactions
-  );
-  const nextId =
-    persistentTransactions.reduce(
-      (max, transaction) => Math.max(max, Number(transaction.id) || 0),
-      0
-    ) + 1;
-  const transaction: UserTransaction = {
-    id: nextId,
-    transactionNumber:
-      req.body.transactionNumber || `TRX-${String(nextId).padStart(4, "0")}`,
-    dateTime: req.body.dateTime || new Date().toLocaleString(),
-    user: req.body.user || "Cashier",
-    businessType:
-      req.body.businessType === "Wholesale" ? "Wholesale" : "Retail",
-    customer: req.body.customer || "Walk-in Customer",
-    total: req.body.total || "₱0.00",
-    subtotal: req.body.subtotal || "₱0.00",
-    discount: req.body.discount || "₱0.00",
-    vat: req.body.vat || "₱0.00",
-    amountReceived: req.body.amountReceived || "₱0.00",
-    change: req.body.change || "₱0.00",
-    payment: req.body.payment || "Cash",
-    status: req.body.status || "Completed",
-    items: Array.isArray(req.body.items) ? req.body.items : [],
-  };
-
-  persistentTransactions.unshift(transaction);
-  saveJsonFile("transactions.json", persistentTransactions);
-  void saveTransactionToDb(transaction);
-
-  return res.status(201).json(transaction);
+router.post("/admin/transactions", async (req, res) => {
+  try {
+    await paymentStartup;
+    const transaction = await paymentStore.save(req.body);
+    // The database commit defines success; a cache refresh must not invalidate it.
+    persistentTransactions = [transaction, ...persistentTransactions.filter((entry) => entry.id !== transaction.id)];
+    saveJsonFile("transactions.json", persistentTransactions);
+    return res.status(201).json(transaction);
+  } catch (error) {
+    if (error instanceof PaymentError) return res.status(error.status).json({ error: error.message });
+    console.error("Payment confirmation failed:", error);
+    return res.status(503).json({ error: "Could not confirm the payment. Retry the unchanged checkout." });
+  }
 });
 
-router.delete("/admin/transactions/:id", (req, res) => {
-  persistentTransactions = loadJsonFile<UserTransaction[]>(
-    "transactions.json",
-    persistentTransactions
-  );
+router.delete("/admin/transactions/:id", async (req, res) => {
   const param = req.params.id;
   const numId = Number(param);
-  const idx = persistentTransactions.findIndex(
-    (t) => t.id === numId || t.transactionNumber === param
-  );
-  if (idx === -1) {
-    return res.status(404).json({ error: "Transaction not found." });
+  try {
+    await paymentStartup;
+    const result = await queryDb("DELETE FROM cashier_transactions WHERE id = $1 OR transaction_number = $2 RETURNING *", [numId || 0, param]);
+    if (!result.rows.length) return res.status(404).json({ error: "Transaction not found." });
+    const removed = paymentFromRow(result.rows[0]);
+    persistentTransactions = persistentTransactions.filter((entry) => entry.id !== removed.id);
+    saveJsonFile("transactions.json", persistentTransactions);
+    return res.json({ success: true, removed });
+  } catch {
+    return res.status(503).json({ error: "Could not remove the payment record. Please retry." });
   }
-  const removed = persistentTransactions.splice(idx, 1)[0];
-  saveJsonFile("transactions.json", persistentTransactions);
-  void queryDb(
-    "DELETE FROM cashier_transactions WHERE id = $1 OR transaction_number = $2",
-    [numId || 0, param]
-  );
-  return res.json({ success: true, removed });
 });
 
 // GET /api/admin/system-logs
@@ -955,31 +859,25 @@ router.post("/admin/user-activities", (req, res) => {
 });
 
 // PATCH /api/admin/transactions/:id/status
-router.patch("/admin/transactions/:id/status", (req, res) => {
-  persistentTransactions = loadJsonFile<UserTransaction[]>(
-    "transactions.json",
-    persistentTransactions
-  );
+router.patch("/admin/transactions/:id/status", async (req, res) => {
   const param = req.params.id;
   const numId = Number(param);
   const { status } = req.body as { status?: string };
-  const idx = persistentTransactions.findIndex(
-    (t) => t.id === numId || t.transactionNumber === param
-  );
-  if (idx === -1) {
-    return res.status(404).json({ error: "Transaction not found." });
-  }
   const validStatus = (["Completed", "Voided", "Refunded", "Pending"] as const).find(
     (s) => s.toLowerCase() === String(status).toLowerCase()
-  ) || "Completed";
-
-  persistentTransactions[idx].status = validStatus;
-  saveJsonFile("transactions.json", persistentTransactions);
-  void queryDb(
-    "UPDATE cashier_transactions SET status = $1 WHERE id = $2 OR transaction_number = $3",
-    [validStatus, numId || 0, param]
   );
-  return res.json(persistentTransactions[idx]);
+  if (!validStatus) return res.status(400).json({ error: "Invalid payment status." });
+  try {
+    await paymentStartup;
+    const result = await queryDb("UPDATE cashier_transactions SET status = $1 WHERE id = $2 OR transaction_number = $3 RETURNING *", [validStatus, numId || 0, param]);
+    if (!result.rows.length) return res.status(404).json({ error: "Transaction not found." });
+    const transaction = paymentFromRow(result.rows[0]);
+    persistentTransactions = persistentTransactions.map((entry) => entry.id === transaction.id ? transaction : entry);
+    saveJsonFile("transactions.json", persistentTransactions);
+    return res.json(transaction);
+  } catch {
+    return res.status(503).json({ error: "Could not update the payment status. Please retry." });
+  }
 });
 
 // POST /api/admin/backup

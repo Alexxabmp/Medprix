@@ -1003,14 +1003,138 @@ router.patch(
       return res.json({ success: true, purchaseOrder: { id: poId, status } });
     }
 
-    const [updated] = await db
-      .update(purchaseOrdersTable)
-      .set({
-        status: status as (typeof poStatuses)[number],
-        updatedAt: new Date(),
-      })
-      .where(eq(purchaseOrdersTable.id, existing.id))
-      .returning();
+    const updated = await db.transaction(async (tx) => {
+      const [order] = await tx
+        .update(purchaseOrdersTable)
+        .set({
+          status: status as (typeof poStatuses)[number],
+          updatedAt: new Date(),
+        })
+        .where(eq(purchaseOrdersTable.id, existing.id))
+        .returning();
+
+      // If transitioning to Fulfilled, receive any unfulfilled items into inventory
+      if (status === "Fulfilled" && existing.status !== "Fulfilled") {
+        const orderItems = await tx
+          .select()
+          .from(poItemsTable)
+          .where(eq(poItemsTable.poId, existing.id));
+
+        const existingDeliveries = await tx
+          .select()
+          .from(supplierDeliveriesTable)
+          .where(eq(supplierDeliveriesTable.poId, existing.id));
+
+        const deliveryIds = existingDeliveries.map((d) => d.id);
+        const existingDeliveryItems =
+          deliveryIds.length > 0
+            ? await tx
+                .select()
+                .from(deliveryItemsTable)
+                .where(inArray(deliveryItemsTable.deliveryId, deliveryIds))
+            : [];
+
+        const deliveredQtyByProd = new Map<string, number>();
+        for (const di of existingDeliveryItems) {
+          deliveredQtyByProd.set(
+            di.productId,
+            (deliveredQtyByProd.get(di.productId) || 0) + di.quantityDelivered,
+          );
+        }
+
+        const itemsToReceive: Array<{
+          productId: string;
+          quantity: number;
+        }> = [];
+
+        for (const item of orderItems) {
+          const alreadyDelivered = deliveredQtyByProd.get(item.productId) || 0;
+          const qtyToReceive = Math.max(0, item.quantityOrdered - alreadyDelivered);
+          if (qtyToReceive > 0) {
+            itemsToReceive.push({
+              productId: item.productId,
+              quantity: qtyToReceive,
+            });
+          }
+        }
+
+        if (itemsToReceive.length > 0) {
+          const [delivery] = await tx
+            .insert(supplierDeliveriesTable)
+            .values({
+              poId: existing.id,
+              deliveryDate: new Date(),
+              deliveryStatus: "Received",
+            })
+            .returning();
+
+          for (const item of itemsToReceive) {
+            const batchNum = `PO-${existing.poNumber}`.toUpperCase();
+
+            await tx.insert(deliveryItemsTable).values({
+              deliveryId: delivery.id,
+              productId: item.productId,
+              batchNumber: batchNum,
+              expirationDate: "2028-12-31",
+              quantityDelivered: item.quantity,
+            });
+
+            const [existingBatch] = await tx
+              .select()
+              .from(batchInfoTable)
+              .where(
+                and(
+                  eq(batchInfoTable.productId, item.productId),
+                  eq(batchInfoTable.batchNumber, batchNum),
+                ),
+              );
+
+            if (existingBatch) {
+              await tx
+                .update(batchInfoTable)
+                .set({
+                  quantityRemaining:
+                    existingBatch.quantityRemaining + item.quantity,
+                  updatedAt: new Date(),
+                })
+                .where(eq(batchInfoTable.id, existingBatch.id));
+            } else {
+              await tx.insert(batchInfoTable).values({
+                productId: item.productId,
+                batchNumber: batchNum,
+                expirationDate: "2028-12-31",
+                quantityRemaining: item.quantity,
+                dateReceived: new Date().toISOString().slice(0, 10),
+              });
+            }
+
+            const [prod] = await tx
+              .select()
+              .from(productsTable)
+              .where(eq(productsTable.id, item.productId));
+
+            if (prod) {
+              await tx
+                .update(productsTable)
+                .set({
+                  currentStock: prod.currentStock + item.quantity,
+                  updatedAt: new Date(),
+                })
+                .where(eq(productsTable.id, prod.id));
+            }
+
+            await tx.insert(stockMovementsTable).values({
+              productId: item.productId,
+              movementType: "StockIn",
+              quantity: item.quantity,
+              notes: `Fulfilled purchase order ${existing.poNumber}`,
+            });
+          }
+        }
+      }
+
+      return order;
+    });
 
     return res.json({ success: true, purchaseOrder: updated });
   },

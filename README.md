@@ -73,7 +73,7 @@ Medprix/
 
 Runtime configuration is read from process environment variables.
 
-For local development, keep an uncommitted `.env` file at the repository root, next to `.env.example`, as your personal source of values. Before running API or database commands, load those values into your shell/session or provide them through your process manager, terminal profile, IDE run configuration, Docker Compose, or deployment secrets.
+For local development, keep an uncommitted `.env` file at the repository root, next to `.env.example`. The database package and its scripts load this file automatically; variables already set in the shell take precedence. Production values should be supplied through the deployment platform or process manager.
 
 ### Required Environment Variables
 
@@ -87,13 +87,15 @@ For local development, keep an uncommitted `.env` file at the repository root, n
 | Variable | Target Service | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `PORT` | `api-server` | `5000` | HTTP port for the Express backend |
-| `PORT` | `medprix-dashboard` | `5173` (dev) / `3000` (prod) | HTTP port for the Vite web server |
+| `PORT` | `medprix-dashboard` | `3000` | HTTP port for the Vite development/preview server |
 | `NODE_ENV` | Global | `development` | Runtime environment (`development` / `production`) |
 | `LOG_LEVEL` | `api-server` | `info` | Pino logging level (`trace`, `debug`, `info`, `warn`, `error`) |
 | `CORS_ORIGIN` | `api-server` | Local dev origins only outside production | Comma-separated allowed frontend origins for credentialed requests |
 | `SESSION_TTL_SECONDS` | `api-server` | `28800` | Login session lifetime in seconds |
 | `BCRYPT_SALT_ROUNDS` | `api-server` | `12` | Bcrypt work factor, clamped between `10` and `14` |
 | `BASE_PATH` | `medprix-dashboard` | `/` | Base URL path for frontend assets |
+| `SEED_PASSWORD` | `db` seed script | `Password123!` | Password assigned to all generated sample users |
+| `SEED_RNG` | `db` seed script | `20260920` | Seed used to generate a repeatable sample dataset |
 
 ---
 
@@ -119,7 +121,7 @@ Create a local `.env` file at the repository root if you want a file-based refer
 cp .env.example .env
 ```
 
-Do not commit `.env`. Load the needed values into your shell before running workspace scripts:
+Do not commit `.env`. Database commands load the root file automatically. You can instead set values in your shell to override the file:
 
 ```bash
 # Windows PowerShell
@@ -145,19 +147,31 @@ Or using `pnpm`:
 pnpm --filter @workspace/db run push
 ```
 
-### 3.5. Seed the Database with Sample Data
+### 4. Seed the Database with Sample Data
 
 After pushing the schema, you can populate the database with sample data for testing:
 
 ```bash
 # Using npm
-npm run seed -w @/workspace/db
+npm run seed --workspace=@workspace/db
 
 # Or using pnpm
 pnpm --filter @workspace/db run seed
 ```
 
-### 4. Run in Development Mode
+If the database already contains users, the normal seed command exits without changing anything. To wipe all application-table data and repopulate the complete sample dataset, run:
+
+```bash
+# Using npm (destructive)
+npm run seed --workspace=@workspace/db -- --reset
+
+# Or using pnpm (destructive)
+pnpm --filter @workspace/db run seed -- --reset
+```
+
+This data refresh uses `TRUNCATE ... RESTART IDENTITY CASCADE` inside a transaction. It preserves the database schema and triggers. It refuses to run when `NODE_ENV=production` unless `--allow-production` is also passed deliberately.
+
+### 5. Run in Development Mode
 
 Run both the API server and frontend dashboard concurrently with hot reload:
 
@@ -171,7 +185,7 @@ pnpm run dev
 
 This starts:
 - **API Server:** `http://localhost:5000` (health check: `http://localhost:5000/api/healthz`)
-- **Frontend Dashboard:** `http://localhost:5173`
+- **Frontend Dashboard:** `http://localhost:3000`
 
 ---
 
@@ -179,12 +193,14 @@ This starts:
 
 | Command | Description |
 | :--- | :--- |
-| `npm run dev` | Runs API server (`:5000`) and Vite dashboard (`:5173`) concurrently. |
-| `npm run build` | Performs typechecking and builds the frontend production bundle. |
-| `npm run typecheck` | Typechecks all libraries and sub-packages (`tsc --build`). |
+| `npm run dev` | Runs API server (`:5000`) and Vite dashboard (`:3000`) concurrently. |
+| `npm run build` | Builds the frontend production bundle. Run `npm run typecheck` separately. |
+| `npm run typecheck` | Typechecks the referenced library packages (`tsc --build`). |
 | `npm run push --workspace=@workspace/db` | Pushes Drizzle schema directly to the database. |
 | `npm run push-force --workspace=@workspace/db` | Pushes schema changes with forced migration. |
-| `npm run fresh --workspace=@workspace/db` | (DESTRUCTIVE) purges the entire database, recreates Drizzle files, reinstalls triggers, seeds db with mock data |
+| `npm run seed --workspace=@workspace/db` | Seeds an empty database with deterministic sample data; exits if user data already exists. |
+| `npm run seed --workspace=@workspace/db -- --reset` | **Destructive:** truncates application tables and repopulates the sample dataset while preserving the schema. |
+| `npm run fresh --workspace=@workspace/db` | **Destructive:** drops public application tables/types, pushes the current Drizzle schema, reinstalls triggers, and seeds sample data. |
 | `npm run codegen --workspace=@workspace/api-spec` | Regenerates React Query hooks & Zod schemas from `openapi.yaml`. |
 | `npm run start --workspace=@workspace/api-server` | Starts the bundled production API server. |
 | `npm run serve --workspace=@workspace/medprix-dashboard` | Previews the built frontend dashboard locally. |
@@ -216,8 +232,8 @@ pnpm --filter @workspace/api-spec run codegen
 ## Troubleshooting
 
 ### 1. `DATABASE_URL must be set` Error
-- Ensure `DATABASE_URL` is loaded into the process environment before running the backend or database migrations.
-- A root `.env` file is useful for local reference, but this repo does not auto-load it.
+- Ensure `DATABASE_URL` is set in the root `.env` file or the process environment before running the backend or database commands.
+- Confirm the URL uses the `postgresql://` or `postgres://` scheme; MySQL connection strings are not supported.
 - Verify the PostgreSQL service is active and the database name exists.
 
 ### 2. `Cannot connect to PostgreSQL database`

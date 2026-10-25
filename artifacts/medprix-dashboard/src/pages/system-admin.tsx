@@ -56,8 +56,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
 
   // Transactions state
   const [transactions, setTransactions] = useState<UserTransaction[]>(() => {
-    if (liveTransactions && liveTransactions.length > 0) return liveTransactions;
-    return getStored("medprix_cached_transactions", initialTransactionsData);
+    return liveTransactions;
   });
   const [trxFilterType, setTrxFilterType] = useState<"All" | "Retail" | "Wholesale">("All");
   const [trxFilterStatus, setTrxFilterStatus] = useState<string>("All");
@@ -85,9 +84,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
 
   // Keep transactions in sync with pharmacy-store
   useEffect(() => {
-    if (liveTransactions && liveTransactions.length > 0) {
-      setTransactions(liveTransactions);
-    }
+    setTransactions(liveTransactions);
   }, [liveTransactions]);
 
   // Modal body scroll lock
@@ -102,33 +99,11 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
   const loadBackendData = async () => {
     setIsRefreshing(true);
     try {
-      const [txRes, logRes, actRes] = await Promise.all([
-        fetch("/api/admin/transactions", { credentials: "include" }).catch(() => null),
+      const [, logRes, actRes] = await Promise.all([
+        refreshLiveTransactions(),
         fetch("/api/admin/system-logs", { credentials: "include" }).catch(() => null),
         fetch("/api/admin/user-activities", { credentials: "include" }).catch(() => null),
       ]);
-
-      if (txRes?.ok) {
-        const data = await txRes.json();
-        if (Array.isArray(data) && data.length > 0) {
-          const localTx = getStored<UserTransaction[]>("medprix_cached_transactions", []);
-          const merged = [...data];
-          for (const lt of localTx) {
-            if (
-              !merged.some(
-                (m) =>
-                  m.id === lt.id ||
-                  m.transactionNumber === lt.transactionNumber
-              )
-            ) {
-              merged.unshift(lt);
-            }
-          }
-          setTransactions(merged);
-          setLiveTransactions(merged);
-          saveStored("medprix_cached_transactions", merged);
-        }
-      }
 
       if (logRes?.ok) {
         const data = await logRes.json();
@@ -160,29 +135,20 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
     nextStatus: "Completed" | "Voided" | "Refunded" | "Pending"
   ) => {
     setIsUpdatingTrx(true);
-    const updated = transactions.map((t) =>
-      t.id === trxId || t.transactionNumber === String(trxId)
-        ? { ...t, status: nextStatus }
-        : t
-    );
-    setTransactions(updated);
-    setLiveTransactions(updated);
-    saveStored("medprix_cached_transactions", updated);
-
-    if (selectedTrx && (selectedTrx.id === trxId || selectedTrx.transactionNumber === String(trxId))) {
-      setSelectedTrx({ ...selectedTrx, status: nextStatus });
-    }
-
     try {
-      await fetch(`/api/admin/transactions/${trxId}/status`, {
+      const response = await fetch(`/api/admin/transactions/${trxId}/status`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: nextStatus }),
       });
+      if (!response.ok) throw new Error("Status was not saved");
+      const saved: UserTransaction = await response.json();
+      setLiveTransactions((current) => current.map((entry) => entry.id === saved.id ? saved : entry));
+      if (selectedTrx?.id === saved.id) setSelectedTrx(saved);
       onToast(`Transaction marked as ${nextStatus}.`);
     } catch {
-      onToast(`Status updated locally to ${nextStatus}.`);
+      onToast("Could not confirm the status change. Please refresh and retry.");
     } finally {
       setIsUpdatingTrx(false);
     }
