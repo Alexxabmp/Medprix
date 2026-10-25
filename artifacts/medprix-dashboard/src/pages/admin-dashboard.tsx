@@ -3,12 +3,12 @@ import {
   ArrowUpRight,
   BarChart3,
   Boxes,
-  CalendarDays,
   CircleDollarSign,
   FileBarChart,
   Package,
 } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
+import { DateControl } from "@/components/custom-ui/date-control";
 import { Kpi } from "@/components/custom-ui/kpi-card";
 import { MovementLineGraph } from "@/components/custom-ui/movement-line-graph";
 import { ReportModal } from "@/components/custom-ui/report-modal";
@@ -80,15 +80,7 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
         title="Hello, Admin!"
         description="Here's the shape of your pharmacy today."
         action={
-          <label className="date-control" data-testid="control-date">
-            <CalendarDays size={14} />
-            <span>Select date</span>
-            <input
-              type="date"
-              aria-label="Select date"
-              defaultValue="2026-08-18"
-            />
-          </label>
+          <DateControl label="Select date" testId="control-date" />
         }
       />
 

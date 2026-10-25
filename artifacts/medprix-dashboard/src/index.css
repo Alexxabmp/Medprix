@@ -1853,6 +1853,26 @@ a {
   cursor: pointer;
 }
 
+.shift-date-control input::-webkit-calendar-picker-indicator {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.shift-date-control input:focus,
+.shift-date-control input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.shift-date-control:focus-within {
+  background: hsl(var(--surface-soft));
+}
+
 .dashboard-lower {
   grid-template-columns: 1.48fr 0.9fr;
 }

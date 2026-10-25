@@ -1,6 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
 import {
-  CalendarDays,
   Check,
   ClipboardList,
   Download,
@@ -14,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
+import { DateControl } from "@/components/custom-ui/date-control";
 import type { ProductItem, ToastFn, ShiftReceipt } from "@/lib/types";
 import {
   usePharmacyInventory,
@@ -408,15 +408,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
               <ShieldCheck size={13} style={{ marginRight: 4 }} /> Register
               Active
             </span>
-            <label className="date-control" data-testid="control-cashier-date">
-              <CalendarDays size={14} />
-              <span>Shift Date</span>
-              <input
-                type="date"
-                aria-label="Select date"
-                defaultValue="2026-08-31"
-              />
-            </label>
+            <DateControl label="Shift Date" />
           </div>
         }
       />
@@ -1138,9 +1130,12 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
               <button
                 type="button"
                 className="button dark"
-                onClick={() => {
-                  onToast(`Printing receipt ${selectedReceipt.id}...`);
-                  window.print();
+                onClick={async () => {
+                  try {
+                    await printReceipt(selectedReceipt);
+                  } catch {
+                    onToast("Could not prepare the receipt. Please try printing again.");
+                  }
                 }}>
                 <Download size={13} style={{ marginRight: 4 }} /> Print Receipt
               </button>

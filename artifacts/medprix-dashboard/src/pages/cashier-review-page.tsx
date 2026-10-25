@@ -3,7 +3,6 @@ import { createPortal } from "react-dom";
 import {
   ArrowDownLeft,
   ArrowUpRight,
-  CalendarDays,
   CircleDollarSign,
   ClipboardList,
   Download,
@@ -17,6 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
+import { DateControl } from "@/components/custom-ui/date-control";
 import type { ToastFn, ShiftReceipt } from "@/lib/types";
 import { usePharmacyTransactions } from "@/lib/pharmacy-store";
 
@@ -104,10 +104,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
             <span className="pill success" style={{ padding: "6px 12px", fontSize: 12 }}>
               <ShieldCheck size={13} style={{ marginRight: 4 }} /> Terminal #01 · Active
             </span>
-            <label className="date-control" data-testid="control-cashier-date">
-              <CalendarDays size={14} />
-              <span>September 1, 2026</span>
-            </label>
+            <DateControl />
           </div>
         }
       />
@@ -718,9 +715,12 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                 <button
                   type="button"
                   className="button dark"
-                  onClick={() => {
-                    onToast(`Re-printing receipt ${selectedReceipt.id}...`);
-                    setSelectedReceipt(null);
+                  onClick={async () => {
+                    try {
+                      await printReceipt(selectedReceipt);
+                    } catch {
+                      onToast("Could not prepare the receipt. Please try printing again.");
+                    }
                   }}>
                   <Download size={13} /> Re-print Receipt
                 </button>
