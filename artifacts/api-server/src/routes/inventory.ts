@@ -1,6 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { and, asc, eq, or } from "drizzle-orm";
 import { db, productsTable, batchInfoTable, stockMovementsTable } from "@workspace/db";
+import { normalizeProductCode, parseProductMoney, validateProductInput, PRODUCT_BATCH_FIELDS } from "@workspace/api-zod";
 
 const router: IRouter = Router();
 
@@ -62,7 +63,7 @@ async function findProduct(idOrSkuOrRef: string) {
     .from(productsTable)
     .where(
       or(
-        eq(productsTable.id, clean),
+        ...(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clean) ? [eq(productsTable.id, clean)] : []),
         eq(productsTable.sku, clean),
         eq(productsTable.sku, clean.toUpperCase()),
       ),
@@ -137,89 +138,63 @@ router.get("/inventory", async (_req: Request, res: Response) => {
   return res.json({ success: true, totalProducts: enriched.length, products: enriched });
 });
 
+function duplicateSku(error: unknown): boolean {
+  const err = error as { code?: string; constraint?: string; constraint_name?: string; cause?: unknown };
+  return Boolean(err && ((err.code === "23505" && (err.constraint === "uq_products_sku" || err.constraint_name === "uq_products_sku")) || (err.cause && duplicateSku(err.cause))));
+}
+
 router.post("/inventory/products", async (req: Request, res: Response) => {
-  const {
-    name, genericName, sku, category, price, costPrice, isDangerousDrug, reorder,
-    batchNumber, quantity, expiryDate, mfgDate, dateReceived, supplier,
-  } = req.body;
-
-
-  if (!name || !sku) {
-    return res.status(400).json({ success: false, error: "Product name and SKU are required." });
+  const body = req.body ?? {};
+  const errors = validateProductInput(body, { batch: true });
+  if (Object.keys(errors).length) return res.status(400).json({ success: false, error: Object.values(errors)[0], errors });
+  const sku = normalizeProductCode(body.sku);
+  const [existing] = await db.select().from(productsTable).where(eq(productsTable.sku, sku));
+  if (existing) return res.status(409).json({ success: false, error: "This product code already exists.", errors: { sku: "Choose a different product code." } });
+  const hasBatch = PRODUCT_BATCH_FIELDS.some((key) => body[key] !== undefined && body[key] !== null);
+  try {
+    const product = await db.transaction(async (tx) => {
+      const [saved] = await tx.insert(productsTable).values({
+        sku, productName: body.name.trim(), genericName: body.genericName.trim(), category: (body.category ?? "").trim(),
+        sellingPrice: parseProductMoney(body.price)!, costPrice: parseProductMoney(body.costPrice)!,
+        isDangerousDrug: body.isDangerousDrug ?? false, minimumStockLevel: Number(body.reorder),
+        currentStock: hasBatch ? Number(body.quantity) : 0,
+      }).returning();
+      if (hasBatch) await tx.insert(batchInfoTable).values({
+        productId: saved.id, batchNumber: body.batchNumber.trim().toUpperCase(), expirationDate: body.expiryDate,
+        quantityRemaining: Number(body.quantity), mfgDate: body.mfgDate || null, dateReceived: body.dateReceived || null,
+        supplier: body.supplier?.trim() || null,
+      });
+      return saved;
+    });
+    return res.status(201).json({ success: true, product: await fetchProductWithBatches(product.id) });
+  } catch (error) {
+    if (duplicateSku(error)) return res.status(409).json({ success: false, error: "This product code already exists.", errors: { sku: "Choose a different product code." } });
+    throw error;
   }
-
-  const normalizedSku = String(sku).trim().toUpperCase();
-  const [existing] = await db.select().from(productsTable).where(eq(productsTable.sku, normalizedSku));
-  if (existing) {
-    return res.status(409).json({ success: false, error: `SKU ${normalizedSku} already exists.` });
-  }
-
-  const sellingPrice = String(price ?? "0").replace(/[^\d.]/g, "") || "0";
-  const parsedCostPrice = String(costPrice ?? "0").replace(/[^\d.]/g, "") || "0";
-  const parsedQuantity = Number(quantity) || 0;
-
-  const [product] = await db
-    .insert(productsTable)
-    .values({
-      sku: normalizedSku,
-      productName: String(name).trim(),
-      genericName: String(genericName || name).trim(),
-      category: String(category || "General"),
-      sellingPrice,
-      costPrice: parsedCostPrice,
-      isDangerousDrug: Boolean(isDangerousDrug),
-      minimumStockLevel: Number(reorder) || 10,
-      currentStock: parsedQuantity,
-    })
-    .returning();
-
-  await db.insert(batchInfoTable).values({
-    productId: product.id,
-    batchNumber: String(batchNumber || "B001").trim().toUpperCase(),
-    expirationDate: String(expiryDate || "2027-12-31"),
-    quantityRemaining: parsedQuantity,
-    mfgDate: mfgDate || null,
-    dateReceived: dateReceived || new Date().toISOString().slice(0, 10),
-    supplier: supplier || "Direct Delivery",
-  });
-
-  const result = await fetchProductWithBatches(product.id);
-  return res.status(201).json({ success: true, product: result });
 });
 
 router.put("/inventory/products/:id", async (req: Request, res: Response) => {
-  const id = asId(req.params.id);
-  const { name, genericName, sku, category, price, costPrice, isDangerousDrug, reorder } = req.body;
-
-  const product = await findProduct(id);
-  if (!product) {
-    return res.status(404).json({ success: false, error: "Product not found." });
-  }
-
-  if (sku) {
-    const normalizedSku = String(sku).trim().toUpperCase();
-    if (normalizedSku !== product.sku) {
-      const [clash] = await db.select().from(productsTable).where(eq(productsTable.sku, normalizedSku));
-      if (clash) {
-        return res.status(409).json({ success: false, error: `SKU ${normalizedSku} already exists.` });
-      }
-    }
-  }
-
+  const product = await findProduct(asId(req.params.id));
+  if (!product) return res.status(404).json({ success: false, error: "Product not found." });
+  const body = req.body ?? {};
+  const errors = validateProductInput(body, { partial: true, originalSku: product.sku });
+  if (Object.keys(errors).length) return res.status(400).json({ success: false, error: Object.values(errors)[0], errors });
   const updates: Partial<typeof productsTable.$inferInsert> = { updatedAt: new Date() };
-  if (name) updates.productName = String(name).trim();
-  if (genericName) updates.genericName = String(genericName).trim();
-  if (sku) updates.sku = String(sku).trim().toUpperCase();
-  if (category) updates.category = String(category);
-  if (price) updates.sellingPrice = String(price).replace(/[^\d.]/g, "") || "0";
-  if (costPrice) updates.costPrice = String(costPrice).replace(/[^\d.]/g, "") || "0";
-  if (isDangerousDrug !== undefined) updates.isDangerousDrug = Boolean(isDangerousDrug);
-  if (reorder !== undefined) updates.minimumStockLevel = Number(reorder);
-
-  await db.update(productsTable).set(updates).where(eq(productsTable.id, product.id));
-
-  const result = await fetchProductWithBatches(product.id);
-  return res.json({ success: true, product: result });
+  if (body.name !== undefined) updates.productName = body.name.trim();
+  if (body.genericName !== undefined) updates.genericName = body.genericName.trim();
+  if (body.sku !== undefined) updates.sku = normalizeProductCode(body.sku, product.sku);
+  if (body.category !== undefined) updates.category = body.category.trim();
+  if (body.price !== undefined) updates.sellingPrice = parseProductMoney(body.price)!;
+  if (body.costPrice !== undefined) updates.costPrice = parseProductMoney(body.costPrice)!;
+  if (body.isDangerousDrug !== undefined) updates.isDangerousDrug = body.isDangerousDrug;
+  if (body.reorder !== undefined) updates.minimumStockLevel = Number(body.reorder);
+  try {
+    await db.update(productsTable).set(updates).where(eq(productsTable.id, product.id));
+    return res.json({ success: true, product: await fetchProductWithBatches(product.id) });
+  } catch (error) {
+    if (duplicateSku(error)) return res.status(409).json({ success: false, error: "This product code already exists.", errors: { sku: "Choose a different product code." } });
+    throw error;
+  }
 });
 
 router.post("/inventory/products/:id/batches", async (req: Request, res: Response) => {
