@@ -1,3 +1,5 @@
+import { useDialogAccessibility } from "@/lib/use-dialog-accessibility";
+import { safeError, readResponse } from "@/lib/feedback";
 import { useEffect, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { Check, Eye, Package, Plus, Trash2, X, ArrowRight } from "lucide-react";
@@ -64,66 +66,6 @@ type LineItem = { productId: string; quantityOrdered: string; unitCost: string }
 
 const poStatuses = ["Draft", "Pending", "Approved", "Submitted", "Fulfilled", "Cancelled"];
 
-const initialSuppliers: Supplier[] = [
-  { id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", name: "Mindanao MedSupply Corp." },
-  { id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", name: "Davao Pharma Distributors Inc." },
-  { id: "cccccccc-cccc-cccc-cccc-cccccccccccc", name: "Southern Health Wholesale" },
-];
-
-const initialOrders: PurchaseOrder[] = [
-  {
-    id: "dddddddd-dddd-dddd-dddd-dddddddddddd",
-    poNumber: "PO-2026-0001",
-    supplier: "Mindanao MedSupply Corp.",
-    orderDate: new Date().toISOString(),
-    status: "Draft",
-    totalOrderAmount: "15000.00",
-    itemCount: 1,
-    items: [
-      {
-        id: "10101010-1010-1010-1010-101010101010",
-        productId: "p1",
-        product: "Paracetamol 500mg",
-        sku: "MED-0421",
-        quantityOrdered: 500,
-        unitCost: "30.00",
-        lineTotal: "15000.00",
-      },
-    ],
-  },
-];
-
-const initialDeliveries: Delivery[] = [
-  {
-    id: "ffffffff-ffff-ffff-ffff-ffffffffffff",
-    poNumber: "PO-2026-0001",
-    supplier: "Mindanao MedSupply Corp.",
-    deliveryDate: new Date().toISOString(),
-    deliveryStatus: "Received",
-    items: [
-      {
-        id: "10101010-1010-1010-1010-101010101010",
-        product: "Paracetamol 500mg",
-        batchNumber: "BATCH-MED-0421-01",
-        expirationDate: "2027-08-31",
-        quantityDelivered: 500,
-      },
-    ],
-  },
-];
-
-const initialInvoices: Invoice[] = [
-  {
-    id: "20202020-2020-2020-2020-202020202020",
-    invoiceNumber: "INV-2026-001",
-    supplier: "Mindanao MedSupply Corp.",
-    poNumber: "PO-2026-0001",
-    dueDate: "2026-10-31",
-    invoiceAmount: "15000.00",
-    status: "Unpaid",
-  },
-];
-
 function getStored<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
@@ -159,10 +101,10 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
   const [activeSection, setActiveSection] = useState(currentRole === "Cashier" ? "Receiving Report Management" : "Purchase Order Monitoring");
   const [status, setStatus] = useState("All orders");
   const [orders, setOrders] = useState<PurchaseOrder[]>(() =>
-    getStored("medprix_procurement_orders", initialOrders)
+    getStored("medprix_procurement_orders", [])
   );
   const [suppliers, setSuppliers] = useState<Supplier[]>(() =>
-    getStored("medprix_procurement_suppliers", initialSuppliers)
+    getStored("medprix_procurement_suppliers", [])
   );
   const { items: inventoryItems, refresh: refreshInventory } = usePharmacyInventory();
   const [products, setProducts] = useState<Product[]>(() => {
@@ -199,11 +141,13 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
     }
   }, [inventoryItems]);
   const [deliveries, setDeliveries] = useState<Delivery[]>(() =>
-    getStored("medprix_procurement_deliveries", initialDeliveries)
+    getStored("medprix_procurement_deliveries", [])
   );
   const [invoices, setInvoices] = useState<Invoice[]>(() =>
-    getStored("medprix_procurement_invoices", initialInvoices)
+    []
   );
+  const [poError, setPoError] = useState("");
+  const [statusError, setStatusError] = useState("");
   const [error, setError] = useState("");
   const [loadingSections, setLoadingSections] = useState({
     orders: false,
@@ -240,6 +184,9 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
     isPaid: false,
   });
 
+  useDialogAccessibility(isCreateOpen, '[data-testid="modal-create-po"] .modal', () => setIsCreateOpen(false), isSaving);
+  useDialogAccessibility(isDeliveryOpen, '[data-testid="modal-create-delivery"] .modal', () => setIsDeliveryOpen(false), isSaving);
+  useDialogAccessibility(isInvoiceOpen, '[data-testid="modal-create-invoice"] .modal', () => setIsInvoiceOpen(false), isSaving);
   const loadData = async () => {
     setError("");
     setLoadingSections({ orders: true, deliveries: true, invoices: true });
@@ -249,7 +196,8 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
       if (!response.ok) throw new Error("Failed to refresh suppliers.");
       if (response.ok) {
         const d = await response.json();
-        if (Array.isArray(d.suppliers) && d.suppliers.length > 0) {
+        if (!Array.isArray(d.suppliers)) throw new Error("Invalid procurement response. Please refresh.");
+        if (Array.isArray(d.suppliers)) {
           setSuppliers(d.suppliers);
           saveStored("medprix_procurement_suppliers", d.suppliers);
         }
@@ -261,7 +209,8 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
       if (!response.ok) throw new Error("Failed to refresh inventory.");
       if (response.ok) {
         const d = await response.json();
-        if (Array.isArray(d.products) && d.products.length > 0) {
+        if (!Array.isArray(d.products)) throw new Error("Invalid procurement response. Please refresh.");
+        if (Array.isArray(d.products)) {
           const prods = d.products.map((p: any) => ({
             id: p.id,
             name: p.name,
@@ -279,22 +228,10 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
         const response = await fetch("/api/purchase-orders", { credentials: "include" });
         if (!response.ok) throw new Error("Failed to refresh purchase orders.");
         const d = await response.json();
+        if (!Array.isArray(d.purchaseOrders)) throw new Error("Invalid procurement response. Please refresh.");
         if (Array.isArray(d.purchaseOrders)) {
-          const localOrders = getStored("medprix_procurement_orders", orders);
-          const merged = [...d.purchaseOrders];
-          for (const lo of localOrders) {
-            const matchIndex = merged.findIndex((m) => m.id === lo.id || m.poNumber === lo.poNumber);
-            if (matchIndex >= 0) {
-              // Preserve local items if server didn't provide them
-              if ((!merged[matchIndex].items || merged[matchIndex].items.length === 0) && lo.items) {
-                merged[matchIndex].items = lo.items;
-              }
-            } else {
-              merged.unshift(lo);
-            }
-          }
-          setOrders(merged);
-          saveStored("medprix_procurement_orders", merged);
+          setOrders(d.purchaseOrders);
+          saveStored("medprix_procurement_orders", d.purchaseOrders);
         }
       } finally {
         setLoadingSections((current) => ({ ...current, orders: false }));
@@ -306,16 +243,10 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
         const response = await fetch("/api/supplier-deliveries", { credentials: "include" });
         if (!response.ok) throw new Error("Failed to refresh receiving reports.");
         const d = await response.json();
+        if (!Array.isArray(d.deliveries)) throw new Error("Invalid procurement response. Please refresh.");
         if (Array.isArray(d.deliveries)) {
-          const localDels = getStored("medprix_procurement_deliveries", deliveries);
-          const merged = [...d.deliveries];
-          for (const ld of localDels) {
-            if (!merged.some((m) => m.id === ld.id)) {
-              merged.unshift(ld);
-            }
-          }
-          setDeliveries(merged);
-          saveStored("medprix_procurement_deliveries", merged);
+          setDeliveries(d.deliveries);
+          saveStored("medprix_procurement_deliveries", d.deliveries);
         }
       } finally {
         setLoadingSections((current) => ({ ...current, deliveries: false }));
@@ -328,16 +259,10 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
         const response = await fetch("/api/supplier-invoices", { credentials: "include" });
         if (!response.ok) throw new Error("Failed to refresh supplier invoices.");
         const d = await response.json();
+        if (!Array.isArray(d.invoices)) throw new Error("Invalid invoice response. Please refresh.");
         if (Array.isArray(d.invoices)) {
-          const localInvs = getStored("medprix_procurement_invoices", invoices);
-          const merged = [...d.invoices];
-          for (const li of localInvs) {
-            if (!merged.some((m) => m.id === li.id || m.invoiceNumber === li.invoiceNumber)) {
-              merged.unshift(li);
-            }
-          }
-          setInvoices(merged);
-          saveStored("medprix_procurement_invoices", merged);
+          setInvoices(d.invoices);
+          saveStored("medprix_procurement_invoices", d.invoices);
         }
       } finally {
         setLoadingSections((current) => ({ ...current, invoices: false }));
@@ -373,14 +298,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
   );
 
   const updateStatus = async (orderId: string, nextStatus: string) => {
-    const updated = orders.map((o) => (o.id === orderId ? { ...o, status: nextStatus } : o));
-    setOrders(updated);
-    saveStored("medprix_procurement_orders", updated);
-
-    if (selectedOrderForItems && selectedOrderForItems.id === orderId) {
-      setSelectedOrderForItems({ ...selectedOrderForItems, status: nextStatus });
-    }
-
+    setStatusError("");
     try {
       const response = await fetch(`/api/purchase-orders/${orderId}/status`, {
         method: "PATCH",
@@ -395,7 +313,8 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
       await Promise.all([loadData(), fetchInventoryData(true)]);
       onToast(`Purchase order status updated to ${nextStatus}.`);
     } catch (requestError: any) {
-      onToast(requestError?.message || "Updated locally.");
+      setStatusError(safeError(requestError, "Purchase order status was not saved. Please refresh."));
+      await loadData();
     }
   };
 
@@ -429,10 +348,14 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
           Number(item.unitCost) < 0,
       )
     ) {
-      onToast("Choose a supplier and complete every line item.");
+      setPoError("Choose a supplier and complete every line item.");
       return;
     }
 
+    if (isSaving) return;
+    setPoError("");
+    const duplicate = lineItems.find((item, index) => lineItems.findIndex((other) => other.productId === item.productId) !== index);
+    if (duplicate) { setPoError("This product is already listed. Edit its existing quantity instead."); return; }
     const finalPoNum =
       poNumber.trim() ||
       `PO-${new Date().getFullYear()}-${String(orders.length + 1).padStart(4, "0")}`;
@@ -454,8 +377,9 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
           })),
         }),
       });
-      const data = await response.json().catch(() => ({}));
+      const data = await readResponse(response, "Could not complete this procurement request. Please try again.");
       if (!response.ok) throw new Error(data.error || "Failed to create purchase order.");
+      if (!data.purchaseOrder?.id) throw new Error("Purchase order save could not be confirmed. Check the order list before retrying.");
       setIsCreateOpen(false);
       setSupplierId("");
       setPoNumber("");
@@ -463,7 +387,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
       await Promise.all([loadData(), fetchInventoryData(true)]);
       onToast("Purchase order created with Draft status.");
     } catch (requestError) {
-      onToast(requestError instanceof Error ? requestError.message : "Failed to create purchase order.");
+      setPoError(safeError(requestError, "Failed to create purchase order."));
     } finally {
       setIsSaving(false);
     }
@@ -491,13 +415,14 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
           ],
         }),
       });
-      const data = await response.json().catch(() => ({}));
+      const data = await readResponse(response, "Could not complete this procurement request. Please try again.");
       if (!response.ok) throw new Error(data.error || "Failed to create receiving report.");
+      if (!data.delivery?.id) throw new Error("Delivery save could not be confirmed. Check receiving reports before retrying.");
       setIsDeliveryOpen(false);
       await Promise.all([loadData(), fetchInventoryData(true)]);
       onToast("Receiving report created and inventory updated.");
     } catch (requestError) {
-      onToast(requestError instanceof Error ? requestError.message : "Failed to create receiving report.");
+      setError(safeError(requestError, "Failed to create receiving report."));
     } finally {
       setIsSaving(false);
     }
@@ -517,8 +442,9 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
           invoiceAmount: Number(invoiceForm.invoiceAmount),
         }),
       });
-      const data = await response.json().catch(() => ({}));
+      const data = await readResponse(response, "Could not complete this procurement request. Please try again.");
       if (!response.ok) throw new Error(data.error || "Failed to create supplier invoice.");
+      if (!data.invoice?.id) throw new Error("Invoice save could not be confirmed. Check the invoice list before retrying.");
       const createdInvoice = data.invoice as Invoice | undefined;
       if (createdInvoice?.id) {
         setInvoices((current) => {
@@ -539,7 +465,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
       onToast("Supplier invoice and payable created.");
       void refreshInvoicesAndPayables();
     } catch (requestError) {
-      onToast(requestError instanceof Error ? requestError.message : "Failed to create supplier invoice.");
+      setError(safeError(requestError, "Failed to create supplier invoice."));
     } finally {
       setIsSaving(false);
     }
@@ -552,8 +478,9 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
       const response = await fetch("/api/supplier-invoices", {
         credentials: "include",
       });
-      const data = await response.json().catch(() => ({}));
+      const data = await readResponse(response, "Could not complete this procurement request. Please try again.");
       if (!response.ok) throw new Error(data.error || "Failed to refresh invoices.");
+      if (!Array.isArray(data.invoices)) throw new Error("Invalid invoice response. Please refresh.");
       if (Array.isArray(data.invoices)) {
         setInvoices(data.invoices);
         saveStored("medprix_procurement_invoices", data.invoices);
@@ -562,7 +489,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
     } catch (requestError) {
       setInvoiceRefreshError(
         requestError instanceof Error
-          ? requestError.message
+          ? safeError(requestError)
           : "Invoice refresh failed. Cached invoices are still shown.",
       );
     } finally {
@@ -597,7 +524,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
         description="Keep purchasing predictable from request to receiving."
         action={canManagePurchasing ? (
           <button
-            className="button dark"
+            className="button primary-action"
             data-testid="button-create-po"
             onClick={() => {
               void refreshInventory();
@@ -607,6 +534,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
           </button>
         ) : undefined}
       />
+      {(error || statusError) && <div className="inline-error" role="alert"><span>{statusError || error} Previously loaded data may be out of date.</span><button className="button soft" onClick={() => void loadData()}>Retry refresh</button></div>}
       <div className="summary-strip">
         <Summary
           label="Open orders"
@@ -635,7 +563,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
         ].filter((section) => canManagePurchasing || section === "Receiving Report Management").map((section) => (
           <button
             key={section}
-            className={`button ${activeSection === section ? "dark" : "soft"}`}
+            className={`button ${activeSection === section ? "primary-action" : "soft"}`}
             onClick={() => setActiveSection(section)}>
             {section}
           </button>
@@ -744,7 +672,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
             </div>
             {canManagePurchasing && (
               <button
-                className="button dark"
+                className="button primary-action"
                 onClick={() => {
                   void refreshInventory();
                   setIsDeliveryOpen(true);
@@ -818,7 +746,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               {isInvoiceRefreshing && (
                 <span className="muted" role="status">Refreshing…</span>
               )}
-              <button className="button dark" onClick={() => setIsInvoiceOpen(true)}>
+              <button className="button primary-action" onClick={() => setIsInvoiceOpen(true)}>
                 <Plus size={14} /> Add invoice
               </button>
             </div>
@@ -975,7 +903,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 </button>
                 <button
                   type="button"
-                  className="button dark"
+                  className="button primary-action"
                   onClick={() => {
                     const ord = selectedOrderForItems;
                     setSelectedOrderForItems(null);
@@ -1077,9 +1005,13 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                       <label>Product *</label>
                       <select
                         required
+                        aria-describedby={poError ? "po-form-error" : undefined}
                         value={item.productId}
                         onChange={(event) => {
                           const pId = event.target.value;
+                          const existing = lineItems.findIndex((line, lineIndex) => lineIndex !== index && line.productId === pId);
+                          if (pId && existing >= 0) { setPoError(`${products.find((p) => p.id === pId)?.name || "Product"} is already on line ${existing + 1}. Edit its quantity there.`); document.getElementById(`po-quantity-${existing}`)?.focus(); return; }
+                          setPoError("");
                           const selectedProd = products.find((p) => p.id === pId);
                           let autoCost = item.unitCost;
                           if (selectedProd && (item.unitCost === "0" || !item.unitCost)) {
@@ -1118,6 +1050,8 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                         type="number"
                         min="1"
                         step="1"
+                        id={`po-quantity-${index}`}
+                        aria-label={`Quantity for line ${index + 1}`}
                         value={item.quantityOrdered}
                         onChange={(event) =>
                           setLineItems(
@@ -1163,9 +1097,10 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                   </div>
                 ))}
               </div>
+              {poError && <div id="po-form-error" className="inline-error" role="alert">{poError}</div>}
               <div className="modal-actions items-center">
                 <strong>Total: {money(runningTotal)}</strong>
-                <button className="button dark" type="submit" disabled={isSaving}>
+                <button className="button primary-action" type="submit" disabled={isSaving}>
                   <Check size={13} /> {isSaving ? "Creating..." : "Create Draft Purchase Order"}
                 </button>
               </div>
@@ -1322,8 +1257,9 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                   />
                 </div>
               </div>
+              {error && <div className="inline-error" role="alert">{error}</div>}
               <div className="modal-actions">
-                <button className="button dark" type="submit" disabled={isSaving}>
+                <button className="button primary-action" type="submit" disabled={isSaving}>
                   <Check size={13} /> {isSaving ? "Saving..." : "Save receiving report"}
                 </button>
               </div>
@@ -1458,8 +1394,9 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                   </select>
                 </div>
               </div>
+              {error && <div className="inline-error" role="alert">{error}</div>}
               <div className="modal-actions">
-                <button className="button dark" type="submit" disabled={isSaving}>
+                <button className="button primary-action" type="submit" disabled={isSaving}>
                   <Check size={13} /> {isSaving ? "Saving..." : "Save invoice"}
                 </button>
               </div>

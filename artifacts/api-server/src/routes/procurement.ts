@@ -913,7 +913,12 @@ router.post(
     }> = [];
     for (const item of items) {
       const prod = await findProduct(item.productId || "");
-      if (!prod) continue;
+      if (!prod) return res.status(400).json({ error: "Choose a valid product for every line item." });
+      if (resolvedItems.some((line) => line.productId === prod.id))
+        return res.status(409).json({ error: `${prod.productName} (${prod.sku}) is already listed. Edit the quantity on its existing line.` });
+      if (!Number.isInteger(Number(item.quantityOrdered)) || Number(item.quantityOrdered) <= 0 ||
+          !Number.isFinite(Number(item.unitCost)) || Number(item.unitCost) < 0)
+        return res.status(400).json({ error: "Each line needs a positive whole quantity and a valid unit cost." });
       const qty = Math.max(1, Math.floor(Number(item.quantityOrdered) || 1));
       const cost = Math.max(0, Number(item.unitCost) || 0);
       resolvedItems.push({
@@ -1000,7 +1005,7 @@ router.patch(
       );
 
     if (!existing) {
-      return res.json({ success: true, purchaseOrder: { id: poId, status } });
+      return res.status(404).json({ error: "Purchase order not found." });
     }
 
     const updated = await db.transaction(async (tx) => {
