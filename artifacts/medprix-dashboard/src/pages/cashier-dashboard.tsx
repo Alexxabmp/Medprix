@@ -736,7 +736,11 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                     key={type}
                     type="button"
                     className={`button ${discountType === type ? "primary-action" : "soft"}`}
-                    style={{ height: 35, fontSize: 12, padding: "0 4px" }}
+                    style={{ 
+                      height: 35,
+                      fontSize: 12,
+                      
+                      padding: 12, }}
                     onClick={() => setDiscountType(type)}>
                     {type === "None" ? "Standard (None)" : `${type} (-20%)`}
                   </button>
@@ -756,7 +760,9 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                 }}>
                 Payment Method
               </label>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+              <div style={{ 
+                display: "grid",
+                gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
                 {(["Cash", "GCash", "Card"] as const).map((method) => (
                   <button
                     key={method}
