@@ -1,3 +1,4 @@
+import { safeError, readResponse } from "./feedback";
 import { useState, useEffect, useCallback } from "react";
 import type { ProductItem, ShiftReceipt } from "./types";
 import { products as initialFallbackProducts } from "./data";
@@ -99,6 +100,7 @@ let globalReceipts: ShiftReceipt[] | null = globalTransactions
   ? mapTransactionsToReceipts(globalTransactions)
   : null;
 
+let inventoryLoadError = "";
 let isInventoryLoading = false;
 let isTransactionsLoading = false;
 let transactionRevision = 0;
@@ -128,21 +130,19 @@ export async function fetchInventoryData(force = false): Promise<ProductItem[]> 
   if (!force && isInventoryLoading && globalInventory) return globalInventory;
   isInventoryLoading = true;
   try {
-    const res = await fetch("/api/inventory", { credentials: "include" });
-    if (res.ok) {
-      const data = await res.json();
-      if (data && Array.isArray(data.products) && data.products.length > 0) {
-        globalInventory = data.products;
-        saveLocalInventory(data.products);
-        isBackendConnected = true;
-        notifyInventory();
-        return data.products;
-      }
-    }
-  } catch (err) {
-    console.warn("Inventory fetch notice:", err);
+    const response = await fetch("/api/inventory", { credentials: "include" });
+    const data = await readResponse(response, "Could not refresh inventory. Please try again.");
+    if (!Array.isArray(data.products)) throw new Error("Invalid stock response. Please refresh inventory.");
+    globalInventory = data.products;
+    inventoryLoadError = "";
+    saveLocalInventory(data.products);
+    isBackendConnected = true;
+    return data.products;
+  } catch (failure) {
+    inventoryLoadError = safeError(failure, "Could not refresh inventory. Please try again.");
   } finally {
     isInventoryLoading = false;
+    notifyInventory();
   }
   return globalInventory || initialFallbackProducts;
 }
@@ -249,11 +249,14 @@ export function prefetchPharmacyData() {
  * Hook for Inventory products
  */
 export function usePharmacyInventory() {
+  const [error, setError] = useState(inventoryLoadError);
   const [items, setItemsState] = useState<ProductItem[]>(() => globalInventory ?? initialFallbackProducts);
   const [loading, setLoading] = useState<boolean>(() => globalInventory === null);
 
   useEffect(() => {
     const handler = () => {
+      setError(inventoryLoadError);
+      setLoading(false);
       if (globalInventory) {
         setItemsState([...globalInventory]);
         setLoading(false);
@@ -282,7 +285,7 @@ export function usePharmacyInventory() {
 
   const refresh = useCallback(() => fetchInventoryData(true), []);
 
-  return { items, setItems, loading, refresh, isBackendConnected };
+  return { items, setItems, loading, refresh, isBackendConnected, error };
 }
 
 /**

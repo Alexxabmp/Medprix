@@ -1,3 +1,4 @@
+import { safeError, readResponse } from "@/lib/feedback";
 import { ProductDialog } from "@/components/custom-ui/product-dialog";
 import { matchesProductSearch } from "@/lib/product-form";
 import { useState, useEffect, useRef, type FormEvent, type ReactNode } from "react";
@@ -240,7 +241,7 @@ export default function InventoryPage({
   const canRecordStockOut = isAdmin || isCashier;
 
   // Inventory items state from shared pharmacy store
-  const { items, setItems, loading: isLoading, refresh: fetchInventory, isBackendConnected } = usePharmacyInventory();
+  const { items, setItems, loading: isLoading, refresh: fetchInventory, isBackendConnected, error: inventoryLoadError } = usePharmacyInventory();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All statuses");
   const [categoryFilter, setCategoryFilter] = useState("All categories");
@@ -249,6 +250,9 @@ export default function InventoryPage({
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
   const [viewProduct, setViewProduct] = useState<ProductItem | null>(null);
   const [editProduct, setEditProduct] = useState<ProductItem | null>(null);
+  const [movementError, setMovementError] = useState("");
+  const [movementSaving, setMovementSaving] = useState(false);
+  const movementBusy = useRef(false);
   const [batchProduct, setBatchProduct] = useState<ProductItem | null>(null);
   const [stockInProduct, setStockInProduct] = useState<ProductItem | null>(null);
   const [stockOutProduct, setStockOutProduct] = useState<ProductItem | null>(null);
@@ -404,13 +408,16 @@ export default function InventoryPage({
       dateReceived: new Date().toISOString().slice(0, 10),
       supplier: "Southstar Distribution",
     });
+    setMovementError("");
     setBatchProduct(product);
   };
 
   const handleSaveAddBatch = async (e: FormEvent) => {
     e.preventDefault();
+    if (movementBusy.current) return;
+    setMovementError("");
     if (!batchProduct || !newBatchData.batchNumber.trim()) {
-      onToast("Batch number is required");
+      setMovementError("Batch number is required");
       return;
     }
 
@@ -424,16 +431,18 @@ export default function InventoryPage({
       supplier: newBatchData.supplier,
     };
 
+    movementBusy.current = true; setMovementSaving(true);
     try {
       const res = await fetch(`/api/inventory/products/${batchProduct.id}/batches`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newBatch),
       });
-      const data = await res.json().catch(() => null);
+      const data = await readResponse(res, "Could not confirm this stock change. Refresh inventory and check the batch before retrying.");
+      if (!data.success || !data.product?.id) throw new Error("Stock change could not be confirmed. Refresh inventory and check the batch before retrying.");
 
       if (!res.ok) {
-        onToast(data?.error || "Failed to add batch");
+        setMovementError(safeError(data?.error || "Failed to add batch"));
         return;
       }
 
@@ -441,27 +450,8 @@ export default function InventoryPage({
       setBatchProduct(null);
       onToast(`Added batch ${newBatch.batchNumber} (${parsedQty} units) to ${batchProduct.name}`);
     } catch (err) {
-      console.error("Add batch failed:", err);
-      setItems((current) =>
-        current.map((p) => {
-          if (p.id !== batchProduct.id) return p;
-          const newStock = (p.stock || 0) + parsedQty;
-          return {
-            ...p,
-            stock: newStock,
-            batches: [...(p.batches || []), newBatch],
-            status:
-              newStock === 0
-                ? "Out of stock"
-                : newStock <= p.reorder
-                  ? "Low stock"
-                  : "Available",
-          };
-        })
-      );
-      setBatchProduct(null);
-      onToast(`Added batch ${newBatch.batchNumber} (${parsedQty} units) offline to ${batchProduct.name}`);
-    }
+      setMovementError(safeError(err, "The stock change could not be confirmed. Your entries are retained. Refresh inventory and check the batch before retrying."));
+    } finally { movementBusy.current = false; setMovementSaving(false); }
   };
 
   const handleOpenStockIn = (product: ProductItem) => {
@@ -471,19 +461,23 @@ export default function InventoryPage({
       date: new Date().toISOString().slice(0, 10),
       reason: "Procurement Delivery",
     });
+    setMovementError("");
     setStockInProduct(product);
   };
 
   const handleSaveStockIn = async (e: FormEvent) => {
     e.preventDefault();
+    if (movementBusy.current) return;
+    setMovementError("");
     if (!stockInProduct) return;
     const validation = validateStockMovementQuantity(stockInData.quantity);
     if (!validation.ok) {
-      onToast(validation.error);
+      setMovementError(validation.error);
       return;
     }
     const qty = validation.quantity;
 
+    movementBusy.current = true; setMovementSaving(true);
     try {
       const res = await fetch(`/api/inventory/products/${stockInProduct.id}/stock-in`, {
         method: "POST",
@@ -495,10 +489,11 @@ export default function InventoryPage({
           date: stockInData.date,
         }),
       });
-      const data = await res.json().catch(() => null);
+      const data = await readResponse(res, "Could not confirm this stock change. Refresh inventory and check the batch before retrying.");
+      if (!data.success || !data.product?.id) throw new Error("Stock change could not be confirmed. Refresh inventory and check the batch before retrying.");
 
       if (!res.ok) {
-        onToast(data?.error || "Failed to record stock in");
+        setMovementError(safeError(data?.error || "Failed to record stock in"));
         return;
       }
 
@@ -506,46 +501,8 @@ export default function InventoryPage({
       setStockInProduct(null);
       onToast(`Stock In recorded: +${qty} units added to ${stockInProduct.name} (${stockInData.reason})`);
     } catch (err) {
-      console.error("Stock in failed:", err);
-      setItems((current) =>
-        current.map((p) => {
-          if (p.id !== stockInProduct.id) return p;
-          const newStock = (p.stock || 0) + qty;
-          const batchExists = (p.batches || []).some(
-            (b) => b.batchNumber === stockInData.batchNumber
-          );
-          const updatedBatches = batchExists
-            ? (p.batches || []).map((b) =>
-              b.batchNumber === stockInData.batchNumber
-                ? { ...b, quantity: b.quantity + qty }
-                : b
-            )
-            : [
-              ...(p.batches || []),
-              {
-                batchNumber: stockInData.batchNumber,
-                quantity: qty,
-                expiryDate: "2028-12-31",
-                dateReceived: stockInData.date,
-                supplier: "Direct Delivery",
-              },
-            ];
-          return {
-            ...p,
-            stock: newStock,
-            batches: updatedBatches,
-            status:
-              newStock === 0
-                ? "Out of stock"
-                : newStock <= p.reorder
-                  ? "Low stock"
-                  : "Available",
-          };
-        })
-      );
-      setStockInProduct(null);
-      onToast(`Stock In recorded offline: +${qty} units added to ${stockInProduct.name}`);
-    }
+      setMovementError(safeError(err, "The stock change could not be confirmed. Your entries are retained. Refresh inventory and check the batch before retrying."));
+    } finally { movementBusy.current = false; setMovementSaving(false); }
   };
 
   const handleOpenStockOut = (product: ProductItem) => {
@@ -559,15 +516,18 @@ export default function InventoryPage({
       date: new Date().toISOString().slice(0, 10),
       reason: "Dispensed / OTC",
     });
+    setMovementError("");
     setStockOutProduct(product);
   };
 
   const handleSaveStockOut = async (e: FormEvent) => {
     e.preventDefault();
+    if (movementBusy.current) return;
+    setMovementError("");
     if (!stockOutProduct) return;
     const validation = validateStockMovementQuantity(stockOutData.quantity);
     if (!validation.ok) {
-      onToast(validation.error);
+      setMovementError(validation.error);
       return;
     }
     const qty = validation.quantity;
@@ -577,10 +537,11 @@ export default function InventoryPage({
     );
 
     if (!targetBatch || targetBatch.quantity < qty) {
-      onToast(`Insufficient batch stock. Available in ${stockOutData.batchNumber}: ${targetBatch?.quantity || 0} units`);
+      setMovementError(`Insufficient batch stock. Available in ${stockOutData.batchNumber}: ${targetBatch?.quantity || 0} units`);
       return;
     }
 
+    movementBusy.current = true; setMovementSaving(true);
     try {
       const res = await fetch(`/api/inventory/products/${stockOutProduct.id}/stock-out`, {
         method: "POST",
@@ -591,10 +552,11 @@ export default function InventoryPage({
           reason: stockOutData.reason,
         }),
       });
-      const data = await res.json().catch(() => null);
+      const data = await readResponse(res, "Could not confirm this stock change. Refresh inventory and check the batch before retrying.");
+      if (!data.success || !data.product?.id) throw new Error("Stock change could not be confirmed. Refresh inventory and check the batch before retrying.");
 
       if (!res.ok) {
-        onToast(data?.error || "Failed to record stock out");
+        setMovementError(safeError(data?.error || "Failed to record stock out"));
         return;
       }
 
@@ -603,12 +565,13 @@ export default function InventoryPage({
       onToast(`Stock Out recorded: -${qty} units removed from ${stockOutProduct.name} (${stockOutData.reason})`);
     } catch (err) {
       console.error("Stock out failed:", err);
-      onToast("Couldn't reach the server. Stock out was not recorded.");
-    }
+      setMovementError("Stock out could not be confirmed. Refresh inventory and check the batch before retrying.");
+    } finally { movementBusy.current = false; setMovementSaving(false); }
   };
 
   return (
     <div>
+      {inventoryLoadError && <div className="inline-error" role="alert"><span>{inventoryLoadError} Previously loaded stock may be out of date.</span><button className="button soft" onClick={() => void fetchInventory()}>Retry</button></div>}
       <PageHeading
         title="Inventory"
         description="Real-time stock levels, multi-batch tracking, expiry alerts, and stock movements."
@@ -1296,8 +1259,10 @@ export default function InventoryPage({
                   )}
                 </div>
 
+                {movementSaving && <p role="status">Saving stock change…</p>}
+                {movementError && <div className="inline-error" role="alert">{movementError}</div>}
                 <div className="modal-actions">
-                  <button type="submit" className="button dark">
+                  <button type="submit" disabled={movementSaving} className="button dark">
                     Record Batch
                   </button>
                 </div>
@@ -1395,8 +1360,10 @@ export default function InventoryPage({
                   </div>
                 </div>
 
+                {movementSaving && <p role="status">Saving stock change…</p>}
+                {movementError && <div className="inline-error" role="alert">{movementError}</div>}
                 <div className="modal-actions">
-                  <button type="submit" className="button dark">
+                  <button type="submit" disabled={movementSaving} className="button dark">
                     <ArrowDownLeft size={14} /> Confirm Stock In
                   </button>
                 </div>
@@ -1516,9 +1483,11 @@ export default function InventoryPage({
                   </div>
                 </div>
 
+                {movementSaving && <p role="status">Saving stock change…</p>}
+                {movementError && <div className="inline-error" role="alert">{movementError}</div>}
                 <div className="modal-actions">
                   <button
-                    type="submit"
+                    type="submit" disabled={movementSaving}
                     className="button dark"
                     style={{ background: "#dc2626", borderColor: "#dc2626" }}>
                     <ArrowUpRight size={14} /> Confirm Stock Out
