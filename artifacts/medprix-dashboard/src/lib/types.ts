@@ -1,6 +1,6 @@
 // Shared application types
 
-export type ToastFn = (message: string) => void;
+export type ToastFn = (message: string | import("./feedback").Feedback) => void;
 
 export type ReportType =
   | "sales"

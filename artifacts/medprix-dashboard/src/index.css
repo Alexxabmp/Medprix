@@ -2342,3 +2342,21 @@ a {
     grid-column: auto;
   }
 }
+.button.primary-action { background: hsl(var(--foreground)); color: hsl(var(--background)); }
+.button.primary-action:hover { background: hsl(var(--foreground) / .9); }
+.inline-error, .stock-explanation {
+  color: hsl(var(--foreground));
+  overflow-wrap: anywhere;
+  white-space: normal;
+  min-width: 0;
+}
+.inline-error { background: hsl(var(--surface-soft)); border: 1px solid hsl(var(--foreground) / .5); border-inline-start: 3px solid hsl(var(--danger)); }
+.inline-error > svg { flex-shrink: 0; }
+.toast { z-index: 2000; max-width: min(560px, calc(100vw - 24px)); overflow-wrap: anywhere; }
+.toast > span { min-width: 0; }
+.toast > svg { flex-shrink: 0; }
+.toast button { color: inherit; background: transparent; border: 0; flex-shrink: 0; padding: 4px; }
+.toast button:focus-visible { outline: 2px solid currentColor; }
+@media (max-width: 600px) {
+  .toast { right: 12px; bottom: 12px; }
+}

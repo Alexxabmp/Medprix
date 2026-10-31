@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import { Check } from "lucide-react";
+import { createFeedbackNotifier, type Feedback } from "@/lib/feedback";
+import { useEffect, useMemo, useState } from "react";
+import { Check, AlertTriangle, CircleAlert, X } from "lucide-react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router as WouterRouter, useLocation } from "wouter";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -36,7 +37,9 @@ function AppContent() {
   const [dark, setDark] = useState(
     () => localStorage.getItem("medprix-theme") === "dark",
   );
-  const [toast, setToast] = useState("");
+  const [toast, setToast] = useState<Feedback | null>(null);
+  const notifications = useMemo(() => createFeedbackNotifier(setToast), []);
+  useEffect(() => () => notifications.dispose(), [notifications]);
   const [users, setUsers] = useState<UserRecord[]>([]);
 
   useEffect(() => {
@@ -144,19 +147,7 @@ function AppContent() {
     }
   }, [location, session, role, setLocation]);
 
-  const notify: ToastFn = (message) => {
-    let safeMessage = message;
-    if (
-      typeof safeMessage === "string" &&
-      /failed query|insert\s+into|select\s+.*from|update\s+.*set|delete\s+from|syntax error/i.test(
-        safeMessage
-      )
-    ) {
-      safeMessage = "An error occurred while saving. Please check your data and try again.";
-    }
-    setToast(safeMessage);
-    window.setTimeout(() => setToast(""), 2800);
-  };
+  const notify: ToastFn = notifications.notify;
 
   if (location === "/login") {
     return (
@@ -199,9 +190,9 @@ function AppContent() {
         />
       </ErrorBoundary>
       {toast && (
-        <div className="toast" data-testid="status-toast">
-          <Check size={15} />
-          {toast}
+        <div className={`toast toast-${toast.variant}`} role={toast.variant === "error" ? "alert" : "status"} data-testid="status-toast">
+          {toast.variant === "success" ? <Check size={15} /> : toast.variant === "warning" ? <AlertTriangle size={15} /> : <CircleAlert size={15} />}
+          <span>{toast.message}</span><button aria-label="Dismiss notification" onClick={() => setToast(null)}><X size={15} /></button>
         </div>
       )}
     </>

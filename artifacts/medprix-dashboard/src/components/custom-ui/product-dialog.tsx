@@ -1,3 +1,4 @@
+import { safeError } from "@/lib/feedback";
 import { useRef, useState, type FormEvent } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
@@ -72,8 +73,8 @@ export function ProductDialog({ product, categories, suppliers, onClose, onSaved
       });
       const data = await response.json().catch(() => null);
       if (!response.ok || !data?.success || !data?.product) {
-        setFailure(data?.error || "The product could not be saved. Check your entries and try again.");
-        showErrors(data?.errors ?? {});
+        setFailure(safeError({ status: response.status, data }, "The product could not be saved. Check your entries and try again."));
+        showErrors(Object.fromEntries(Object.entries(data?.errors ?? {}).map(([key, value]) => [key, safeError(value, "Check this field.")])));
         return;
       }
       onSaved(data.product);

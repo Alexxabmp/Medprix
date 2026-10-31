@@ -90,7 +90,7 @@ function sanitizeErrorMessage(err: any): string {
     lower.includes("drizzle");
 
   if (!isSqlOrDbError) {
-    return rawMessage || "Internal server error";
+    return "The request could not be completed. Please try again.";
   }
 
   const code = String(err.code || "");
