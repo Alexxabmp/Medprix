@@ -70,3 +70,8 @@ export async function readResponse(response: Response, fallback: string) {
   if (!data || typeof data !== "object") throw new Error(fallback);
   return data;
 }
+
+export function localDate() {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}

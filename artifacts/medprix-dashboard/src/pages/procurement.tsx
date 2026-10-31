@@ -1,4 +1,5 @@
 import { useDialogAccessibility } from "@/lib/use-dialog-accessibility";
+import { SupplierPaymentDialog } from "@/components/supplier-payment-dialog";
 import { safeError, readResponse } from "@/lib/feedback";
 import { useEffect, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
@@ -146,6 +147,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
   const [invoices, setInvoices] = useState<Invoice[]>(() =>
     []
   );
+  const [paymentInvoiceId, setPaymentInvoiceId] = useState<string | null>(null);
   const [poError, setPoError] = useState("");
   const [statusError, setStatusError] = useState("");
   const [error, setError] = useState("");
@@ -519,6 +521,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
 
   return (
     <div>
+      {paymentInvoiceId && <SupplierPaymentDialog invoiceId={paymentInvoiceId} onClose={() => setPaymentInvoiceId(null)} onToast={onToast} onSaved={refreshInvoicesAndPayables} />}
       <PageHeading
         title="Procurement"
         description="Keep purchasing predictable from request to receiving."
@@ -795,7 +798,8 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                         <td>
                           <strong>{money(invoice.invoiceAmount)}</strong>
                         </td>
-                        <td><span className={`pill ${invoice.status === "Paid" ? "success" : "warning"}`}>{invoice.status}</span></td>
+                        <td className="invoice-payment-cell"><span className={`pill ${invoice.status === "Paid" ? "success" : "warning"}`}>{invoice.status === "Paid" ? "Settled" : invoice.status}</span>
+                          {canManagePurchasing && invoice.status !== "Paid" && <button className="button soft" onClick={() => setPaymentInvoiceId(invoice.id)}>Record payment</button>}</td>
                       </tr>
                     ))
                   ))}
@@ -1390,7 +1394,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                       })
                     }>
                     <option>Unpaid</option>
-                    <option>Paid</option>
+
                   </select>
                 </div>
               </div>

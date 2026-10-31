@@ -16,6 +16,9 @@ import {
 } from "@workspace/db";
 import { requireAuth, requireRoles } from "../middleware/auth";
 
+import { createSettlementService, SettlementError } from "../lib/supplier-payments";
+
+const settlement = createSettlementService(db);
 const router: IRouter = Router();
 const poStatuses = purchaseOrdersTable.status.enumValues;
 const uuidPattern =
@@ -48,7 +51,7 @@ async function ensureAccountsPayableRecords(supplierId?: string) {
   const existingIds = new Set(existing.map((payable) => payable.invoiceId));
   const missing = invoices.filter(
     (invoice) =>
-      !existingIds.has(invoice.id) && Number(invoice.invoiceAmount) > 0,
+      !existingIds.has(invoice.id) && !invoice.isPaid && Number(invoice.invoiceAmount) > 0,
   );
   if (missing.length === 0) return;
 
@@ -59,10 +62,8 @@ async function ensureAccountsPayableRecords(supplierId?: string) {
         supplierId: invoice.supplierId,
         invoiceId: invoice.id,
         totalOwed: formatAmount(invoice.invoiceAmount),
-        totalPaid: invoice.isPaid
-          ? formatAmount(invoice.invoiceAmount)
-          : "0.00",
-        balance: invoice.isPaid ? "0.00" : formatAmount(invoice.invoiceAmount),
+        totalPaid: "0.00",
+        balance: formatAmount(invoice.invoiceAmount),
       })),
     )
     .onConflictDoNothing({ target: accountsPayableTable.invoiceId });
@@ -351,70 +352,24 @@ router.get(
   },
 );
 
-router.post(
-  "/supplier-payments",
-  requireRoles("Admin", "FrontDesk"),
-  async (req: Request, res: Response) => {
-    const { apId, amountPaid, paymentDate, notes } = req.body ?? {};
-    const amount = Number(amountPaid);
-    if (
-      !uuidPattern.test(String(apId || "")) ||
-      !Number.isFinite(amount) ||
-      amount <= 0
-    ) {
-      return res.status(400).json({
-        error: "A valid payable and positive payment amount are required.",
-      });
-    }
-    const [payable] = await db
-      .select()
-      .from(accountsPayableTable)
-      .where(eq(accountsPayableTable.id, apId));
-    if (!payable)
-      return res.status(404).json({ error: "Account payable not found." });
-    if (amount > Number(payable.balance))
-      return res
-        .status(400)
-        .json({ error: "Payment cannot exceed the outstanding balance." });
-    const paidAt = paymentDate
-      ? new Date(`${paymentDate}T00:00:00`)
-      : new Date();
-    if (Number.isNaN(paidAt.getTime()))
-      return res.status(400).json({ error: "Enter a valid payment date." });
+router.post("/supplier-payments", async (req: Request, res: Response) => {
+  try {
+    const result = await settlement.save(req.body, req.get("Idempotency-Key"));
+    return res.status(result.replayed ? 200 : 201).json({ success: true, ...result });
+  } catch (error) {
+    if (error instanceof SettlementError) return res.status(error.status).json({ error: error.message });
+    throw error;
+  }
+});
 
-    const result = await db.transaction(async (tx) => {
-      const newPaid = Number(payable.totalPaid) + amount;
-      const newBalance = Number(payable.balance) - amount;
-      const [payment] = await tx
-        .insert(supplierPaymentsTable)
-        .values({
-          apId: payable.id,
-          amountPaid: formatAmount(amount),
-          paymentDate: paidAt,
-          notes: typeof notes === "string" ? notes.trim() || null : null,
-        })
-        .returning();
-      const [updated] = await tx
-        .update(accountsPayableTable)
-        .set({
-          totalPaid: formatAmount(newPaid),
-          balance: formatAmount(newBalance),
-          lastPaymentDate: paidAt.toISOString().slice(0, 10),
-          updatedAt: new Date(),
-        })
-        .where(eq(accountsPayableTable.id, payable.id))
-        .returning();
-      if (newBalance === 0) {
-        await tx
-          .update(supplierInvoicesTable)
-          .set({ isPaid: true })
-          .where(eq(supplierInvoicesTable.id, payable.invoiceId));
-      }
-      return { payment, payable: updated };
-    });
-    return res.status(201).json({ success: true, ...result });
-  },
-);
+router.get("/supplier-payments/:key", async (req: Request, res: Response) => {
+  try {
+    return res.json({ success: true, ...await settlement.reconcile(String(req.query.apId || ""), asId(req.params.key)) });
+  } catch (error) {
+    if (error instanceof SettlementError) return res.status(error.status).json({ error: error.message });
+    throw error;
+  }
+});
 
 router.get("/suppliers", async (_req: Request, res: Response) => {
   const [suppliers, purchaseOrders] = await Promise.all([
@@ -800,6 +755,7 @@ router.post(
         error: "Supplier, invoice number, and due date are required.",
       });
     }
+    if (isPaid) return res.status(400).json({ error: "Create the invoice unpaid, then use Record payment to settle it." });
     const supplier = await findSupplier(supplierId);
     if (!supplier)
       return res
@@ -1145,39 +1101,12 @@ router.patch(
   },
 );
 
-router.patch(
-  "/supplier-invoices/:id/status",
-  requireRoles("Admin", "FrontDesk"),
-  async (req: Request, res: Response) => {
-    const invoiceId = asId(req.params.id);
-    const { status } = req.body as { status?: string };
-    const isPaid = status === "Paid";
-
-    const [existing] = await db
-      .select()
-      .from(supplierInvoicesTable)
-      .where(
-        or(
-          eq(supplierInvoicesTable.id, invoiceId),
-          eq(supplierInvoicesTable.invoiceNumber, invoiceId),
-        ),
-      );
-
-    if (!existing) {
-      return res.json({
-        success: true,
-        invoice: { id: invoiceId, isPaid, status },
-      });
-    }
-
-    const [updated] = await db
-      .update(supplierInvoicesTable)
-      .set({ isPaid })
-      .where(eq(supplierInvoicesTable.id, existing.id))
-      .returning();
-
-    return res.json({ success: true, invoice: updated });
-  },
-);
+router.patch("/supplier-invoices/:id/status", async (req: Request, res: Response) => {
+  const id = asId(req.params.id);
+  if (!uuidPattern.test(id)) return res.status(400).json({ error: "Invalid invoice ID." });
+  const [invoice] = await db.select().from(supplierInvoicesTable).where(eq(supplierInvoicesTable.id, id));
+  if (!invoice) return res.status(404).json({ error: "Invoice not found." });
+  return res.status(409).json({ error: "Use Record payment to settle this invoice. Status cannot be changed independently of payment history." });
+});
 
 export default router;
