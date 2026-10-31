@@ -11,24 +11,13 @@ export function productStock(product: ProductItem): number {
   return Math.max(0, Number(product.stock) || 0);
 }
 
-export function stockExplanation(
-  product: ProductItem | undefined,
-  inCart: number,
-  state: "ready" | "loading" | "error",
-) {
-  if (state === "loading")
-    return "Checking stock. Please wait before adding medicines.";
-  if (state === "error")
-    return "Stock could not be verified. Refresh stock before adding medicines or taking payment.";
-  if (!product) return "Select a product to see availability.";
+export function productAvailability(product: ProductItem, inCart = 0) {
   const stock = productStock(product);
-  if (!stock)
-    return `${product.name}: Out of stock. This medicine cannot be added.`;
+  if (!stock) return "Out of stock";
   if (!product.batches?.some((batch) => Number(batch.quantity) > 0))
-    return `${product.name}: Stock has no available batches. Ask an administrator to review inventory before selling.`;
-  if (stock <= inCart)
-    return `${product.name}: All available units are already in your cart. Adjust the cart quantity.`;
-  return `${product.name}: ${stock - inCart} available to add.`;
+    return "Stock unavailable";
+  if (stock <= inCart) return "All stock in cart";
+  return "";
 }
 
 export function batchAllocations(product: ProductItem, quantity: number) {

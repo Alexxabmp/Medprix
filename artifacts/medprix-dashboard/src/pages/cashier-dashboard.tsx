@@ -1,4 +1,4 @@
-import { productStock as getProductStock, batchAllocations as getBatchAllocations, stockExplanation } from "@/lib/stock-guidance";
+import { productStock as getProductStock, batchAllocations as getBatchAllocations, productAvailability } from "@/lib/stock-guidance";
 import { safeError, readResponse } from "@/lib/feedback";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
@@ -9,6 +9,7 @@ import {
   Eye,
   Plus,
   Receipt,
+  RefreshCw,
   Search,
   ShieldCheck,
   ShoppingCart,
@@ -49,7 +50,7 @@ function formatPeso(value: number): string {
 
 export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
   const { date: shiftDate, selectDate } = useBusinessDate();
-  const { items: products, setItems: setProducts, refresh: fetchProducts, loading: isLoadingProducts } = usePharmacyInventory();
+  const { items: products, setItems: setProducts } = usePharmacyInventory();
   const { receipts, setReceipts, refresh: fetchTransactions } = usePharmacyTransactions();
   const [selectedProductId, setSelectedProductId] = useState("");
   const [productLoadError, setProductLoadError] = useState("");
@@ -86,12 +87,6 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
   const submitCheckout = useRef<ReturnType<typeof createCheckoutSubmitter> | null>(null);
   if (!submitCheckout.current) submitCheckout.current = createCheckoutSubmitter();
 
-  useEffect(() => {
-    if (products.length > 0 && !selectedProductId) {
-      setSelectedProductId(products[0].id);
-    }
-  }, [products, selectedProductId]);
-
   const filteredProducts = products.filter((product) => {
     const q = productSearch.toLowerCase();
     return (
@@ -107,17 +102,26 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
   const selectedProductStock = selectedProduct ? getProductStock(selectedProduct) : 0;
   const selectedCartQuantity = cart.find((item) => item.id === selectedProductId)?.qty || 0;
   const selectedAvailableStock = Math.max(0, selectedProductStock - selectedCartQuantity);
-  const stockMessage = stockExplanation(selectedProduct, selectedCartQuantity, stockChecking ? "loading" : productLoadError ? "error" : "ready");
-  const stockBlocked = stockChecking || !!productLoadError || !selectedProduct || selectedAvailableStock === 0 || !selectedProduct.batches?.some((batch) => Number(batch.quantity) > 0);
+  const stockStatus = selectedProduct ? productAvailability(selectedProduct, selectedCartQuantity) : "";
+  const stockBlocked = stockChecking || !!productLoadError || !selectedProduct || !!stockStatus;
+  const previousAvailability = useRef({ id: "", status: "" });
+  useEffect(() => {
+    if (stockChecking || productLoadError) return;
+    const previous = previousAvailability.current;
+    previousAvailability.current = { id: selectedProductId, status: stockStatus };
+    if (selectedProduct && previous.id === selectedProductId && previous.status === "" &&
+        (stockStatus === "Out of stock" || stockStatus === "Stock unavailable")) {
+      onToast({ message: `${selectedProduct.name} is no longer available. Choose another medicine.`, variant: "warning" });
+    }
+  }, [stockChecking, productLoadError, selectedProductId, stockStatus, selectedProduct, onToast]);
   const getCartAvailableStock = (item: CartItem) => {
     const product = products.find((entry) => entry.id === item.id);
     return product ? getProductStock(product) : item.qty;
   };
 
   useEffect(() => {
-    if (filteredProducts.length === 0) return;
     if (!filteredProducts.some((product) => product.id === selectedProductId)) {
-      setSelectedProductId(filteredProducts[0].id);
+      setSelectedProductId("");
     }
   }, [filteredProducts, selectedProductId]);
 
@@ -398,25 +402,15 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
 
         {/* Product Selection Form Bar */}
         <div
-          className="pos-product-bar"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(220px, .8fr) minmax(260px, 1fr) 90px auto",
-            gap: 12,
-            alignItems: "flex-end",
-            padding: "14px 16px",
-            background: "hsl(var(--surface-soft))",
-            border: "1px solid hsl(var(--border))",
-            borderRadius: 14,
-            marginBottom: 20,
-          }}>
+          className="pos-product-bar">
           <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "hsl(var(--muted))", display: "block", marginBottom: 5 }}>
+            <label htmlFor="pos-product-search">
               Search Product
             </label>
             <div className="search-wrap" style={{ height: 39 }}>
               <Search size={15} />
               <input
+                id="pos-product-search"
                 data-testid="input-pos-product-search"
                 type="search"
                 placeholder="Search product, SKU, category..."
@@ -426,52 +420,48 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
             </div>
           </div>
           <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "hsl(var(--muted))", display: "block", marginBottom: 5 }}>
-              Select Product / Medicine *
-            </label>
+            <div className="pos-product-label">
+              <label htmlFor="pos-product-select">Select Product / Medicine *</label>
+              <button type="button" className="icon-button pos-stock-refresh" aria-label="Refresh stock" title="Refresh stock"
+                disabled={stockChecking || isSubmitting} onClick={() => void refreshStock()}>
+                <RefreshCw size={14} className={stockChecking ? "spin" : undefined} />
+              </button>
+            </div>
             <select
+              id="pos-product-select"
               className="select"
-              aria-describedby="pos-stock-explanation"
+              aria-describedby={productLoadError ? "pos-stock-error" : undefined}
+              aria-busy={stockChecking}
               value={selectedProductId}
               onChange={(e) => {
                 setSelectedProductId(e.target.value);
                 setQty(1);
               }}
-              disabled={isLoadingProducts || filteredProducts.length === 0}
+              disabled={stockChecking || !!productLoadError || filteredProducts.length === 0}
               style={{ width: "100%", height: 39 }}>
-              {filteredProducts.length === 0 ? (
-                <option value="">
-                  {isLoadingProducts
-                    ? "Loading live inventory..."
-                    : products.length === 0
-                      ? "No live products available"
-                      : "No products match your search"}
-                </option>
-              ) : (
-                filteredProducts.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({p.sku}) - {p.price} [{getProductStock(p) === 0 ? "Out of stock" : `Stock: ${getProductStock(p)}`}]
-                  </option>
-                ))
-              )}
+              <option value="" disabled>
+                {stockChecking ? "Loading stock…" : productLoadError ? "Stock unavailable" : filteredProducts.length === 0 ? "No products match your search" : "Select product / medicine"}
+              </option>
+              {filteredProducts.map((product) => {
+                const availability = productAvailability(product, cart.find((item) => item.id === product.id)?.qty || 0);
+                return <option key={product.id} value={product.id} disabled={!!availability}>
+                  {product.name} ({product.sku}) - {product.price}{availability ? ` — ${availability}` : ""}
+                </option>;
+              })}
             </select>
-            {productLoadError && (
-              <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-                {productLoadError}
-              </div>
-            )}
           </div>
           <div className="">
-            <label style={{ fontSize: 12, fontWeight: 600, color: "hsl(var(--muted))", display: "block", marginBottom: 5, textAlign: "start" }}>
+            <label htmlFor="pos-product-quantity">
               Quantity
             </label>
             <input
+              id="pos-product-quantity"
               type="number"
               min="1"
               max={Math.max(1, selectedAvailableStock)}
               step="1"
               value={qty}
-              disabled={!selectedProduct || selectedAvailableStock === 0}
+              disabled={stockBlocked}
               onChange={(e) => {
                 const nextQuantity = Number(e.target.value);
                 if (!Number.isInteger(nextQuantity)) return;
@@ -491,11 +481,10 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
             />
           </div>
           <div>
-            <div id="pos-stock-explanation" className={`stock-explanation ${stockBlocked ? "inline-error" : ""}`} role="status">{stockBlocked && <AlertTriangle size={16} />}<span>{stockMessage}</span></div>
             <button
               type="button"
               className="button primary-action"
-              aria-describedby="pos-stock-explanation"
+              aria-describedby={productLoadError ? "pos-stock-error" : undefined}
               disabled={stockBlocked || isSubmitting || filteredProducts.length === 0}
               style={{ height: 39, padding: "0 18px", display: "inline-flex", alignItems: "center", gap: 6 }}
               onClick={handleAddToCart}>
@@ -504,8 +493,12 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
           </div>
         </div>
 
+        {productLoadError && <div id="pos-stock-error" className="pos-stock-error" role="alert">
+          <AlertTriangle size={14} aria-hidden="true" /><span>Stock unavailable.</span>
+          <button type="button" className="pos-stock-retry" disabled={stockChecking || isSubmitting} onClick={() => void refreshStock()}>Retry stock</button>
+        </div>}
+
         {checkoutError && <div className="inline-error" role="alert"><AlertTriangle size={16} /><span>{checkoutError}</span></div>}
-        <button type="button" className="button soft" disabled={stockChecking || isSubmitting} onClick={() => void refreshStock()}>{stockChecking ? "Checking stock…" : "Refresh stock"}</button>
         {/* 2-Column POS Layout inside full-width card */}
         <div className="pos-checkout-grid">
           {/* Left: Cart Items Table */}
