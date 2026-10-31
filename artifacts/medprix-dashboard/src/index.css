@@ -2381,6 +2381,10 @@ a {
 }
 .inline-error { background: hsl(var(--surface-soft)); border: 1px solid hsl(var(--foreground) / .5); border-inline-start: 3px solid hsl(var(--danger)); }
 .inline-error > svg { flex-shrink: 0; }
+.stock-explanation { font-size: 12px; margin: 8px 0; }
+.cashier-page, .cashier-page :is(.pos-checkout-grid, .pos-checkout-grid > *, .pos-product-bar, .pos-product-bar > *, .surface-card, .table-scroll) { min-width: 0; max-width: 100%; }
+.cashier-page .table-scroll { overflow-x: auto; }
+.cashier-page .pos-card-header { flex-wrap: wrap; gap: 10px; }
 .invoice-payment-cell { white-space: normal !important; }
 .invoice-payment-cell .button { margin: 6px; }
 .invoice-payment-cell .pill { color: hsl(var(--foreground)); background: hsl(var(--surface-soft)); }

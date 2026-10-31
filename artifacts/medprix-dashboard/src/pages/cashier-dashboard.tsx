@@ -1,5 +1,8 @@
+import { productStock as getProductStock, batchAllocations as getBatchAllocations, stockExplanation } from "@/lib/stock-guidance";
+import { safeError, readResponse } from "@/lib/feedback";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
+  AlertTriangle,
   Check,
   ClipboardList,
   Download,
@@ -36,13 +39,6 @@ type CartItem = {
   qty: number;
 };
 
-function getProductStock(product: ProductItem): number {
-  if (Array.isArray(product.batches) && product.batches.length > 0) {
-    return product.batches.reduce((sum, batch) => sum + (Number(batch.quantity) || 0), 0);
-  }
-  return Number(product.stock) || 0;
-}
-
 function getProductPrice(product: ProductItem): number {
   return parseFloat(product.price.replace("₱", "").replace(",", "")) || 0;
 }
@@ -51,37 +47,27 @@ function formatPeso(value: number): string {
   return `₱${value.toFixed(2)}`;
 }
 
-function getBatchAllocations(product: ProductItem, quantity: number) {
-  let remaining = quantity;
-  const allocations: { batchNumber: string; quantity: number }[] = [];
-  const batches = [...(product.batches || [])]
-    .filter((batch) => Number(batch.quantity) > 0)
-    .sort(
-      (a, b) =>
-        new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime(),
-    );
-
-  for (const batch of batches) {
-    if (remaining <= 0) break;
-    const allocated = Math.min(Number(batch.quantity), remaining);
-    allocations.push({ batchNumber: batch.batchNumber, quantity: allocated });
-    remaining -= allocated;
-  }
-
-  if (remaining > 0 && product.batches && product.batches.length > 0) {
-    allocations.push({ batchNumber: product.batches[0].batchNumber, quantity: remaining });
-    remaining = 0;
-  }
-
-  return remaining === 0 ? allocations : null;
-}
-
 export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
   const { date: shiftDate, selectDate } = useBusinessDate();
   const { items: products, setItems: setProducts, refresh: fetchProducts, loading: isLoadingProducts } = usePharmacyInventory();
   const { receipts, setReceipts, refresh: fetchTransactions } = usePharmacyTransactions();
   const [selectedProductId, setSelectedProductId] = useState("");
   const [productLoadError, setProductLoadError] = useState("");
+  const [stockChecking, setStockChecking] = useState(true);
+  const [checkoutError, setCheckoutError] = useState("");
+  async function refreshStock() {
+    setStockChecking(true);
+    try {
+      const response = await fetch("/api/inventory", { credentials: "include" });
+      const data = await readResponse(response, "Could not verify current stock. Please refresh stock.");
+      if (!Array.isArray(data.products)) throw new Error("Invalid stock response. Please refresh stock.");
+      setProducts(data.products);
+      setProductLoadError("");
+      return data.products as ProductItem[];
+    } catch (failure) { setProductLoadError(safeError(failure)); return null; }
+    finally { setStockChecking(false); }
+  }
+  useEffect(() => { void refreshStock(); }, []);
   const [productSearch, setProductSearch] = useState("");
   const [qty, setQty] = useState(1);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -121,6 +107,8 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
   const selectedProductStock = selectedProduct ? getProductStock(selectedProduct) : 0;
   const selectedCartQuantity = cart.find((item) => item.id === selectedProductId)?.qty || 0;
   const selectedAvailableStock = Math.max(0, selectedProductStock - selectedCartQuantity);
+  const stockMessage = stockExplanation(selectedProduct, selectedCartQuantity, stockChecking ? "loading" : productLoadError ? "error" : "ready");
+  const stockBlocked = stockChecking || !!productLoadError || !selectedProduct || selectedAvailableStock === 0 || !selectedProduct.batches?.some((batch) => Number(batch.quantity) > 0);
   const getCartAvailableStock = (item: CartItem) => {
     const product = products.find((entry) => entry.id === item.id);
     return product ? getProductStock(product) : item.qty;
@@ -149,6 +137,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
     paymentMethod === "Cash" ? Math.max(0, tenderedNum - total) : 0;
 
   const handleAddToCart = () => {
+    if (stockBlocked) return;
     const prod = products.find((p) => p.id === selectedProductId);
     if (!prod) {
       onToast("Select a live inventory product first");
@@ -239,16 +228,21 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
       return;
     }
 
+    submitting.current = true;
+    setIsSubmitting(true);
+    setCheckoutError("");
+    const currentProducts = await refreshStock();
+    if (!currentProducts) { setCheckoutError("Stock could not be verified. Your cart and payment details are retained. Refresh stock before paying."); submitting.current = false; setIsSubmitting(false); return; }
     const allocations = cart.map((item) => {
-      const product = products.find((p) => p.id === item.id);
+      const product = currentProducts.find((p) => p.id === item.id);
       if (!product) return { item, product: null, batches: null };
       return { item, product, batches: getBatchAllocations(product, item.qty) };
     });
 
     const unavailable = allocations.find((entry) => !entry.product || !entry.batches);
     if (unavailable) {
-      onToast(`Insufficient live stock for ${unavailable.item.name}`);
-      await fetchProducts();
+      setCheckoutError(`${unavailable.item.name}: Only ${unavailable.product ? getProductStock(unavailable.product) : 0} units are currently available, or its batches are unavailable. Edit or remove this item, then refresh stock. Your cart and payment details are retained.`);
+      submitting.current = false; setIsSubmitting(false);
       return;
     }
 
@@ -303,7 +297,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
       try {
         saved = await submitCheckout.current!(transactionPayload);
       } catch {
-        onToast("Payment could not be confirmed. Your cart is retained. Retry unchanged without reloading this page.");
+        setCheckoutError("Payment could not be confirmed. Your cart is retained. Retry unchanged without reloading this page.");
         return;
       }
       recordTransaction(saved);
@@ -321,9 +315,11 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
         if (!response.ok) throw new Error("Stock update failed");
       }));
       const stockFailed = stockResults.some((result) => result.status === "rejected");
-      await fetchProducts();
+      await refreshStock();
       if (stockFailed) {
-        onToast(`Payment ${saved.transactionNumber} is saved, but stock needs administrator reconciliation. Do not repeat the sale.`);
+        const message = `Payment ${saved.transactionNumber} is saved, but stock needs administrator reconciliation. Do not repeat the sale.`;
+        setCheckoutError(message);
+        onToast({ message, variant: "warning" });
       } else {
         onToast(`Sale saved. Receipt ${saved.transactionNumber} is ready to print. Change: ${saved.change}`);
       }
@@ -351,7 +347,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
   );
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+    <div className="cashier-page" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       <PageHeading
         title="Cashier Terminal & Register"
         description="Shift 1 (08:00 AM – 04:00 PM) · Active Terminal #01"
@@ -435,6 +431,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
             </label>
             <select
               className="select"
+              aria-describedby="pos-stock-explanation"
               value={selectedProductId}
               onChange={(e) => {
                 setSelectedProductId(e.target.value);
@@ -453,7 +450,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
               ) : (
                 filteredProducts.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.name} ({p.sku}) - {p.price} [Stock: {getProductStock(p)}]
+                    {p.name} ({p.sku}) - {p.price} [{getProductStock(p) === 0 ? "Out of stock" : `Stock: ${getProductStock(p)}`}]
                   </option>
                 ))
               )}
@@ -494,15 +491,12 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
             />
           </div>
           <div>
-            <div className="quantity-limit" aria-live="polite">
-              {selectedProduct
-                ? `${selectedAvailableStock} available to add`
-                : "Select a product"}
-            </div>
+            <div id="pos-stock-explanation" className={`stock-explanation ${stockBlocked ? "inline-error" : ""}`} role="status">{stockBlocked && <AlertTriangle size={16} />}<span>{stockMessage}</span></div>
             <button
               type="button"
-              className="button dark"
-              disabled={isLoadingProducts || filteredProducts.length === 0 || selectedAvailableStock === 0}
+              className="button primary-action"
+              aria-describedby="pos-stock-explanation"
+              disabled={stockBlocked || isSubmitting || filteredProducts.length === 0}
               style={{ height: 39, padding: "0 18px", display: "inline-flex", alignItems: "center", gap: 6 }}
               onClick={handleAddToCart}>
               <Plus size={15} /> Add to Cart
@@ -510,6 +504,8 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
           </div>
         </div>
 
+        {checkoutError && <div className="inline-error" role="alert"><AlertTriangle size={16} /><span>{checkoutError}</span></div>}
+        <button type="button" className="button soft" disabled={stockChecking || isSubmitting} onClick={() => void refreshStock()}>{stockChecking ? "Checking stock…" : "Refresh stock"}</button>
         {/* 2-Column POS Layout inside full-width card */}
         <div className="pos-checkout-grid">
           {/* Left: Cart Items Table */}
@@ -522,6 +518,9 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
 
             <div
               className="table-scroll"
+              role="region"
+              aria-label="Cart items. Scroll horizontally for quantity, price, and remove actions."
+              tabIndex={0}
               style={{
                 minHeight: 280,
                 maxHeight: 480,
@@ -743,7 +742,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                   <button
                     key={type}
                     type="button"
-                    className={`button ${discountType === type ? "dark" : "soft"}`}
+                    className={`button ${discountType === type ? "primary-action" : "soft"}`}
                     style={{ height: 35, fontSize: 12, padding: "0 4px" }}
                     onClick={() => setDiscountType(type)}>
                     {type === "None" ? "Standard (None)" : `${type} (-20%)`}
@@ -769,7 +768,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                   <button
                     key={method}
                     type="button"
-                    className={`button ${paymentMethod === method ? "dark" : "soft"}`}
+                    className={`button ${paymentMethod === method ? "primary-action" : "soft"}`}
                     style={{ height: 35, fontSize: 12 }}
                     onClick={() => setPaymentMethod(method)}>
                     {method}
@@ -851,7 +850,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
 
             <button
               type="submit"
-              className="button dark full"
+              className="button primary-action full"
               disabled={isSubmitting || cart.length === 0}
               style={{
                 height: 46,
@@ -1086,7 +1085,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
             <div className="modal-actions" style={{ marginTop: 16, display: "flex", justifyContent: "flex-end", gap: 8 }}>
               <button
                 type="button"
-                className="button dark"
+                className="button primary-action"
                 onClick={async () => {
                   try {
                     await printReceipt(selectedReceipt);
@@ -1170,7 +1169,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
             <div className="modal-actions" style={{ marginTop: 14 }}>
               <button
                 type="button"
-                className="button dark"
+                className="button primary-action"
                 onClick={() => {
                   onToast("Shift closed successfully. Z-Read report printed.");
                   setShowShiftModal(false);
