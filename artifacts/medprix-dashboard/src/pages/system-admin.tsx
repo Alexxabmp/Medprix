@@ -51,7 +51,6 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
   );
   const {
     transactions: liveTransactions,
-    setTransactions: setLiveTransactions,
     refresh: refreshLiveTransactions,
   } = usePharmacyTransactions();
 
@@ -63,7 +62,6 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
   const [trxFilterStatus, setTrxFilterStatus] = useState<string>("All");
   const [trxSearch, setTrxSearch] = useState("");
   const [selectedTrx, setSelectedTrx] = useState<UserTransaction | null>(null);
-  const [isUpdatingTrx, setIsUpdatingTrx] = useState(false);
 
   // System Logs state
   const [systemLogs, setSystemLogs] = useState<SystemLog[]>(() =>
@@ -130,30 +128,6 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
   useEffect(() => {
     void loadBackendData();
   }, []);
-
-  const handleUpdateTransactionStatus = async (
-    trxId: number | string,
-    nextStatus: "Completed" | "Voided" | "Refunded" | "Pending"
-  ) => {
-    setIsUpdatingTrx(true);
-    try {
-      const response = await fetch(`/api/admin/transactions/${trxId}/status`, {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: nextStatus }),
-      });
-      if (!response.ok) throw new Error("Status was not saved");
-      const saved: UserTransaction = await response.json();
-      setLiveTransactions((current) => current.map((entry) => entry.id === saved.id ? saved : entry));
-      if (selectedTrx?.id === saved.id) setSelectedTrx(saved);
-      onToast(`Transaction marked as ${nextStatus}.`);
-    } catch {
-      onToast("Could not confirm the status change. Please refresh and retry.");
-    } finally {
-      setIsUpdatingTrx(false);
-    }
-  };
 
   const handleCreateBackup = async () => {
     setIsBackingUp(true);
@@ -780,22 +754,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                   </h4>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ fontSize: 12, fontWeight: 600 }}>Status:</span>
-                    <select
-                      className="select"
-                      style={{ padding: "3px 8px", fontSize: 12 }}
-                      value={selectedTrx.status}
-                      disabled={isUpdatingTrx}
-                      onChange={(e) =>
-                        void handleUpdateTransactionStatus(
-                          selectedTrx.id,
-                          e.target.value as any
-                        )
-                      }>
-                      <option value="Completed">Completed</option>
-                      <option value="Voided">Voided</option>
-                      <option value="Refunded">Refunded</option>
-                      <option value="Pending">Pending</option>
-                    </select>
+                    <span title="Recorded status; changes require an audited reversal workflow">{selectedTrx.status}</span>
                   </div>
                 </div>
                 <div

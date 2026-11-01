@@ -16,8 +16,11 @@ export function paymentFromRow(row: any) {
 
 // Storage readiness is checked centrally by @workspace/db. Reads never repair schema.
 export function createPaymentStore(query: Query) {
-  async function list() {
-    return (await query("SELECT * FROM cashier_transactions ORDER BY id DESC")).rows.map(paymentFromRow);
+  async function list(actor?: { id: string; role: string }) {
+    const result = actor && actor.role !== "Admin"
+      ? await query("SELECT * FROM cashier_transactions WHERE checkout_payload->>'userId'=$1 ORDER BY id DESC", [actor.id])
+      : await query("SELECT * FROM cashier_transactions ORDER BY id DESC");
+    return result.rows.map(paymentFromRow);
   }
   return { list };
 }

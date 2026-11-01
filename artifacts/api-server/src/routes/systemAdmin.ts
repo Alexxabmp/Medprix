@@ -519,20 +519,18 @@ const paymentStartup = syncWithDatabase();
 // Handle the eager promise while preserving rejection for callers awaiting readiness.
 void paymentStartup.catch(() => {});
 
-async function refreshPayments() {
-  await paymentStartup;
-  persistentTransactions = await paymentStore.list();
-  saveJsonFile("transactions.json", persistentTransactions);
-  return persistentTransactions;
+async function refreshPayments(actor: {id:string; role:string}) {
+  return paymentStore.list(actor);
 }
 
 // GET /api/admin/transactions
-router.get("/admin/transactions", async (req, res) => {
-  try { await refreshPayments(); } catch {
+router.get("/admin/transactions", requireRoles("Admin", "Cashier"), async (req, res) => {
+  let visibleTransactions;
+  try { visibleTransactions = await refreshPayments(res.locals.user!); } catch {
     return res.status(503).json({ error: "Payment records are temporarily unavailable. Please retry." });
   }
   const { businessType, search, status } = req.query;
-  let results = [...persistentTransactions];
+  let results = [...visibleTransactions];
 
   if (businessType && businessType !== "All") {
     results = results.filter(
@@ -561,12 +559,13 @@ router.get("/admin/transactions", async (req, res) => {
 });
 
 // GET /api/admin/transactions/:id
-router.get("/admin/transactions/:id", async (req, res) => {
-  try { await refreshPayments(); } catch {
+router.get("/admin/transactions/:id", requireRoles("Admin", "Cashier"), async (req, res) => {
+  let visibleTransactions;
+  try { visibleTransactions = await refreshPayments(res.locals.user!); } catch {
     return res.status(503).json({ error: "Payment records are temporarily unavailable. Please retry." });
   }
   const id = Number(req.params.id);
-  const item = persistentTransactions.find((t) => t.id === id);
+  const item = visibleTransactions.find((t) => t.id === id);
   if (!item) {
     return res.status(404).json({ error: "Transaction not found." });
   }
@@ -575,20 +574,8 @@ router.get("/admin/transactions/:id", async (req, res) => {
 
 // Payment creation is handled exclusively by the atomic checkout router.
 
-router.delete("/admin/transactions/:id", async (req, res) => {
-  const param = req.params.id;
-  const numId = Number(param);
-  try {
-    await paymentStartup;
-    const result = await queryDb("DELETE FROM cashier_transactions WHERE id = $1 OR transaction_number = $2 RETURNING *", [numId || 0, param]);
-    if (!result.rows.length) return res.status(404).json({ error: "Transaction not found." });
-    const removed = paymentFromRow(result.rows[0]);
-    persistentTransactions = persistentTransactions.filter((entry) => entry.id !== removed.id);
-    saveJsonFile("transactions.json", persistentTransactions);
-    return res.json({ success: true, removed });
-  } catch {
-    return res.status(503).json({ error: "Could not remove the payment record. Please retry." });
-  }
+router.delete("/admin/transactions/:id", requireRoles("Admin"), (_req, res) => {
+  return res.status(409).json({ error: "Saved payments cannot be deleted. An audited reversal workflow is required." });
 });
 
 // GET /api/admin/system-logs
@@ -712,25 +699,8 @@ router.post("/admin/user-activities", (req, res) => {
 });
 
 // PATCH /api/admin/transactions/:id/status
-router.patch("/admin/transactions/:id/status", async (req, res) => {
-  const param = req.params.id;
-  const numId = Number(param);
-  const { status } = req.body as { status?: string };
-  const validStatus = (["Completed", "Voided", "Refunded", "Pending"] as const).find(
-    (s) => s.toLowerCase() === String(status).toLowerCase()
-  );
-  if (!validStatus) return res.status(400).json({ error: "Invalid payment status." });
-  try {
-    await paymentStartup;
-    const result = await queryDb("UPDATE cashier_transactions SET status = $1 WHERE id = $2 OR transaction_number = $3 RETURNING *", [validStatus, numId || 0, param]);
-    if (!result.rows.length) return res.status(404).json({ error: "Transaction not found." });
-    const transaction = paymentFromRow(result.rows[0]);
-    persistentTransactions = persistentTransactions.map((entry) => entry.id === transaction.id ? transaction : entry);
-    saveJsonFile("transactions.json", persistentTransactions);
-    return res.json(transaction);
-  } catch {
-    return res.status(503).json({ error: "Could not update the payment status. Please retry." });
-  }
+router.patch("/admin/transactions/:id/status", requireRoles("Admin"), (_req, res) => {
+  return res.status(409).json({ error: "Payment status cannot be changed independently of an audited stock/payment reversal." });
 });
 
 // POST /api/admin/backup
