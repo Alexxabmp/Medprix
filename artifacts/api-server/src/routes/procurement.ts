@@ -1,5 +1,5 @@
-import { Router, type IRouter, type Request, type Response } from "express";
-import { and, asc, desc, eq, ilike, inArray, or } from "drizzle-orm";
+import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
+import { asc, desc, eq, ilike, inArray, or } from "drizzle-orm";
 import {
   db,
   poItemsTable,
@@ -9,8 +9,6 @@ import {
   deliveryItemsTable,
   supplierInvoicesTable,
   suppliersTable,
-  batchInfoTable,
-  stockMovementsTable,
   accountsPayableTable,
   supplierPaymentsTable,
 } from "@workspace/db";
@@ -18,6 +16,7 @@ import { requireAuth, requireRoles } from "../middleware/auth";
 
 import { createSettlementService, SettlementError } from "../lib/supplier-payments";
 import { identifierConflict } from "../lib/identifier-conflicts";
+import { receiveSupplierStock, inspectSupplierBatch, normalizeSupplierBatch, ReceivingError } from "../lib/supplier-stock-receipts";
 
 const settlement = createSettlementService(db);
 const router: IRouter = Router();
@@ -572,6 +571,8 @@ router.post(
       }>;
     };
     const validStatuses = supplierDeliveriesTable.deliveryStatus.enumValues;
+    if (deliveryStatus !== undefined && !validStatuses.includes(deliveryStatus as any))
+      return res.status(400).json({success: false, error: "Select a valid delivery status."});
 
     if (!poId || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({
@@ -599,30 +600,37 @@ router.post(
       expirationDate: string;
       quantityDelivered: number;
     }> = [];
+    const requestedLots = new Map<string, string>();
     for (const item of items) {
-      const prod = await findProduct(item.productId || "");
-      if (!prod) continue;
-      const batch = String(
-        item.batchNumber || `BATCH-${Date.now().toString().slice(-6)}`,
-      )
-        .trim()
-        .toUpperCase();
-      const exp = String(item.expirationDate || "2028-12-31");
-      const qty = Math.max(1, Math.floor(Number(item.quantityDelivered) || 1));
-      if (!/^[A-Z0-9-]+$/.test(batch))
+      if (!item || typeof item.productId !== "string" || !uuidPattern.test(item.productId))
+        return res.status(400).json({success: false, error: "Select a valid inventory product."});
+      const [prod] = await db.select().from(productsTable).where(eq(productsTable.id, item.productId));
+      if (!prod)
+        return res.status(400).json({success: false, error: "Selected product no longer exists. Refresh inventory."});
+      const batch = typeof item.batchNumber === "string" ? normalizeSupplierBatch(item.batchNumber) : "";
+      const exp = typeof item.expirationDate === "string" ? item.expirationDate : "";
+      const qty = Number(item.quantityDelivered);
+      if (!Number.isInteger(qty) || qty <= 0 || qty > 1_000_000)
+        return res.status(400).json({success: false, error: "Delivered quantity must be a whole number between 1 and 1,000,000."});
+      if (!batch || batch.length > 100 || !/^[A-Z0-9-]+$/.test(batch))
         return res.status(400).json({
           success: false,
           error:
-            "Batch numbers may contain only letters, numbers, and hyphens.",
+            "Enter a batch number of at most 100 letters, numbers, or hyphens.",
         });
-      const expiryDate = new Date(`${exp}T00:00:00`);
+      const expiryDate = new Date(`${exp}T00:00:00Z`);
       const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      if (Number.isNaN(expiryDate.getTime()) || expiryDate < today)
+      const todayDate = new Date(today.getTime() - today.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+      const validExpiry = /^\d{4}-\d{2}-\d{2}$/.test(exp) && !Number.isNaN(expiryDate.getTime()) && expiryDate.toISOString().slice(0, 10) === exp;
+      if (!validExpiry || exp < todayDate)
         return res.status(400).json({
           success: false,
-          error: "Expiration date cannot be in the past.",
+          error: "Enter a valid expiration date today or later.",
         });
+      const lotKey = `${prod.id}:${batch}`;
+      if (requestedLots.has(lotKey) && requestedLots.get(lotKey) !== exp)
+        return res.status(400).json({success: false, error: "The same product and batch cannot have different expiration dates in one report."});
+      requestedLots.set(lotKey, exp);
       resolvedItems.push({
         productId: prod.id,
         batchNumber: batch,
@@ -644,6 +652,8 @@ router.post(
       await tx.select({ id: productsTable.id }).from(productsTable)
         .where(inArray(productsTable.id, resolvedItems.map((item) => item.productId)))
         .orderBy(asc(productsTable.id)).for("update");
+      // A report may not redefine a known lot even when it posts no stock.
+      for (const item of resolvedItems) await inspectSupplierBatch(tx, item);
       const [delivery] = await tx
         .insert(supplierDeliveriesTable)
         .values({
@@ -673,56 +683,11 @@ router.post(
         ["Received", "Inspected", "Partial"].includes(delivery.deliveryStatus)
       )
         for (const item of resolvedItems) {
-          const [existingBatch] = await tx
-            .select()
-            .from(batchInfoTable)
-            .where(
-              and(
-                eq(batchInfoTable.productId, item.productId),
-                eq(batchInfoTable.batchNumber, item.batchNumber.toUpperCase()),
-              ),
-            );
-
-          if (existingBatch) {
-            await tx
-              .update(batchInfoTable)
-              .set({
-                quantityRemaining:
-                  existingBatch.quantityRemaining + item.quantityDelivered,
-                expirationDate:
-                  item.expirationDate || existingBatch.expirationDate,
-                updatedAt: new Date(),
-              })
-              .where(eq(batchInfoTable.id, existingBatch.id));
-          } else {
-            await tx.insert(batchInfoTable).values({
-              productId: item.productId,
-              batchNumber: item.batchNumber.toUpperCase(),
-              expirationDate: item.expirationDate || "2028-12-31",
-              quantityRemaining: item.quantityDelivered,
-              dateReceived:
-                deliveryDate || new Date().toISOString().slice(0, 10),
-            });
-          }
-
-          const [prod] = await tx
-            .select()
-            .from(productsTable)
-            .where(eq(productsTable.id, item.productId));
-          if (prod) {
-            await tx
-              .update(productsTable)
-              .set({
-                currentStock: prod.currentStock + item.quantityDelivered,
-                updatedAt: new Date(),
-              })
-              .where(eq(productsTable.id, prod.id));
-          }
-
-          await tx.insert(stockMovementsTable).values({
-            productId: item.productId,
-            movementType: "StockIn",
-            quantity: item.quantityDelivered,
+          await receiveSupplierStock(tx, {
+            productId: item.productId, batchNumber: item.batchNumber,
+            expirationDate: item.expirationDate, quantity: item.quantityDelivered,
+            dateReceived: deliveryDate || new Date().toISOString().slice(0, 10),
+            deliveryId: delivery.id,
             notes: `Supplier delivery ${delivery.id.slice(0, 8)} (${order.poNumber})`,
           });
         }
@@ -978,6 +943,9 @@ router.patch(
     }
 
     const updated = await db.transaction(async (tx) => {
+      // Re-read only after acquiring the same order-before-product locks as receiving.
+      const [lockedOrder] = await tx.select().from(purchaseOrdersTable)
+        .where(eq(purchaseOrdersTable.id, existing.id)).for("update");
       const [order] = await tx
         .update(purchaseOrdersTable)
         .set({
@@ -988,7 +956,7 @@ router.patch(
         .returning();
 
       // If transitioning to Fulfilled, receive any unfulfilled items into inventory
-      if (status === "Fulfilled" && existing.status !== "Fulfilled") {
+      if (status === "Fulfilled" && lockedOrder.status !== "Fulfilled") {
         const orderItems = await tx
           .select()
           .from(poItemsTable)
@@ -1002,7 +970,9 @@ router.patch(
           .from(supplierDeliveriesTable)
           .where(eq(supplierDeliveriesTable.poId, existing.id));
 
-        const deliveryIds = existingDeliveries.map((d) => d.id);
+        const deliveryIds = existingDeliveries
+          .filter(d => ["Received", "Inspected", "Partial"].includes(d.deliveryStatus))
+          .map((d) => d.id);
         const existingDeliveryItems =
           deliveryIds.length > 0
             ? await tx
@@ -1056,54 +1026,11 @@ router.patch(
               quantityDelivered: item.quantity,
             });
 
-            const [existingBatch] = await tx
-              .select()
-              .from(batchInfoTable)
-              .where(
-                and(
-                  eq(batchInfoTable.productId, item.productId),
-                  eq(batchInfoTable.batchNumber, batchNum),
-                ),
-              );
-
-            if (existingBatch) {
-              await tx
-                .update(batchInfoTable)
-                .set({
-                  quantityRemaining:
-                    existingBatch.quantityRemaining + item.quantity,
-                  updatedAt: new Date(),
-                })
-                .where(eq(batchInfoTable.id, existingBatch.id));
-            } else {
-              await tx.insert(batchInfoTable).values({
-                productId: item.productId,
-                batchNumber: batchNum,
-                expirationDate: "2028-12-31",
-                quantityRemaining: item.quantity,
-                dateReceived: new Date().toISOString().slice(0, 10),
-              });
-            }
-
-            const [prod] = await tx
-              .select()
-              .from(productsTable)
-              .where(eq(productsTable.id, item.productId));
-
-            if (prod) {
-              await tx
-                .update(productsTable)
-                .set({
-                  currentStock: prod.currentStock + item.quantity,
-                  updatedAt: new Date(),
-                })
-                .where(eq(productsTable.id, prod.id));
-            }
-
-            await tx.insert(stockMovementsTable).values({
-              productId: item.productId,
-              movementType: "StockIn",
-              quantity: item.quantity,
+            await receiveSupplierStock(tx, {
+              productId: item.productId, batchNumber: batchNum,
+              expirationDate: "2028-12-31", quantity: item.quantity,
+              dateReceived: new Date().toISOString().slice(0, 10),
+              deliveryId: delivery.id,
               notes: `Fulfilled purchase order ${existing.poNumber}`,
             });
           }
@@ -1123,6 +1050,12 @@ router.patch("/supplier-invoices/:id/status", async (req: Request, res: Response
   const [invoice] = await db.select().from(supplierInvoicesTable).where(eq(supplierInvoicesTable.id, id));
   if (!invoice) return res.status(404).json({ error: "Invoice not found." });
   return res.status(409).json({ error: "Use Record payment to settle this invoice. Status cannot be changed independently of payment history." });
+});
+
+router.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
+  if (error instanceof ReceivingError)
+    return res.status(error.status).json({success: false, error: error.message});
+  return next(error);
 });
 
 export default router;

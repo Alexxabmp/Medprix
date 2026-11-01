@@ -177,6 +177,10 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
     expirationDate: "2028-12-31",
     quantityDelivered: "1",
   });
+  const deliveryBatches = inventoryItems.find(product => product.id === deliveryForm.productId)?.batches ?? [];
+  const matchingDeliveryBatches = deliveryBatches.filter(batch =>
+    batch.batchNumber.trim().toUpperCase() === deliveryForm.batchNumber.trim().toUpperCase());
+  const existingDeliveryBatch = matchingDeliveryBatches.length === 1 ? matchingDeliveryBatches[0] : undefined;
   const [invoiceForm, setInvoiceForm] = useState({
     supplierId: "",
     poId: "",
@@ -411,7 +415,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
             {
               productId: deliveryForm.productId,
               batchNumber: deliveryForm.batchNumber,
-              expirationDate: deliveryForm.expirationDate,
+              expirationDate: existingDeliveryBatch?.expiryDate ?? deliveryForm.expirationDate,
               quantityDelivered: Number(deliveryForm.quantityDelivered),
             },
           ],
@@ -1151,6 +1155,8 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                         poId: selectedPoId,
                         productId:
                           firstItem?.productId || deliveryForm.productId || (products[0]?.id ?? ""),
+                        batchNumber: "",
+                        expirationDate: "",
                         quantityDelivered: firstItem
                           ? String(firstItem.quantityOrdered)
                           : deliveryForm.quantityDelivered,
@@ -1205,6 +1211,8 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                       setDeliveryForm({
                         ...deliveryForm,
                         productId: event.target.value,
+                        batchNumber: "",
+                        expirationDate: "",
                       })
                     }>
                     <option value="">Select product</option>
@@ -1219,6 +1227,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                   <label>Batch number *</label>
                   <input
                     required
+                    maxLength={100}
                     placeholder="e.g. BATCH-2026-01"
                     value={deliveryForm.batchNumber}
                     onChange={(event) =>
@@ -1234,7 +1243,8 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                   <input
                     required
                     type="date"
-                    value={deliveryForm.expirationDate}
+                    value={existingDeliveryBatch?.expiryDate ?? deliveryForm.expirationDate}
+                    readOnly={Boolean(existingDeliveryBatch)}
                     onChange={(event) =>
                       setDeliveryForm({
                         ...deliveryForm,
