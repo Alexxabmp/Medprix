@@ -4,7 +4,7 @@ import { ReceivingBatchPicker } from "@/components/custom-ui/receiving-batch-pic
 import { safeError, readResponse } from "@/lib/feedback";
 import { useEffect, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
-import { Check, Eye, Package, Plus, Trash2, X, PackagePlus } from "lucide-react";
+import { Check, Eye, Package, Plus, Trash2, X, PackagePlus, Search } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import { Summary } from "@/components/custom-ui/summary-card";
 import type { ToastFn } from "@/lib/types";
@@ -45,6 +45,7 @@ type PurchaseOrder = {
 type DeliveryItem = {
   id: string;
   product: string;
+  sku?: string;
   batchNumber: string;
   expirationDate: string;
   quantityDelivered: number;
@@ -78,6 +79,11 @@ function receivingDataProblem(orders: PurchaseOrder[]): string {
 }
 
 const poStatuses = ["Draft", "Pending", "Approved", "Submitted", "Fulfilled", "Cancelled"];
+
+function matchesSearch(search: string, fields: unknown[]): boolean {
+  const text = fields.map(value => String(value ?? "")).join(" ").toLocaleLowerCase();
+  return search.trim().toLocaleLowerCase().split(/\s+/).every(term => text.includes(term));
+}
 
 function getStored<T>(key: string, fallback: T): T {
   try {
@@ -113,6 +119,9 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
   const canManagePurchasing = currentRole === "Admin" || currentRole === "FrontDesk";
   const [activeSection, setActiveSection] = useState(currentRole === "Cashier" ? "Receiving Report Management" : "Purchase Order Monitoring");
   const [status, setStatus] = useState("All orders");
+  const [orderSearch, setOrderSearch] = useState("");
+  const [receivingSearch, setReceivingSearch] = useState("");
+  const [invoiceSearch, setInvoiceSearch] = useState("");
   const [orders, setOrders] = useState<PurchaseOrder[]>(() =>
     getStored("medprix_procurement_orders", [])
   );
@@ -314,8 +323,14 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
   }, []);
 
   const filteredOrders = orders.filter(
-    (order) => status === "All orders" || order.status === status,
+    order => (status === "All orders" || order.status === status) && matchesSearch(orderSearch,
+      [order.poNumber, order.supplier, order.status, ...(order.items ?? []).flatMap(item => [item.product, item.sku])]),
   );
+  const filteredReceivingRows = deliveries.flatMap(delivery => delivery.items.map(item => ({delivery, item})))
+    .filter(({delivery, item}) => matchesSearch(receivingSearch,
+      [delivery.poNumber, delivery.supplier, delivery.deliveryStatus, item.product, item.sku, item.batchNumber, item.expirationDate]));
+  const filteredInvoices = invoices.filter(invoice => matchesSearch(invoiceSearch,
+    [invoice.invoiceNumber, invoice.supplier, invoice.poNumber, invoice.status, invoice.dueDate, invoice.invoiceAmount]));
   const totalOpenValue = orders
     .filter((order) => !["Fulfilled", "Cancelled"].includes(order.status))
     .reduce((total, order) => total + Number(order.totalOrderAmount || 0), 0);
@@ -639,21 +654,31 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
 
       {activeSection === "Purchase Order Monitoring" && (
         <section className="surface-card table-card">
-          <div className="table-tools">
+          <div className="table-tools procurement-table-tools">
             <div>
               <h2 className="card-title">Purchase orders</h2>
               <p className="card-subtitle">Latest orders, line items, and delivery status</p>
             </div>
-            <select
-              className="select"
-              data-testid="select-procurement-status"
-              value={status}
-              onChange={(event) => setStatus(event.target.value)}>
-              <option>All orders</option>
-              {poStatuses.map((item) => (
-                <option key={item}>{item}</option>
-              ))}
-            </select>
+            <div className="procurement-table-controls purchase-order-controls">
+              <div className="procurement-search">
+                <Search size={15} aria-hidden="true" />
+                <input
+                  type="search"
+                  aria-label="Search purchase orders" placeholder="Search PO, supplier, product or SKU"
+                  value={orderSearch}
+                  onChange={event => setOrderSearch(event.target.value)} />
+              </div>
+              <select
+                className="select"
+                data-testid="select-procurement-status"
+                value={status}
+                onChange={(event) => setStatus(event.target.value)}>
+                <option>All orders</option>
+                {poStatuses.map((item) => (
+                  <option key={item}>{item}</option>
+                ))}
+              </select>
+            </div>
           </div>
           <div className="table-scroll">
             <table className="data-table">
@@ -673,7 +698,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                   (filteredOrders.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="muted">
-                        No purchase orders found.
+                        {orderSearch || status !== "All orders" ? "No purchase orders match these filters." : "No purchase orders found."}
                       </td>
                     </tr>
                   ) : (
@@ -743,11 +768,13 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
 
       {activeSection === "Receiving Report Management" && (
         <section className="surface-card table-card">
-          <div className="table-tools">
+          <div className="table-tools procurement-table-tools">
             <div>
               <h2 className="card-title">Receiving reports</h2>
               <p className="card-subtitle">Stock-in records with batch and expiry monitoring</p>
             </div>
+            <div className="procurement-table-controls">
+              <div className="procurement-search"><Search size={15} aria-hidden="true" /><input type="search" aria-label="Search receiving reports" placeholder="Search PO, supplier, product or batch" value={receivingSearch} onChange={event => setReceivingSearch(event.target.value)} /></div>
             {canManagePurchasing && (
               <button
                 className="button primary-action"
@@ -756,6 +783,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 <Plus size={14} /> Add receiving report
               </button>
             )}
+            </div>
           </div>
           <div className="table-scroll">
             <table className="data-table">
@@ -767,44 +795,23 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                   <th>Batch</th>
                   <th>Expiry</th>
                   <th>Quantity</th>
-                  <th>Status</th>
+                  <th>Delivery status</th>
+                  <th>Expiry status</th>
                 </tr>
               </thead>
               <tbody>
-                {tableMessage(7, loadingSections.deliveries, deliveries.length) ||
-                  (deliveries.flatMap((delivery) =>
-                    delivery.items.map((item) => ({ delivery, item }))
-                  ).length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="muted">
-                        No receiving reports found.
-                      </td>
-                    </tr>
-                  ) : (
-                    deliveries.flatMap((delivery) =>
-                      delivery.items.map((item) => {
-                        const expiry = expiryStatus(item.expirationDate);
-                        return (
-                          <tr key={item.id}>
-                            <td>
-                              {delivery.poNumber}
-                              <div className="muted" style={{ fontSize: 12 }}>
-                                {new Date(delivery.deliveryDate).toLocaleDateString()}
-                              </div>
-                            </td>
-                            <td>{delivery.supplier}</td>
-                            <td>{item.product}</td>
-                            <td>{item.batchNumber}</td>
-                            <td>{item.expirationDate}</td>
-                            <td>{item.quantityDelivered}</td>
-                            <td>
-                              <span className={`pill ${expiry.tone}`}>{expiry.label}</span>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )
-                  ))}
+                {tableMessage(8, loadingSections.deliveries, deliveries.length) ||
+                  (filteredReceivingRows.length === 0 ? (
+                    <tr><td colSpan={8} className="muted">{receivingSearch ? "No receiving reports match this search." : "No receiving reports found."}</td></tr>
+                  ) : filteredReceivingRows.map(({delivery, item}) => {
+                    const expiry = expiryStatus(item.expirationDate);
+                    return <tr key={item.id}>
+                      <td>{delivery.poNumber}<div className="muted" style={{fontSize: 12}}>{new Date(delivery.deliveryDate).toLocaleDateString()}</div></td>
+                      <td>{delivery.supplier}</td><td>{item.product}</td><td>{item.batchNumber}</td>
+                      <td>{item.expirationDate}</td><td>{item.quantityDelivered}</td><td>{delivery.deliveryStatus}</td>
+                      <td><span className={`pill ${expiry.tone}`}>{expiry.label}</span></td>
+                    </tr>;
+                  }))}
               </tbody>
             </table>
           </div>
@@ -813,12 +820,13 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
 
       {activeSection === "Purchase Invoice Monitoring" && (
         <section className="surface-card table-card">
-          <div className="table-tools">
+          <div className="table-tools procurement-table-tools">
             <div>
               <h2 className="card-title">Supplier invoices</h2>
               <p className="card-subtitle">Outstanding and settled purchase invoices</p>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div className="procurement-table-controls">
+              <div className="procurement-search"><Search size={15} aria-hidden="true" /><input type="search" aria-label="Search purchase invoices" placeholder="Search invoice, supplier or PO" value={invoiceSearch} onChange={event => setInvoiceSearch(event.target.value)} /></div>
               {isInvoiceRefreshing && (
                 <span className="muted" role="status">Refreshing…</span>
               )}
@@ -840,7 +848,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
             </div>
           )}
           <div className="table-scroll">
-            <table className="data-table">
+            <table className="data-table purchase-invoice-table">
               <thead>
                 <tr>
                   <th>Invoice</th>
@@ -848,19 +856,19 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                   <th>Purchase order</th>
                   <th>Due date</th>
                   <th>Amount</th>
-                  <th>Status</th>
+                  <th className="invoice-payment-heading">Status</th>
                 </tr>
               </thead>
               <tbody>
                 {tableMessage(6, loadingSections.invoices, invoices.length) ||
-                  (invoices.length === 0 ? (
+                  (filteredInvoices.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="muted">
-                        No supplier invoices found.
+                        {invoiceSearch ? "No supplier invoices match this search." : "No supplier invoices found."}
                       </td>
                     </tr>
                   ) : (
-                    invoices.map((invoice) => (
+                    filteredInvoices.map((invoice) => (
                       <tr key={invoice.id}>
                         <td>
                           <strong>{invoice.invoiceNumber}</strong>
@@ -871,8 +879,8 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                         <td>
                           <strong>{money(invoice.invoiceAmount)}</strong>
                         </td>
-                        <td className="invoice-payment-cell"><span className={`pill ${invoice.status === "Paid" ? "success" : "warning"}`}>{invoice.status === "Paid" ? "Settled" : invoice.status}</span>
-                          {canManagePurchasing && invoice.status !== "Paid" && invoice.status !== "Needs Review" && <button className="button soft" onClick={() => setPaymentInvoiceId(invoice.id)}>Record payment</button>}</td>
+                        <td className="invoice-payment-cell"><div className="invoice-payment-actions"><span className={`pill ${invoice.status === "Paid" ? "success" : "warning"}`}>{invoice.status === "Paid" ? "Settled" : invoice.status}</span>
+                          {canManagePurchasing && invoice.status !== "Paid" && invoice.status !== "Needs Review" && <button className="button soft" onClick={() => setPaymentInvoiceId(invoice.id)}>Record payment</button>}</div></td>
                       </tr>
                     ))
                   ))}

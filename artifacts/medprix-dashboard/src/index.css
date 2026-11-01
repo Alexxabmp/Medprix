@@ -2423,6 +2423,32 @@ a {
   .data-table:has(.invoice-payment-cell) tr { margin-bottom: 12px; border-bottom: 2px solid hsl(var(--border)); }
 }
 
+.procurement-table-tools { flex-wrap: wrap; gap: 14px; }
+.procurement-table-tools > :first-child { flex: 1 1 180px; min-width: 0; }
+.procurement-table-controls {
+  display: flex;
+  flex: 1 1 360px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.procurement-search {
+  display: flex; flex: 1 1 230px;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 420px;
+  padding: 10px 12px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  background: hsl(var(--surface-soft));
+  color: hsl(var(--muted));
+}
+.procurement-search input { width: 100%; min-width: 0; padding: 0; border: 0; outline: none; background: transparent; color: hsl(var(--foreground)); font: inherit; font-size: var(--text-sm); }
+.procurement-search:focus-within { outline: 2px solid hsl(var(--foreground) / .25); outline-offset: 2px; }
+.procurement-search > svg { flex-shrink: 0; }
 .receiving-batch-trigger { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-width: 0; min-height: 40px; padding: 10px 12px; border: 1px solid hsl(var(--border)); border-radius: 12px; background: hsl(var(--surface-soft)); color: hsl(var(--foreground)); font: inherit; font-size: var(--text-sm); text-align: left; cursor: pointer; }
 .receiving-batch-trigger > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .receiving-batch-trigger > svg { flex-shrink: 0; }
@@ -2437,3 +2463,18 @@ a {
 .receiving-batch-menu small { color: hsl(var(--muted)); font-size: var(--text-xs); }
 .receiving-new-batch { display: flex; align-items: center; gap: 7px; width: 100%; padding: 11px 12px; border: 0; border-top: 1px solid hsl(var(--border)); background: hsl(var(--surface)); color: hsl(var(--foreground)); font: inherit; font-size: var(--text-sm); cursor: pointer; }
 .receiving-new-number { display: grid; gap: 7px; margin-top: 9px; min-width: 0; }
+.invoice-payment-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.invoice-payment-actions .button { margin: 0; }
+@media (min-width: 1024px) {
+  .purchase-order-controls { flex-wrap: nowrap; }
+  .purchase-order-controls > .select { width: auto; flex: 0 0 150px; }
+  .purchase-invoice-table :is(.invoice-payment-heading, .invoice-payment-cell) { width: 1%; white-space: nowrap !important; }
+  .invoice-payment-actions { display: inline-flex; flex-wrap: nowrap; }
+  .invoice-payment-actions .button { min-height: 32px; padding: 6px 9px; }
+}
+@media (max-width: 640px) {
+  .procurement-table-tools > :first-child { flex: 0 0 auto; }
+  .procurement-table-controls { flex: 0 0 auto; width: 100%; }
+  .procurement-search { flex-basis: 100%; max-width: none; }
+  .procurement-table-controls > .button, .procurement-table-controls > .select { flex: 1 1 140px; min-width: 0; }
+}

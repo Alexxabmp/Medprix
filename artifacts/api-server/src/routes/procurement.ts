@@ -302,7 +302,7 @@ router.get("/purchase-orders", async (_req: Request, res: Response) => {
     db
       .select()
       .from(purchaseOrdersTable)
-      .orderBy(desc(purchaseOrdersTable.orderDate)),
+      .orderBy(desc(purchaseOrdersTable.updatedAt), desc(purchaseOrdersTable.createdAt), asc(purchaseOrdersTable.id)),
     db.select().from(suppliersTable),
     db.select().from(poItemsTable),
     db.select().from(productsTable),
@@ -381,7 +381,7 @@ router.get(
 router.get("/supplier-deliveries", async (_req: Request, res: Response) => {
   const [deliveries, deliveryItems, orders, suppliers, products] =
     await Promise.all([
-      db.select().from(supplierDeliveriesTable),
+      db.select().from(supplierDeliveriesTable).orderBy(desc(supplierDeliveriesTable.createdAt), asc(supplierDeliveriesTable.id)),
       db.select().from(deliveryItemsTable),
       db.select().from(purchaseOrdersTable),
       db.select().from(suppliersTable),
