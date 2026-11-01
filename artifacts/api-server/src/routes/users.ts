@@ -307,36 +307,9 @@ router.patch("/users/:id/password", async (req, res) => {
   }
 });
 
-router.delete("/users/:id", async (req, res) => {
-  const userId = req.params.id;
-
-  const targetUser = await findUser(userId);
-  if (!targetUser) {
-    return res.status(404).json({
-      error: "User not found.",
-    });
-  }
-
-  if (
-    targetUser.username === res.locals.user?.username ||
-    targetUser.id === res.locals.user?.id
-  ) {
-    return res.status(400).json({
-      error: "You cannot delete your own account.",
-    });
-  }
-
-  try {
-    await db
-      .delete(usersTable)
-      .where(eq(usersTable.id, targetUser.id));
-
-    return res.status(204).send();
-  } catch {
-    return res.status(500).json({
-      error: "Failed to delete user.",
-    });
-  }
+// Accounts are retained so audit and transaction relationships stay intact.
+router.delete("/users/:id", (_req, res) => {
+  return res.status(409).json({ error: "Accounts cannot be deleted. Deactivate the account instead." });
 });
 
 export default router;
