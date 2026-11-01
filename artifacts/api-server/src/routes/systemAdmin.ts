@@ -2,8 +2,8 @@ import { Router, type IRouter } from "express";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { queryDb, execDb } from "@workspace/db";
-import { createPaymentStore, paymentFromRow, PaymentError } from "../lib/cashier-payments";
+import { queryDb } from "@workspace/db";
+import { createPaymentStore, paymentFromRow } from "../lib/cashier-payments";
 
 const router: IRouter = Router();
 const paymentStore = createPaymentStore(queryDb);
@@ -389,22 +389,6 @@ function getStorageDir(): string {
   return fallback;
 }
 
-function loadJsonFile<T>(filename: string, fallback: T): T {
-  try {
-    const filePath = path.join(getStorageDir(), filename);
-    if (fs.existsSync(filePath)) {
-      const raw = fs.readFileSync(filePath, "utf-8");
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed as T;
-      }
-    }
-  } catch {
-    // Return in-memory fallback on read error
-  }
-  return fallback;
-}
-
 function saveJsonFile(filename: string, data: any): void {
   try {
     const dir = getStorageDir();
@@ -418,34 +402,12 @@ function saveJsonFile(filename: string, data: any): void {
   }
 }
 
-// In-memory data initialized from persistent JSON files immediately on module load
-let persistentTransactions: UserTransaction[] = loadJsonFile<UserTransaction[]>(
-  "transactions.json",
-  [...initialTransactions]
-);
+// Empty caches are populated only from database reads; legacy files are not authoritative.
+let persistentTransactions: UserTransaction[] = [];
 
-let persistentSystemLogs: SystemLog[] = loadJsonFile<SystemLog[]>(
-  "system_logs.json",
-  [...initialSystemLogs]
-);
+let persistentSystemLogs: SystemLog[] = [];
 
-let persistentUserActivities: UserActivity[] = loadJsonFile<UserActivity[]>(
-  "user_activities.json",
-  [...initialUserActivities]
-);
-
-// If file was not on disk yet, write initial data to seed the file
-try {
-  if (!fs.existsSync(path.join(getStorageDir(), "transactions.json"))) {
-    saveJsonFile("transactions.json", persistentTransactions);
-  }
-  if (!fs.existsSync(path.join(getStorageDir(), "system_logs.json"))) {
-    saveJsonFile("system_logs.json", persistentSystemLogs);
-  }
-  if (!fs.existsSync(path.join(getStorageDir(), "user_activities.json"))) {
-    saveJsonFile("user_activities.json", persistentUserActivities);
-  }
-} catch {}
+let persistentUserActivities: UserActivity[] = [];
 
 async function saveSystemLogToDb(l: SystemLog) {
   try {
@@ -482,7 +444,6 @@ export function recordSystemLog(logInput: {
   status?: "Success" | "Failed";
   deviceIp?: string;
 }) {
-  persistentSystemLogs = loadJsonFile<SystemLog[]>("system_logs.json", persistentSystemLogs);
   const nextId =
     persistentSystemLogs.reduce((max, log) => Math.max(max, Number(log.id) || 0), 0) + 1;
   const log: SystemLog = {
@@ -510,10 +471,6 @@ export function recordUserActivity(actInput: {
   description: string;
   flag?: "Normal" | "Suspicious" | "Flagged";
 }) {
-  persistentUserActivities = loadJsonFile<UserActivity[]>(
-    "user_activities.json",
-    persistentUserActivities
-  );
   const nextId =
     persistentUserActivities.reduce(
       (max, activity) => Math.max(max, Number(activity.id) || 0),
@@ -538,110 +495,26 @@ export function recordUserActivity(actInput: {
   return activity;
 }
 
+// Read-only startup: no DDL, file imports, marker writes or empty-table backfill.
 async function syncWithDatabase() {
-  try {
-    // 1. Ensure tables exist in case of fresh DB
-    await execDb(`
-      CREATE TABLE IF NOT EXISTS cashier_transactions (
-        id SERIAL PRIMARY KEY,
-        transaction_number VARCHAR(100) UNIQUE NOT NULL,
-        date_time VARCHAR(100) NOT NULL,
-        user_name VARCHAR(150) NOT NULL,
-        business_type VARCHAR(50) NOT NULL DEFAULT 'Retail',
-        customer VARCHAR(150) NOT NULL DEFAULT 'Walk-in Customer',
-        total VARCHAR(50) NOT NULL,
-        subtotal VARCHAR(50) NOT NULL,
-        discount VARCHAR(50) NOT NULL DEFAULT '₱0.00',
-        vat VARCHAR(50) NOT NULL DEFAULT '₱0.00',
-        amount_received VARCHAR(50) NOT NULL DEFAULT '₱0.00',
-        change VARCHAR(50) NOT NULL DEFAULT '₱0.00',
-        payment VARCHAR(50) NOT NULL DEFAULT 'Cash',
-        status VARCHAR(50) NOT NULL DEFAULT 'Completed',
-        items JSONB NOT NULL DEFAULT '[]'::jsonb,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-      CREATE TABLE IF NOT EXISTS cashier_system_logs (
-        id SERIAL PRIMARY KEY,
-        date_time VARCHAR(100) NOT NULL,
-        user_name VARCHAR(150) NOT NULL,
-        role VARCHAR(50) NOT NULL,
-        action VARCHAR(100) NOT NULL,
-        module VARCHAR(100) NOT NULL,
-        description TEXT NOT NULL,
-        status VARCHAR(50) NOT NULL DEFAULT 'Success',
-        device_ip VARCHAR(50) NOT NULL DEFAULT '127.0.0.1',
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-      CREATE TABLE IF NOT EXISTS cashier_user_activities (
-        id SERIAL PRIMARY KEY,
-        date_time VARCHAR(100) NOT NULL,
-        user_name VARCHAR(150) NOT NULL,
-        role VARCHAR(50) NOT NULL,
-        activity VARCHAR(150) NOT NULL,
-        module VARCHAR(100) NOT NULL,
-        description TEXT NOT NULL,
-        flag VARCHAR(50) NOT NULL DEFAULT 'Normal',
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-    `);
-
-    // 2. Import an empty legacy installation once; subsequent reads are DB-authoritative.
-    const legacyArchive = "transactions-before-db-authority.json";
-    if (!fs.existsSync(path.join(getStorageDir(), legacyArchive))) {
-      saveJsonFile(legacyArchive, persistentTransactions);
-    }
-    await paymentStore.importLegacy(persistentTransactions);
-    persistentTransactions = await paymentStore.list();
-    saveJsonFile("transactions.json", persistentTransactions);
-
-    // 3. Sync system logs
-    const logRes = await queryDb<any>("SELECT * FROM cashier_system_logs ORDER BY id DESC");
-    if (logRes.rows && logRes.rows.length > 0) {
-      const dbLogs: SystemLog[] = logRes.rows.map((row) => ({
-        id: Number(row.id),
-        dateTime: row.date_time,
-        user: row.user_name,
-        role: row.role,
-        action: row.action,
-        module: row.module,
-        description: row.description,
-        status: (row.status === "Failed" ? "Failed" : "Success"),
-        deviceIp: row.device_ip,
-      }));
-      persistentSystemLogs = dbLogs;
-      saveJsonFile("system_logs.json", persistentSystemLogs);
-    } else {
-      for (const l of [...persistentSystemLogs].reverse()) {
-        await saveSystemLogToDb(l);
-      }
-    }
-
-    // 4. Sync user activities
-    const actRes = await queryDb<any>("SELECT * FROM cashier_user_activities ORDER BY id DESC");
-    if (actRes.rows && actRes.rows.length > 0) {
-      const dbActivities: UserActivity[] = actRes.rows.map((row) => ({
-        id: Number(row.id),
-        dateTime: row.date_time,
-        user: row.user_name,
-        role: row.role,
-        activity: row.activity,
-        module: row.module,
-        description: row.description,
-        flag: (row.flag === "Suspicious" || row.flag === "Flagged" ? row.flag : "Normal"),
-      }));
-      persistentUserActivities = dbActivities;
-      saveJsonFile("user_activities.json", persistentUserActivities);
-    } else {
-      for (const a of [...persistentUserActivities].reverse()) {
-        await saveUserActivityToDb(a);
-      }
-    }
-  } catch (err) {
-    console.warn("DB synchronization note (file persistence remains fully active):", err);
-  }
+  persistentTransactions = await paymentStore.list();
+  const logRes = await queryDb<any>("SELECT * FROM cashier_system_logs ORDER BY id DESC");
+  persistentSystemLogs = logRes.rows.map(row => ({
+    id: Number(row.id), dateTime: row.date_time, user: row.user_name, role: row.role,
+    action: row.action, module: row.module, description: row.description,
+    status: row.status === "Failed" ? "Failed" : "Success", deviceIp: row.device_ip,
+  }));
+  const actRes = await queryDb<any>("SELECT * FROM cashier_user_activities ORDER BY id DESC");
+  persistentUserActivities = actRes.rows.map(row => ({
+    id: Number(row.id), dateTime: row.date_time, user: row.user_name, role: row.role,
+    activity: row.activity, module: row.module, description: row.description,
+    flag: row.flag === "Suspicious" || row.flag === "Flagged" ? row.flag : "Normal",
+  }));
 }
 
 const paymentStartup = syncWithDatabase();
+// Handle the eager promise while preserving rejection for callers awaiting readiness.
+void paymentStartup.catch(() => {});
 
 async function refreshPayments() {
   await paymentStartup;
@@ -716,11 +589,8 @@ router.delete("/admin/transactions/:id", async (req, res) => {
 });
 
 // GET /api/admin/system-logs
-router.get("/admin/system-logs", (req, res) => {
-  persistentSystemLogs = loadJsonFile<SystemLog[]>(
-    "system_logs.json",
-    persistentSystemLogs
-  );
+router.get("/admin/system-logs", async (req, res) => {
+  try { await syncWithDatabase(); } catch { return res.status(503).json({ error: "Audit storage is unavailable." }); }
   const { search, status, module: mod } = req.query;
   let results = [...persistentSystemLogs];
 
@@ -774,11 +644,8 @@ router.post("/admin/system-logs", (req, res) => {
 });
 
 // GET /api/admin/user-activities
-router.get("/admin/user-activities", (req, res) => {
-  persistentUserActivities = loadJsonFile<UserActivity[]>(
-    "user_activities.json",
-    persistentUserActivities
-  );
+router.get("/admin/user-activities", async (req, res) => {
+  try { await syncWithDatabase(); } catch { return res.status(503).json({ error: "Audit storage is unavailable." }); }
   const { search, flag, role, module: mod } = req.query;
   let results = [...persistentUserActivities];
 
@@ -815,10 +682,6 @@ router.get("/admin/user-activities", (req, res) => {
 });
 
 router.post("/admin/user-activities", (req, res) => {
-  persistentUserActivities = loadJsonFile<UserActivity[]>(
-    "user_activities.json",
-    persistentUserActivities
-  );
   const nextId =
     persistentUserActivities.reduce(
       (max, activity) => Math.max(max, Number(activity.id) || 0),
@@ -869,7 +732,6 @@ router.patch("/admin/transactions/:id/status", async (req, res) => {
 
 // POST /api/admin/backup
 router.post("/admin/backup", (req, res) => {
-  persistentSystemLogs = loadJsonFile<SystemLog[]>("system_logs.json", persistentSystemLogs);
   const backupId = `BKP-${new Date().toISOString().replace(/\D/g, "").slice(0, 14)}`;
   const log: SystemLog = {
     id: persistentSystemLogs.reduce((max, l) => Math.max(max, Number(l.id) || 0), 0) + 1,

@@ -1,20 +1,12 @@
-import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { fileURLToPath } from "node:url";
 import bcrypt from "bcryptjs";
-import dotenv from "dotenv";
 import postgres from "postgres";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ quiet: true });
-dotenv.config({ path: path.resolve(__dirname, "../../../.env"), quiet: true });
+import { localMigrationUrl } from "./migration-runner";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Config
 // ─────────────────────────────────────────────────────────────────────────────
 const argv = new Set(process.argv.slice(2));
-const RESET = argv.has("--reset") || process.env.SEED_RESET === "1";
-const ALLOW_PROD = argv.has("--allow-production");
 const SEED_PASSWORD = process.env.SEED_PASSWORD ?? "Password123!";
 const RNG_SEED = Number(process.env.SEED_RNG ?? 20260920);
 
@@ -924,10 +916,10 @@ async function insertMany(tx: postgres.TransactionSql, table: string, rows: Row[
 }
 
 async function main() {
-  const url = process.env.DATABASE_URL;
-  if (!url) throw new Error("DATABASE_URL is not set");
-  if (process.env.NODE_ENV === "production" && !ALLOW_PROD)
-    throw new Error("Refusing to seed with NODE_ENV=production (pass --allow-production if you really mean it)");
+  if (argv.size || process.env.SEED_RESET === "1")
+    throw new Error("Seed/reset overrides are disabled. Seed a new disposable local test database explicitly; existing data will not be reset.");
+  if (!process.env.SEED_DATABASE_URL) throw new Error("Set SEED_DATABASE_URL explicitly; application DATABASE_URL/.env is never used.");
+  const url = localMigrationUrl(process.env.SEED_DATABASE_URL);
 
   const isLocal = /@(localhost|127\.0\.0\.1)[:/]/.test(url);
   const sql = postgres(url, {
@@ -941,8 +933,8 @@ async function main() {
   try {
     const existing = await sql<{ n: number }[]>`select count(*)::int as n from users`;
     const n = existing[0]?.n ?? 0;
-    if (n > 0 && !RESET) {
-      console.log(`Database already has data (${n} users). Nothing done — re-run with --reset to wipe and reseed.`);
+    if (n > 0) {
+      console.log(`Database already has data (${n} users). Nothing done; use a new disposable test database for a fresh seed.`);
       return;
     }
 
@@ -950,9 +942,8 @@ async function main() {
     const passwordHash = await bcrypt.hash(SEED_PASSWORD, 10);
     const { users } = buildData(passwordHash);
 
-    console.log(RESET ? "Truncating tables and inserting…" : "Inserting…");
+    console.log("Inserting local development fixtures…");
     await sql.begin(async (tx) => {
-      if (RESET) await tx.unsafe(`truncate table ${TABLE_ORDER.map((t) => `"${t}"`).join(", ")} restart identity cascade`);
       for (const t of TABLE_ORDER) await insertMany(tx, t, T[t]);
     });
 
