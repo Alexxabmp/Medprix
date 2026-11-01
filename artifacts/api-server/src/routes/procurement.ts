@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { and, desc, eq, ilike, inArray, or } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, or } from "drizzle-orm";
 import {
   db,
   poItemsTable,
@@ -637,6 +637,12 @@ router.post(
     }
 
     const result = await db.transaction(async (tx) => {
+      // Match fulfillment's order-before-product lock order to avoid receipt/fulfillment deadlocks.
+      await tx.select({ id: purchaseOrdersTable.id }).from(purchaseOrdersTable)
+        .where(eq(purchaseOrdersTable.id, order.id)).for("update");
+      await tx.select({ id: productsTable.id }).from(productsTable)
+        .where(inArray(productsTable.id, resolvedItems.map((item) => item.productId)))
+        .orderBy(asc(productsTable.id)).for("update");
       const [delivery] = await tx
         .insert(supplierDeliveriesTable)
         .values({
@@ -981,6 +987,9 @@ router.patch(
           .from(poItemsTable)
           .where(eq(poItemsTable.poId, existing.id));
 
+        if (orderItems.length) await tx.select({ id: productsTable.id }).from(productsTable)
+          .where(inArray(productsTable.id, orderItems.map((item) => item.productId)))
+          .orderBy(asc(productsTable.id)).for("update");
         const existingDeliveries = await tx
           .select()
           .from(supplierDeliveriesTable)

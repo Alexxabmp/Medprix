@@ -20,7 +20,8 @@ import { PageHeading } from "@/components/custom-ui/page-heading";
 import { DateControl } from "@/components/custom-ui/date-control";
 import { formatCalendarDate, recordsOnDate } from "@/lib/business-date";
 import { useBusinessDate } from "@/lib/use-business-date";
-import { createCheckoutSubmitter } from "@/lib/checkout";
+import { createCheckoutSubmitter, type PendingCheckout } from "@/lib/checkout";
+import { useDialogAccessibility } from "@/lib/use-dialog-accessibility";
 import { printReceipt } from "@/lib/receipt-print";
 import type { ProductItem, ToastFn, ShiftReceipt } from "@/lib/types";
 import {
@@ -59,7 +60,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
   async function refreshStock() {
     setStockChecking(true);
     try {
-      const response = await fetch("/api/inventory", { credentials: "include" });
+      const response = await fetch("/api/inventory", { credentials: "include", signal: AbortSignal.timeout(15000) });
       const data = await readResponse(response, "Could not verify current stock. Please refresh stock.");
       if (!Array.isArray(data.products)) throw new Error("Invalid stock response. Please refresh stock.");
       setProducts(data.products);
@@ -86,6 +87,50 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
   const submitting = useRef(false);
   const submitCheckout = useRef<ReturnType<typeof createCheckoutSubmitter> | null>(null);
   if (!submitCheckout.current) submitCheckout.current = createCheckoutSubmitter();
+  const restoredCheckout = useRef(submitCheckout.current.getPending());
+  const [pendingCheckout, setPendingCheckout] = useState<PendingCheckout | null>(() => restoredCheckout.current || null);
+  const [checkedMissing, setCheckedMissing] = useState(false);
+  function closeReceipt() {
+    setSelectedReceipt(null);
+    requestAnimationFrame(() => document.getElementById("pos-product-search")?.focus());
+  }
+  useDialogAccessibility(!!selectedReceipt, ".pos-receipt-dialog", closeReceipt);
+  useEffect(() => {
+    if (pendingCheckout && !isSubmitting) document.getElementById("pos-check-result")?.focus();
+  }, [pendingCheckout, isSubmitting]);
+  useEffect(() => {
+    const pending = restoredCheckout.current;
+    if (!pending) return;
+    setCart(pending.payload.items.map((item) => ({ id: item.productId, name: item.product, sku: String(item.sku || ""), qty: item.quantity,
+      price: Number(item.unitPrice.replace(/[^0-9.]/g, "")) })));
+    setCashTendered(pending.payload.amountReceived.replace(/[^0-9.]/g, ""));
+    setPaymentMethod(pending.payload.payment);
+    setDiscountType(pending.payload.discountType);
+  }, []);
+
+  async function finishCheckout(saved: any) {
+    recordTransaction(saved);
+    setSelectedReceipt(mapTransactionsToReceipts([saved])[0]);
+    setCart([]);
+    setCashTendered("");
+    setPendingCheckout(null);
+    setCheckedMissing(false);
+    setCheckoutError("");
+    onToast(`Sale saved. Receipt ${saved.transactionNumber} is ready to print. Change: ${saved.change}`);
+    await refreshStock();
+    void fetchTransactions();
+  }
+  async function resolveCheckout(retry = false) {
+    if (submitting.current) return;
+    submitting.current = true; setIsSubmitting(true);
+    try {
+      const saved = retry ? await submitCheckout.current!.retry() : await submitCheckout.current!.reconcile();
+      if (saved) await finishCheckout(saved);
+      else { setCheckedMissing(true); setCheckoutError("No committed checkout was found. You can retry the same checkout using its retained reference."); }
+    } catch (error) { setCheckoutError(safeError(error, "Could not check this checkout. Keep its reference and try checking again.")); }
+    finally { setPendingCheckout(submitCheckout.current!.getPending() || null); submitting.current = false; setIsSubmitting(false); }
+  }
+
 
   const filteredProducts = products.filter((product) => {
     const q = productSearch.toLowerCase();
@@ -130,11 +175,11 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
   }, [selectedProductId, selectedAvailableStock]);
 
 
-  const subtotal = cart.reduce((acc, item) => acc + item.price * item.qty, 0);
+  const subtotalCents = cart.reduce((sum, item) => sum + Math.round(item.price * 100) * item.qty, 0);
+  const subtotal = subtotalCents / 100;
   const isDiscountEligible = discountType !== "None";
-  const discountRate = isDiscountEligible ? 0.2 : 0;
-  const discountAmount = subtotal * discountRate;
-  const vat = isDiscountEligible ? 0 : subtotal * 0.12;
+  const discountAmount = Math.floor((subtotalCents * (isDiscountEligible ? 20 : 0) + 50) / 100) / 100;
+  const vat = isDiscountEligible ? 0 : Math.floor((subtotalCents * 12 + 50) / 100) / 100;
   const total = subtotal - discountAmount + vat;
   const tenderedNum = parseFloat(cashTendered) || 0;
   const changeDue =
@@ -222,7 +267,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
 
   const handleCheckout = async (e: FormEvent) => {
     e.preventDefault();
-    if (submitting.current) return;
+    if (submitting.current || pendingCheckout) return;
     if (cart.length === 0) {
       onToast("Cannot checkout an empty cart");
       return;
@@ -263,15 +308,6 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
       localStorage.getItem("medprix-username") ||
       "Cashier Staff";
 
-    // Stock-out is submitted only after the payment is confirmed.
-    const flatAllocations = allocations.flatMap((entry) =>
-      (entry.batches || []).map((b) => ({
-        productId: entry.product!.id,
-        batchNumber: b.batchNumber,
-        quantity: b.quantity,
-      }))
-    );
-
     const transactionPayload = {
       dateTime,
       user: cashierName,
@@ -285,8 +321,11 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
         paymentMethod === "Cash" ? formatPeso(tenderedNum) : formatPeso(total),
       change: formatPeso(changeDue),
       payment: paymentMethod,
+      discountType,
       status: "Completed" as const,
       items: cart.map((item) => ({
+        productId: item.id,
+        sku: item.sku,
         product: item.name,
         quantity: item.qty,
         unitPrice: formatPeso(item.price),
@@ -300,34 +339,13 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
       let saved;
       try {
         saved = await submitCheckout.current!(transactionPayload);
-      } catch {
-        setCheckoutError("Payment could not be confirmed. Your cart is retained. Retry unchanged without reloading this page.");
+      } catch (error) {
+        setPendingCheckout(submitCheckout.current!.getPending() || null);
+        setCheckedMissing(false);
+        setCheckoutError(safeError(error, "Checkout could not be confirmed. Check its result before another sale."));
         return;
       }
-      recordTransaction(saved);
-      setSelectedReceipt(mapTransactionsToReceipts([saved])[0]);
-      setCart([]);
-      setCashTendered("");
-
-      // Payment is already saved. Never repeat the sale to repair inventory.
-      const stockResults = await Promise.allSettled(flatAllocations.map(async (allocation) => {
-        const response = await fetch(`/api/inventory/products/${allocation.productId}/stock-out`, {
-          method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ batchNumber: allocation.batchNumber, quantity: allocation.quantity,
-            reason: `Retail sale ${saved.transactionNumber}` }),
-        });
-        if (!response.ok) throw new Error("Stock update failed");
-      }));
-      const stockFailed = stockResults.some((result) => result.status === "rejected");
-      await refreshStock();
-      if (stockFailed) {
-        const message = `Payment ${saved.transactionNumber} is saved, but stock needs administrator reconciliation. Do not repeat the sale.`;
-        setCheckoutError(message);
-        onToast({ message, variant: "warning" });
-      } else {
-        onToast(`Sale saved. Receipt ${saved.transactionNumber} is ready to print. Change: ${saved.change}`);
-      }
-      void fetchTransactions();
+      await finishCheckout(saved);
       for (const [url, details] of [
         ["/api/admin/system-logs", { role: "Cashier", action: "Sales Transaction", module: "Sales POS",
           description: `Completed retail receipt ${saved.transactionNumber} (${saved.total})`, status: "Success", deviceIp: "POS Terminal 1" }],
@@ -368,7 +386,13 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
         }
       />
 
-      <fieldset disabled={isSubmitting} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, display: "flex", flexDirection: "column", gap: 18 }} aria-busy={isSubmitting}>
+      {pendingCheckout && <div className="inline-error" role="alert">
+        <AlertTriangle size={16} aria-hidden="true" />
+        <span>{checkoutError || "Checkout is awaiting confirmation. Your cart and payment details are retained and locked. Check the result before another sale."}</span>
+        <button id="pos-check-result" type="button" className="button soft" disabled={isSubmitting} onClick={() => void resolveCheckout()}>{isSubmitting ? "Checking…" : "Check payment result"}</button>
+        {checkedMissing && <button type="button" className="button soft" disabled={isSubmitting} onClick={() => void resolveCheckout(true)}>Retry same checkout</button>}
+      </div>}
+      <fieldset disabled={isSubmitting || !!pendingCheckout} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, display: "flex", flexDirection: "column", gap: 18 }} aria-busy={isSubmitting}>
       {/* Full-Screen Counter Sale Checkout Layout */}
       <section className="surface-card" style={{ padding: "22px 24px", width: "100%", borderRadius: 20 }}>
         <div className="card-header pos-card-header" style={{ marginBottom: 18, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -498,7 +522,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
           <button type="button" className="pos-stock-retry" disabled={stockChecking || isSubmitting} onClick={() => void refreshStock()}>Retry stock</button>
         </div>}
 
-        {checkoutError && <div className="inline-error" role="alert"><AlertTriangle size={16} /><span>{checkoutError}</span></div>}
+        {checkoutError && !pendingCheckout && <div className="inline-error" role="alert"><AlertTriangle size={16} /><span>{checkoutError}</span></div>}
         {/* 2-Column POS Layout inside full-width card */}
         <div className="pos-checkout-grid">
           {/* Left: Cart Items Table */}
@@ -990,10 +1014,10 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
       {selectedReceipt && (
         <div
           className="modal-backdrop"
-          onClick={() => setSelectedReceipt(null)}
+          onClick={closeReceipt}
           style={{ zIndex: 1100 }}>
           <div
-            className="modal dialog"
+            className="modal dialog pos-receipt-dialog"
             onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: 440, width: "90%" }}>
             <div className="modal-header">
@@ -1006,7 +1030,8 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
               <button
                 type="button"
                 className="modal-close"
-                onClick={() => setSelectedReceipt(null)}>
+                aria-label="Close receipt"
+                onClick={closeReceipt}>
                 <X size={16} />
               </button>
             </div>

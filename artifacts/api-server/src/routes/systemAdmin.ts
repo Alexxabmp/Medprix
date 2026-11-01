@@ -697,20 +697,7 @@ router.get("/admin/transactions/:id", async (req, res) => {
   return res.json(item);
 });
 
-router.post("/admin/transactions", async (req, res) => {
-  try {
-    await paymentStartup;
-    const transaction = await paymentStore.save(req.body);
-    // The database commit defines success; a cache refresh must not invalidate it.
-    persistentTransactions = [transaction, ...persistentTransactions.filter((entry) => entry.id !== transaction.id)];
-    saveJsonFile("transactions.json", persistentTransactions);
-    return res.status(201).json(transaction);
-  } catch (error) {
-    if (error instanceof PaymentError) return res.status(error.status).json({ error: error.message });
-    console.error("Payment confirmation failed:", error);
-    return res.status(503).json({ error: "Could not confirm the payment. Retry the unchanged checkout." });
-  }
-});
+// Payment creation is handled exclusively by the atomic checkout router.
 
 router.delete("/admin/transactions/:id", async (req, res) => {
   const param = req.params.id;

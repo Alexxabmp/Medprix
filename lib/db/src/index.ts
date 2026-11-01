@@ -82,6 +82,24 @@ export async function execDb(sqlText: string): Promise<void> {
   }
 }
 
+export type TransactionQuery = (text: string, params?: any[]) => Promise<{ rows: any[] }>;
+
+/** Run every statement on one connection; never issue pooled BEGIN/COMMIT calls. */
+export async function withTransaction<T>(work: (query: TransactionQuery) => Promise<T>): Promise<T> {
+  if (initPromise) await initPromise;
+  if (isPgUrl && rawClient) {
+    return (rawClient as postgres.Sql).begin(async (client) =>
+      work(async (text, params = []) => ({ rows: await client.unsafe(text, params) })),
+    ) as Promise<T>;
+  }
+  if (rawClient && "transaction" in rawClient) {
+    return (rawClient as PGlite).transaction((client) =>
+      work(async (text, params = []) => client.query(text, params)),
+    );
+  }
+  throw new Error("Database transaction is unavailable.");
+}
+
 export const db = initDb() as unknown as ReturnType<typeof drizzlePg<typeof schema>>;
 
 export * from "./schema/index";
