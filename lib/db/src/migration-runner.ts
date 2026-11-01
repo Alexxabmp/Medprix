@@ -7,7 +7,7 @@ import { assertSchemaReady, inspectSchema, type CatalogQuery } from "./readiness
 
 // Execution registry. The old Drizzle generator journal is retained as historical data.
 export const migrationFiles = ["0000_initial_schema.sql", "0001_explicit_cashier_storage.sql",
-  "0002_explicit_timestamp_triggers.sql"] as const;
+  "0002_explicit_timestamp_triggers.sql", "0003_retire_obsolete_cashier_request_key.sql"] as const;
 // Filename-only baseline rename. Accept existing history without rewriting it;
 // checksum validation below remains mandatory and every other name stays exact.
 const historicalBaselineName = "0000_fuzzy_shinko_yamashiro.sql";
@@ -71,6 +71,8 @@ export async function runMigrations(options: { client: postgres.Sql; command: Mi
       if (!(adopting && index === 0))
         await q(migration.sql.replaceAll('"public".', `${quote(namespace)}.`).replaceAll(/\bpublic\./g, `${quote(namespace)}.`));
       await assertSchemaReady(q, index === 0 ? 'initial' : index === 1 ? 'cashier' : 'runtime', namespace);
+      if (index === 3 && (await q("SELECT 1 FROM information_schema.columns WHERE table_schema=$1 AND table_name='cashier_transactions' AND column_name='request_key'", [namespace])).rows.length)
+        throw new Error('Obsolete request key was not removed');
       await q(`INSERT INTO ${ledger}(position,name,checksum,adopted) VALUES($1,$2,$3,$4)`, [index, migration.name, migration.checksum, adopting && index === 0]);
     }
     await assertSchemaReady(q, 'runtime', namespace);
