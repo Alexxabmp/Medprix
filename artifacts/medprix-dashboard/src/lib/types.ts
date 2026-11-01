@@ -103,19 +103,19 @@ export interface UserTransaction {
 }
 
 export interface SystemLog {
-  id: number;
+  id: string | number;
   dateTime: string;
   user: string;
   role: string;
   action: string;
   module: string;
   description: string;
-  status: "Success" | "Failed";
+  status: "Success" | "Failed" | "Warning";
   deviceIp: string;
 }
 
 export interface UserActivity {
-  id: number;
+  id: string | number;
   dateTime: string;
   user: string;
   role: string;

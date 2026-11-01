@@ -346,15 +346,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
         return;
       }
       await finishCheckout(saved);
-      for (const [url, details] of [
-        ["/api/admin/system-logs", { role: "Cashier", action: "Sales Transaction", module: "Sales POS",
-          description: `Completed retail receipt ${saved.transactionNumber} (${saved.total})`, status: "Success", deviceIp: "POS Terminal 1" }],
-        ["/api/admin/user-activities", { role: "Cashier", activity: "Transaction completed", module: "Sales & Wholesale Activity",
-          description: `Processed retail receipt ${saved.transactionNumber} (${saved.total})`, flag: "Normal" }],
-      ] as const) {
-        void fetch(url, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user: cashierName, ...details }) }).catch(() => {});
-      }
+
     } finally {
       submitting.current = false;
       setIsSubmitting(false);

@@ -1,8 +1,9 @@
 import { PaymentError, paymentFromRow } from "./cashier-payments";
+import { writeAuditEvent } from "./audit-events";
 
 export type Query = (text: string, params?: any[]) => Promise<{ rows: any[] }>;
 export type Transaction = <T>(work: (query: Query) => Promise<T>) => Promise<T>;
-export type CheckoutActor = { id: string; username: string; role: string };
+export type CheckoutActor = { id: string; username: string; role: string; deviceIp?: string };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const maxMoney = 999999999999n;
 
@@ -346,6 +347,10 @@ export function createAtomicCheckout(transaction: Transaction, read: Query) {
           "UPDATE products SET current_stock=(SELECT COALESCE(sum(quantity_remaining),0) FROM batch_info WHERE product_id=$1),updated_at=now() WHERE id=$1",
           [productId],
         );
+      await writeAuditEvent(query, {
+        actor, action: "SALE_COMPLETED", activity: "Transaction completed", module: "Sales POS",
+        description: `Completed retail receipt ${transactionNumber} (${money(total)})`, deviceIp: actor.deviceIp,
+      });
       return confirmed(sale);
     });
   }

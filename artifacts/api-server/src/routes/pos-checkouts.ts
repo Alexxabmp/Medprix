@@ -15,7 +15,7 @@ export function createCheckoutRouter(
       try {
         return res
           .status(201)
-          .json(await service.save(req.body, res.locals.user!));
+          .json(await service.save(req.body, { ...res.locals.user!, deviceIp: String(req.ip || "").slice(0, 50) }));
       } catch (error) {
         if (error instanceof CheckoutError)
           return res

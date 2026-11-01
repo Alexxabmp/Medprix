@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, usersTable, systemLogsTable, userActivitiesTable } from "@workspace/db";
+import { db, usersTable, withTransaction } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { validatePassword, verifyPassword } from "../lib/password";
 import {
@@ -9,7 +9,7 @@ import {
 } from "../lib/session";
 import { requireAuth } from "../middleware/auth";
 import type { UserRoleEnum } from "@workspace/db/schema";
-import { recordSystemLog, recordUserActivity } from "./systemAdmin";
+import { writeAuditEvent } from "../lib/audit-events";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -53,90 +53,34 @@ router.post("/login", async (req, res) => {
         .json({ error: "Account is inactive. Please contact an administrator." });
     }
 
-    const token = createSessionToken({
-      id: user.id.toString(),
-      username: user.username,
-      role: user.role as UserRoleEnum,
+    // Sign-in state and its two canonical audit records commit together.
+    // Never create a session that claims success when audit persistence failed.
+    const actor = await withTransaction(async query => {
+      const current = (await query("SELECT id,username,role,is_active FROM users WHERE id=$1 FOR UPDATE", [user.id])).rows[0];
+      if (!current?.is_active) return null;
+      await query("UPDATE users SET last_login=now(),updated_at=now() WHERE id=$1", [current.id]);
+      await writeAuditEvent(query, {
+        actor: current, action: "LOGIN", activity: "User Login", module: "Authentication",
+        description: "Signed in to the workspace", deviceIp: String(req.ip || "").slice(0, 50),
+      });
+      return current;
     });
-
-    const now = new Date();
-    const clientIp = String(req.ip || req.headers["x-forwarded-for"] || "127.0.0.1").slice(0, 50);
-
-    // 1. Update user last login and active timestamp in database
-    try {
-      await db
-        .update(usersTable)
-        .set({ lastLogin: now, updatedAt: now })
-        .where(eq(usersTable.id, user.id));
-    } catch (updateErr) {
-      logger.warn({ updateErr }, "Could not update lastLogin on user in database");
-    }
-
-    // 2. Audit system log and user activity in database on every login
-    try {
-      await db.insert(systemLogsTable).values({
-        userId: user.id,
-        actionType: "LOGIN",
-        module: "Authentication",
-        description: `User ${user.fullName || user.username} (${user.role}) logged in successfully`,
-        status: "Success",
-        deviceIp: clientIp,
-        timestamp: now,
-      });
-    } catch (logErr) {
-      logger.warn({ logErr }, "Could not write systemLog on login to DB");
-    }
-
-    try {
-      await db.insert(userActivitiesTable).values({
-        userId: user.id,
-        activity: "User Login",
-        module: "🔐 Authentication",
-        description: `User ${user.fullName || user.username} logged into Medprix workspace`,
-        flag: "Normal",
-        timestamp: now,
-      });
-    } catch (actErr) {
-      logger.warn({ actErr }, "Could not write userActivity on login to DB");
-    }
-
-    // 3. Keep system administrator logs and activities updated
-    try {
-      recordSystemLog({
-        user: user.fullName || user.username,
-        role: user.role,
-        action: "LOGIN",
-        module: "Authentication",
-        description: `User ${user.fullName || user.username} logged into system`,
-        status: "Success",
-        deviceIp: clientIp,
-      });
-
-      recordUserActivity({
-        user: user.fullName || user.username,
-        role: user.role,
-        activity: "User Login",
-        module: "🔐 Authentication",
-        description: `User ${user.fullName || user.username} logged into workspace`,
-        flag: "Normal",
-      });
-    } catch (fileErr) {
-      logger.warn({ fileErr }, "Could not record system audit in storage");
-    }
+    if (!actor) return res.status(403).json({ error: "Account is inactive. Please contact an administrator." });
+    const token = createSessionToken({ id: actor.id, username: actor.username, role: actor.role as UserRoleEnum });
 
     setSessionCookie(res, token);
 
     return res.json({
       id: user.id,
       username: user.username,
-      role: user.role,
+      role: actor.role,
       fullName: user.fullName,
       contactNumber: user.contactNumber,
       token,
     });
   } catch (err) {
     logger.error({ err }, "Login error in auth route");
-    return res.status(500).json({ error: "Login failed." });
+    return res.status(503).json({ error: "Sign-in could not be recorded. Please retry." });
   }
 });
 
