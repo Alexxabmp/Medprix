@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
 import postgres from "postgres";
-import { localMigrationUrl } from "./migration-runner";
+import { databaseUrl, loadDatabaseEnvironment } from "./database-environment";
+
+loadDatabaseEnvironment();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Config
@@ -918,8 +920,7 @@ async function insertMany(tx: postgres.TransactionSql, table: string, rows: Row[
 async function main() {
   if (argv.size || process.env.SEED_RESET === "1")
     throw new Error("Seed/reset overrides are disabled. Seed a new disposable local test database explicitly; existing data will not be reset.");
-  if (!process.env.SEED_DATABASE_URL) throw new Error("Set SEED_DATABASE_URL explicitly; application DATABASE_URL/.env is never used.");
-  const url = localMigrationUrl(process.env.SEED_DATABASE_URL);
+  const url = databaseUrl(process.env.DATABASE_URL);
 
   const isLocal = /@(localhost|127\.0\.0\.1)[:/]/.test(url);
   const sql = postgres(url, {
@@ -942,7 +943,7 @@ async function main() {
     const passwordHash = await bcrypt.hash(SEED_PASSWORD, 10);
     const { users } = buildData(passwordHash);
 
-    console.log("Inserting local development fixtures…");
+    console.log("Inserting sample fixtures…");
     await sql.begin(async (tx) => {
       for (const t of TABLE_ORDER) await insertMany(tx, t, T[t]);
     });
