@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import {
   accountsPayableTable,
   supplierInvoicesTable,
@@ -127,6 +127,14 @@ export function createSettlementService(database: typeof db) {
           409,
           "This payable's totals disagree. Ask an administrator to review payment history.",
         );
+      const [history] = await tx.select({
+        paid: sql<string>`coalesce(sum(${supplierPaymentsTable.amountPaid}),0)::text`,
+        latest: sql<string | null>`(max(${supplierPaymentsTable.paymentDate} AT TIME ZONE 'UTC'))::date::text`,
+      }).from(supplierPaymentsTable).where(eq(supplierPaymentsTable.apId, input.apId));
+      if (minorUnits(history.paid) !== paid)
+        throw new SettlementError(409, "Recorded payments and payable totals disagree. Ask an administrator to review payment history.");
+      if (history.latest !== payable.lastPaymentDate)
+        throw new SettlementError(409, "Recorded payment dates and the payable summary disagree. Ask an administrator to review payment history.");
       if (input.cents > balance)
         throw new SettlementError(
           409,
@@ -137,9 +145,11 @@ export function createSettlementService(database: typeof db) {
         .from(supplierInvoicesTable)
         .where(eq(supplierInvoicesTable.id, payable.invoiceId));
       if (!invoice) throw new SettlementError(404, "Invoice not found.");
+      if (invoice.supplierId !== payable.supplierId)
+        throw new SettlementError(409, "Invoice and payable suppliers disagree. Ask an administrator to review the records.");
       if (minorUnits(invoice.invoiceAmount) !== minorUnits(payable.totalOwed))
         throw new SettlementError(409, "Invoice and payable amounts disagree. Ask an administrator to review payment history.");
-      if (invoice.isPaid && balance > 0)
+      if (invoice.isPaid !== (balance === 0))
         throw new SettlementError(
           409,
           "Invoice and payable disagree. Ask an administrator to review payment history.",
@@ -160,7 +170,7 @@ export function createSettlementService(database: typeof db) {
         .set({
           totalPaid: money(paid + input.cents),
           balance: money(balance - input.cents),
-          lastPaymentDate: input.date,
+          lastPaymentDate: history.latest && history.latest > input.date ? history.latest : input.date,
           updatedAt: new Date(),
         })
         .where(eq(accountsPayableTable.id, input.apId))
