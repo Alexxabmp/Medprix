@@ -36,43 +36,51 @@ export class SchemaReadinessError extends Error {
     this.name = "SchemaReadinessError";
   }
 }
-export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | "cashier" | "runtime" = "runtime", namespace = "public") {
+export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | "cashier" | "legacy-runtime" | "runtime" = "runtime", namespace = "public", existingTablesOnly = false) {
   const actual = await inspectSchema(query, namespace);
   const issues: string[] = [];
   const normalize = (v: unknown) => typeof v === "string" ? v.replaceAll(`"${namespace}".`, "public.").replaceAll(`${namespace}.`, "public.") : v;
   for (const contract of scope === "initial" ? [initialContract] : [initialContract, cashierContract]) {
-    for (const name of contract.tables) if (!actual.tables.some(t => t.name === name)) issues.push(`missing table ${name}`);
+    const retired = (table: string) => scope === 'runtime' && ['cashier_system_logs','cashier_user_activities'].includes(table);
+    const absent = (table: string) => existingTablesOnly && !actual.tables.some(t => t.name === table);
+    for (const name of contract.tables) if (!existingTablesOnly && !retired(name) && !actual.tables.some(t => t.name === name)) issues.push(`missing table ${name}`);
     for (const expected of contract.columns) {
+      if (retired(expected.table_name) || absent(expected.table_name)) continue;
       const found = actual.columns.find(c => c.table_name === expected.table_name && c.name === expected.name);
       if (!found) { issues.push(`missing column ${expected.table_name}.${expected.name}`); continue; }
       for (const field of ["type", "not_null", "default_value"] as const)
         if (normalize(found[field]) !== normalize(expected[field])) issues.push(`incompatible ${expected.table_name}.${expected.name} ${field}`);
     }
     for (const expected of contract.constraints) {
+      if (retired(expected.table_name) || absent(expected.table_name)) continue;
       const found = actual.constraints.find(c => c.table_name === expected.table_name && c.name === expected.name);
       if (!found || found.type !== expected.type || normalize(found.definition) !== normalize(expected.definition) || !found.validated)
         issues.push(`missing/incompatible constraint ${expected.name}`);
     }
     for (const expected of contract.indexes) {
+      if (retired(expected.table_name) || absent(expected.table_name)) continue;
       const found = actual.indexes.find(i => i.table_name === expected.table_name && i.name === expected.name);
       if (!found || !found.valid || !found.ready || normalize(found.definition) !== normalize(expected.definition)) issues.push(`missing/incompatible index ${expected.name}`);
     }
     for (const expected of contract.enums) {
       const found = actual.enums.find(e => e.name === expected.name);
+      if (existingTablesOnly && !found) continue;
       if (!found || JSON.stringify(found.labels) !== JSON.stringify(expected.labels)) issues.push(`missing/incompatible enum ${expected.name}`);
     }
   }
-  if (scope === 'runtime') for (const expected of timestampTriggers) {
+  if (scope === 'runtime' || scope === 'legacy-runtime') for (const expected of timestampTriggers) {
     const found = actual.triggers.find(t => t.table_name === expected.table_name && t.name === expected.name);
     if (!found || found.enabled !== 'O' || normalize(found.definition) !== normalize(expected.definition))
       issues.push(`missing/incompatible timestamp trigger ${expected.name}`);
   }
-  if (scope === 'runtime') {
+  if (scope === 'runtime' || scope === 'legacy-runtime') {
     const fn = actual.functions[0];
     if (!fn || fn.security_definer || fn.language !== 'plpgsql' || !fn.returns_trigger ||
       fn.body.toLowerCase().replaceAll(/\s/g, '') !== 'beginnew.updated_at=current_timestamp;returnnew;end;')
       issues.push('missing/incompatible timestamp function update_updated_at_column');
   }
+  if (scope === 'runtime') for (const name of ['cashier_system_logs','cashier_user_activities'])
+    if (actual.tables.some(t => t.name === name)) issues.push(`legacy audit table ${name} has not been retired`);
   if (issues.length) throw new SchemaReadinessError(issues);
   return actual;
 }
