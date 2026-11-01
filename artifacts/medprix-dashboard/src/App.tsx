@@ -1,3 +1,4 @@
+import { clearTransactionSession } from "@/lib/pharmacy-store";
 import { createFeedbackNotifier, type Feedback } from "@/lib/feedback";
 import { useEffect, useMemo, useState } from "react";
 import { Check, AlertTriangle, CircleAlert, X } from "lucide-react";
@@ -117,6 +118,7 @@ function AppContent() {
       })
       .catch((err) => {
         if (err.message === "Unauthorized") {
+          clearTransactionSession();
           localStorage.removeItem("medprix-session");
           localStorage.removeItem("medprix-role");
           localStorage.removeItem("medprix-username");
@@ -153,6 +155,7 @@ function AppContent() {
     return (
       <LoginPage
         onLogin={() => {
+          clearTransactionSession();
           const loggedInRole = localStorage.getItem("medprix-role") || "";
           localStorage.setItem("medprix-session", "active");
           setRole(loggedInRole);
@@ -172,6 +175,8 @@ function AppContent() {
           onToast={notify}
           role={role}
           onLogout={() => {
+            clearTransactionSession();
+            localStorage.removeItem("medprix-token");
             fetch("/api/logout", {
               method: "POST",
               credentials: "include",

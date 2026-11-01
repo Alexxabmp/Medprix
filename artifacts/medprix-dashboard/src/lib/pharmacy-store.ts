@@ -70,32 +70,15 @@ function getLocalInventory(): ProductItem[] | null {
   return null;
 }
 
-function getLocalTransactions(): any[] | null {
-  try {
-    const raw = localStorage.getItem("medprix_cached_transactions");
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-    }
-  } catch {}
-  return null;
-}
-
 function saveLocalInventory(items: ProductItem[]) {
   try {
     localStorage.setItem("medprix_cached_inventory", JSON.stringify(items));
   } catch {}
 }
 
-function saveLocalTransactions(txs: any[]) {
-  try {
-    localStorage.setItem("medprix_cached_transactions", JSON.stringify(txs));
-  } catch {}
-}
-
 // Global in-memory cache shared across the single-page application
 let globalInventory: ProductItem[] | null = getLocalInventory();
-let globalTransactions: any[] | null = getLocalTransactions();
+let globalTransactions: any[] | null = null;
 let globalReceipts: ShiftReceipt[] | null = globalTransactions
   ? mapTransactionsToReceipts(globalTransactions)
   : null;
@@ -154,6 +137,10 @@ export async function fetchTransactionsData(force = false): Promise<any[]> {
   isTransactionsLoading = true;
   try {
     const res = await fetch("/api/admin/transactions", { credentials: "include" });
+    if (res.status === 401 || res.status === 403) {
+      if (request === transactionRequest && revision === transactionRevision) clearTransactionSession();
+      return [];
+    }
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data)) {
@@ -161,7 +148,6 @@ export async function fetchTransactionsData(force = false): Promise<any[]> {
         if (request !== transactionRequest || revision !== transactionRevision) return globalTransactions || [];
         globalTransactions = [...data].sort((a, b) => Number(b.id) - Number(a.id));
         globalReceipts = mapTransactionsToReceipts(globalTransactions);
-        saveLocalTransactions(globalTransactions);
         notifyTransactions();
         return globalTransactions;
       }
@@ -180,11 +166,22 @@ export function setCachedInventory(products: ProductItem[]) {
   notifyInventory();
 }
 
+// Clear history at authentication boundaries, invalidating older in-flight responses.
+// Unconfirmed checkout state in sessionStorage is deliberately retained for reconciliation.
+export function clearTransactionSession() {
+  transactionRequest++;
+  transactionRevision++;
+  globalTransactions = [];
+  globalReceipts = [];
+  isTransactionsLoading = false;
+  try { for (const key of ["medprix_cached_transactions", "medprix_system_logs", "medprix_user_activities"]) localStorage.removeItem(key); } catch {}
+  notifyTransactions();
+}
+
 export function setCachedTransactions(transactions: any[]) {
   transactionRevision++;
   globalTransactions = transactions;
   globalReceipts = mapTransactionsToReceipts(transactions);
-  saveLocalTransactions(transactions);
   notifyTransactions();
 }
 
@@ -228,7 +225,7 @@ export function deductProductStock(
 }
 
 export function recordTransaction(transaction: any) {
-  const currentTx = globalTransactions ?? getLocalTransactions() ?? [];
+  const currentTx = globalTransactions ?? [];
   const updatedTx = [
     transaction,
     ...currentTx.filter(
