@@ -5,7 +5,10 @@ import { fileURLToPath } from "node:url";
 import { queryDb } from "@workspace/db";
 import { createPaymentStore, paymentFromRow } from "../lib/cashier-payments";
 
+import { requireAuth, requireRoles } from "../middleware/auth";
+
 const router: IRouter = Router();
+router.use("/admin", requireAuth, (_req, res, next) => { res.set("Cache-Control", "no-store"); next(); });
 const paymentStore = createPaymentStore(queryDb);
 
 export interface TransactionItem {
@@ -731,29 +734,8 @@ router.patch("/admin/transactions/:id/status", async (req, res) => {
 });
 
 // POST /api/admin/backup
-router.post("/admin/backup", (req, res) => {
-  const backupId = `BKP-${new Date().toISOString().replace(/\D/g, "").slice(0, 14)}`;
-  const log: SystemLog = {
-    id: persistentSystemLogs.reduce((max, l) => Math.max(max, Number(l.id) || 0), 0) + 1,
-    dateTime: new Date().toLocaleString(),
-    user: (req as any).user?.username || "Admin",
-    role: "Admin",
-    action: "BACKUP",
-    module: "System Administration",
-    description: `Created full system database backup snapshot (${backupId})`,
-    status: "Success",
-    deviceIp: (req as any).ip || "127.0.0.1",
-  };
-  persistentSystemLogs.unshift(log);
-  saveJsonFile("system_logs.json", persistentSystemLogs);
-  void saveSystemLogToDb(log);
-
-  return res.json({
-    success: true,
-    backupId,
-    timestamp: new Date().toISOString(),
-    message: "System state and database backup created successfully.",
-  });
+router.post("/admin/backup", requireRoles("Admin"), (_req, res) => {
+  return res.status(501).json({ error: "Database backups are not configured. No backup was created." });
 });
 
 export default router;

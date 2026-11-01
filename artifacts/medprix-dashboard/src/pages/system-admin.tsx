@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import { Summary } from "@/components/custom-ui/summary-card";
+import { readResponse, safeError } from "@/lib/feedback";
 import {
   initialTransactionsData,
   initialSystemLogsData,
@@ -157,22 +158,11 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
   const handleCreateBackup = async () => {
     setIsBackingUp(true);
     try {
-      const res = await fetch("/api/admin/backup", {
-        method: "POST",
-        credentials: "include",
-      });
-      if (res.ok) {
-        const data = await res.json();
-        onToast(data.message || `System backup ${data.backupId} created.`);
-      } else {
-        onToast("System state backed up successfully.");
-      }
-      void loadBackendData();
-    } catch {
-      onToast("System state snapshot saved locally.");
-    } finally {
-      setIsBackingUp(false);
-    }
+      await readResponse(await fetch("/api/admin/backup", { method: "POST", credentials: "include" }), "Database backups are unavailable. No backup was created.");
+      onToast("Backup request completed.");
+    } catch (error) {
+      onToast({ message: safeError(error, "Database backups are unavailable. No backup was created."), variant: "error" });
+    } finally { setIsBackingUp(false); }
   };
 
   const exportTransactionsCsv = () => {
