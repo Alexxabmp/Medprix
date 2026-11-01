@@ -1,9 +1,10 @@
 import { useDialogAccessibility } from "@/lib/use-dialog-accessibility";
 import { SupplierPaymentDialog } from "@/components/supplier-payment-dialog";
+import { ReceivingBatchPicker } from "@/components/custom-ui/receiving-batch-picker";
 import { safeError, readResponse } from "@/lib/feedback";
 import { useEffect, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
-import { Check, Eye, Package, Plus, Trash2, X, ArrowRight } from "lucide-react";
+import { Check, Eye, Package, Plus, Trash2, X, PackagePlus } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import { Summary } from "@/components/custom-ui/summary-card";
 import type { ToastFn } from "@/lib/types";
@@ -25,6 +26,8 @@ type LineItemDetail = {
   product: string;
   sku: string;
   quantityOrdered: number;
+  quantityReceived: number;
+  quantityRemaining: number;
   unitCost: string;
   lineTotal: string;
 };
@@ -64,6 +67,15 @@ type Invoice = {
   status: string;
 };
 type LineItem = { productId: string; quantityOrdered: string; unitCost: string };
+
+function receivingDataProblem(orders: PurchaseOrder[]): string {
+  const incomplete = orders.some(order => !["Fulfilled", "Cancelled"].includes(order.status) &&
+    (!Array.isArray(order.items) || order.items.some(item =>
+      !Number.isInteger(item.quantityReceived) || !Number.isInteger(item.quantityRemaining))));
+  return incomplete
+    ? "Receiving quantities are missing from the server response. Restart the API with the current code, then retry receiving."
+    : "";
+}
 
 const poStatuses = ["Draft", "Pending", "Approved", "Submitted", "Fulfilled", "Cancelled"];
 
@@ -151,6 +163,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
   const [poError, setPoError] = useState("");
   const [statusError, setStatusError] = useState("");
   const [error, setError] = useState("");
+  const [receivingError, setReceivingError] = useState("");
   const [loadingSections, setLoadingSections] = useState({
     orders: false,
     deliveries: false,
@@ -162,6 +175,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
   const [isDeliveryOpen, setIsDeliveryOpen] = useState(false);
   const [isInvoiceOpen, setIsInvoiceOpen] = useState(false);
   const [selectedOrderForItems, setSelectedOrderForItems] = useState<PurchaseOrder | null>(null);
+  const [orderToCancel, setOrderToCancel] = useState<PurchaseOrder | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [supplierId, setSupplierId] = useState("");
   const [poNumber, setPoNumber] = useState("");
@@ -181,6 +195,11 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
   const matchingDeliveryBatches = deliveryBatches.filter(batch =>
     batch.batchNumber.trim().toUpperCase() === deliveryForm.batchNumber.trim().toUpperCase());
   const existingDeliveryBatch = matchingDeliveryBatches.length === 1 ? matchingDeliveryBatches[0] : undefined;
+  const receivingOrders = orders.filter(order => !["Fulfilled", "Cancelled"].includes(order.status) && order.items?.some(item => item.quantityRemaining > 0));
+  const receivingOrder = receivingOrders.find(order => order.id === deliveryForm.poId);
+  const receivingItems = receivingOrder?.items?.filter(item => item.quantityRemaining > 0) ?? [];
+  const receivingItem = receivingItems.find(item => item.productId === deliveryForm.productId);
+  const receivingProblem = receivingDataProblem(orders);
   const [invoiceForm, setInvoiceForm] = useState({
     supplierId: "",
     poId: "",
@@ -193,6 +212,8 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
   useDialogAccessibility(isCreateOpen, '[data-testid="modal-create-po"] .modal', () => setIsCreateOpen(false), isSaving);
   useDialogAccessibility(isDeliveryOpen, '[data-testid="modal-create-delivery"] .modal', () => setIsDeliveryOpen(false), isSaving);
   useDialogAccessibility(isInvoiceOpen, '[data-testid="modal-create-invoice"] .modal', () => setIsInvoiceOpen(false), isSaving);
+  useDialogAccessibility(Boolean(orderToCancel), '[data-testid="modal-cancel-po"] .modal', () => setOrderToCancel(null), isSaving);
+  useDialogAccessibility(Boolean(selectedOrderForItems), '[data-testid="modal-po-items"] .modal', () => setSelectedOrderForItems(null), isSaving);
   const loadData = async () => {
     setError("");
     setLoadingSections({ orders: true, deliveries: true, invoices: true });
@@ -305,6 +326,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
 
   const updateStatus = async (orderId: string, nextStatus: string) => {
     setStatusError("");
+    setIsSaving(true);
     try {
       const response = await fetch(`/api/purchase-orders/${orderId}/status`, {
         method: "PATCH",
@@ -321,10 +343,40 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
     } catch (requestError: any) {
       setStatusError(safeError(requestError, "Purchase order status was not saved. Please refresh."));
       await loadData();
-    }
+    } finally { setIsSaving(false); }
+  };
+
+  const openReceiving = async (orderId = "") => {
+    setError("");
+    setReceivingError("");
+    setIsSaving(true);
+    try {
+      const [response] = await Promise.all([
+        fetch("/api/purchase-orders", {credentials: "include"}),
+        fetchInventoryData(true),
+      ]);
+      const data = await readResponse(response, "Could not refresh purchase orders.");
+      if (!response.ok || !Array.isArray(data.purchaseOrders)) throw new Error(data.error || "Could not refresh purchase orders.");
+      const freshOrders = data.purchaseOrders as PurchaseOrder[];
+      setOrders(freshOrders);
+      saveStored("medprix_procurement_orders", freshOrders);
+      const problem = receivingDataProblem(freshOrders);
+      if (problem) throw new Error(problem);
+      const order = freshOrders.find(order => order.id === orderId);
+      const item = order?.items?.find(item => item.quantityRemaining > 0);
+      if (orderId && (!order || ["Fulfilled", "Cancelled"].includes(order.status) || !item))
+        throw new Error("This purchase order has no outstanding items to receive. Review the refreshed order list.");
+      setDeliveryForm({poId: orderId, productId: item?.productId ?? "", quantityDelivered: item ? String(item.quantityRemaining) : "1",
+        deliveryDate: new Date().toISOString().slice(0, 10), deliveryStatus: "Received", batchNumber: "", expirationDate: ""});
+      setSelectedOrderForItems(null);
+      setIsDeliveryOpen(true);
+    } catch (requestError) {
+      setReceivingError(safeError(requestError, "Could not prepare the receiving report."));
+    } finally { setIsSaving(false); }
   };
 
   const openItemsModal = async (order: PurchaseOrder) => {
+    setReceivingError("");
     setSelectedOrderForItems(order);
     if (!order.items || order.items.length === 0) {
       try {
@@ -401,6 +453,14 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
 
   const submitDelivery = async (event: FormEvent) => {
     event.preventDefault();
+    if (!deliveryForm.batchNumber.trim()) {
+      setError("Select a recorded batch or enter the manufacturer's batch number.");
+      return;
+    }
+    if (!receivingItem || Number(deliveryForm.quantityDelivered) > receivingItem.quantityRemaining) {
+      setError("Select an outstanding product from this purchase order and review its remaining quantity.");
+      return;
+    }
     try {
       setIsSaving(true);
       const response = await fetch("/api/supplier-deliveries", {
@@ -426,7 +486,8 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
       if (!data.delivery?.id) throw new Error("Delivery save could not be confirmed. Check receiving reports before retrying.");
       setIsDeliveryOpen(false);
       await Promise.all([loadData(), fetchInventoryData(true)]);
-      onToast("Receiving report created and inventory updated.");
+      onToast(["Received", "Inspected", "Partial"].includes(deliveryForm.deliveryStatus)
+        ? "Receiving report saved and inventory updated." : "Receiving report saved. Inventory was not changed.");
     } catch (requestError) {
       setError(safeError(requestError, "Failed to create receiving report."));
     } finally {
@@ -540,7 +601,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
           </button>
         ) : undefined}
       />
-      {(error || statusError) && <div className="inline-error" role="alert"><span>{statusError || error} Previously loaded data may be out of date.</span><button className="button soft" onClick={() => void loadData()}>Retry refresh</button></div>}
+      {(error || statusError || receivingError || receivingProblem) && <div className="inline-error" role="alert"><span>{statusError || receivingError || receivingProblem || error} Previously loaded data may be out of date.</span><button className="button soft" onClick={() => { setReceivingError(""); void loadData(); }}>Retry refresh</button></div>}
       <div className="summary-strip">
         <Summary
           label="Open orders"
@@ -639,25 +700,36 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                           <strong>{money(order.totalOrderAmount)}</strong>
                         </td>
                         <td>
-                          {canManagePurchasing ? <select
+                          {canManagePurchasing && !["Fulfilled", "Cancelled"].includes(order.status) ? <select
                             className="select"
                             data-testid={`select-status-${order.id}`}
                             value={order.status}
+                            disabled={isSaving}
                             onChange={(event) =>
-                              void updateStatus(order.id, event.target.value)
+                              event.target.value === "Cancelled" ? setOrderToCancel(order) : void updateStatus(order.id, event.target.value)
                             }>
-                            {poStatuses.map((item) => (
-                              <option key={item}>{item}</option>
+                            {poStatuses.filter(item => item !== "Fulfilled").map((item) => (
+                              <option key={item} disabled={item === "Cancelled" && order.items?.some(line => line.quantityReceived > 0)}>{item}</option>
                             ))}
                           </select> : <span className="pill neutral">{order.status}</span>}
                         </td>
-                        <td>
+                        <td className="flex flex-row gap-3">
+                          {canManagePurchasing && !["Fulfilled", "Cancelled"].includes(order.status) && order.items?.some(item => item.quantityRemaining > 0) &&
+                            <button
+                              type="button"
+                              className="button soft"
+                              style={{ fontSize: 12, padding: "4px 8px"}}
+                              disabled={isSaving}
+                              onClick={() => void openReceiving(order.id)}>
+                              <PackagePlus size={12} />
+                              Receive
+                            </button>}
                           <button
                             type="button"
                             className="button soft"
                             style={{ fontSize: 12, padding: "4px 8px" }}
                             onClick={() => void openItemsModal(order)}>
-                            <Eye size={12} style={{ marginRight: 4 }} /> View items
+                            <Eye size={12} /> View items
                           </button>
                         </td>
                       </tr>
@@ -679,10 +751,8 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
             {canManagePurchasing && (
               <button
                 className="button primary-action"
-                onClick={() => {
-                  void refreshInventory();
-                  setIsDeliveryOpen(true);
-                }}>
+                disabled={isSaving}
+                onClick={() => void openReceiving()}>
                 <Plus size={14} /> Add receiving report
               </button>
             )}
@@ -899,6 +969,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                   </table>
                 </div>
               </div>
+              {(receivingError || receivingProblem) && <div className="inline-error" role="alert">{receivingError || receivingProblem}</div>}
               <div
                 className="modal-actions"
                 style={{ display: "flex", justifyContent: "space-between" }}>
@@ -911,23 +982,9 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 <button
                   type="button"
                   className="button primary-action"
-                  onClick={() => {
-                    const ord = selectedOrderForItems;
-                    setSelectedOrderForItems(null);
-                    setDeliveryForm({
-                      poId: ord.id,
-                      deliveryDate: new Date().toISOString().slice(0, 10),
-                      deliveryStatus: "Received",
-                      productId: ord.items?.[0]?.productId || products[0]?.id || "",
-                      batchNumber: `BATCH-${Date.now().toString().slice(-6)}`,
-                      expirationDate: "2028-12-31",
-                      quantityDelivered: ord.items?.[0]
-                        ? String(ord.items[0].quantityOrdered)
-                        : "1",
-                    });
-                    setIsDeliveryOpen(true);
-                  }}>
-                  <Plus size={13} /> Receive delivery for this PO
+                  disabled={isSaving || ["Fulfilled", "Cancelled"].includes(selectedOrderForItems.status)}
+                  onClick={() => void openReceiving(selectedOrderForItems.id)}>
+                  <Plus size={13} /> {isSaving ? "Preparing..." : "Receive delivery for this PO"}
                 </button>
               </div>
             </div>
@@ -1116,6 +1173,23 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
           document.body
         )}
 
+      {orderToCancel && createPortal(
+        <div className="modal-backdrop" data-testid="modal-cancel-po" onMouseDown={event => {
+          if (event.currentTarget === event.target && !isSaving) setOrderToCancel(null);
+        }}>
+          <div className="modal dialog">
+            <div className="modal-header"><h2>Cancel purchase order?</h2></div>
+            <p>Cancel {orderToCancel.poNumber}? This closes the order to further receiving. It does not reverse any recorded delivery or inventory movement.</p>
+            <div className="modal-actions">
+              <button type="button" className="button soft" disabled={isSaving} onClick={() => setOrderToCancel(null)}>Keep purchase order</button>
+              <button type="button" className="button primary-action" disabled={isSaving} onClick={async () => {
+                await updateStatus(orderToCancel.id, "Cancelled");
+                setOrderToCancel(null);
+              }}>{isSaving ? "Cancelling..." : "Cancel purchase order"}</button>
+            </div>
+          </div>
+        </div>, document.body)}
+
       {/* Add Receiving Report Modal */}
       {isDeliveryOpen &&
         createPortal(
@@ -1140,6 +1214,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                   <X size={16} />
                 </button>
               </div>
+              {receivingOrders.length === 0 && <p className="modal-sub" role="status">No open purchase orders have outstanding products to receive. Create a purchase order in Purchase Order Monitoring first.</p>}
               <div className="form-grid">
                 <div className="field">
                   <label>Purchase order *</label>
@@ -1149,21 +1224,21 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                     onChange={(event) => {
                       const selectedPoId = event.target.value;
                       const order = orders.find((o) => o.id === selectedPoId);
-                      const firstItem = order?.items?.[0];
+                      const firstItem = order?.items?.find(item => item.quantityRemaining > 0);
                       setDeliveryForm({
                         ...deliveryForm,
                         poId: selectedPoId,
                         productId:
-                          firstItem?.productId || deliveryForm.productId || (products[0]?.id ?? ""),
+                          firstItem?.productId || "",
                         batchNumber: "",
                         expirationDate: "",
                         quantityDelivered: firstItem
-                          ? String(firstItem.quantityOrdered)
-                          : deliveryForm.quantityDelivered,
+                          ? String(firstItem.quantityRemaining)
+                          : "1",
                       });
                     }}>
                     <option value="">Select purchase order</option>
-                    {orders.map((order) => (
+                    {receivingOrders.map((order) => (
                       <option key={order.id} value={order.id}>
                         {order.poNumber} - {order.supplier} ({order.status})
                       </option>
@@ -1207,36 +1282,30 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                   <select
                     required
                     value={deliveryForm.productId}
+                    disabled={!receivingOrder}
                     onChange={(event) =>
                       setDeliveryForm({
                         ...deliveryForm,
                         productId: event.target.value,
+                        quantityDelivered: String(receivingItems.find(item => item.productId === event.target.value)?.quantityRemaining ?? 1),
                         batchNumber: "",
                         expirationDate: "",
                       })
                     }>
-                    <option value="">Select product</option>
-                    {products.map((product) => (
-                      <option key={product.id} value={product.id}>
-                        {product.name} ({product.sku})
+                    <option value="">{receivingOrder ? "Select product" : "Select purchase order first"}</option>
+                    {receivingItems.map((item) => (
+                      <option key={item.productId} value={item.productId}>
+                        {item.product} ({item.sku})
                       </option>
                     ))}
                   </select>
                 </div>
                 <div className="field">
-                  <label>Batch number *</label>
-                  <input
-                    required
-                    maxLength={100}
-                    placeholder="e.g. BATCH-2026-01"
-                    value={deliveryForm.batchNumber}
-                    onChange={(event) =>
-                      setDeliveryForm({
-                        ...deliveryForm,
-                        batchNumber: event.target.value,
-                      })
-                    }
-                  />
+                  <label htmlFor="receiving-batch">Batch number *</label>
+                  <ReceivingBatchPicker key={`${deliveryForm.poId}:${deliveryForm.productId}`} batches={deliveryBatches}
+                    value={deliveryForm.batchNumber} disabled={!receivingItem || isSaving}
+                    onChange={(batchNumber, expirationDate) => setDeliveryForm(current => ({...current, batchNumber,
+                      ...(expirationDate !== undefined ? {expirationDate} : {})}))} />
                 </div>
                 <div className="field">
                   <label>Expiration date *</label>
@@ -1259,6 +1328,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                     required
                     type="number"
                     min="1"
+                    max={receivingItem?.quantityRemaining}
                     step="1"
                     value={deliveryForm.quantityDelivered}
                     onChange={(event) =>
@@ -1270,9 +1340,11 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                   />
                 </div>
               </div>
+              {receivingItem && <p className="modal-sub">Ordered: {receivingItem.quantityOrdered} · Received: {receivingItem.quantityReceived} · Remaining: {receivingItem.quantityRemaining}.
+                {["Received", "Inspected", "Partial"].includes(deliveryForm.deliveryStatus) ? " Saving adds the entered quantity to inventory. The PO completes when all ordered quantities are received." : " Saving this status does not change inventory."}</p>}
               {error && <div className="inline-error" role="alert">{error}</div>}
               <div className="modal-actions">
-                <button className="button primary-action" type="submit" disabled={isSaving}>
+                <button className="button primary-action" type="submit" disabled={isSaving || !receivingItem}>
                   <Check size={13} /> {isSaving ? "Saving..." : "Save receiving report"}
                 </button>
               </div>

@@ -2422,3 +2422,18 @@ a {
   .data-table:has(.invoice-payment-cell) td { white-space: normal; overflow-wrap: anywhere; }
   .data-table:has(.invoice-payment-cell) tr { margin-bottom: 12px; border-bottom: 2px solid hsl(var(--border)); }
 }
+
+.receiving-batch-trigger { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-width: 0; min-height: 40px; padding: 10px 12px; border: 1px solid hsl(var(--border)); border-radius: 12px; background: hsl(var(--surface-soft)); color: hsl(var(--foreground)); font: inherit; font-size: var(--text-sm); text-align: left; cursor: pointer; }
+.receiving-batch-trigger > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.receiving-batch-trigger > svg { flex-shrink: 0; }
+.receiving-batch-trigger:disabled { opacity: .55; cursor: default; }
+.receiving-batch-trigger:focus-visible, .receiving-new-batch:focus-visible { outline: 2px solid hsl(var(--foreground) / .3); outline-offset: 2px; }
+.receiving-batch-menu { z-index: 1100; width: var(--radix-popover-trigger-width); max-width: calc(100vw - 36px); border: 1px solid hsl(var(--border)); border-radius: 12px; overflow: hidden; background: hsl(var(--surface)); color: hsl(var(--foreground)); box-shadow: 0 12px 36px rgb(0 0 0 / .2); }
+.receiving-batch-menu [cmdk-root] { background: inherit; color: inherit; }
+.receiving-batch-menu [cmdk-list] { max-height: min(190px, 30dvh); }
+.receiving-batch-menu [cmdk-item] { cursor: pointer; padding: 9px 10px; }
+.receiving-batch-menu [cmdk-item][data-selected=true] { background: hsl(var(--surface-soft)); color: hsl(var(--foreground)); }
+.receiving-batch-menu [cmdk-item] > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.receiving-batch-menu small { color: hsl(var(--muted)); font-size: var(--text-xs); }
+.receiving-new-batch { display: flex; align-items: center; gap: 7px; width: 100%; padding: 11px 12px; border: 0; border-top: 1px solid hsl(var(--border)); background: hsl(var(--surface)); color: hsl(var(--foreground)); font: inherit; font-size: var(--text-sm); cursor: pointer; }
+.receiving-new-number { display: grid; gap: 7px; margin-top: 9px; min-width: 0; }

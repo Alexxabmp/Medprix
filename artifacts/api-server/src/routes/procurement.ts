@@ -17,7 +17,7 @@ import { requireAuth, requireRoles } from "../middleware/auth";
 import { createSettlementService, SettlementError } from "../lib/supplier-payments";
 import { identifierConflict } from "../lib/identifier-conflicts";
 import { readSupplierPayables, readSupplierInvoices, readSupplierHistory } from "../lib/supplier-payable-read-model";
-import { receiveSupplierStock, inspectSupplierBatch, normalizeSupplierBatch, ReceivingError } from "../lib/supplier-stock-receipts";
+import { receiveSupplierStock, inspectSupplierBatch, normalizeSupplierBatch, readReceivedQuantities, readOrderReceivingState, ReceivingError } from "../lib/supplier-stock-receipts";
 
 const settlement = createSettlementService(db);
 const router: IRouter = Router();
@@ -307,6 +307,7 @@ router.get("/purchase-orders", async (_req: Request, res: Response) => {
     db.select().from(poItemsTable),
     db.select().from(productsTable),
   ]);
+  const receivedQuantities = await readReceivedQuantities(db);
 
   const result = orders.map((order) => {
     const orderItems = items.filter((item) => item.poId === order.id);
@@ -329,6 +330,8 @@ router.get("/purchase-orders", async (_req: Request, res: Response) => {
           "Product",
         sku: products.find((p) => p.id === item.productId)?.sku || "",
         quantityOrdered: item.quantityOrdered,
+        quantityReceived: receivedQuantities.get(`${order.id}:${item.productId}`) || 0,
+        quantityRemaining: Math.max(0, item.quantityOrdered - (receivedQuantities.get(`${order.id}:${item.productId}`) || 0)),
         unitCost: formatAmount(item.unitCost),
         lineTotal: formatAmount(item.lineTotal),
       })),
@@ -353,6 +356,7 @@ router.get(
       db.select().from(poItemsTable).where(eq(poItemsTable.poId, order.id)),
       db.select().from(productsTable),
     ]);
+    const receiving = await readOrderReceivingState(db, order.id);
 
     return res.json({
       success: true,
@@ -365,6 +369,8 @@ router.get(
         sku:
           products.find((product) => product.id === item.productId)?.sku || "",
         quantityOrdered: item.quantityOrdered,
+        quantityReceived: receiving.find(row => row.productId === item.productId)?.quantityReceived || 0,
+        quantityRemaining: receiving.find(row => row.productId === item.productId)?.quantityRemaining || 0,
         unitCost: formatAmount(item.unitCost),
         lineTotal: formatAmount(item.lineTotal),
       })),
@@ -513,8 +519,19 @@ router.post(
 
     const result = await db.transaction(async (tx) => {
       // Match fulfillment's order-before-product lock order to avoid receipt/fulfillment deadlocks.
-      await tx.select({ id: purchaseOrdersTable.id }).from(purchaseOrdersTable)
+      const [lockedOrder] = await tx.select().from(purchaseOrdersTable)
         .where(eq(purchaseOrdersTable.id, order.id)).for("update");
+      if (!lockedOrder || ["Cancelled", "Fulfilled"].includes(lockedOrder.status))
+        throw new ReceivingError("This purchase order is closed. Refresh the order list before receiving.");
+      const receiving = await readOrderReceivingState(tx, order.id);
+      const requested = new Map<string, number>();
+      for (const item of resolvedItems) requested.set(item.productId, (requested.get(item.productId) || 0) + item.quantityDelivered);
+      for (const [productId, quantity] of requested) {
+        const ordered = receiving.find(item => item.productId === productId);
+        if (!ordered) throw new ReceivingError("This product is not on the selected purchase order.");
+        if (quantity > ordered.quantityRemaining)
+          throw new ReceivingError(`This product has ${ordered.quantityRemaining} unit(s) left to receive on this purchase order. Refresh and review the quantity.`);
+      }
       await tx.select({ id: productsTable.id }).from(productsTable)
         .where(inArray(productsTable.id, resolvedItems.map((item) => item.productId)))
         .orderBy(asc(productsTable.id)).for("update");
@@ -558,7 +575,9 @@ router.post(
           });
         }
 
-      if (["Received", "Inspected"].includes(delivery.deliveryStatus)) {
+      const postsStock = ["Received", "Inspected", "Partial"].includes(delivery.deliveryStatus);
+      if (postsStock && receiving.length > 0 && receiving.every(item =>
+        item.quantityRemaining - (requested.get(item.productId) || 0) === 0)) {
         await tx
           .update(purchaseOrdersTable)
           .set({ status: "Fulfilled", updatedAt: new Date() })
@@ -809,101 +828,21 @@ router.patch(
     }
 
     const updated = await db.transaction(async (tx) => {
-      // Re-read only after acquiring the same order-before-product locks as receiving.
-      const [lockedOrder] = await tx.select().from(purchaseOrdersTable)
+      const [order] = await tx.select().from(purchaseOrdersTable)
         .where(eq(purchaseOrdersTable.id, existing.id)).for("update");
-      const [order] = await tx
-        .update(purchaseOrdersTable)
-        .set({
-          status: status as (typeof poStatuses)[number],
-          updatedAt: new Date(),
-        })
-        .where(eq(purchaseOrdersTable.id, existing.id))
-        .returning();
-
-      // If transitioning to Fulfilled, receive any unfulfilled items into inventory
-      if (status === "Fulfilled" && lockedOrder.status !== "Fulfilled") {
-        const orderItems = await tx
-          .select()
-          .from(poItemsTable)
-          .where(eq(poItemsTable.poId, existing.id));
-
-        if (orderItems.length) await tx.select({ id: productsTable.id }).from(productsTable)
-          .where(inArray(productsTable.id, orderItems.map((item) => item.productId)))
-          .orderBy(asc(productsTable.id)).for("update");
-        const existingDeliveries = await tx
-          .select()
-          .from(supplierDeliveriesTable)
-          .where(eq(supplierDeliveriesTable.poId, existing.id));
-
-        const deliveryIds = existingDeliveries
-          .filter(d => ["Received", "Inspected", "Partial"].includes(d.deliveryStatus))
-          .map((d) => d.id);
-        const existingDeliveryItems =
-          deliveryIds.length > 0
-            ? await tx
-                .select()
-                .from(deliveryItemsTable)
-                .where(inArray(deliveryItemsTable.deliveryId, deliveryIds))
-            : [];
-
-        const deliveredQtyByProd = new Map<string, number>();
-        for (const di of existingDeliveryItems) {
-          deliveredQtyByProd.set(
-            di.productId,
-            (deliveredQtyByProd.get(di.productId) || 0) + di.quantityDelivered,
-          );
-        }
-
-        const itemsToReceive: Array<{
-          productId: string;
-          quantity: number;
-        }> = [];
-
-        for (const item of orderItems) {
-          const alreadyDelivered = deliveredQtyByProd.get(item.productId) || 0;
-          const qtyToReceive = Math.max(0, item.quantityOrdered - alreadyDelivered);
-          if (qtyToReceive > 0) {
-            itemsToReceive.push({
-              productId: item.productId,
-              quantity: qtyToReceive,
-            });
-          }
-        }
-
-        if (itemsToReceive.length > 0) {
-          const [delivery] = await tx
-            .insert(supplierDeliveriesTable)
-            .values({
-              poId: existing.id,
-              deliveryDate: new Date(),
-              deliveryStatus: "Received",
-            })
-            .returning();
-
-          for (const item of itemsToReceive) {
-            const batchNum = `PO-${existing.poNumber}`.toUpperCase();
-
-            await tx.insert(deliveryItemsTable).values({
-              deliveryId: delivery.id,
-              productId: item.productId,
-              batchNumber: batchNum,
-              expirationDate: "2028-12-31",
-              quantityDelivered: item.quantity,
-            });
-
-            await receiveSupplierStock(tx, {
-              productId: item.productId, batchNumber: batchNum,
-              expirationDate: "2028-12-31", quantity: item.quantity,
-              dateReceived: new Date().toISOString().slice(0, 10),
-              deliveryId: delivery.id,
-              notes: `Fulfilled purchase order ${existing.poNumber}`,
-            });
-          }
-        }
-      }
-
-      return order;
+      if (!order) throw new ReceivingError("Purchase order no longer exists. Refresh the order list.");
+      if (order.status === status) return order;
+      if (["Fulfilled", "Cancelled"].includes(order.status))
+        throw new ReceivingError("Closed purchase orders cannot be reopened or cancelled through a status change. Recorded receipts must be retained.");
+      const receiving = await readOrderReceivingState(tx, order.id);
+      if (status === "Cancelled" && receiving.some(item => item.quantityReceived > 0))
+        throw new ReceivingError("This purchase order already has received stock. Use a reviewed return or correction; changing status cannot undo receiving.");
+      if (status === "Fulfilled" && (!receiving.length || receiving.some(item => item.quantityRemaining > 0)))
+        throw new ReceivingError("Record the outstanding products in Receiving Report Management with their actual batch and expiration dates. The order becomes Fulfilled when all quantities are received.");
+      const [saved] = await tx.update(purchaseOrdersTable)
+        .set({status: status as (typeof poStatuses)[number], updatedAt: new Date()})
+        .where(eq(purchaseOrdersTable.id, order.id)).returning();
+      return saved;
     });
 
     return res.json({ success: true, purchaseOrder: updated });

@@ -1,10 +1,43 @@
-import { and, eq } from "drizzle-orm";
-import { batchInfoTable, productsTable, stockMovementsTable, type db } from "@workspace/db";
+import { and, eq, inArray } from "drizzle-orm";
+import { batchInfoTable, productsTable, stockMovementsTable, poItemsTable, supplierDeliveriesTable, deliveryItemsTable, type db } from "@workspace/db";
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 export class ReceivingError extends Error {
   readonly status = 409;
+}
+
+export async function readReceivedQuantities(reader: Pick<Transaction, "select">, poIds?: string[]) {
+  const rows = await reader.select({
+    poId: supplierDeliveriesTable.poId,
+    productId: deliveryItemsTable.productId,
+    quantity: deliveryItemsTable.quantityDelivered,
+  }).from(deliveryItemsTable)
+    .innerJoin(supplierDeliveriesTable, eq(supplierDeliveriesTable.id, deliveryItemsTable.deliveryId))
+    .where(and(
+      inArray(supplierDeliveriesTable.deliveryStatus, ["Received", "Inspected", "Partial"]),
+      poIds ? inArray(supplierDeliveriesTable.poId, poIds) : undefined,
+    ));
+  const quantities = new Map<string, number>();
+  for (const row of rows) {
+    const key = `${row.poId}:${row.productId}`;
+    quantities.set(key, (quantities.get(key) || 0) + row.quantity);
+  }
+  return quantities;
+}
+
+/** The caller holds the PO row lock before using this to authorize a receipt. */
+export async function readOrderReceivingState(reader: Pick<Transaction, "select">, poId: string) {
+  const [items, received] = await Promise.all([
+    reader.select().from(poItemsTable).where(eq(poItemsTable.poId, poId)),
+    readReceivedQuantities(reader, [poId]),
+  ]);
+  const ordered = new Map<string, number>();
+  for (const item of items) ordered.set(item.productId, (ordered.get(item.productId) || 0) + item.quantityOrdered);
+  return Array.from(ordered, ([productId, quantityOrdered]) => {
+    const quantityReceived = received.get(`${poId}:${productId}`) || 0;
+    return {productId, quantityOrdered, quantityReceived, quantityRemaining: Math.max(0, quantityOrdered - quantityReceived)};
+  });
 }
 
 export const normalizeSupplierBatch = (value: string) => value.trim().toUpperCase();
