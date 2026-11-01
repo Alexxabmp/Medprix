@@ -17,6 +17,7 @@ import {
 import { requireAuth, requireRoles } from "../middleware/auth";
 
 import { createSettlementService, SettlementError } from "../lib/supplier-payments";
+import { identifierConflict } from "../lib/identifier-conflicts";
 
 const settlement = createSettlementService(db);
 const router: IRouter = Router();
@@ -755,13 +756,14 @@ router.post(
         invoiceAmount?: number | string;
         isPaid?: boolean;
       };
-    if (!supplierId || !invoiceNumber?.trim() || !dueDate) {
+    if (!supplierId || typeof invoiceNumber !== 'string' || !invoiceNumber.trim() || !dueDate) {
       return res.status(400).json({
         success: false,
         error: "Supplier, invoice number, and due date are required.",
       });
     }
     if (isPaid) return res.status(400).json({ error: "Create the invoice unpaid, then use Record payment to settle it." });
+    if (invoiceNumber.trim().length > 100) return res.status(400).json({ error: "Invoice number must be 100 characters or fewer." });
     const supplier = await findSupplier(supplierId);
     if (!supplier)
       return res
@@ -813,7 +815,12 @@ router.post(
           : null,
       });
       return created;
+    }).catch(error => {
+      if (!identifierConflict(error, ['supplier_invoices_invoice_number_key','uq_supplier_invoices_supplier_number_ci'])) throw error;
+      res.status(409).json({ success: false, error: "This invoice number already exists for this supplier.", errors: { invoiceNumber: "Use a different invoice number for this supplier." } });
+      return null;
     });
+    if (!invoice) return;
 
     return res.status(201).json({
       success: true,

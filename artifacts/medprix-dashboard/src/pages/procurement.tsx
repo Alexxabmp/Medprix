@@ -454,8 +454,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
             createdInvoice,
             ...current.filter(
               (invoice) =>
-                invoice.id !== createdInvoice.id &&
-                invoice.invoiceNumber !== createdInvoice.invoiceNumber,
+                invoice.id !== createdInvoice.id,
             ),
           ];
           saveStored("medprix_procurement_invoices", next);

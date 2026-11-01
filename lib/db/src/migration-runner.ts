@@ -46,11 +46,11 @@ export async function runMigrations(options: { client: postgres.Sql; command: Mi
       await assertSchemaReady(q, 'initial', namespace);
     } else if (adopting) throw new Error('Adoption requires an existing compatible schema; use apply for an empty database.');
     if (history.applied) {
-      const scope = history.applied === 1 ? 'initial' : history.applied === 2 ? 'cashier' : history.applied < 5 ? 'legacy-runtime' : 'runtime';
+      const scope = history.applied === 1 ? 'initial' : history.applied === 2 ? 'cashier' : history.applied < 5 ? 'legacy-runtime' : history.applied === 5 ? 'audit-runtime' : 'runtime';
       await assertSchemaReady(q, scope, namespace);
     }
 
-    await assertSchemaReady(q, 'cashier', namespace, true);
+    await assertSchemaReady(q, history.applied >= 6 ? 'runtime' : 'cashier', namespace, true);
     const dialect = new PgDialect();
 
     const nestedClient = new Proxy(tx, {

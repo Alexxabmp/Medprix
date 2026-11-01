@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, usersTable, withTransaction } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { validatePassword, verifyPassword } from "../lib/password";
 import {
   clearSessionCookie,
@@ -36,7 +36,7 @@ router.post("/login", async (req, res) => {
     const [user] = await db
       .select()
       .from(usersTable)
-      .where(eq(usersTable.username, normalizedUsername));
+      .where(sql`lower(btrim(${usersTable.username})) = lower(${normalizedUsername})`);
 
     const passwordMatches = await verifyPassword(
       password,

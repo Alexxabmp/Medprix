@@ -144,7 +144,7 @@ router.get("/inventory", async (_req: Request, res: Response) => {
 
 function duplicateSku(error: unknown): boolean {
   const err = error as { code?: string; constraint?: string; constraint_name?: string; cause?: unknown };
-  return Boolean(err && ((err.code === "23505" && (err.constraint === "uq_products_sku" || err.constraint_name === "uq_products_sku")) || (err.cause && duplicateSku(err.cause))));
+  return Boolean(err && ((err.code === "23505" && [err.constraint, err.constraint_name].some(name => name === "uq_products_sku" || name === "uq_products_sku_ci")) || (err.cause && duplicateSku(err.cause))));
 }
 
 router.post("/inventory/products", async (req: Request, res: Response) => {

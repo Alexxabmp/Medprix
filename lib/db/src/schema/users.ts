@@ -6,6 +6,7 @@ import {
   text,
   boolean,
   timestamp,
+  uniqueIndex,
   unique,
   check,
 } from "drizzle-orm/pg-core";
@@ -46,7 +47,7 @@ export const usersTable = pgTable(
   "users",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    username: varchar("username", { length: 100 }).notNull().unique("users_username_key"),
+    username: varchar("username", { length: 100 }).notNull(),
     password: varchar("password_hash", { length: 255 }).notNull(),
     fullName: varchar("full_name", { length: 255 }).notNull(),
     contactNumber: varchar("contact_number", { length: 13 }),
@@ -58,6 +59,7 @@ export const usersTable = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    uniqueIndex("uq_users_username_ci").on(sql`lower(btrim(${t.username}))`),
     // NULL passes a CHECK, so contact_number stays optional; when present it must be +639XXXXXXXXX.
     check("users_contact_number_ph_mobile_check", sql`${t.contactNumber} ~ '^\\+639[0-9]{9}$'`),
   ],

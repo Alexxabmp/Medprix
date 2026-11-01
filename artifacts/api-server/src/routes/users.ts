@@ -2,7 +2,8 @@ import { Router, type IRouter } from "express";
 import { db, usersTable } from "@workspace/db";
 import { hashPassword, validatePassword } from "../lib/password";
 import { requireAuth, requireRole } from "../middleware/auth";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
+import { identifierConflict } from "../lib/identifier-conflicts";
 
 const router: IRouter = Router();
 
@@ -92,6 +93,7 @@ router.post("/users", async (req, res) => {
       error: "username, password, and role are required.",
     });
   }
+  if (normalizedUsername.length > 100) return res.status(400).json({ error: "Username must be 100 characters or fewer." });
 
   const passwordError = validatePassword(password);
   if (passwordError) {
@@ -133,7 +135,9 @@ router.post("/users", async (req, res) => {
       role: result.role,
       isActive: result.isActive,
     });
-  } catch {
+  } catch (error) {
+    if (!identifierConflict(error, ['users_username_key','uq_users_username_ci']))
+      return res.status(503).json({ error: "Could not create the account. Please try again." });
     return res.status(409).json({
       error: "Username is already taken.",
     });
@@ -150,7 +154,7 @@ async function findUser(userIdOrUsername: string) {
     .where(
       isValidUuid(clean)
         ? eq(usersTable.id, clean)
-        : eq(usersTable.username, clean),
+        : sql`lower(btrim(${usersTable.username})) = lower(${clean})`,
     );
   if (direct) return direct;
 
@@ -219,6 +223,7 @@ const handleUpdateUser = async (req: any, res: any) => {
         error: "Username is required.",
       });
     }
+    if (username.trim().length > 100) return res.status(400).json({ error: "Username must be 100 characters or fewer." });
   }
 
   try {
@@ -254,7 +259,9 @@ const handleUpdateUser = async (req: any, res: any) => {
       });
 
     return res.json(updatedUser);
-  } catch {
+  } catch (error) {
+    if (!identifierConflict(error, ['users_username_key','uq_users_username_ci']))
+      return res.status(503).json({ error: "Could not update the account. Please try again." });
     return res.status(409).json({
       error: "Username is already taken.",
     });
