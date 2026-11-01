@@ -18,9 +18,9 @@ const TZ_OFFSET_H = 8; // Asia/Manila (UTC+8)
 const VAT_RATE = 0.12;
 const SENIOR_PWD_DISCOUNT = 0.2;
 
-// Insert order == FK dependency order. Also used for TRUNCATE on --reset.
+// Insert order follows active FK dependencies. Seeding never resets existing data.
 const TABLE_ORDER = [
-  "roles", "permissions", "users", "user_roles", "role_permissions",
+  "users",
   "system_logs", "user_activities", "backup_records",
   "products", "batch_info", "stock_movements", "inventory_alerts",
   "customers", "transactions", "transaction_items", "discounts", "receipts",
@@ -229,7 +229,7 @@ interface Product {
 function buildData(passwordHash: string) {
   const day0 = at(-120, 9);
 
-  // ── Users, roles, permissions ────────────────────────────────────────────
+  // ── Users with fixed enum roles ────────────────────────────────────────────
   const userDefs = [
     { username: "admin", full_name: "Ana Reyes", role: "Admin", code: "EMP-001", ip: "192.168.1.10" },
     { username: "cashier", full_name: "Maria Santos", role: "Cashier", code: "EMP-002", ip: "192.168.1.11" },
@@ -247,45 +247,6 @@ function buildData(passwordHash: string) {
       role: u.role, is_active: true, created_at: day0, last_login: null, updated_at: day0,
     });
   }
-
-  const roleDefs = [
-    { name: "Admin", description: "Full access to every module, including user management and backups" },
-    { name: "Cashier", description: "Point-of-sale operations and read-only inventory lookup" },
-    { name: "FrontDesk", description: "Inventory receiving, procurement requests and wholesale order handling" },
-  ];
-  const roleId = new Map<string, string>();
-  for (const r of roleDefs) {
-    const id = randomUUID();
-    roleId.set(r.name, id);
-    T.roles.push({ id, role_name: r.name, description: r.description, created_at: day0 });
-  }
-  const MODULES = ["Sales", "Inventory", "Procurement", "Reports", "Wholesale", "Administration"];
-  const PERM_TYPES = ["View", "Create", "Edit", "Delete", "Approve"];
-  const permId = new Map<string, string>();
-  for (const m of MODULES) {
-    for (const p of PERM_TYPES) {
-      const id = randomUUID();
-      permId.set(`${m}:${p}`, id);
-      T.permissions.push({ id, module_name: m, permission_type: p, created_at: day0 });
-    }
-  }
-  const allow: Record<string, (m: string, p: string) => boolean> = {
-    Admin: () => true,
-    Cashier: (m, p) => (m === "Sales" && (p === "View" || p === "Create")) || (m === "Inventory" && p === "View"),
-    FrontDesk: (m, p) =>
-      (m === "Sales" && p === "View") ||
-      (m === "Inventory" && ["View", "Create", "Edit"].includes(p)) ||
-      (m === "Procurement" && (p === "View" || p === "Create")) ||
-      (m === "Wholesale" && ["View", "Create", "Edit"].includes(p)),
-  };
-  for (const r of roleDefs) {
-    for (const m of MODULES)
-      for (const p of PERM_TYPES)
-        if (allow[r.name]!(m, p))
-          T.role_permissions.push({ id: randomUUID(), role_id: roleId.get(r.name), permission_id: permId.get(`${m}:${p}`), granted_at: day0 });
-  }
-  for (const u of users)
-    T.user_roles.push({ id: randomUUID(), user_id: u.id, role_id: roleId.get(u.role), assigned_at: day0 });
 
   const lastLogin = new Map<string, Date>();
   const addLog = (

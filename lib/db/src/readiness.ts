@@ -36,13 +36,13 @@ export class SchemaReadinessError extends Error {
     this.name = "SchemaReadinessError";
   }
 }
-export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | "cashier" | "legacy-runtime" | "audit-runtime" | "runtime" = "runtime", namespace = "public", existingTablesOnly = false) {
+export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | "cashier" | "legacy-runtime" | "audit-runtime" | "identifier-runtime" | "runtime" = "runtime", namespace = "public", existingTablesOnly = false) {
   const actual = await inspectSchema(query, namespace);
   const issues: string[] = [];
   const normalize = (v: unknown) => typeof v === "string" ? v.replaceAll(`"${namespace}".`, "public.").replaceAll(`${namespace}.`, "public.") : v;
   for (const contract of scope === "initial" ? [initialContract] : [initialContract, cashierContract]) {
-    const retired = (table: string) => ['audit-runtime','runtime'].includes(scope) && ['cashier_system_logs','cashier_user_activities'].includes(table);
-    const replaced = (name: string) => scope === 'runtime' && ['users_username_key','uq_products_sku','supplier_invoices_invoice_number_key'].includes(name);
+    const retired = (table: string) => (['audit-runtime','identifier-runtime','runtime'].includes(scope) && ['cashier_system_logs','cashier_user_activities'].includes(table)) || (scope === 'runtime' && ['roles','permissions','user_roles','role_permissions'].includes(table));
+    const replaced = (name: string) => ['identifier-runtime','runtime'].includes(scope) && ['users_username_key','uq_products_sku','supplier_invoices_invoice_number_key'].includes(name);
     const absent = (table: string) => existingTablesOnly && !actual.tables.some(t => t.name === table);
     for (const name of contract.tables) if (!existingTablesOnly && !retired(name) && !actual.tables.some(t => t.name === name)) issues.push(`missing table ${name}`);
     for (const expected of contract.columns) {
@@ -69,18 +69,18 @@ export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | 
       if (!found || JSON.stringify(found.labels) !== JSON.stringify(expected.labels)) issues.push(`missing/incompatible enum ${expected.name}`);
     }
   }
-  if (['runtime','audit-runtime','legacy-runtime'].includes(scope)) for (const expected of timestampTriggers) {
+  if (['runtime','identifier-runtime','audit-runtime','legacy-runtime'].includes(scope)) for (const expected of timestampTriggers) {
     const found = actual.triggers.find(t => t.table_name === expected.table_name && t.name === expected.name);
     if (!found || found.enabled !== 'O' || normalize(found.definition) !== normalize(expected.definition))
       issues.push(`missing/incompatible timestamp trigger ${expected.name}`);
   }
-  if (['runtime','audit-runtime','legacy-runtime'].includes(scope)) {
+  if (['runtime','identifier-runtime','audit-runtime','legacy-runtime'].includes(scope)) {
     const fn = actual.functions[0];
     if (!fn || fn.security_definer || fn.language !== 'plpgsql' || !fn.returns_trigger ||
       fn.body.toLowerCase().replaceAll(/\s/g, '') !== 'beginnew.updated_at=current_timestamp;returnnew;end;')
       issues.push('missing/incompatible timestamp function update_updated_at_column');
   }
-  if (scope === 'runtime') for (const [name,table,expression] of [
+  if (['identifier-runtime','runtime'].includes(scope)) for (const [name,table,expression] of [
     ['uq_users_username_ci','users','lower(btrim((username)::text))'],
     ['uq_products_sku_ci','products','upper(btrim((sku)::text))'],
     ['uq_supplier_invoices_supplier_number_ci','supplier_invoices','supplier_id, upper(btrim((invoice_number)::text))'],
@@ -91,10 +91,12 @@ export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | 
     if (!found || !found.valid || !found.ready || normalize(found.definition) !== expected)
       issues.push(`missing/incompatible identifier index ${name}`);
   }
-  if (scope === 'runtime') for (const name of ['users_username_key','uq_products_sku','supplier_invoices_invoice_number_key'])
+  if (['identifier-runtime','runtime'].includes(scope)) for (const name of ['users_username_key','uq_products_sku','supplier_invoices_invoice_number_key'])
     if (actual.constraints.some(c => c.name === name)) issues.push(`obsolete identifier constraint ${name} remains`);
-  if (['runtime','audit-runtime'].includes(scope)) for (const name of ['cashier_system_logs','cashier_user_activities'])
+  if (['runtime','identifier-runtime','audit-runtime'].includes(scope)) for (const name of ['cashier_system_logs','cashier_user_activities'])
     if (actual.tables.some(t => t.name === name)) issues.push(`legacy audit table ${name} has not been retired`);
+  if (scope === 'runtime') for (const name of ['roles','permissions','user_roles','role_permissions'])
+    if (actual.tables.some(t => t.name === name)) issues.push(`legacy authorization table ${name} has not been retired`);
   if (issues.length) throw new SchemaReadinessError(issues);
   return actual;
 }

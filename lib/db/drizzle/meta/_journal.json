@@ -13,6 +13,7 @@
     { "idx": 2, "version": "7", "when": 1793491200001, "tag": "0002_explicit_timestamp_triggers", "breakpoints": true },
     { "idx": 3, "version": "7", "when": 1793491200002, "tag": "0003_retire_obsolete_cashier_request_key", "breakpoints": true },
     { "idx": 4, "version": "7", "when": 1793491200003, "tag": "0004_consolidate_audit_storage", "breakpoints": true },
-    { "idx": 5, "version": "7", "when": 1793491200004, "tag": "0005_case_insensitive_identifiers", "breakpoints": true }
+    { "idx": 5, "version": "7", "when": 1793491200004, "tag": "0005_case_insensitive_identifiers", "breakpoints": true },
+    { "idx": 6, "version": "7", "when": 1793491200005, "tag": "0006_retire_unused_authorization_tables", "breakpoints": true }
   ]
 }
