@@ -21,17 +21,21 @@ export type AccountsPayableRecord = {
   supplier: string;
   invoiceNumber: string;
   dueDate: string | null;
-  totalOwed: string;
-  totalPaid: string;
-  balance: string;
+  totalOwed: string | null;
+  totalPaid: string | null;
+  balance: string | null;
+  needsReview?: boolean;
+  reviewReasons?: string[];
   lastPaymentDate: string | null;
   status: string;
 };
 
 export type PayableSummary = {
-  totalOpen: string;
-  overdue: string;
-  dueThisWeek: string;
+  totalOpen: string | null;
+  overdue: string | null;
+  dueThisWeek: string | null;
+  needsReview?: boolean;
+  invoicesNeedingReview?: number;
 };
 
 type PayablesCache = {
@@ -41,12 +45,6 @@ type PayablesCache = {
 
 const suppliersKey = "medprix_supplier_records";
 const payablesKey = "medprix_supplier_payables";
-const emptyPayableSummary: PayableSummary = {
-  totalOpen: "0.00",
-  overdue: "0.00",
-  dueThisWeek: "0.00",
-};
-
 function readSessionValue<T>(key: string): T | null {
   try {
     const raw = sessionStorage.getItem(key);
@@ -112,7 +110,7 @@ export async function fetchAccountsPayable() {
     const data = await readResponse(response, "Could not refresh supplier data. Please try again.");
     if (!response.ok)
       throw new Error(data.error || "Failed to load supplier payables.");
-    if (!Array.isArray(data.accountsPayable) || !data.summary || ["totalOpen", "overdue", "dueThisWeek"].some((key) => !Number.isFinite(Number(data.summary[key])))) throw new Error("Invalid payable response. Please refresh.");
+    if (!Array.isArray(data.accountsPayable) || !data.summary || ["totalOpen", "overdue", "dueThisWeek"].some((key) => data.summary[key] !== null && (typeof data.summary[key] !== 'string' || !/^\d+(?:\.\d{1,2})?$/.test(data.summary[key])))) throw new Error("Invalid payable response. Please refresh.");
     const summary =
       data.summary && typeof data.summary === "object" ? data.summary : {};
     const result: PayablesCache = {
@@ -120,11 +118,11 @@ export async function fetchAccountsPayable() {
         ? (data.accountsPayable as AccountsPayableRecord[])
         : [],
       summary: {
-        totalOpen: String(summary.totalOpen || emptyPayableSummary.totalOpen),
-        overdue: String(summary.overdue || emptyPayableSummary.overdue),
-        dueThisWeek: String(
-          summary.dueThisWeek || emptyPayableSummary.dueThisWeek,
-        ),
+        totalOpen: summary.totalOpen,
+        overdue: summary.overdue,
+        dueThisWeek: summary.dueThisWeek,
+        needsReview: Boolean(summary.needsReview),
+        invoicesNeedingReview: Number(summary.invoicesNeedingReview || 0),
       },
     };
     if (revision !== settlementRevision) throw new Error("Balances changed during refresh. Please refresh again.");

@@ -39,14 +39,15 @@ type Supplier = SupplierRecord;
 type Payable = {
   id: string;
   invoiceId: string;
-  totalOwed: string;
-  totalPaid: string;
-  balance: string;
+  totalOwed: string | null;
+  totalPaid: string | null;
+  balance: string | null;
+  needsReview?: boolean;
 };
 
 type PaymentTarget = {
   id: string;
-  balance: string;
+  balance: string | null;
   invoiceId: string;
   supplier?: string;
   invoiceNumber?: string;
@@ -56,8 +57,9 @@ type SupplierHistory = {
   summary: {
     totalOrders: number;
     totalOrdered: string;
-    totalPaid: string;
-    openBalance: string;
+    totalPaid: string | null;
+    openBalance: string | null;
+    needsReview?: boolean;
   };
   orders: Array<{
     id: string;
@@ -72,6 +74,7 @@ type SupplierHistory = {
     dueDate: string;
     invoiceAmount: string;
     isPaid: boolean;
+    needsReview?: boolean;
   }>;
   payables: Payable[];
   payments: Array<{
@@ -114,8 +117,8 @@ const emptyHistory: SupplierHistory = {
   payments: [],
 };
 
-const peso = (value: string | number) =>
-  `₱${Number(value || 0).toLocaleString("en-PH", {
+const peso = (value: string | number | null) =>
+  value === null ? 'Needs review' : `₱${Number(value || 0).toLocaleString("en-PH", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
@@ -135,8 +138,9 @@ function normalizeHistory(value: unknown): SupplierHistory {
     summary: {
       totalOrders: Number(summary.totalOrders || 0),
       totalOrdered: String(summary.totalOrdered || "0.00"),
-      totalPaid: String(summary.totalPaid || "0.00"),
-      openBalance: String(summary.openBalance || "0.00"),
+      totalPaid: summary.totalPaid == null ? null : String(summary.totalPaid),
+      openBalance: summary.openBalance == null ? null : String(summary.openBalance),
+      needsReview: Boolean(summary.needsReview),
     },
     orders: arrayValue(data.orders),
     invoices: arrayValue(data.invoices),
@@ -570,6 +574,7 @@ export default function SupplierPage({
               caption="Upcoming supplier obligations"
             />
           </div>
+          {payableSummary.needsReview && <div className="inline-error" role="alert">Some invoice or payment records disagree. Balances marked “Needs review” are unavailable until those records are reviewed.</div>}
           <section className="surface-card table-card supplier-directory">
             <div className="table-tools">
               <div>
@@ -588,6 +593,7 @@ export default function SupplierPage({
                 <option>Open</option>
                 <option>Overdue</option>
                 <option>Paid</option>
+                <option>Needs Review</option>
               </select>
             </div>
             <div className="table-scroll stable-data-table">
@@ -668,7 +674,7 @@ export default function SupplierPage({
                           </span>
                         </td>
                         <td>
-                          {Number(payable.balance) > 0 ? (
+                          {payable.needsReview ? <span className="muted">Review required</span> : Number(payable.balance) > 0 ? (
                             <button
                               className="button soft"
                               type="button"
@@ -1072,9 +1078,9 @@ export default function SupplierPage({
                                         </span>
                                       </td>
                                       <td>{invoice.dueDate}</td>
-                                      <td>{peso(payable?.balance || 0)}</td>
+                                      <td>{peso(invoice.needsReview || payable?.needsReview ? null : payable?.balance ?? null)}</td>
                                       <td>
-                                        {!payable ? (
+                                        {invoice.needsReview || payable?.needsReview ? <span className="muted">Review required</span> : !payable ? (
                                           <span className="muted">
                                             Not payable
                                           </span>

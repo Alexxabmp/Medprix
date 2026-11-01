@@ -25,7 +25,7 @@ function pending(id: string): Draft | null {
     return null;
   }
 }
-const peso = (value: string) => `₱${Number(value).toFixed(2)}`;
+const peso = (value: string | null) => value === null ? 'Needs review' : `₱${Number(value).toFixed(2)}`;
 
 export function SupplierPaymentDialog({
   invoiceId,
@@ -62,11 +62,12 @@ export function SupplierPaymentDialog({
           "No payable exists for this invoice. Ask an administrator to review it.",
         );
       setPayable(target);
+      if (target.needsReview) setError('This invoice and its recorded payments disagree. Review the records before recording another payment.');
       setDraft(
         (current) =>
           current || {
             apId: target.id,
-            amountPaid: target.balance,
+            amountPaid: target.balance ?? '',
             paymentDate: localDate(),
             notes: "",
             key: crypto.randomUUID(),
@@ -130,7 +131,7 @@ export function SupplierPaymentDialog({
   }
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!draft || busy.current || uncertain || !payable) return;
+    if (!draft || busy.current || uncertain || !payable || payable.needsReview) return;
     if (!form.current?.reportValidity()) return;
     busy.current = true;
     setSaving(true);
@@ -250,6 +251,7 @@ export function SupplierPaymentDialog({
                 saving ||
                 uncertain ||
                 !payable ||
+                payable.needsReview ||
                 Number(payable.balance) <= 0
               }
               className="settlement-fields"
@@ -264,7 +266,7 @@ export function SupplierPaymentDialog({
                     type="number"
                     min="0.01"
                     step="0.01"
-                    max={payable?.balance}
+                    max={payable?.balance ?? undefined}
                     value={draft?.amountPaid || ""}
                     onChange={(e) =>
                       setDraft({ ...draft!, amountPaid: e.target.value })
@@ -311,7 +313,7 @@ export function SupplierPaymentDialog({
                 Refresh payable
               </button>
             )}
-            {payable && Number(payable.balance) <= 0 && (
+            {payable && !payable.needsReview && Number(payable.balance) <= 0 && (
               <p role="status">This invoice is settled.</p>
             )}
             <div className="modal-actions">
@@ -344,6 +346,7 @@ export function SupplierPaymentDialog({
                     loading ||
                     saving ||
                     !payable ||
+                    payable.needsReview ||
                     Number(payable.balance) <= 0
                   }
                 >

@@ -2,6 +2,7 @@ import { Router, type IRouter, type Request, type Response, type NextFunction } 
 import { asc, desc, eq, ilike, inArray, or } from "drizzle-orm";
 import {
   db,
+  queryDb,
   poItemsTable,
   productsTable,
   purchaseOrdersTable,
@@ -10,12 +11,12 @@ import {
   supplierInvoicesTable,
   suppliersTable,
   accountsPayableTable,
-  supplierPaymentsTable,
 } from "@workspace/db";
 import { requireAuth, requireRoles } from "../middleware/auth";
 
 import { createSettlementService, SettlementError } from "../lib/supplier-payments";
 import { identifierConflict } from "../lib/identifier-conflicts";
+import { readSupplierPayables, readSupplierInvoices, readSupplierHistory } from "../lib/supplier-payable-read-model";
 import { receiveSupplierStock, inspectSupplierBatch, normalizeSupplierBatch, ReceivingError } from "../lib/supplier-stock-receipts";
 
 const settlement = createSettlementService(db);
@@ -32,41 +33,6 @@ function asId(value: string | string[] | undefined): string {
 
 function formatAmount(value: string | number): string {
   return Number(value || 0).toFixed(2);
-}
-
-async function ensureAccountsPayableRecords(supplierId?: string) {
-  const invoices = supplierId
-    ? await db
-        .select()
-        .from(supplierInvoicesTable)
-        .where(eq(supplierInvoicesTable.supplierId, supplierId))
-    : await db.select().from(supplierInvoicesTable);
-  if (invoices.length === 0) return;
-
-  const invoiceIds = invoices.map((invoice) => invoice.id);
-  const existing = await db
-    .select({ invoiceId: accountsPayableTable.invoiceId })
-    .from(accountsPayableTable)
-    .where(inArray(accountsPayableTable.invoiceId, invoiceIds));
-  const existingIds = new Set(existing.map((payable) => payable.invoiceId));
-  const missing = invoices.filter(
-    (invoice) =>
-      !existingIds.has(invoice.id) && !invoice.isPaid && Number(invoice.invoiceAmount) > 0,
-  );
-  if (missing.length === 0) return;
-
-  await db
-    .insert(accountsPayableTable)
-    .values(
-      missing.map((invoice) => ({
-        supplierId: invoice.supplierId,
-        invoiceId: invoice.id,
-        totalOwed: formatAmount(invoice.invoiceAmount),
-        totalPaid: "0.00",
-        balance: formatAmount(invoice.invoiceAmount),
-      })),
-    )
-    .onConflictDoNothing({ target: accountsPayableTable.invoiceId });
 }
 
 async function findSupplier(idOrName: string) {
@@ -228,37 +194,17 @@ router.get(
       .where(eq(suppliersTable.id, supplierId));
     if (!supplier)
       return res.status(404).json({ error: "Supplier not found." });
-    await ensureAccountsPayableRecords(supplierId);
-
-    const [orders, deliveries, invoices, payables] = await Promise.all([
-      db
-        .select()
-        .from(purchaseOrdersTable)
-        .where(eq(purchaseOrdersTable.supplierId, supplierId))
-        .orderBy(desc(purchaseOrdersTable.orderDate)),
+    const [orders, deliveries, model] = await Promise.all([
+      db.select().from(purchaseOrdersTable).where(eq(purchaseOrdersTable.supplierId,supplierId)).orderBy(desc(purchaseOrdersTable.orderDate)),
       db.select().from(supplierDeliveriesTable),
-      db
-        .select()
-        .from(supplierInvoicesTable)
-        .where(eq(supplierInvoicesTable.supplierId, supplierId))
-        .orderBy(desc(supplierInvoicesTable.createdAt)),
-      db
-        .select()
-        .from(accountsPayableTable)
-        .where(eq(accountsPayableTable.supplierId, supplierId)),
+      readSupplierHistory(queryDb,supplierId),
     ]);
+    const invoices=model.invoices,payables=model.payables;
     const orderIds = orders.map((order) => order.id);
     const supplierDeliveries = orderIds.length
       ? deliveries.filter((delivery) => orderIds.includes(delivery.poId))
       : [];
-    const payableIds = payables.map((payable) => payable.id);
-    const payments = payableIds.length
-      ? await db
-          .select()
-          .from(supplierPaymentsTable)
-          .where(inArray(supplierPaymentsTable.apId, payableIds))
-          .orderBy(desc(supplierPaymentsTable.paymentDate))
-      : [];
+    const payments=model.payments;
 
     return res.json({
       success: true,
@@ -271,12 +217,10 @@ router.get(
             0,
           ),
         ),
-        totalPaid: formatAmount(
-          payables.reduce((sum, payable) => sum + Number(payable.totalPaid), 0),
-        ),
-        openBalance: formatAmount(
-          payables.reduce((sum, payable) => sum + Number(payable.balance), 0),
-        ),
+        totalPaid: model.totalPaid,
+        openBalance: model.summary.totalOpen,
+        needsReview: model.summary.needsReview,
+        invoicesNeedingReview: model.reconciliation.invoicesNeedingReview,
       },
       orders,
       deliveries: supplierDeliveries,
@@ -291,64 +235,8 @@ router.get(
   "/accounts-payable",
   requireRoles("Admin", "FrontDesk"),
   async (_req: Request, res: Response) => {
-    await ensureAccountsPayableRecords();
-    const [payables, suppliers, invoices] = await Promise.all([
-      db
-        .select()
-        .from(accountsPayableTable)
-        .orderBy(desc(accountsPayableTable.createdAt)),
-      db.select().from(suppliersTable),
-      db.select().from(supplierInvoicesTable),
-    ]);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const rows = payables.map((payable) => {
-      const invoice = invoices.find((item) => item.id === payable.invoiceId);
-      const dueDate = invoice?.dueDate
-        ? new Date(`${invoice.dueDate}T00:00:00`)
-        : null;
-      const balance = Number(payable.balance);
-      return {
-        ...payable,
-        supplier:
-          suppliers.find((item) => item.id === payable.supplierId)
-            ?.supplierName || "Unknown supplier",
-        invoiceNumber: invoice?.invoiceNumber || "Unknown invoice",
-        dueDate: invoice?.dueDate || null,
-        status:
-          balance <= 0
-            ? "Paid"
-            : dueDate && dueDate < today
-              ? "Overdue"
-              : "Open",
-      };
-    });
-    const weekEnd = new Date(today);
-    weekEnd.setDate(weekEnd.getDate() + 7);
-    return res.json({
-      success: true,
-      accountsPayable: rows,
-      summary: {
-        totalOpen: formatAmount(
-          rows.reduce((sum, row) => sum + Number(row.balance), 0),
-        ),
-        overdue: formatAmount(
-          rows
-            .filter((row) => row.status === "Overdue")
-            .reduce((sum, row) => sum + Number(row.balance), 0),
-        ),
-        dueThisWeek: formatAmount(
-          rows
-            .filter(
-              (row) =>
-                row.dueDate &&
-                new Date(`${row.dueDate}T00:00:00`) >= today &&
-                new Date(`${row.dueDate}T00:00:00`) <= weekEnd,
-            )
-            .reduce((sum, row) => sum + Number(row.balance), 0),
-        ),
-      },
-    });
+    const model=await readSupplierPayables(queryDb);
+    return res.json({success:true,accountsPayable:model.payables,summary:model.summary,reconciliation:model.reconciliation});
   },
 );
 
@@ -529,30 +417,8 @@ router.get("/supplier-deliveries", async (_req: Request, res: Response) => {
 });
 
 router.get("/supplier-invoices", async (_req: Request, res: Response) => {
-  const [invoices, suppliers, orders] = await Promise.all([
-    db.select().from(supplierInvoicesTable),
-    db.select().from(suppliersTable),
-    db.select().from(purchaseOrdersTable),
-  ]);
-
-  const supplierById = new Map(suppliers.map((supplier) => [supplier.id, supplier]));
-  const orderById = new Map(orders.map((order) => [order.id, order]));
-  const result = invoices.map((invoice) => ({
-    id: invoice.id,
-    invoiceNumber: invoice.invoiceNumber,
-    supplierId: invoice.supplierId,
-    supplier:
-      supplierById.get(invoice.supplierId)?.supplierName || "Unknown supplier",
-    poId: invoice.poId,
-    poNumber:
-      (invoice.poId ? orderById.get(invoice.poId)?.poNumber : null) || null,
-    dueDate: invoice.dueDate,
-    invoiceAmount: formatAmount(invoice.invoiceAmount),
-    isPaid: invoice.isPaid,
-    status: invoice.isPaid ? "Paid" : "Unpaid",
-  }));
-
-  return res.json({ success: true, invoices: result });
+  const model=await readSupplierInvoices(queryDb);
+  return res.json({success:true,invoices:model.invoices,reconciliation:model.reconciliation});
 });
 
 router.post(

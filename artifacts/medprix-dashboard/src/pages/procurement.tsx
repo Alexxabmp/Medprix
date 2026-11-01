@@ -802,7 +802,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                           <strong>{money(invoice.invoiceAmount)}</strong>
                         </td>
                         <td className="invoice-payment-cell"><span className={`pill ${invoice.status === "Paid" ? "success" : "warning"}`}>{invoice.status === "Paid" ? "Settled" : invoice.status}</span>
-                          {canManagePurchasing && invoice.status !== "Paid" && <button className="button soft" onClick={() => setPaymentInvoiceId(invoice.id)}>Record payment</button>}</td>
+                          {canManagePurchasing && invoice.status !== "Paid" && invoice.status !== "Needs Review" && <button className="button soft" onClick={() => setPaymentInvoiceId(invoice.id)}>Record payment</button>}</td>
                       </tr>
                     ))
                   ))}
