@@ -1,8 +1,10 @@
+import { pharmacyDate } from "@workspace/api-zod";
+import { createReceivingSubmitter, type PendingReceiving } from "@/lib/receiving-submission";
 import { useDialogAccessibility } from "@/lib/use-dialog-accessibility";
 import { SupplierPaymentDialog } from "@/components/supplier-payment-dialog";
 import { ReceivingBatchPicker } from "@/components/custom-ui/receiving-batch-picker";
 import { safeError, readResponse } from "@/lib/feedback";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { Check, Eye, Package, Plus, Trash2, X, PackagePlus, Search } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
@@ -191,9 +193,35 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
   const [lineItems, setLineItems] = useState<LineItem[]>([
     { productId: "", quantityOrdered: "1", unitCost: "0" },
   ]);
+  const receivingSubmitter = useRef<ReturnType<typeof createReceivingSubmitter> | null>(null);
+  const receivingBusy = useRef(false);
+  const [pendingReceiving, setPendingReceiving] = useState<PendingReceiving | null>(null);
+  const [receivingReady, setReceivingReady] = useState(false);
+  useEffect(() => {
+    let active = true;
+    fetch("/api/me", {credentials: "include", cache: "no-store"}).then(async response => {
+      const actor = await response.json();
+      if (!response.ok || !actor?.id || !["Admin", "FrontDesk"].includes(actor.role)) throw new Error("Could not verify receiving access. Refresh before saving.");
+      if (!active) return;
+      receivingSubmitter.current = createReceivingSubmitter(actor.id);
+      setPendingReceiving(receivingSubmitter.current.getPending());
+      setReceivingReady(true);
+    }).catch(failure => { if (active) setReceivingError(safeError(failure)); });
+    return () => { active = false; receivingSubmitter.current = null; };
+  }, []);
+  const recoverReceiving = async (retry: boolean) => {
+    if (receivingBusy.current || !receivingSubmitter.current) return;
+    receivingBusy.current = true; setIsSaving(true); setReceivingError("");
+    try {
+      const result = retry ? await receivingSubmitter.current.submit() : await receivingSubmitter.current.check();
+      if (result) { setError(""); setIsDeliveryOpen(false); onToast("Receiving report confirmed."); await Promise.all([loadData(), fetchInventoryData(true)]); }
+      else setReceivingError("No saved report was found yet. Retry the same report using its retained reference; do not create a replacement.");
+    } catch (failure) { setReceivingError(safeError(failure)); }
+    finally { setPendingReceiving(receivingSubmitter.current?.getPending() ?? null); receivingBusy.current = false; setIsSaving(false); }
+  };
   const [deliveryForm, setDeliveryForm] = useState({
     poId: "",
-    deliveryDate: new Date().toISOString().slice(0, 10),
+    deliveryDate: pharmacyDate(),
     deliveryStatus: "Received",
     productId: "",
     batchNumber: "",
@@ -362,6 +390,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
   };
 
   const openReceiving = async (orderId = "") => {
+    if (!receivingReady || pendingReceiving) { setReceivingError("Confirm the pending receiving report before starting another."); return; }
     setError("");
     setReceivingError("");
     setIsSaving(true);
@@ -476,36 +505,25 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
       setError("Select an outstanding product from this purchase order and review its remaining quantity.");
       return;
     }
+    if (receivingBusy.current || !receivingSubmitter.current || !receivingReady || pendingReceiving) return;
+    receivingBusy.current = true;
     try {
       setIsSaving(true);
-      const response = await fetch("/api/supplier-deliveries", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          poId: deliveryForm.poId,
-          deliveryDate: deliveryForm.deliveryDate,
-          deliveryStatus: deliveryForm.deliveryStatus,
-          items: [
-            {
-              productId: deliveryForm.productId,
-              batchNumber: deliveryForm.batchNumber,
-              expirationDate: existingDeliveryBatch?.expiryDate ?? deliveryForm.expirationDate,
-              quantityDelivered: Number(deliveryForm.quantityDelivered),
-            },
-          ],
-        }),
+      await receivingSubmitter.current.submit({
+        poId: deliveryForm.poId, deliveryDate: deliveryForm.deliveryDate, deliveryStatus: deliveryForm.deliveryStatus,
+        items: [{productId: deliveryForm.productId, batchNumber: deliveryForm.batchNumber,
+          expirationDate: existingDeliveryBatch?.expiryDate ?? deliveryForm.expirationDate,
+          quantityDelivered: Number(deliveryForm.quantityDelivered)}],
       });
-      const data = await readResponse(response, "Could not complete this procurement request. Please try again.");
-      if (!response.ok) throw new Error(data.error || "Failed to create receiving report.");
-      if (!data.delivery?.id) throw new Error("Delivery save could not be confirmed. Check receiving reports before retrying.");
       setIsDeliveryOpen(false);
       await Promise.all([loadData(), fetchInventoryData(true)]);
       onToast(["Received", "Inspected", "Partial"].includes(deliveryForm.deliveryStatus)
         ? "Receiving report saved and inventory updated." : "Receiving report saved. Inventory was not changed.");
     } catch (requestError) {
-      setError(safeError(requestError, "Failed to create receiving report."));
+      setError(receivingSubmitter.current?.getPending() ? "" : safeError(requestError, "Failed to create receiving report."));
     } finally {
+      setPendingReceiving(receivingSubmitter.current?.getPending() ?? null);
+      receivingBusy.current = false;
       setIsSaving(false);
     }
   };
@@ -616,6 +634,15 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
           </button>
         ) : undefined}
       />
+      {pendingReceiving && <div className="card receiving-recovery" role="status">
+        <div className="receiving-recovery-copy"><strong>Receiving report awaiting confirmation</strong>
+        <p className="muted">Your submitted details are retained. Check the result or retry this same report before starting another.</p>
+        <p className="muted">Reference: <code>{pendingReceiving.key}</code></p></div>
+        <div className="modal-actions">
+          <button type="button" className="button soft" disabled={isSaving} onClick={() => void recoverReceiving(false)}>Check receiving result</button>
+          <button type="button" className="button dark" disabled={isSaving} onClick={() => void recoverReceiving(true)}>Retry same receiving report</button>
+        </div>
+      </div>}
       {(error || statusError || receivingError || receivingProblem) && <div className="inline-error" role="alert"><span>{statusError || receivingError || receivingProblem || error} Previously loaded data may be out of date.</span><button className="button soft" onClick={() => { setReceivingError(""); void loadData(); }}>Retry refresh</button></div>}
       <div className="summary-strip">
         <Summary
@@ -1223,7 +1250,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 </button>
               </div>
               {receivingOrders.length === 0 && <p className="modal-sub" role="status">No open purchase orders have outstanding products to receive. Create a purchase order in Purchase Order Monitoring first.</p>}
-              <div className="form-grid">
+              <fieldset className="form-grid receiving-fields" disabled={isSaving || Boolean(pendingReceiving)}>
                 <div className="field">
                   <label>Purchase order *</label>
                   <select
@@ -1311,7 +1338,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 <div className="field">
                   <label htmlFor="receiving-batch">Batch number *</label>
                   <ReceivingBatchPicker key={`${deliveryForm.poId}:${deliveryForm.productId}`} batches={deliveryBatches}
-                    value={deliveryForm.batchNumber} disabled={!receivingItem || isSaving}
+                    value={deliveryForm.batchNumber} disabled={!receivingItem || isSaving || Boolean(pendingReceiving)}
                     onChange={(batchNumber, expirationDate) => setDeliveryForm(current => ({...current, batchNumber,
                       ...(expirationDate !== undefined ? {expirationDate} : {})}))} />
                 </div>
@@ -1347,12 +1374,12 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                     }
                   />
                 </div>
-              </div>
+              </fieldset>
               {receivingItem && <p className="modal-sub">Ordered: {receivingItem.quantityOrdered} · Received: {receivingItem.quantityReceived} · Remaining: {receivingItem.quantityRemaining}.
                 {["Received", "Inspected", "Partial"].includes(deliveryForm.deliveryStatus) ? " Saving adds the entered quantity to inventory. The PO completes when all ordered quantities are received." : " Saving this status does not change inventory."}</p>}
               {error && <div className="inline-error" role="alert">{error}</div>}
               <div className="modal-actions">
-                <button className="button primary-action" type="submit" disabled={isSaving || !receivingItem}>
+                <button className="button primary-action" type="submit" disabled={isSaving || !receivingItem || !receivingReady || Boolean(pendingReceiving)}>
                   <Check size={13} /> {isSaving ? "Saving..." : "Save receiving report"}
                 </button>
               </div>

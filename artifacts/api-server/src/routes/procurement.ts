@@ -1,5 +1,6 @@
+import { deliveryKey, deliveryPayload, readDelivery, submitDelivery, DeliveryInputError, DeliveryReferenceConflict } from "../lib/supplier-delivery-submissions";
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { asc, desc, eq, ilike, inArray, or } from "drizzle-orm";
+import { asc, desc, eq, ilike, or } from "drizzle-orm";
 import {
   db,
   queryDb,
@@ -17,7 +18,7 @@ import { requireAuth, requireRoles } from "../middleware/auth";
 import { createSettlementService, SettlementError } from "../lib/supplier-payments";
 import { identifierConflict } from "../lib/identifier-conflicts";
 import { readSupplierPayables, readSupplierInvoices, readSupplierHistory } from "../lib/supplier-payable-read-model";
-import { receiveSupplierStock, inspectSupplierBatch, normalizeSupplierBatch, readReceivedQuantities, readOrderReceivingState, ReceivingError } from "../lib/supplier-stock-receipts";
+import { readReceivedQuantities, readOrderReceivingState, ReceivingError } from "../lib/supplier-stock-receipts";
 
 const settlement = createSettlementService(db);
 const router: IRouter = Router();
@@ -427,171 +428,19 @@ router.get("/supplier-invoices", async (_req: Request, res: Response) => {
   return res.json({success:true,invoices:model.invoices,reconciliation:model.reconciliation});
 });
 
-router.post(
-  "/supplier-deliveries",
-  requireRoles("Admin", "FrontDesk"),
-  async (req: Request, res: Response) => {
-    const { poId, deliveryDate, deliveryStatus, items } = req.body as {
-      poId?: string;
-      deliveryDate?: string;
-      deliveryStatus?: string;
-      items?: Array<{
-        productId?: string;
-        batchNumber?: string;
-        expirationDate?: string;
-        quantityDelivered?: number | string;
-      }>;
-    };
-    const validStatuses = supplierDeliveriesTable.deliveryStatus.enumValues;
-    if (deliveryStatus !== undefined && !validStatuses.includes(deliveryStatus as any))
-      return res.status(400).json({success: false, error: "Select a valid delivery status."});
+router.get("/supplier-deliveries/:id", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  const id = deliveryKey(req.params.id);
+  const saved = await readDelivery(db, id);
+  return res.json(saved ? { success: true, state: "committed", ...saved } : { success: true, state: "not_found" });
+});
 
-    if (!poId || !Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: "Purchase order and at least one delivery item are required.",
-      });
-    }
-    const order = await findOrder(poId);
-    if (!order)
-      return res
-        .status(400)
-        .json({ success: false, error: "Purchase order not found." });
-    if (
-      deliveryDate &&
-      Number.isNaN(new Date(`${deliveryDate}T00:00:00`).getTime())
-    ) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Enter a valid delivery date." });
-    }
-
-    const resolvedItems: Array<{
-      productId: string;
-      batchNumber: string;
-      expirationDate: string;
-      quantityDelivered: number;
-    }> = [];
-    const requestedLots = new Map<string, string>();
-    for (const item of items) {
-      if (!item || typeof item.productId !== "string" || !uuidPattern.test(item.productId))
-        return res.status(400).json({success: false, error: "Select a valid inventory product."});
-      const [prod] = await db.select().from(productsTable).where(eq(productsTable.id, item.productId));
-      if (!prod)
-        return res.status(400).json({success: false, error: "Selected product no longer exists. Refresh inventory."});
-      const batch = typeof item.batchNumber === "string" ? normalizeSupplierBatch(item.batchNumber) : "";
-      const exp = typeof item.expirationDate === "string" ? item.expirationDate : "";
-      const qty = Number(item.quantityDelivered);
-      if (!Number.isInteger(qty) || qty <= 0 || qty > 1_000_000)
-        return res.status(400).json({success: false, error: "Delivered quantity must be a whole number between 1 and 1,000,000."});
-      if (!batch || batch.length > 100 || !/^[A-Z0-9-]+$/.test(batch))
-        return res.status(400).json({
-          success: false,
-          error:
-            "Enter a batch number of at most 100 letters, numbers, or hyphens.",
-        });
-      const expiryDate = new Date(`${exp}T00:00:00Z`);
-      const today = new Date();
-      const todayDate = new Date(today.getTime() - today.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-      const validExpiry = /^\d{4}-\d{2}-\d{2}$/.test(exp) && !Number.isNaN(expiryDate.getTime()) && expiryDate.toISOString().slice(0, 10) === exp;
-      if (!validExpiry || exp < todayDate)
-        return res.status(400).json({
-          success: false,
-          error: "Enter a valid expiration date today or later.",
-        });
-      const lotKey = `${prod.id}:${batch}`;
-      if (requestedLots.has(lotKey) && requestedLots.get(lotKey) !== exp)
-        return res.status(400).json({success: false, error: "The same product and batch cannot have different expiration dates in one report."});
-      requestedLots.set(lotKey, exp);
-      resolvedItems.push({
-        productId: prod.id,
-        batchNumber: batch,
-        expirationDate: exp,
-        quantityDelivered: qty,
-      });
-    }
-
-    if (resolvedItems.length === 0) {
-      return res
-        .status(400)
-        .json({ success: false, error: "No valid delivery items provided." });
-    }
-
-    const result = await db.transaction(async (tx) => {
-      // Match fulfillment's order-before-product lock order to avoid receipt/fulfillment deadlocks.
-      const [lockedOrder] = await tx.select().from(purchaseOrdersTable)
-        .where(eq(purchaseOrdersTable.id, order.id)).for("update");
-      if (!lockedOrder || ["Cancelled", "Fulfilled"].includes(lockedOrder.status))
-        throw new ReceivingError("This purchase order is closed. Refresh the order list before receiving.");
-      const receiving = await readOrderReceivingState(tx, order.id);
-      const requested = new Map<string, number>();
-      for (const item of resolvedItems) requested.set(item.productId, (requested.get(item.productId) || 0) + item.quantityDelivered);
-      for (const [productId, quantity] of requested) {
-        const ordered = receiving.find(item => item.productId === productId);
-        if (!ordered) throw new ReceivingError("This product is not on the selected purchase order.");
-        if (quantity > ordered.quantityRemaining)
-          throw new ReceivingError(`This product has ${ordered.quantityRemaining} unit(s) left to receive on this purchase order. Refresh and review the quantity.`);
-      }
-      await tx.select({ id: productsTable.id }).from(productsTable)
-        .where(inArray(productsTable.id, resolvedItems.map((item) => item.productId)))
-        .orderBy(asc(productsTable.id)).for("update");
-      // A report may not redefine a known lot even when it posts no stock.
-      for (const item of resolvedItems) await inspectSupplierBatch(tx, item);
-      const [delivery] = await tx
-        .insert(supplierDeliveriesTable)
-        .values({
-          poId: order.id,
-          deliveryDate: deliveryDate ? new Date(deliveryDate) : new Date(),
-          deliveryStatus: (deliveryStatus &&
-          validStatuses.includes(deliveryStatus as any)
-            ? deliveryStatus
-            : "Received") as any,
-        })
-        .returning();
-
-      const createdItems = await tx
-        .insert(deliveryItemsTable)
-        .values(
-          resolvedItems.map((item) => ({
-            deliveryId: delivery.id,
-            productId: item.productId,
-            batchNumber: item.batchNumber,
-            expirationDate: item.expirationDate,
-            quantityDelivered: item.quantityDelivered,
-          })),
-        )
-        .returning();
-
-      if (
-        ["Received", "Inspected", "Partial"].includes(delivery.deliveryStatus)
-      )
-        for (const item of resolvedItems) {
-          await receiveSupplierStock(tx, {
-            productId: item.productId, batchNumber: item.batchNumber,
-            expirationDate: item.expirationDate, quantity: item.quantityDelivered,
-            dateReceived: deliveryDate || new Date().toISOString().slice(0, 10),
-            deliveryId: delivery.id,
-            notes: `Supplier delivery ${delivery.id.slice(0, 8)} (${order.poNumber})`,
-          });
-        }
-
-      const postsStock = ["Received", "Inspected", "Partial"].includes(delivery.deliveryStatus);
-      if (postsStock && receiving.length > 0 && receiving.every(item =>
-        item.quantityRemaining - (requested.get(item.productId) || 0) === 0)) {
-        await tx
-          .update(purchaseOrdersTable)
-          .set({ status: "Fulfilled", updatedAt: new Date() })
-          .where(eq(purchaseOrdersTable.id, order.id));
-      }
-
-      return { delivery, items: createdItems };
-    });
-
-    return res
-      .status(201)
-      .json({ success: true, delivery: result.delivery, items: result.items });
-  },
-);
+router.post("/supplier-deliveries", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  const id = deliveryKey(req.get("Idempotency-Key"));
+  const result = await submitDelivery(id, deliveryPayload(req.body));
+  return res.status(result.replayed ? 200 : 201).json({ success: true, ...result });
+});
 
 router.post(
   "/supplier-invoices",
@@ -858,8 +707,8 @@ router.patch("/supplier-invoices/:id/status", async (req: Request, res: Response
 });
 
 router.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
-  if (error instanceof ReceivingError)
-    return res.status(error.status).json({success: false, error: error.message});
+  if (error instanceof ReceivingError || error instanceof DeliveryInputError)
+    return res.status(error.status).json({success: false, error: error.message, ...(error instanceof DeliveryReferenceConflict ? {code: error.code} : {})});
   return next(error);
 });
 

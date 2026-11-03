@@ -2478,3 +2478,8 @@ a {
   .procurement-search { flex-basis: 100%; max-width: none; }
   .procurement-table-controls > .button, .procurement-table-controls > .select { flex: 1 1 140px; min-width: 0; }
 }
+.receiving-fields { min-width: 0; border: 0; padding: 0; margin: 0; }
+.receiving-recovery { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-block: 16px; padding: 16px; overflow-wrap: anywhere; background: hsl(var(--surface)); border: 1px solid hsl(var(--border)); border-radius: 16px; }
+.receiving-recovery-copy { flex: 1 1 280px; min-width: 0; }
+.receiving-recovery p { margin: 4px 0 0; }
+.receiving-recovery .modal-actions { flex-wrap: wrap; margin: 0; }
