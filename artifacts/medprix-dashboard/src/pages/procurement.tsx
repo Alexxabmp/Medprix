@@ -184,6 +184,13 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
   const [invoiceRefreshError, setInvoiceRefreshError] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isDeliveryOpen, setIsDeliveryOpen] = useState(false);
+  const [batchPopupContainer, setBatchPopupContainer] = useState<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!isDeliveryOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, [isDeliveryOpen]);
   const [isInvoiceOpen, setIsInvoiceOpen] = useState(false);
   const [selectedOrderForItems, setSelectedOrderForItems] = useState<PurchaseOrder | null>(null);
   const [orderToCancel, setOrderToCancel] = useState<PurchaseOrder | null>(null);
@@ -247,7 +254,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
   });
 
   useDialogAccessibility(isCreateOpen, '[data-testid="modal-create-po"] .modal', () => setIsCreateOpen(false), isSaving);
-  useDialogAccessibility(isDeliveryOpen, '[data-testid="modal-create-delivery"] .modal', () => setIsDeliveryOpen(false), isSaving);
+  useDialogAccessibility(isDeliveryOpen, '[data-testid="modal-create-delivery"] .receiving-dialog-frame', () => setIsDeliveryOpen(false), isSaving);
   useDialogAccessibility(isInvoiceOpen, '[data-testid="modal-create-invoice"] .modal', () => setIsInvoiceOpen(false), isSaving);
   useDialogAccessibility(Boolean(orderToCancel), '[data-testid="modal-cancel-po"] .modal', () => setOrderToCancel(null), isSaving);
   useDialogAccessibility(Boolean(selectedOrderForItems), '[data-testid="modal-po-items"] .modal', () => setSelectedOrderForItems(null), isSaving);
@@ -1229,12 +1236,13 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
       {isDeliveryOpen &&
         createPortal(
           <div
-            className="modal-backdrop"
+            className="modal-backdrop receiving-backdrop"
             data-testid="modal-create-delivery"
             onMouseDown={(event) =>
               event.currentTarget === event.target && setIsDeliveryOpen(false)
             }>
-            <form className="modal dialog" onSubmit={submitDelivery}>
+            <div className="receiving-dialog-frame" ref={setBatchPopupContainer}>
+            <form className="modal dialog receiving-dialog" onSubmit={submitDelivery}>
               <div className="modal-header">
                 <div>
                   <h2>Add receiving report</h2>
@@ -1249,6 +1257,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                   <X size={16} />
                 </button>
               </div>
+              <div className="receiving-dialog-body">
               {receivingOrders.length === 0 && <p className="modal-sub" role="status">No open purchase orders have outstanding products to receive. Create a purchase order in Purchase Order Monitoring first.</p>}
               <fieldset className="form-grid receiving-fields" disabled={isSaving || Boolean(pendingReceiving)}>
                 <div className="field">
@@ -1338,7 +1347,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 <div className="field">
                   <label htmlFor="receiving-batch">Batch number *</label>
                   <ReceivingBatchPicker key={`${deliveryForm.poId}:${deliveryForm.productId}`} batches={deliveryBatches}
-                    value={deliveryForm.batchNumber} disabled={!receivingItem || isSaving || Boolean(pendingReceiving)}
+                    value={deliveryForm.batchNumber} popupContainer={batchPopupContainer} disabled={!receivingItem || isSaving || Boolean(pendingReceiving)}
                     onChange={(batchNumber, expirationDate) => setDeliveryForm(current => ({...current, batchNumber,
                       ...(expirationDate !== undefined ? {expirationDate} : {})}))} />
                 </div>
@@ -1378,12 +1387,14 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               {receivingItem && <p className="modal-sub">Ordered: {receivingItem.quantityOrdered} · Received: {receivingItem.quantityReceived} · Remaining: {receivingItem.quantityRemaining}.
                 {["Received", "Inspected", "Partial"].includes(deliveryForm.deliveryStatus) ? " Saving adds the entered quantity to inventory. The PO completes when all ordered quantities are received." : " Saving this status does not change inventory."}</p>}
               {error && <div className="inline-error" role="alert">{error}</div>}
+              </div>
               <div className="modal-actions">
                 <button className="button primary-action" type="submit" disabled={isSaving || !receivingItem || !receivingReady || Boolean(pendingReceiving)}>
                   <Check size={13} /> {isSaving ? "Saving..." : "Save receiving report"}
                 </button>
               </div>
             </form>
+            </div>
           </div>,
           document.body
         )}
