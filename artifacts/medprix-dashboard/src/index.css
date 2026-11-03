@@ -140,7 +140,7 @@ textarea {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin: 0 0 14px;
+  margin: 15px 0 14px;
   padding: 10px 12px;
   border: 1px solid color-mix(in srgb, hsl(var(--danger)) 28%, transparent);
   border-radius: 10px;
