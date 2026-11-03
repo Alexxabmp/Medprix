@@ -1,3 +1,4 @@
+import { pharmacyDate } from "@workspace/api-zod";
 import { createStockMutations } from "../lib/stock-mutations";
 import { CheckoutError } from "../lib/atomic-checkout";
 import { requireAuth, requireRoles } from "../middleware/auth";
@@ -37,6 +38,7 @@ function toApiProduct(product: typeof productsTable.$inferSelect, batches: (type
   const stock = batches.reduce((sum, b) => sum + b.quantityRemaining, 0);
   return {
     id: product.id,
+    pharmacyDate: pharmacyDate(),
     name: product.productName,
     genericName: product.genericName,
     sku: product.sku,
@@ -46,6 +48,7 @@ function toApiProduct(product: typeof productsTable.$inferSelect, batches: (type
     isDangerousDrug: product.isDangerousDrug,
     reorder: product.minimumStockLevel,
     batches: batches.map((b) => ({
+      id: b.id,
       batchNumber: b.batchNumber,
       quantity: b.quantityRemaining,
       expiryDate: b.expirationDate,
@@ -139,7 +142,8 @@ router.get("/inventory", async (_req: Request, res: Response) => {
     return { ...toApiProduct(p, batches), status, expiredBatches, expiringSoonBatches };
   });
 
-  return res.json({ success: true, totalProducts: enriched.length, products: enriched });
+  const nextDay = new Date(`${pharmacyDate(now)}T00:00:00+08:00`).getTime() + 86_400_000;
+  return res.json({ success: true, pharmacyDate: pharmacyDate(now), pharmacyDayRemainingMs: Math.max(1, nextDay - now.getTime()), totalProducts: enriched.length, products: enriched });
 });
 
 function duplicateSku(error: unknown): boolean {

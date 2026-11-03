@@ -57,19 +57,23 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
   const [productLoadError, setProductLoadError] = useState("");
   const [stockChecking, setStockChecking] = useState(true);
   const [checkoutError, setCheckoutError] = useState("");
+  const stockDayTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   async function refreshStock() {
+    clearTimeout(stockDayTimer.current);
     setStockChecking(true);
     try {
       const response = await fetch("/api/inventory", { credentials: "include", signal: AbortSignal.timeout(15000) });
       const data = await readResponse(response, "Could not verify current stock. Please refresh stock.");
       if (!Array.isArray(data.products)) throw new Error("Invalid stock response. Please refresh stock.");
+      if (!data.pharmacyDate || !Number.isFinite(data.pharmacyDayRemainingMs)) throw new Error("Stock calendar data is missing. Restart the API and refresh stock.");
       setProducts(data.products);
+      stockDayTimer.current = setTimeout(() => { void refreshStock(); }, Math.min(data.pharmacyDayRemainingMs, 2_147_483_647));
       setProductLoadError("");
       return data.products as ProductItem[];
     } catch (failure) { setProductLoadError(safeError(failure)); return null; }
     finally { setStockChecking(false); }
   }
-  useEffect(() => { void refreshStock(); }, []);
+  useEffect(() => { void refreshStock(); const refresh = () => { void refreshStock(); }; window.addEventListener("focus", refresh); return () => { clearTimeout(stockDayTimer.current); window.removeEventListener("focus", refresh); }; }, []);
   const [productSearch, setProductSearch] = useState("");
   const [qty, setQty] = useState(1);
   const [cart, setCart] = useState<CartItem[]>([]);

@@ -1,3 +1,4 @@
+import { pharmacyDate } from "@workspace/api-zod";
 import { PaymentError, paymentFromRow } from "./cashier-payments";
 import { writeAuditEvent } from "./audit-events";
 
@@ -205,6 +206,7 @@ export function createAtomicCheckout(transaction: Transaction, read: Query) {
           [ids],
         )
       ).rows;
+      const today = pharmacyDate();
       let subtotal = 0n;
       const saleItems: any[] = [];
       const allocations: {
@@ -222,7 +224,7 @@ export function createAtomicCheckout(transaction: Transaction, read: Query) {
             { productId: product.id, code: "price_changed" },
           );
         const productBatches = batches.filter(
-          (batch) => batch.product_id === product.id,
+          (batch) => batch.product_id === product.id && batch.expiration_date >= today && Number(batch.quantity_remaining) > 0,
         );
         const available = productBatches.reduce(
           (sum, batch) => sum + Number(batch.quantity_remaining),

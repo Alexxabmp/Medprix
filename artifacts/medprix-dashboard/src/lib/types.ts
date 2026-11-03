@@ -22,6 +22,7 @@ export interface UserRecord {
 }
 
 export interface ProductBatch {
+  id?: string;
   batchNumber: string;
   quantity: number;
   expiryDate: string;
@@ -31,6 +32,7 @@ export interface ProductBatch {
 }
 
 export interface ProductItem {
+  pharmacyDate?: string;
   id: string;
   name: string;
   genericName: string;

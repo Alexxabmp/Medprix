@@ -1,18 +1,17 @@
 import type { ProductItem } from "./types";
 
-// Preserve the current server policy: positive batch quantities are counted,
-// including dated batches. Changing expiry eligibility needs a separate policy fix.
+// Use the server's pharmacy calendar date, never the device's local calendar.
+const eligible = (product: ProductItem) => (product.batches || []).filter(batch =>
+  Boolean(product.pharmacyDate) && batch.expiryDate >= product.pharmacyDate! && Number(batch.quantity) > 0);
+
 export function productStock(product: ProductItem): number {
-  if (product.batches?.length)
-    return product.batches.reduce(
-      (sum, batch) => sum + Math.max(0, Number(batch.quantity) || 0),
-      0,
-    );
-  return Math.max(0, Number(product.stock) || 0);
+  return eligible(product).reduce((sum, batch) => sum + Number(batch.quantity), 0);
 }
 
 export function productAvailability(product: ProductItem, inCart = 0) {
   const stock = productStock(product);
+  if (!product.pharmacyDate) return "Stock unavailable";
+  if (!product.batches?.length && Number(product.stock) > 0) return "Stock unavailable";
   if (!stock) return "Out of stock";
   if (!product.batches?.some((batch) => Number(batch.quantity) > 0))
     return "Stock unavailable";
@@ -24,11 +23,10 @@ export function batchAllocations(product: ProductItem, quantity: number) {
   if (!Number.isInteger(quantity) || quantity < 1) return null;
   let remaining = quantity;
   const allocations: { batchNumber: string; quantity: number }[] = [];
-  const batches = [...(product.batches || [])]
-    .filter((batch) => Number(batch.quantity) > 0)
+  const batches = eligible(product)
     .sort(
       (a, b) =>
-        new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime(),
+        a.expiryDate.localeCompare(b.expiryDate) || (a.id ?? a.batchNumber).localeCompare(b.id ?? b.batchNumber),
     );
   for (const batch of batches) {
     const allocated = Math.min(Number(batch.quantity), remaining);
