@@ -217,7 +217,8 @@ for (const kind of ["batches", "stock-in", "stock-out"] as const) {
     const product = await findProduct(asId(req.params.id));
     if (!product) return res.status(404).json({ error: "Product not found." });
     const batchNumber = String(body.batchNumber || "").trim().toUpperCase();
-    if (batchNumber.length > 100 || (kind === "batches" && !batchNumber)) return res.status(400).json({ error: "Enter a batch number of at most 100 characters." });
+    if (batchNumber.length > 100 || (kind !== "stock-out" && !batchNumber)) return res.status(400).json({ error: "Enter a batch number of at most 100 characters." });
+    if (kind === "stock-in" && ["expiryDate", "mfgDate", "supplier"].some(key => body[key] != null && body[key] !== "")) return res.status(400).json({ error: "Record Stock In uses the existing batch details. Use Add Batch to create a different lot." });
     if ((kind === "batches" && !validStockDate(body.expiryDate)) || (body.date && !validStockDate(body.date)) || (body.dateReceived && !validStockDate(body.dateReceived)) || (body.mfgDate && !validStockDate(body.mfgDate))) return res.status(400).json({ error: "Enter valid stock movement dates." });
     if (String(body.reason || "").length > 500 || String(body.supplier || "").length > 255) return res.status(400).json({ error: "Stock movement details are too long." });
     try {

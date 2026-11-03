@@ -29,15 +29,21 @@ export function createStockMutations(transaction: Transaction) {
       const number = String(input.batchNumber || "")
         .trim()
         .toUpperCase();
+      const matches = batches.filter(
+        (batch) => batch.batch_number.trim().toUpperCase() === number,
+      );
+      if (number && matches.length > 1)
+        throw new CheckoutError(409, "Multiple inventory lots match this product and batch number. Review the existing lots before changing stock.");
       if (direction === "in") {
-        let batch = batches.find(
-          (item) => item.batch_number.toUpperCase() === number,
-        );
+        if (!number) throw new CheckoutError(400, "Select an existing batch or use Add Batch with a batch number and expiry date.");
+        let batch = matches[0];
         if (batch && input.newBatch)
           throw new CheckoutError(
             409,
-            `Batch ${number} already exists for this product.`,
+            `Batch ${number} already exists for this product. Use Record Stock In for its recorded expiry.`,
           );
+        if (!batch && !input.newBatch)
+          throw new CheckoutError(409, "Batch not found for this product. Use Add Batch with its manufacturer batch number and expiry date first.");
         if (batch)
           await query(
             "UPDATE batch_info SET quantity_remaining=quantity_remaining+$2,updated_at=now() WHERE id=$1",
@@ -50,8 +56,8 @@ export function createStockMutations(transaction: Transaction) {
           VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
               [
                 productId,
-                number || `B-${new Date().getFullYear()}`,
-                input.newBatch?.expiryDate || "2028-12-31",
+                number,
+                input.newBatch!.expiryDate,
                 input.quantity,
                 input.newBatch?.mfgDate || null,
                 input.date || new Date().toISOString().slice(0, 10),
@@ -71,9 +77,7 @@ export function createStockMutations(transaction: Transaction) {
         );
       } else {
         const eligible = number
-          ? batches.filter(
-              (batch) => batch.batch_number.toUpperCase() === number,
-            )
+          ? matches
           : batches;
         const available = eligible.reduce(
           (sum, batch) => sum + Number(batch.quantity_remaining),

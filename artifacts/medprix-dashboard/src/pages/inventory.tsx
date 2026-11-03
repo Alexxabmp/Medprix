@@ -264,9 +264,9 @@ export default function InventoryPage({
     batchNumber: "",
     quantity: "",
     expiryDate: "",
-    mfgDate: "2025-01-01",
+    mfgDate: "",
     dateReceived: new Date().toISOString().slice(0, 10),
-    supplier: "Southstar Distribution",
+    supplier: "",
   });
 
   const [stockInData, setStockInData] = useState({
@@ -401,12 +401,12 @@ export default function InventoryPage({
 
   const handleOpenAddBatch = (product: ProductItem) => {
     setNewBatchData({
-      batchNumber: `B${new Date().getFullYear()}-${Math.floor(10 + Math.random() * 90)}`,
-      quantity: "50",
-      expiryDate: "2028-06-30",
-      mfgDate: "2026-01-01",
+      batchNumber: "",
+      quantity: "",
+      expiryDate: "",
+      mfgDate: "",
       dateReceived: new Date().toISOString().slice(0, 10),
-      supplier: "Southstar Distribution",
+      supplier: "",
     });
     setMovementError("");
     setBatchProduct(product);
@@ -421,11 +421,20 @@ export default function InventoryPage({
       return;
     }
 
-    const parsedQty = parseInt(newBatchData.quantity, 10) || 0;
+    const validation = validateStockMovementQuantity(newBatchData.quantity);
+    if (!validation.ok) {
+      setMovementError(validation.error);
+      return;
+    }
+    if (!newBatchData.expiryDate) {
+      setMovementError("Expiry date is required.");
+      return;
+    }
+    const parsedQty = validation.quantity;
     const newBatch = {
       batchNumber: newBatchData.batchNumber.trim().toUpperCase(),
       quantity: parsedQty,
-      expiryDate: newBatchData.expiryDate || "2028-06-30",
+      expiryDate: newBatchData.expiryDate,
       mfgDate: newBatchData.mfgDate,
       dateReceived: newBatchData.dateReceived,
       supplier: newBatchData.supplier,
@@ -456,8 +465,8 @@ export default function InventoryPage({
 
   const handleOpenStockIn = (product: ProductItem) => {
     setStockInData({
-      batchNumber: product.batches[0]?.batchNumber || "B001",
-      quantity: "20",
+      batchNumber: "",
+      quantity: "",
       date: new Date().toISOString().slice(0, 10),
       reason: "Procurement Delivery",
     });
@@ -470,6 +479,10 @@ export default function InventoryPage({
     if (movementBusy.current) return;
     setMovementError("");
     if (!stockInProduct) return;
+    if (!stockInData.batchNumber) {
+      setMovementError("Select an existing batch. If this product has no batches, use Add Batch first.");
+      return;
+    }
     const validation = validateStockMovementQuantity(stockInData.quantity);
     if (!validation.ok) {
       setMovementError(validation.error);
@@ -1172,6 +1185,7 @@ export default function InventoryPage({
                     <input
                       required
                       placeholder="e.g. B2026-03"
+                      maxLength={100}
                       value={newBatchData.batchNumber}
                       onChange={(e) =>
                         setNewBatchData({
@@ -1186,6 +1200,8 @@ export default function InventoryPage({
                     <input
                       type="number"
                       min="1"
+                      max={MAX_STOCK_MOVEMENT_QUANTITY}
+                      step="1"
                       required
                       value={newBatchData.quantity}
                       onChange={(e) =>
@@ -1248,6 +1264,7 @@ export default function InventoryPage({
                               supplier: e.target.value,
                             })
                           }>
+                          <option value="">Select supplier (optional)</option>
                           {suppliers.map((s) => (
                             <option key={s.name} value={s.name}>
                               {s.name}
@@ -1302,6 +1319,7 @@ export default function InventoryPage({
                   <div className="field full-width">
                     <label>Target Batch *</label>
                     <select
+                      required
                       value={stockInData.batchNumber}
                       onChange={(e) =>
                         setStockInData({
@@ -1309,6 +1327,7 @@ export default function InventoryPage({
                           batchNumber: e.target.value,
                         })
                       }>
+                      <option value="">{stockInProduct.batches.length ? "Select an existing batch" : "No batches — use Add Batch first"}</option>
                       {stockInProduct.batches.map((b) => (
                         <option key={b.batchNumber} value={b.batchNumber}>
                           {b.batchNumber} (Current: {b.quantity} units, Exp:{" "}
