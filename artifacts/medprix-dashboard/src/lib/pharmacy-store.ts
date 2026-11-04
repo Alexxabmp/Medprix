@@ -12,6 +12,8 @@ const formatPeso = (amount: number) =>
 export function mapTransactionsToReceipts(data: any[]): ShiftReceipt[] {
   if (!Array.isArray(data)) return [];
   return data.map((t: any) => {
+    const instant = typeof t.dateTime === "string" && /(?:Z|[+-]\d{2}:?\d{2})$/i.test(t.dateTime)
+      ? new Date(t.dateTime) : null;
     const totalNum =
       parseFloat(String(t.total || "0").replace("₱", "").replace(/,/g, "")) || 0;
     const itemCount = Array.isArray(t.items)
@@ -24,6 +26,8 @@ export function mapTransactionsToReceipts(data: any[]): ShiftReceipt[] {
     return {
       printSource: {
         transactionNumber: t.transactionNumber,
+        merchantNameAtIssue: t.merchantNameAtIssue,
+        calculationVersion: t.calculationVersion,
         dateTime: t.dateTime,
         user: t.user,
         payment: t.payment,
@@ -33,14 +37,16 @@ export function mapTransactionsToReceipts(data: any[]): ShiftReceipt[] {
       },
       id: t.transactionNumber || `TRX-${t.id}`,
       rawId: t.id,
-      time: t.dateTime
+      time: instant && Number.isFinite(instant.getTime())
+        ? new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(instant)
+        : t.dateTime
         ? t.dateTime.includes(" – ")
           ? t.dateTime.split(" – ")[1]
           : t.dateTime.includes(", ")
           ? t.dateTime.split(", ").slice(-1)[0]
           : t.dateTime
-        : new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      dateTime: t.dateTime || new Date().toLocaleString(),
+        : "Time not recorded",
+      dateTime: t.dateTime || "Date not recorded",
       items: itemCount,
       itemsList: t.items || [],
       itemsSummary,
@@ -48,6 +54,7 @@ export function mapTransactionsToReceipts(data: any[]): ShiftReceipt[] {
       totalFormatted: t.total || formatPeso(totalNum),
       subtotal: t.subtotal,
       vat: t.vat,
+      vatRelief: t.vatRelief,
       discount: t.discount,
       amountReceived: t.amountReceived,
       change: t.change,
@@ -146,7 +153,7 @@ export async function fetchTransactionsData(force = false): Promise<any[]> {
       if (Array.isArray(data)) {
         // A confirmed local save or newer fetch wins over an older response.
         if (request !== transactionRequest || revision !== transactionRevision) return globalTransactions || [];
-        globalTransactions = [...data].sort((a, b) => Number(b.id) - Number(a.id));
+        globalTransactions = [...data].sort((a, b) => new Date(b.createdAt ?? b.dateTime).getTime() - new Date(a.createdAt ?? a.dateTime).getTime());
         globalReceipts = mapTransactionsToReceipts(globalTransactions);
         notifyTransactions();
         return globalTransactions;
@@ -230,8 +237,7 @@ export function recordTransaction(transaction: any) {
     transaction,
     ...currentTx.filter(
       (t) =>
-        !(transaction.id != null && t.id === transaction.id) &&
-        !(transaction.transactionNumber && t.transactionNumber === transaction.transactionNumber)
+        !(transaction.id != null && t.id === transaction.id && t.source === transaction.source)
     ),
   ];
   setCachedTransactions(updatedTx);

@@ -108,8 +108,8 @@ router.get("/admin/transactions/:id", requireRoles("Admin", "Cashier"), async (r
   try { visibleTransactions = await refreshPayments(res.locals.user!); } catch {
     return res.status(503).json({ error: "Payment records are temporarily unavailable. Please retry." });
   }
-  const id = Number(req.params.id);
-  const item = visibleTransactions.find((t) => t.id === id);
+  const id = String(req.params.id);
+  const item = visibleTransactions.find((t) => String(t.id) === id);
   if (!item) {
     return res.status(404).json({ error: "Transaction not found." });
   }

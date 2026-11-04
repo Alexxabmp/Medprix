@@ -44,12 +44,12 @@ export function receiptDocument(receipt: ShiftReceipt): string {
       .thanks { text-align: center; margin: 4mm 0 0; font-weight: bold; letter-spacing: 1px; }
       @media print { body { padding: 0; } }
     </style></head><body><article class="paper" aria-label="Transaction receipt">
-    <h1>MEDPRIX</h1><div class="meta">
+    <h1>${escapeHtml(source?.merchantNameAtIssue ?? "MEDPRIX")}</h1><div class="meta">
       ${row("Receipt no.", number)}${row("Date", date)}
       ${row("Cashier", source ? source.user : receipt.cashier)}${row("Payment", source ? source.payment : receipt.method)}
       ${row("Status", source ? source.status : receipt.status)}</div>
     <div class="items"><div class="row"><strong>ITEM</strong><strong>AMOUNT</strong></div>${items}</div>
-    <div class="totals">${row("Subtotal", receipt.subtotal)}${row("VAT", receipt.vat)}
+    <div class="totals">${row("Subtotal", receipt.subtotal)}${row(source?.calculationVersion ? "VAT (included)" : "VAT", receipt.vat)}${row("VAT exemption", receipt.vatRelief)}
       ${row("Discount", receipt.discount)}
       ${row("TOTAL", source ? source.total : (receipt.totalFormatted || new Intl.NumberFormat(undefined, { style: "currency", currency: "PHP" }).format(receipt.total)), "total")}
       ${row("Amount received", receipt.amountReceived)}${row("Change", receipt.change)}</div>

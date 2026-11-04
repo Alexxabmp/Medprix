@@ -1,3 +1,4 @@
+import { calculateRetailLine } from "@workspace/api-zod";
 import { productStock as getProductStock, batchAllocations as getBatchAllocations, productAvailability } from "@/lib/stock-guidance";
 import { safeError, readResponse } from "@/lib/feedback";
 import { useEffect, useRef, useState, type FormEvent } from "react";
@@ -38,6 +39,7 @@ type CartItem = {
   name: string;
   sku: string;
   price: number;
+  isVatExempt: boolean;
   qty: number;
 };
 
@@ -91,8 +93,8 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
   const submitting = useRef(false);
   const submitCheckout = useRef<ReturnType<typeof createCheckoutSubmitter> | null>(null);
   if (!submitCheckout.current) submitCheckout.current = createCheckoutSubmitter();
-  const restoredCheckout = useRef(submitCheckout.current.getPending());
-  const [pendingCheckout, setPendingCheckout] = useState<PendingCheckout | null>(() => restoredCheckout.current || null);
+  const [pendingCheckout, setPendingCheckout] = useState<PendingCheckout | null>(null);
+  const [checkoutReady, setCheckoutReady] = useState(false);
   const [checkedMissing, setCheckedMissing] = useState(false);
   function closeReceipt() {
     setSelectedReceipt(null);
@@ -103,13 +105,14 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
     if (pendingCheckout && !isSubmitting) document.getElementById("pos-check-result")?.focus();
   }, [pendingCheckout, isSubmitting]);
   useEffect(() => {
-    const pending = restoredCheckout.current;
-    if (!pending) return;
-    setCart(pending.payload.items.map((item) => ({ id: item.productId, name: item.product, sku: String(item.sku || ""), qty: item.quantity,
-      price: Number(item.unitPrice.replace(/[^0-9.]/g, "")) })));
-    setCashTendered(pending.payload.amountReceived.replace(/[^0-9.]/g, ""));
-    setPaymentMethod(pending.payload.payment);
-    setDiscountType(pending.payload.discountType);
+    let active=true;
+    submitCheckout.current!.initialize().then(pending=>{
+      if(!active)return;setCheckoutReady(true);setPendingCheckout(pending??null);
+      if(!pending)return;
+      setCart(pending.payload.items.map(item=>({id:item.productId,name:item.product,sku:String(item.sku||''),qty:item.quantity,price:Number(item.unitPrice.replace(/[^0-9.]/g,'')),isVatExempt:item.isVatExempt===true})));
+      setCashTendered(pending.payload.amountReceived.replace(/[^0-9.]/g,''));setPaymentMethod(pending.payload.payment);setDiscountType(pending.payload.discountType);
+    }).catch(failure=>{if(active)setCheckoutError(safeError(failure));});
+    return()=>{active=false;};
   }, []);
 
   async function finishCheckout(saved: any) {
@@ -180,11 +183,14 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
 
 
   const subtotalCents = cart.reduce((sum, item) => sum + Math.round(item.price * 100) * item.qty, 0);
-  const subtotal = subtotalCents / 100;
+  const pendingAmount = (value: unknown, fallback: number) => pendingCheckout && value != null ? Number(String(value).replace(/[^0-9.]/g,"")) : fallback;
+  const subtotal = pendingAmount(pendingCheckout?.payload.subtotal, subtotalCents / 100);
   const isDiscountEligible = discountType !== "None";
-  const discountAmount = Math.floor((subtotalCents * (isDiscountEligible ? 20 : 0) + 50) / 100) / 100;
-  const vat = isDiscountEligible ? 0 : Math.floor((subtotalCents * 12 + 50) / 100) / 100;
-  const total = subtotal - discountAmount + vat;
+  const lineAmounts = cart.map(item=>calculateRetailLine(BigInt(Math.round(item.price*100)),item.qty,item.isVatExempt,discountType!=="None"));
+  const discountAmount = pendingAmount(pendingCheckout?.payload.discount, Number(lineAmounts.reduce((sum,line)=>sum+line.discount,0n))/100);
+  const vat = pendingAmount(pendingCheckout?.payload.vat, Number(lineAmounts.reduce((sum,line)=>sum+line.vat,0n))/100);
+  const vatRelief = pendingAmount(pendingCheckout?.payload.vatRelief, Number(lineAmounts.reduce((sum,line)=>sum+line.relief,0n))/100);
+  const total = pendingAmount(pendingCheckout?.payload.total, Number(lineAmounts.reduce((sum,line)=>sum+line.net,0n))/100);
   const tenderedNum = parseFloat(cashTendered) || 0;
   const changeDue =
     paymentMethod === "Cash" ? Math.max(0, tenderedNum - total) : 0;
@@ -196,6 +202,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
       onToast("Select a live inventory product first");
       return;
     }
+    if (typeof prod.isVatExempt !== "boolean") { onToast("Set this product's VAT treatment in Inventory before adding it."); return; }
     const availableStock = getProductStock(prod);
     const existing = cart.find((item) => item.id === prod.id);
     const remainingStock = Math.max(0, availableStock - (existing?.qty || 0));
@@ -222,6 +229,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
           name: prod.name,
           sku: prod.sku,
           price: numericPrice,
+          isVatExempt: prod.isVatExempt,
           qty,
         },
       ]);
@@ -271,7 +279,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
 
   const handleCheckout = async (e: FormEvent) => {
     e.preventDefault();
-    if (submitting.current || pendingCheckout) return;
+    if (!checkoutReady || submitting.current || pendingCheckout) return;
     if (cart.length === 0) {
       onToast("Cannot checkout an empty cart");
       return;
@@ -321,6 +329,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
       subtotal: formatPeso(subtotal),
       discount: formatPeso(discountAmount),
       vat: formatPeso(vat),
+      vatRelief: formatPeso(vatRelief),
       amountReceived:
         paymentMethod === "Cash" ? formatPeso(tenderedNum) : formatPeso(total),
       change: formatPeso(changeDue),
@@ -330,6 +339,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
       items: cart.map((item) => ({
         productId: item.id,
         sku: item.sku,
+        isVatExempt: item.isVatExempt,
         product: item.name,
         quantity: item.qty,
         unitPrice: formatPeso(item.price),
@@ -708,9 +718,10 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                     justifyContent: "space-between",
                     color: "hsl(var(--muted))",
                   }}>
-                  <span>VAT (12% included)</span>
+                  <span>{pendingCheckout && pendingCheckout.payload.contractVersion !== 3 ? "VAT" : "VAT (included)"}</span>
                   <span>₱{vat.toFixed(2)}</span>
                 </div>
+                {vatRelief > 0 && <div style={{display:"flex",justifyContent:"space-between",color:"hsl(var(--muted))"}}><span>VAT exemption</span><span>-{formatPeso(vatRelief)}</span></div>}
                 {isDiscountEligible && (
                   <div
                     style={{
@@ -870,7 +881,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
             <button
               type="submit"
               className="button primary-action full"
-              disabled={isSubmitting || cart.length === 0}
+              disabled={!checkoutReady || isSubmitting || cart.length === 0}
               style={{
                 height: 46,
                 fontSize: 14,
@@ -1067,10 +1078,11 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
               )}
               {selectedReceipt.vat && (
                 <div style={{ display: "flex", justifyContent: "space-between", color: "hsl(var(--muted))" }}>
-                  <span>VAT (12% incl.)</span>
+                  <span>{selectedReceipt.printSource?.calculationVersion ? "VAT (included)" : "VAT"}</span>
                   <span>{selectedReceipt.vat}</span>
                 </div>
               )}
+              {selectedReceipt.vatRelief && <div style={{ display: "flex", justifyContent: "space-between", color: "hsl(var(--muted))" }}><span>VAT exemption</span><span>{selectedReceipt.vatRelief}</span></div>}
               {selectedReceipt.discount && selectedReceipt.discount !== "₱0.00" && (
                 <div style={{ display: "flex", justifyContent: "space-between", color: "#34C759", fontWeight: 600 }}>
                   <span>Privilege Discount</span>

@@ -81,14 +81,23 @@ export interface CashMismatch {
 }
 
 export interface TransactionItem {
+  productId?: string;
   product: string;
   quantity: number;
   unitPrice: string;
   subtotal: string;
+  isVatExempt?: boolean | null;
+  vatRate?: string | null;
+  vat?: string;
+  discount?: string;
+  net?: string;
+  vatRelief?: string;
 }
 
 export interface UserTransaction {
-  id: number;
+  id: string | number;
+  source?: "legacy-cashier" | "canonical-retail" | "historical-normalized";
+  createdAt?: string;
   transactionNumber: string;
   dateTime: string;
   user: string;
@@ -130,6 +139,8 @@ export interface UserActivity {
 
 export interface ShiftReceipt {
   printSource?: {
+    merchantNameAtIssue?: string;
+    calculationVersion?: string;
     transactionNumber?: string;
     dateTime?: string;
     user?: string;
@@ -139,7 +150,7 @@ export interface ShiftReceipt {
     itemsSummary?: string;
   };
   id: string;
-  rawId?: number;
+  rawId?: string | number;
   time: string;
   dateTime?: string;
   items: number;
@@ -149,6 +160,7 @@ export interface ShiftReceipt {
   totalFormatted: string;
   subtotal?: string;
   vat?: string;
+  vatRelief?: string;
   discount?: string;
   amountReceived?: string;
   change?: string;
