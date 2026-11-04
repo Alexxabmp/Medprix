@@ -37,6 +37,7 @@ export const productsTable = pgTable(
         productName: varchar("product_name", { length: 255 }).notNull(),
         genericName: varchar("generic_name", { length: 255 }).notNull(),
         category: varchar("category", { length: 100 }).notNull(),
+        isVatExempt: boolean("is_vat_exempt"),
         isDangerousDrug: boolean("is_dangerous_drug").notNull().default(false),
         sellingPrice: money("selling_price").notNull().default("0.00"),
         costPrice: money("cost_price").notNull().default("0.00"),

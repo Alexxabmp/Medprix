@@ -1,3 +1,4 @@
+import { retailSnapshotChecks } from "./retail-snapshot-contract";
 import { initialContract, cashierContract, timestampTriggers } from "./schema-contract";
 export type CatalogQuery = (text: string, params?: any[]) => Promise<{ rows: any[] }>;
 
@@ -36,7 +37,9 @@ export class SchemaReadinessError extends Error {
     this.name = "SchemaReadinessError";
   }
 }
-export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | "cashier" | "legacy-runtime" | "audit-runtime" | "identifier-runtime" | "runtime" = "runtime", namespace = "public", existingTablesOnly = false) {
+export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | "cashier" | "legacy-runtime" | "audit-runtime" | "identifier-runtime" | "pre-retail-runtime" | "runtime" = "runtime", namespace = "public", existingTablesOnly = false) {
+  const retail = scope === "runtime";
+  if (scope === "pre-retail-runtime") scope = "runtime";
   const actual = await inspectSchema(query, namespace);
   const issues: string[] = [];
   const normalize = (v: unknown) => typeof v === "string" ? v.replaceAll(`"${namespace}".`, "public.").replaceAll(`${namespace}.`, "public.") : v;
@@ -97,6 +100,24 @@ export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | 
     if (actual.tables.some(t => t.name === name)) issues.push(`legacy audit table ${name} has not been retired`);
   if (scope === 'runtime') for (const name of ['roles','permissions','user_roles','role_permissions'])
     if (actual.tables.some(t => t.name === name)) issues.push(`legacy authorization table ${name} has not been retired`);
+  if (retail) {
+    for (const [table,name,type] of [
+      ['products','is_vat_exempt','boolean'],['transactions','checkout_payload','jsonb'],
+      ['transactions','cashier_name_at_sale','character varying(255)'],['transactions','calculation_version','character varying(32)'],
+      ['transaction_items','product_name_at_sale','character varying(255)'],['transaction_items','is_vat_exempt_at_sale','boolean'],
+      ['transaction_items','vat_rate_at_sale','numeric(5,2)'],['transaction_items','vat_amount','numeric(12,2)'],
+      ['transaction_items','net_amount','numeric(12,2)'],['transaction_items','discount_amount','numeric(12,2)'],
+      ['receipts','merchant_name_at_issue','character varying(255)'],
+    ]) {
+      if (existingTablesOnly && !actual.tables.some(t=>t.name===table)) continue;
+      const found=actual.columns.find(c=>c.table_name===table&&c.name===name);
+      if (!found || found.type!==type || found.not_null || found.default_value!==null) issues.push('missing/incompatible retail column '+table+'.'+name);
+    }
+    for (const expected of retailSnapshotChecks) {
+      const found=actual.constraints.find(c=>c.name===expected.name&&c.table_name===expected.table_name);
+      if (!found || found.type!=='c' || !found.validated || found.definition!==expected.definition) issues.push('missing/incompatible retail constraint '+expected.name);
+    }
+  }
   if (issues.length) throw new SchemaReadinessError(issues);
   return actual;
 }

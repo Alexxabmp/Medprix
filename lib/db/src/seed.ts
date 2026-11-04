@@ -744,6 +744,7 @@ function buildData(passwordHash: string) {
   for (const p of products)
     T.products.push({
       id: p.id, sku: p.sku, product_name: p.def.name, generic_name: p.def.generic, category: p.def.cat, is_dangerous_drug: !!p.def.dd,
+      is_vat_exempt: false,
       selling_price: p.def.price, cost_price: p.def.cost, minimum_stock_level: p.minStock,
       current_stock: sum(p.batches.map((b) => b.remaining)), created_at: day0, updated_at: NOW,
     });
