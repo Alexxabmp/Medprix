@@ -355,7 +355,7 @@ function buildData(passwordHash: string) {
     if (!d) return;
     const deliveryId = randomUUID();
     const deliveredAt = past(d.off, 10, 0);
-    T.supplier_deliveries.push({ id: deliveryId, po_id: poId, delivery_date: deliveredAt, delivery_status: d.status, created_at: deliveredAt });
+    T.supplier_deliveries.push({ id: deliveryId, po_id: poId, delivery_date: dateStr(d.off), delivery_status: d.status, created_at: deliveredAt });
     let invoiceTotal = 0;
     for (const l of o.lines) {
       const qty = d.status === "Partial" ? Math.max(10, Math.floor((l.qty * (d.fraction ?? 0.7)) / 10) * 10) : l.qty;

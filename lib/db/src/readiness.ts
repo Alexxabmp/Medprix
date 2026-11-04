@@ -37,10 +37,11 @@ export class SchemaReadinessError extends Error {
     this.name = "SchemaReadinessError";
   }
 }
-export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | "cashier" | "legacy-runtime" | "audit-runtime" | "identifier-runtime" | "pre-retail-runtime" | "pre-retirement-runtime" | "runtime" = "runtime", namespace = "public", existingTablesOnly = false) {
-  const retiredSales = scope === "runtime";
+export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | "cashier" | "legacy-runtime" | "audit-runtime" | "identifier-runtime" | "pre-retail-runtime" | "pre-retirement-runtime" | "pre-delivery-runtime" | "runtime" = "runtime", namespace = "public", existingTablesOnly = false) {
+  const calendar = scope === "runtime";
+  const retiredSales = calendar || scope === "pre-delivery-runtime";
   const retail = retiredSales || scope === "pre-retirement-runtime";
-  if (["pre-retail-runtime", "pre-retirement-runtime"].includes(scope)) scope = "runtime";
+  if (["pre-retail-runtime", "pre-retirement-runtime", "pre-delivery-runtime"].includes(scope)) scope = "runtime";
   const actual = await inspectSchema(query, namespace);
   const issues: string[] = [];
   const normalize = (v: unknown) => typeof v === "string" ? v.replaceAll(`"${namespace}".`, "public.").replaceAll(`${namespace}.`, "public.") : v;
@@ -54,7 +55,9 @@ export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | 
       const found = actual.columns.find(c => c.table_name === expected.table_name && c.name === expected.name);
       if (!found) { issues.push(`missing column ${expected.table_name}.${expected.name}`); continue; }
       for (const field of ["type", "not_null", "default_value"] as const)
-        if (normalize(found[field]) !== normalize(expected[field])) issues.push(`incompatible ${expected.table_name}.${expected.name} ${field}`);
+        if (normalize(found[field]) !== normalize(calendar && expected.table_name === 'supplier_deliveries' && expected.name === 'delivery_date'
+          ? field === 'type' ? 'date' : field === 'default_value' ? null : expected[field]
+          : expected[field])) issues.push(`incompatible ${expected.table_name}.${expected.name} ${field}`);
     }
     for (const expected of contract.constraints) {
       if (retired(expected.table_name) || absent(expected.table_name) || replaced(expected.name)) continue;

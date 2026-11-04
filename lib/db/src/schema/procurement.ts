@@ -99,7 +99,7 @@ export const supplierDeliveriesTable = pgTable(
     poId: uuid("po_id")
       .notNull()
       .references(() => purchaseOrdersTable.id, { onDelete: "restrict" }),
-    deliveryDate: timestamp("delivery_date", { withTimezone: true }).notNull().defaultNow(),
+    deliveryDate: date("delivery_date").notNull(),
     deliveryStatus: deliveryStatusEnum("delivery_status").notNull().default("Received"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

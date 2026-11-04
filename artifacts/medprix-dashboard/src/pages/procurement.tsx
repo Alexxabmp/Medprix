@@ -1,3 +1,4 @@
+import { parseCalendarDate, formatCalendarDate } from "@/lib/business-date";
 import { pharmacyDate } from "@workspace/api-zod";
 import { createReceivingSubmitter, type PendingReceiving } from "@/lib/receiving-submission";
 import { useDialogAccessibility } from "@/lib/use-dialog-accessibility";
@@ -102,6 +103,11 @@ function saveStored(key: string, data: any) {
   try {
     localStorage.setItem(key, JSON.stringify(data));
   } catch {}
+}
+
+function formatDeliveryDate(value: string) {
+  const date = parseCalendarDate(value);
+  return date ? formatCalendarDate(date) : "Date unavailable";
 }
 
 function money(value: string | number) {
@@ -418,7 +424,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
       if (orderId && (!order || ["Fulfilled", "Cancelled"].includes(order.status) || !item))
         throw new Error("This purchase order has no outstanding items to receive. Review the refreshed order list.");
       setDeliveryForm({poId: orderId, productId: item?.productId ?? "", quantityDelivered: item ? String(item.quantityRemaining) : "1",
-        deliveryDate: new Date().toISOString().slice(0, 10), deliveryStatus: "Received", batchNumber: "", expirationDate: ""});
+        deliveryDate: pharmacyDate(), deliveryStatus: "Received", batchNumber: "", expirationDate: ""});
       setSelectedOrderForItems(null);
       setIsDeliveryOpen(true);
     } catch (requestError) {
@@ -840,7 +846,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                   ) : filteredReceivingRows.map(({delivery, item}) => {
                     const expiry = expiryStatus(item.expirationDate);
                     return <tr key={item.id}>
-                      <td>{delivery.poNumber}<div className="muted" style={{fontSize: 12}}>{new Date(delivery.deliveryDate).toLocaleDateString()}</div></td>
+                      <td>{delivery.poNumber}<div className="muted" style={{fontSize: 12}}>{formatDeliveryDate(delivery.deliveryDate)}</div></td>
                       <td>{delivery.supplier}</td><td>{item.product}</td><td>{item.batchNumber}</td>
                       <td>{item.expirationDate}</td><td>{item.quantityDelivered}</td><td>{delivery.deliveryStatus}</td>
                       <td><span className={`pill ${expiry.tone}`}>{expiry.label}</span></td>

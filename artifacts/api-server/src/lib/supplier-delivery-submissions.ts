@@ -49,7 +49,11 @@ export function deliveryPayload(body: any) {
     throw new DeliveryInputError(
       "Unsupported receiving report details. Refresh and review the form.",
     );
-  if (typeof body.poId !== "string" || !uuid.test(body.poId) || !isCalendarDate(body.deliveryDate))
+  if (
+    typeof body.poId !== "string" ||
+    !uuid.test(body.poId) ||
+    !isCalendarDate(body.deliveryDate)
+  )
     throw new DeliveryInputError(
       "Select a purchase order and enter a valid delivery date.",
     );
@@ -74,7 +78,8 @@ export function deliveryPayload(body: any) {
             "quantityDelivered",
           ].includes(key),
       ) ||
-      typeof item.productId !== "string" || !uuid.test(item.productId)
+      typeof item.productId !== "string" ||
+      !uuid.test(item.productId)
     )
       throw new DeliveryInputError(
         "Select a valid inventory product and supported receiving details.",
@@ -155,8 +160,7 @@ export async function submitDelivery(id: string, payload: Payload) {
     if (saved) {
       if (
         saved.delivery.poId !== payload.poId ||
-        saved.delivery.deliveryDate.toISOString().slice(0, 10) !==
-          payload.deliveryDate ||
+        saved.delivery.deliveryDate !== payload.deliveryDate ||
         saved.delivery.deliveryStatus !== payload.deliveryStatus ||
         JSON.stringify(tuples(saved.items)) !==
           JSON.stringify(tuples(payload.items))
@@ -224,7 +228,7 @@ export async function submitDelivery(id: string, payload: Payload) {
       .values({
         id,
         poId: order.id,
-        deliveryDate: new Date(`${payload.deliveryDate}T00:00:00Z`),
+        deliveryDate: payload.deliveryDate,
         deliveryStatus: payload.deliveryStatus,
       })
       .returning();
