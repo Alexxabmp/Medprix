@@ -4,7 +4,7 @@ import {
   calculateRetailLine,
   allocateRetailAmount,
 } from "@workspace/api-zod";
-import { PaymentError, paymentFromRow } from "./cashier-payments";
+import { PaymentError } from "./cashier-payments";
 import { writeAuditEvent } from "./audit-events";
 
 export type Query = (text: string, params?: any[]) => Promise<{ rows: any[] }>;
@@ -105,7 +105,7 @@ function normalize(body: any, actor: CheckoutActor) {
   )
     throw new CheckoutError(400, "A checkout date is required.");
   return {
-    version: 2,
+    version: 3,
     userId: actor.id,
     dateTime: body.dateTime,
     payment: body.payment,
@@ -140,70 +140,25 @@ export function createAtomicCheckout(transaction: Transaction, read: Query) {
         );
       return { state: "committed" as const, transaction: confirmed(native) };
     }
-    const [legacy] = (
-      await read(
-        "SELECT * FROM cashier_transactions WHERE checkout_request_key=$1",
-        [key.toLowerCase()],
-      )
-    ).rows;
-    if (!legacy) return { state: "not_found" as const };
-    const payload =
-      typeof legacy.checkout_payload === "string"
-        ? JSON.parse(legacy.checkout_payload)
-        : legacy.checkout_payload;
-    if (payload?.userId !== actor.id && actor.role !== "Admin")
-      throw new CheckoutError(
-        403,
-        "You do not have permission to view this checkout.",
-      );
-    if (payload?.version !== 2)
+    return { state: "not_found" as const };
+  }
+
+  async function save(body: any, actor: CheckoutActor) {
+    if (body.contractVersion !== 3)
       throw new CheckoutError(
         409,
-        "This older payment needs administrator review.",
+        "Refresh the app before recording a new sale. Existing pending payments must be checked using their original reference.",
+        { code: "client_version" },
       );
-    return {
-      state: "committed" as const,
-      transaction: confirmed(paymentFromRow(legacy)),
-    };
-  }
-  async function save(body: any, actor: CheckoutActor) {
+
     const payload = normalize(body, actor),
       key = body.requestKey.toLowerCase();
     return transaction(async (query) => {
       await query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [
         key,
       ]);
-      // Shared legacy lock also waits out old in-flight writes and serializes numbering.
-      // Deployment must stop the old API writer before enabling this release.
-      await query(
-        "LOCK TABLE cashier_transactions IN SHARE ROW EXCLUSIVE MODE",
-      );
-      const [legacy] = (
-        await query(
-          "SELECT * FROM cashier_transactions WHERE checkout_request_key=$1",
-          [key],
-        )
-      ).rows;
-      if (legacy) {
-        const prior =
-          typeof legacy.checkout_payload === "string"
-            ? JSON.parse(legacy.checkout_payload)
-            : legacy.checkout_payload;
-        const comparison = { ...payload, version: 2 };
-        const [match] = (
-          await query(
-            `SELECT (CASE WHEN jsonb_typeof(checkout_payload)='string' THEN (checkout_payload #>> '{}')::jsonb ELSE checkout_payload END)=$2::text::jsonb AS matches FROM cashier_transactions WHERE id=$1`,
-            [legacy.id, JSON.stringify(comparison)],
-          )
-        ).rows;
-        if (!match.matches || prior?.version !== 2)
-          throw new CheckoutError(
-            409,
-            "This checkout reference was already used with different details.",
-            { code: "reference_conflict" },
-          );
-        return confirmed(paymentFromRow(legacy));
-      }
+      // One transaction-scoped numbering lock across all canonical retail writers.
+      await query("SELECT pg_advisory_xact_lock(227014,1)");
       const [previous] = (
         await query(
           "SELECT checkout_payload,calculation_version FROM transactions WHERE id=$1",
@@ -214,7 +169,7 @@ export function createAtomicCheckout(transaction: Transaction, read: Query) {
         const [match] = (
           await query(
             "SELECT checkout_payload=$2::text::jsonb AS matches FROM transactions WHERE id=$1",
-            [key, JSON.stringify({ ...payload, version: 3 })],
+            [key, JSON.stringify(payload)],
           )
         ).rows;
         if (
@@ -228,12 +183,6 @@ export function createAtomicCheckout(transaction: Transaction, read: Query) {
           );
         return confirmed((await readRetailSales(query, undefined, key))[0]);
       }
-      if (body.contractVersion !== 3)
-        throw new CheckoutError(
-          409,
-          "Refresh the app before recording a new sale. Existing pending payments must be checked using their original reference.",
-          { code: "client_version" },
-        );
       const [cashier] = (
         await query("SELECT full_name FROM users WHERE id=$1 FOR SHARE", [
           actor.id,
@@ -373,46 +322,34 @@ export function createAtomicCheckout(transaction: Transaction, read: Query) {
         );
       const decimal = (n: bigint) =>
         n / 100n + "." + String(n % 100n).padStart(2, "0");
-      // One numbering authority across both stores, still under the shared legacy lock.
+      // One canonical numbering authority under the transaction-scoped numbering lock.
       const [max] = (
         await query(
-          "SELECT COALESCE(max(n),0)::text AS n FROM (SELECT substring(transaction_number FROM 5)::numeric AS n FROM cashier_transactions WHERE transaction_number ~ '^TRX-[0-9]+$' UNION ALL SELECT substring(receipt_number FROM 5)::numeric FROM receipts WHERE receipt_number ~ '^TRX-[0-9]+$') used",
+          "SELECT COALESCE(max(substring(receipt_number FROM 5)::numeric),0)::text AS n FROM receipts WHERE receipt_number ~ '^TRX-[0-9]+$'",
         )
       ).rows;
-      let number: bigint;
-      const [sequence] = (
+      const [counter] = (
         await query(
-          "SELECT to_regclass('cashier_receipt_number_seq') IS NOT NULL AS present",
+          "SELECT last_value,is_called FROM retail_receipt_number_seq",
         )
       ).rows;
-      if (sequence.present) {
-        const [counter] = (
-          await query(
-            "SELECT last_value,is_called FROM cashier_receipt_number_seq",
-          )
-        ).rows;
-        if (
-          BigInt(counter.last_value) < BigInt(max.n) ||
-          (BigInt(counter.last_value) === BigInt(max.n) && !counter.is_called)
-        )
-          await query("SELECT setval('cashier_receipt_number_seq',$1,true)", [
-            max.n,
-          ]);
-        number = BigInt(
-          (
-            await query(
-              "SELECT nextval('cashier_receipt_number_seq')::text AS n",
-            )
-          ).rows[0].n,
-        );
-      } else number = BigInt(max.n) + 1n;
+      if (
+        BigInt(counter.last_value) < BigInt(max.n) ||
+        (BigInt(counter.last_value) === BigInt(max.n) && !counter.is_called)
+      )
+        await query("SELECT setval('retail_receipt_number_seq',$1,true)", [
+          max.n,
+        ]);
+      const number = BigInt(
+        (await query("SELECT nextval('retail_receipt_number_seq')::text AS n"))
+          .rows[0].n,
+      );
       const receiptNumber = "TRX-" + number.toString().padStart(4, "0");
       if (
         (
-          await query(
-            "SELECT 1 FROM receipts WHERE receipt_number=$1 UNION ALL SELECT 1 FROM cashier_transactions WHERE transaction_number=$1",
-            [receiptNumber],
-          )
+          await query("SELECT 1 FROM receipts WHERE receipt_number=$1", [
+            receiptNumber,
+          ])
         ).rows.length
       )
         throw new CheckoutError(
@@ -432,7 +369,7 @@ export function createAtomicCheckout(transaction: Transaction, read: Query) {
           decimal(received),
           decimal(received - total),
           payload.payment,
-          JSON.stringify({ ...payload, version: 3 }),
+          JSON.stringify(payload),
           cashier.full_name.trim(),
         ],
       );

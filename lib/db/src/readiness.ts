@@ -37,14 +37,15 @@ export class SchemaReadinessError extends Error {
     this.name = "SchemaReadinessError";
   }
 }
-export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | "cashier" | "legacy-runtime" | "audit-runtime" | "identifier-runtime" | "pre-retail-runtime" | "runtime" = "runtime", namespace = "public", existingTablesOnly = false) {
-  const retail = scope === "runtime";
-  if (scope === "pre-retail-runtime") scope = "runtime";
+export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | "cashier" | "legacy-runtime" | "audit-runtime" | "identifier-runtime" | "pre-retail-runtime" | "pre-retirement-runtime" | "runtime" = "runtime", namespace = "public", existingTablesOnly = false) {
+  const retiredSales = scope === "runtime";
+  const retail = retiredSales || scope === "pre-retirement-runtime";
+  if (["pre-retail-runtime", "pre-retirement-runtime"].includes(scope)) scope = "runtime";
   const actual = await inspectSchema(query, namespace);
   const issues: string[] = [];
   const normalize = (v: unknown) => typeof v === "string" ? v.replaceAll(`"${namespace}".`, "public.").replaceAll(`${namespace}.`, "public.") : v;
   for (const contract of scope === "initial" ? [initialContract] : [initialContract, cashierContract]) {
-    const retired = (table: string) => (['audit-runtime','identifier-runtime','runtime'].includes(scope) && ['cashier_system_logs','cashier_user_activities'].includes(table)) || (scope === 'runtime' && ['roles','permissions','user_roles','role_permissions'].includes(table));
+    const retired = (table: string) => (retiredSales && ['cashier_transactions','cashier_payment_migrations'].includes(table)) || (['audit-runtime','identifier-runtime','runtime'].includes(scope) && ['cashier_system_logs','cashier_user_activities'].includes(table)) || (scope === 'runtime' && ['roles','permissions','user_roles','role_permissions'].includes(table));
     const replaced = (name: string) => ['identifier-runtime','runtime'].includes(scope) && ['users_username_key','uq_products_sku','supplier_invoices_invoice_number_key'].includes(name);
     const absent = (table: string) => existingTablesOnly && !actual.tables.some(t => t.name === table);
     for (const name of contract.tables) if (!existingTablesOnly && !retired(name) && !actual.tables.some(t => t.name === name)) issues.push(`missing table ${name}`);
@@ -117,6 +118,17 @@ export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | 
       const found=actual.constraints.find(c=>c.name===expected.name&&c.table_name===expected.table_name);
       if (!found || found.type!=='c' || !found.validated || found.definition!==expected.definition) issues.push('missing/incompatible retail constraint '+expected.name);
     }
+  }
+  if (retiredSales) {
+    for (const name of ['cashier_transactions','cashier_payment_migrations'])
+      if (actual.tables.some(t=>t.name===name)) issues.push('retired legacy table remains: '+name);
+    const sequences = (await query(`SELECT c.relname,s.*,(EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid='pg_class'::regclass AND d.objid=c.oid AND d.deptype IN ('a','i','e')) OR EXISTS (SELECT 1 FROM pg_depend d WHERE d.refclassid='pg_class'::regclass AND d.refobjid=c.oid)) AS owned
+      FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_sequence s ON s.seqrelid=c.oid
+      WHERE n.nspname=$1 AND c.relname IN ('retail_receipt_number_seq','cashier_receipt_number_seq')`,[namespace])).rows;
+    const seq=sequences.find(s=>s.relname==='retail_receipt_number_seq');
+    if (sequences.some(s=>s.relname==='cashier_receipt_number_seq') || !seq || Number(seq.seqtypid)!==20 || String(seq.seqincrement)!=='1'
+      || String(seq.seqmin)!=='1' || String(seq.seqmax)!=='9223372036854775807' || seq.seqcycle || Number(seq.seqcache)<1 || seq.owned)
+      issues.push('missing/incompatible canonical receipt sequence');
   }
   if (issues.length) throw new SchemaReadinessError(issues);
   return actual;

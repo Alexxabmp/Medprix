@@ -95,8 +95,8 @@ export interface TransactionItem {
 }
 
 export interface UserTransaction {
-  id: string | number;
-  source?: "legacy-cashier" | "canonical-retail" | "historical-normalized";
+  id: string;
+  source?: "canonical-retail" | "historical-normalized";
   createdAt?: string;
   transactionNumber: string;
   dateTime: string;
@@ -150,7 +150,7 @@ export interface ShiftReceipt {
     itemsSummary?: string;
   };
   id: string;
-  rawId?: string | number;
+  rawId?: string;
   time: string;
   dateTime?: string;
   items: number;

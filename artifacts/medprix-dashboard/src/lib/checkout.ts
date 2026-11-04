@@ -100,7 +100,7 @@ export function createCheckoutSubmitter(
       initializing = (async () => {
         ownerId = await actor();
         activeStorageKey = "medprix_pending_checkout_v3:" + ownerId;
-        // Old unscoped records are retained for reconciliation, never auto-upgraded.
+        // Retired unscoped records are retained for explicit review, never resubmitted.
         pending =
           parse(storage?.getItem(activeStorageKey)) ??
           parse(storage?.getItem(storageKey));
@@ -112,11 +112,15 @@ export function createCheckoutSubmitter(
       });
     await initializing;
   }
+  function requireCanonicalPending() {
+    if (pending && pending.payload.contractVersion !== 3)
+      throw new CheckoutUncertainError(
+        "This pending checkout uses retired cashier storage. Keep its reference and ask an administrator to review it; it cannot be resubmitted as a new sale.",
+      );
+  }
   function clear() {
     try {
       storage?.removeItem(activeStorageKey);
-      if (pending?.payload.contractVersion !== 3)
-        storage?.removeItem(storageKey);
     } catch {
       /* A retained reference remains safely replayable. */
     }
@@ -127,12 +131,9 @@ export function createCheckoutSubmitter(
       typeof data?.id === "string" &&
       /^[0-9a-f-]{36}$/i.test(data.id) &&
       data.id === pending?.requestKey;
-    const legacy =
-      Number.isSafeInteger(data?.id) &&
-      data.id > 0 &&
-      pending?.payload.contractVersion !== 3;
     if (
-      !(canonical || legacy) ||
+      !canonical ||
+      pending?.payload.contractVersion !== 3 ||
       !data.transactionNumber ||
       !Array.isArray(data.items) ||
       data.stockCommitted !== true
@@ -150,10 +151,8 @@ export function createCheckoutSubmitter(
     try {
       await initialize();
       await actor();
-      const nextPayload =
-        pending && pending.payload.contractVersion !== 3
-          ? payload
-          : { ...payload, contractVersion: 3 };
+      requireCanonicalPending();
+      const nextPayload = { ...payload, contractVersion: 3 };
       if (
         pending &&
         JSON.stringify(pending.payload) !== JSON.stringify(nextPayload)
@@ -246,6 +245,7 @@ export function createCheckoutSubmitter(
         await initialize();
         await actor();
         if (!pending) return null;
+        requireCanonicalPending();
         const response = await send(
           "/api/pos/checkouts/" + pending.requestKey,
           {

@@ -24,6 +24,7 @@ export async function runMigrations(options: { client: postgres.Sql; command: Mi
     adoptionRequired: false,
     historyTransferRequired: history.legacy.length > history.native.length,
   });
+  const scopeAt = (count: number) => count >= 9 ? 'runtime' : count === 8 ? 'pre-retirement-runtime' : count === 7 ? 'pre-retail-runtime' : count === 6 ? 'identifier-runtime' : count === 5 ? 'audit-runtime' : count >= 3 ? 'legacy-runtime' : count === 2 ? 'cashier' : 'initial';
   if (options.command === 'status' || options.command === 'plan') {
     return options.client.begin('read only', async tx => {
       const q: CatalogQuery = async (sql, params = []) => ({ rows: await tx.unsafe(sql, params) });
@@ -46,11 +47,11 @@ export async function runMigrations(options: { client: postgres.Sql; command: Mi
       await assertSchemaReady(q, 'initial', namespace);
     } else if (adopting) throw new Error('Adoption requires an existing compatible schema; use apply for an empty database.');
     if (history.applied) {
-      const scope = history.applied === 1 ? 'initial' : history.applied === 2 ? 'cashier' : history.applied < 5 ? 'legacy-runtime' : history.applied === 5 ? 'audit-runtime' : history.applied === 6 ? 'identifier-runtime' : history.applied === 7 ? 'pre-retail-runtime' : 'runtime';
+      const scope = scopeAt(history.applied);
       await assertSchemaReady(q, scope, namespace);
     }
 
-    await assertSchemaReady(q, history.applied >= 8 ? 'runtime' : history.applied === 7 ? 'pre-retail-runtime' : history.applied === 6 ? 'identifier-runtime' : 'cashier', namespace, true);
+    await assertSchemaReady(q, history.applied ? scopeAt(history.applied) : 'cashier', namespace, true);
     const dialect = new PgDialect();
 
     const nestedClient = new Proxy(tx, {
@@ -70,7 +71,7 @@ export async function runMigrations(options: { client: postgres.Sql; command: Mi
         .replaceAll(/\bpublic\./g, quoteIdentifier(namespace) + '.')),
     }));
     await dialect.migrate(execution, session, config);
-    await assertSchemaReady(q, 'runtime', namespace);
+    await assertSchemaReady(q, scopeAt(migrations.length), namespace);
     if ((await q("SELECT 1 FROM information_schema.columns WHERE table_schema=$1 AND table_name='cashier_transactions' AND column_name='request_key'", [namespace])).rows.length)
       throw new Error('Obsolete request key was not removed');
     return { ...describe(history, migrations.length), historyTransferRequired: false };
