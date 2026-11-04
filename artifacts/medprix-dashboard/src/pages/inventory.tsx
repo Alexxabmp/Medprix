@@ -794,7 +794,9 @@ export default function InventoryPage({
                       </td>
                       <td>
                         <div style={{ fontSize: 12 }}>
-                          {product.batches.length === 1 ? (
+                          {product.batches.length === 0 ? (
+                            <span className="muted">No batches</span>
+                          ) : product.batches.length === 1 ? (
                             <span>
                               {product.batches[0].batchNumber} (
                               {product.batches[0].quantity}u)
