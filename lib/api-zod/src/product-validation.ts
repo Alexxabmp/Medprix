@@ -39,6 +39,7 @@ export function validateProductInput(input: Record<string, unknown>, options: { 
     if (supplied(key) && parseProductMoney(input[key]) === null) errors[key] = "Enter a nonnegative price with at most two decimal places (maximum 9,999,999,999.99).";
   }
   if (supplied("reorder") && !wholeNumber(input.reorder, 0, 2147483647)) errors.reorder = "Enter a nonnegative whole-number reorder level (maximum 2,147,483,647).";
+  if ((!options.partial || input.isVatExempt !== undefined) && typeof input.isVatExempt !== "boolean") errors.isVatExempt = "Select VATable or VAT-exempt.";
   if (input.isDangerousDrug !== undefined && typeof input.isDangerousDrug !== "boolean") errors.isDangerousDrug = "Controlled item must be on or off.";
   if (options.batch && PRODUCT_BATCH_FIELDS.some((key) => input[key] !== undefined && input[key] !== null)) {
     if (typeof input.batchNumber !== "string" || !input.batchNumber.trim() || input.batchNumber.trim().length > 100) errors.batchNumber = "Enter a batch number of at most 100 characters.";

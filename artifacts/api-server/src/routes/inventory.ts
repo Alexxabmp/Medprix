@@ -46,6 +46,7 @@ function toApiProduct(product: typeof productsTable.$inferSelect, batches: (type
     price: `₱${Number(product.sellingPrice).toFixed(2)}`,
     cost: `₱${Number(product.costPrice).toFixed(2)}`,
     isDangerousDrug: product.isDangerousDrug,
+    isVatExempt: product.isVatExempt,
     reorder: product.minimumStockLevel,
     batches: batches.map((b) => ({
       id: b.id,
@@ -164,7 +165,7 @@ router.post("/inventory/products", async (req: Request, res: Response) => {
       const [saved] = await tx.insert(productsTable).values({
         sku, productName: body.name.trim(), genericName: body.genericName.trim(), category: (body.category ?? "").trim(),
         sellingPrice: parseProductMoney(body.price)!, costPrice: parseProductMoney(body.costPrice)!,
-        isDangerousDrug: body.isDangerousDrug ?? false, minimumStockLevel: Number(body.reorder),
+        isDangerousDrug: body.isDangerousDrug ?? false, isVatExempt: body.isVatExempt, minimumStockLevel: Number(body.reorder),
         currentStock: hasBatch ? Number(body.quantity) : 0,
       }).returning();
       if (hasBatch) await tx.insert(batchInfoTable).values({
@@ -194,6 +195,7 @@ router.put("/inventory/products/:id", async (req: Request, res: Response) => {
   if (body.category !== undefined) updates.category = body.category.trim();
   if (body.price !== undefined) updates.sellingPrice = parseProductMoney(body.price)!;
   if (body.costPrice !== undefined) updates.costPrice = parseProductMoney(body.costPrice)!;
+  if (body.isVatExempt !== undefined) updates.isVatExempt = body.isVatExempt;
   if (body.isDangerousDrug !== undefined) updates.isDangerousDrug = body.isDangerousDrug;
   if (body.reorder !== undefined) updates.minimumStockLevel = Number(body.reorder);
   try {

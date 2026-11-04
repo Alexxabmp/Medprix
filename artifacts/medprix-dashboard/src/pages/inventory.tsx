@@ -1040,6 +1040,14 @@ export default function InventoryPage({
                     </div>
                     <strong style={{ fontSize: 13 }}>{viewProduct.cost}</strong>
                   </div>
+                  <div>
+                    <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
+                      VAT treatment
+                    </div>
+                    <strong style={{ fontSize: 13 }}>
+                      {viewProduct.isVatExempt === true ? "VAT-exempt" : viewProduct.isVatExempt === false ? "VATable" : "Not classified"}
+                    </strong>
+                  </div>
                 </div>
                 <div
                   style={{

@@ -17,6 +17,7 @@ export function ProductDialog({ product, categories, suppliers, onClose, onSaved
     ...emptyProductForm(), name: product.name, genericName: product.genericName, sku: product.sku,
     category: product.category, price: product.price, costPrice: product.cost ?? "", reorder: String(product.reorder),
     isDangerousDrug: product.isDangerousDrug ?? false,
+    vatClassification: typeof product.isVatExempt === "boolean" ? (product.isVatExempt ? "VAT-exempt" : "VATable") : "",
   } : emptyProductForm());
   const [errors, setErrors] = useState<ProductErrors>({});
   const [failure, setFailure] = useState("");
@@ -37,15 +38,16 @@ export function ProductDialog({ product, categories, suppliers, onClose, onSaved
   };
   const update = (key: keyof ProductFormValues, value: string | boolean) => {
     setValues((current) => ({ ...current, [key]: value }));
-    setErrors((current) => ({ ...current, [key]: "", ...(key === "strength" || key === "medicineForm" ? { name: "" } : {}) }));
+    setErrors((current) => ({ ...current, [key === "vatClassification" ? "isVatExempt" : key]: "", ...(key === "strength" || key === "medicineForm" ? { name: "" } : {}) }));
     setFailure("");
   };
   const field = (key: keyof ProductFormValues, label: string, options: { type?: string; placeholder?: string; required?: boolean; hint?: string; choices?: string[] } = {}) => {
     const id = `${prefix}-${key}`;
+    const errorKey = key === "vatClassification" ? "isVatExempt" : key;
     const props = {
       id, name: key, value: String(values[key]), required: options.required,
-      "aria-invalid": Boolean(errors[key]),
-      "aria-describedby": [options.hint ? `${id}-hint` : "", errors[key] ? `${id}-error` : ""].filter(Boolean).join(" ") || undefined,
+      "aria-invalid": Boolean(errors[errorKey]),
+      "aria-describedby": [options.hint ? `${id}-hint` : "", errors[errorKey] ? `${id}-error` : ""].filter(Boolean).join(" ") || undefined,
       onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => update(key, event.target.value),
     };
     return <div className="field" key={key}>
@@ -55,7 +57,7 @@ export function ProductDialog({ product, categories, suppliers, onClose, onSaved
         {[...new Set([...options.choices, ...(values[key] ? [String(values[key])] : [])])].filter(Boolean).map((choice) => <option key={choice} value={choice}>{choice}</option>)}
       </select> : <input {...props} type={options.type ?? "text"} placeholder={options.placeholder} />}
       {options.hint && <span id={`${id}-hint`} className="field-hint">{options.hint}</span>}
-      {errors[key] && <span id={`${id}-error`} className="product-field-error">{errors[key]}</span>}
+      {errors[errorKey] && <span id={`${id}-error`} className="product-field-error">{errors[errorKey]}</span>}
     </div>;
   };
   async function save(event: FormEvent) {
@@ -117,6 +119,7 @@ export function ProductDialog({ product, categories, suppliers, onClose, onSaved
                 {field("sku", "Product code (SKU)", { required: true, placeholder: "e.g. MED-0421", hint: product ? `${PRODUCT_CODE_HINT} An unchanged existing code can be kept.` : PRODUCT_CODE_HINT })}
                 {field("category", "Category", { choices: categories })}
                 {field("price", "Selling price (₱)", { required: true, placeholder: "e.g. 10.00" })}
+                {field("vatClassification", "VAT treatment", {required:true, choices:["VATable", "VAT-exempt"], hint:"Selling price includes VAT where applicable."})}
                 {field("costPrice", "Cost price (₱)", { required: true, placeholder: "e.g. 6.00" })}
                 {field("reorder", "Reorder level", { required: true, placeholder: "e.g. 20" })}
                 <label className="product-checkbox field full-width"><input type="checkbox" checked={values.isDangerousDrug} onChange={(event) => update("isDangerousDrug", event.target.checked)} />Dangerous drug — requires controlled tracking</label>

@@ -33,6 +33,7 @@ export interface ProductBatch {
 
 export interface ProductItem {
   pharmacyDate?: string;
+  isVatExempt?: boolean | null;
   id: string;
   name: string;
   genericName: string;
