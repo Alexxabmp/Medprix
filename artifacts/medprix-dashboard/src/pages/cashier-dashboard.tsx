@@ -98,7 +98,6 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
   const [checkedMissing, setCheckedMissing] = useState(false);
   function closeReceipt() {
     setSelectedReceipt(null);
-    requestAnimationFrame(() => document.getElementById("pos-product-search")?.focus());
   }
   useDialogAccessibility(!!selectedReceipt, ".pos-receipt-dialog", closeReceipt);
   useEffect(() => {
