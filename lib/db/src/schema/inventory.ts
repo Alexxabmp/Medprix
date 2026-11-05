@@ -9,6 +9,7 @@ import {
     date,
     timestamp,
     unique,
+    uniqueIndex,
     index,
     check,
 } from "drizzle-orm/pg-core";
@@ -36,6 +37,7 @@ export const productsTable = pgTable(
         productName: varchar("product_name", { length: 255 }).notNull(),
         genericName: varchar("generic_name", { length: 255 }).notNull(),
         category: varchar("category", { length: 100 }).notNull(),
+        isVatExempt: boolean("is_vat_exempt"),
         isDangerousDrug: boolean("is_dangerous_drug").notNull().default(false),
         sellingPrice: money("selling_price").notNull().default("0.00"),
         costPrice: money("cost_price").notNull().default("0.00"),
@@ -45,7 +47,7 @@ export const productsTable = pgTable(
         updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     },
     (t) => [
-        unique("uq_products_sku").on(t.sku),
+        uniqueIndex("uq_products_sku_ci").on(sql`upper(btrim(${t.sku}))`),
         check("products_selling_price_check", sql`${t.sellingPrice} >= 0`),
         check("products_cost_price_check", sql`${t.costPrice} >= 0`),
         check("products_minimum_stock_level_check", sql`${t.minimumStockLevel} >= 0`),

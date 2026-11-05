@@ -19,30 +19,11 @@ import {
 } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import { Summary } from "@/components/custom-ui/summary-card";
-import {
-  initialTransactionsData,
-  initialSystemLogsData,
-  initialUserActivitiesData,
-} from "@/lib/data";
+import { readResponse, safeError } from "@/lib/feedback";
 import { usePharmacyTransactions } from "@/lib/pharmacy-store";
 import type { SystemLog, UserActivity, UserTransaction, ToastFn } from "@/lib/types";
 
-function getStored<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed as T;
-    }
-  } catch {}
-  return fallback;
-}
-
-function saveStored(key: string, data: any) {
-  try {
-    localStorage.setItem(key, JSON.stringify(data));
-  } catch {}
-}
+const eventTime = (value: string) => new Date(value).toLocaleString();
 
 export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
   const [activeTab, setActiveTab] = useState<"transactions" | "systemLogs" | "userActivity">(
@@ -50,44 +31,36 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
   );
   const {
     transactions: liveTransactions,
-    setTransactions: setLiveTransactions,
     refresh: refreshLiveTransactions,
   } = usePharmacyTransactions();
 
   // Transactions state
   const [transactions, setTransactions] = useState<UserTransaction[]>(() => {
-    if (liveTransactions && liveTransactions.length > 0) return liveTransactions;
-    return getStored("medprix_cached_transactions", initialTransactionsData);
+    return liveTransactions;
   });
   const [trxFilterType, setTrxFilterType] = useState<"All" | "Retail" | "Wholesale">("All");
   const [trxFilterStatus, setTrxFilterStatus] = useState<string>("All");
   const [trxSearch, setTrxSearch] = useState("");
   const [selectedTrx, setSelectedTrx] = useState<UserTransaction | null>(null);
-  const [isUpdatingTrx, setIsUpdatingTrx] = useState(false);
 
   // System Logs state
-  const [systemLogs, setSystemLogs] = useState<SystemLog[]>(() =>
-    getStored("medprix_system_logs", initialSystemLogsData)
-  );
+  const [systemLogs, setSystemLogs] = useState<SystemLog[]>([]);
   const [logSearch, setLogSearch] = useState("");
   const [logFilterStatus, setLogFilterStatus] = useState<string>("All");
   const [selectedLog, setSelectedLog] = useState<SystemLog | null>(null);
 
   // User Activity state
-  const [userActivities, setUserActivities] = useState<UserActivity[]>(() =>
-    getStored("medprix_user_activities", initialUserActivitiesData)
-  );
+  const [userActivities, setUserActivities] = useState<UserActivity[]>([]);
   const [activitySearch, setActivitySearch] = useState("");
   const [activityModuleFilter, setActivityModuleFilter] = useState<string>("All");
 
+  const [auditError, setAuditError] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isBackingUp, setIsBackingUp] = useState(false);
 
   // Keep transactions in sync with pharmacy-store
   useEffect(() => {
-    if (liveTransactions && liveTransactions.length > 0) {
-      setTransactions(liveTransactions);
-    }
+    setTransactions(liveTransactions);
   }, [liveTransactions]);
 
   // Modal body scroll lock
@@ -101,53 +74,21 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
 
   const loadBackendData = async () => {
     setIsRefreshing(true);
+    setAuditError("");
     try {
-      const [txRes, logRes, actRes] = await Promise.all([
-        fetch("/api/admin/transactions", { credentials: "include" }).catch(() => null),
-        fetch("/api/admin/system-logs", { credentials: "include" }).catch(() => null),
-        fetch("/api/admin/user-activities", { credentials: "include" }).catch(() => null),
+      const [, logs, activities] = await Promise.all([
+        refreshLiveTransactions(),
+        fetch("/api/admin/system-logs", { credentials: "include" }).then(res => readResponse(res, "Audit records are unavailable. Refresh to retry.")),
+        fetch("/api/admin/user-activities", { credentials: "include" }).then(res => readResponse(res, "Audit records are unavailable. Refresh to retry.")),
       ]);
-
-      if (txRes?.ok) {
-        const data = await txRes.json();
-        if (Array.isArray(data) && data.length > 0) {
-          const localTx = getStored<UserTransaction[]>("medprix_cached_transactions", []);
-          const merged = [...data];
-          for (const lt of localTx) {
-            if (
-              !merged.some(
-                (m) =>
-                  m.id === lt.id ||
-                  m.transactionNumber === lt.transactionNumber
-              )
-            ) {
-              merged.unshift(lt);
-            }
-          }
-          setTransactions(merged);
-          setLiveTransactions(merged);
-          saveStored("medprix_cached_transactions", merged);
-        }
-      }
-
-      if (logRes?.ok) {
-        const data = await logRes.json();
-        if (Array.isArray(data) && data.length > 0) {
-          setSystemLogs(data);
-          saveStored("medprix_system_logs", data);
-        }
-      }
-
-      if (actRes?.ok) {
-        const data = await actRes.json();
-        if (Array.isArray(data) && data.length > 0) {
-          setUserActivities(data);
-          saveStored("medprix_user_activities", data);
-        }
-      }
-    } catch {} finally {
-      setIsRefreshing(false);
-    }
+      if (!Array.isArray(logs) || !Array.isArray(activities)) throw new Error("Invalid audit response");
+      setSystemLogs(logs);
+      setUserActivities(activities);
+    } catch (error) {
+      setSystemLogs([]);
+      setUserActivities([]);
+      setAuditError(safeError(error, "Audit records are unavailable. Refresh to retry."));
+    } finally { setIsRefreshing(false); }
   };
 
   // Fetch from API backend on mount
@@ -155,58 +96,14 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
     void loadBackendData();
   }, []);
 
-  const handleUpdateTransactionStatus = async (
-    trxId: number | string,
-    nextStatus: "Completed" | "Voided" | "Refunded" | "Pending"
-  ) => {
-    setIsUpdatingTrx(true);
-    const updated = transactions.map((t) =>
-      t.id === trxId || t.transactionNumber === String(trxId)
-        ? { ...t, status: nextStatus }
-        : t
-    );
-    setTransactions(updated);
-    setLiveTransactions(updated);
-    saveStored("medprix_cached_transactions", updated);
-
-    if (selectedTrx && (selectedTrx.id === trxId || selectedTrx.transactionNumber === String(trxId))) {
-      setSelectedTrx({ ...selectedTrx, status: nextStatus });
-    }
-
-    try {
-      await fetch(`/api/admin/transactions/${trxId}/status`, {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: nextStatus }),
-      });
-      onToast(`Transaction marked as ${nextStatus}.`);
-    } catch {
-      onToast(`Status updated locally to ${nextStatus}.`);
-    } finally {
-      setIsUpdatingTrx(false);
-    }
-  };
-
   const handleCreateBackup = async () => {
     setIsBackingUp(true);
     try {
-      const res = await fetch("/api/admin/backup", {
-        method: "POST",
-        credentials: "include",
-      });
-      if (res.ok) {
-        const data = await res.json();
-        onToast(data.message || `System backup ${data.backupId} created.`);
-      } else {
-        onToast("System state backed up successfully.");
-      }
-      void loadBackendData();
-    } catch {
-      onToast("System state snapshot saved locally.");
-    } finally {
-      setIsBackingUp(false);
-    }
+      await readResponse(await fetch("/api/admin/backup", { method: "POST", credentials: "include" }), "Database backups are unavailable. No backup was created.");
+      onToast("Backup request completed.");
+    } catch (error) {
+      onToast({ message: safeError(error, "Database backups are unavailable. No backup was created."), variant: "error" });
+    } finally { setIsBackingUp(false); }
   };
 
   const exportTransactionsCsv = () => {
@@ -250,7 +147,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
   };
 
   const exportLogsCsv = () => {
-    const headers = ["ID", "Date & Time", "User", "Role", "Action", "Module", "Description", "Status", "IP"];
+    const headers = ["ID", "Date & Time", "User", "Current role", "Action", "Module", "Description", "Status", "IP"];
     const rows = filteredLogs.map((l) => [
       `"${l.id}"`,
       `"${l.dateTime}"`,
@@ -307,7 +204,6 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
   const filteredActivities = userActivities.filter((act) => {
     const matchesModule =
       activityModuleFilter === "All" ||
-      act.module.includes(activityModuleFilter.replace(/[^\w\s]/g, "").trim()) ||
       act.module === activityModuleFilter;
     const q = activitySearch.toLowerCase();
     const matchesSearch =
@@ -346,6 +242,8 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
           </div>
         }
       />
+
+      {auditError && <div role="alert" className="surface-card" style={{ padding: 12, marginBottom: 12 }}>{auditError}</div>}
 
       {/* Feature selection tabs */}
       <div style={{ display: "flex", gap: 6, marginBottom: 20, flexWrap: "wrap" }}>
@@ -532,17 +430,17 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
           <div className="summary-strip">
             <Summary
               label="Total audit logs"
-              value={String(systemLogs.length)}
+              value={auditError ? "Unavailable" : String(systemLogs.length)}
               caption="System & security events"
             />
             <Summary
               label="Successful events"
-              value={String(systemLogs.filter((l) => l.status === "Success").length)}
+              value={auditError ? "Unavailable" : String(systemLogs.filter((l) => l.status === "Success").length)}
               caption="Executed normally"
             />
             <Summary
               label="Failed / Alerts"
-              value={String(systemLogs.filter((l) => l.status === "Failed").length)}
+              value={auditError ? "Unavailable" : String(systemLogs.filter((l) => l.status !== "Success").length)}
               caption="Requires attention"
               tone={
                 systemLogs.filter((l) => l.status === "Failed").length > 0 ? "warning" : "neutral"
@@ -572,6 +470,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                   <option value="All">All statuses</option>
                   <option value="Success">Success</option>
                   <option value="Failed">Failed</option>
+                  <option value="Warning">Warning</option>
                 </select>
                 <button
                   type="button"
@@ -588,7 +487,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                 <thead>
                   <tr>
                     <th>Date &amp; Time</th>
-                    <th>User</th>
+                    <th>User / current role</th>
                     <th>Action</th>
                     <th>Module</th>
                     <th>Details</th>
@@ -597,7 +496,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                 <tbody>
                   {filteredLogs.map((log) => (
                     <tr key={log.id} data-testid={`row-log-${log.id}`}>
-                      <td className="muted">{log.dateTime}</td>
+                      <td className="muted">{eventTime(log.dateTime)}</td>
                       <td>
                         <strong>{log.user}</strong>{" "}
                         <span className="muted" style={{ fontSize: 12 }}>
@@ -609,7 +508,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                           <span>{log.action}</span>
                           <span
                             className={`pill ${
-                              log.status === "Success" ? "success" : "danger"
+                              log.status === "Success" ? "success" : log.status === "Warning" ? "warning" : "danger"
                             }`}
                             style={{ fontSize: 12 }}>
                             {log.status}
@@ -636,7 +535,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                 </tbody>
               </table>
 
-              {filteredLogs.length === 0 && (
+              {filteredLogs.length === 0 && !auditError && (
                 <div className="empty-state">
                   <FileText size={28} />
                   <div>No system audit logs found.</div>
@@ -655,17 +554,17 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
           <div className="summary-strip">
             <Summary
               label="Tracked activities"
-              value={String(userActivities.length)}
+              value={auditError ? "Unavailable" : String(userActivities.length)}
               caption="Recorded across workspace"
             />
             <Summary
               label="Normal operations"
-              value={String(userActivities.filter((a) => a.flag === "Normal").length)}
+              value={auditError ? "Unavailable" : String(userActivities.filter((a) => a.flag === "Normal").length)}
               caption="Standard user usage"
             />
             <Summary
               label="Suspicious / Flagged"
-              value={String(userActivities.filter((a) => a.flag !== "Normal").length)}
+              value={auditError ? "Unavailable" : String(userActivities.filter((a) => a.flag !== "Normal").length)}
               caption="Detected security alerts"
               tone={
                 userActivities.filter((a) => a.flag !== "Normal").length > 0
@@ -689,14 +588,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
               </div>
 
               <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
-                {[
-                  "All",
-                  "🔐 Authentication",
-                  "👤 Account Activity",
-                  "📦 Inventory Activity",
-                  "💰 Sales & Wholesale Activity",
-                  "⚙️ System Activity",
-                ].map((mod) => (
+                {["All", ...Array.from(new Set(userActivities.map(activity => activity.module))).sort()].map((mod) => (
                   <button
                     key={mod}
                     type="button"
@@ -716,7 +608,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                   <tr>
                     <th>Date &amp; Time</th>
                     <th>User</th>
-                    <th>Role</th>
+                    <th>Current role</th>
                     <th>Activity</th>
                     <th>Module</th>
                     <th>Description</th>
@@ -725,7 +617,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                 <tbody>
                   {filteredActivities.map((act) => (
                     <tr key={act.id} data-testid={`row-activity-${act.id}`}>
-                      <td className="muted">{act.dateTime}</td>
+                      <td className="muted">{eventTime(act.dateTime)}</td>
                       <td>
                         <strong>{act.user}</strong>
                       </td>
@@ -759,7 +651,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                 </tbody>
               </table>
 
-              {filteredActivities.length === 0 && (
+              {filteredActivities.length === 0 && !auditError && (
                 <div className="empty-state">
                   <Activity size={28} />
                   <div>No user activities match the filter.</div>
@@ -824,22 +716,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                   </h4>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ fontSize: 12, fontWeight: 600 }}>Status:</span>
-                    <select
-                      className="select"
-                      style={{ padding: "3px 8px", fontSize: 12 }}
-                      value={selectedTrx.status}
-                      disabled={isUpdatingTrx}
-                      onChange={(e) =>
-                        void handleUpdateTransactionStatus(
-                          selectedTrx.id,
-                          e.target.value as any
-                        )
-                      }>
-                      <option value="Completed">Completed</option>
-                      <option value="Voided">Voided</option>
-                      <option value="Refunded">Refunded</option>
-                      <option value="Pending">Pending</option>
-                    </select>
+                    <span title="Recorded status; changes require an audited reversal workflow">{selectedTrx.status}</span>
                   </div>
                 </div>
                 <div
@@ -1081,7 +958,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                         }}>
                         Date &amp; Time
                       </td>
-                      <td style={{ color: "hsl(var(--foreground))" }}>{selectedLog.dateTime}</td>
+                      <td style={{ color: "hsl(var(--foreground))" }}>{eventTime(selectedLog.dateTime)}</td>
                     </tr>
                     <tr>
                       <td
@@ -1107,7 +984,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                           color: "hsl(var(--foreground))",
                           whiteSpace: "nowrap",
                         }}>
-                        Role
+                        Current role
                       </td>
                       <td>
                         <span className="pill neutral">{selectedLog.role}</span>

@@ -3,7 +3,6 @@ import { createPortal } from "react-dom";
 import {
   ArrowDownLeft,
   ArrowUpRight,
-  CalendarDays,
   CircleDollarSign,
   ClipboardList,
   Download,
@@ -17,6 +16,11 @@ import {
   X,
 } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
+import { DateControl } from "@/components/custom-ui/date-control";
+import { formatCalendarDate, recordsOnDate } from "@/lib/business-date";
+import { useBusinessDate } from "@/lib/use-business-date";
+import { summarizeShiftSales } from "@/lib/shift-sales";
+import { printReceipt } from "@/lib/receipt-print";
 import type { ToastFn, ShiftReceipt } from "@/lib/types";
 import { usePharmacyTransactions } from "@/lib/pharmacy-store";
 
@@ -30,7 +34,10 @@ const formatPeso = (amount: number) =>
 
 export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
   const [activeModal, setActiveModal] = useState<"sales" | "drawer" | "transactions" | "till" | null>(null);
-  const { receipts: shiftReceipts, loading: isLoading } = usePharmacyTransactions();
+  const { receipts, loading: isLoading } = usePharmacyTransactions();
+  const { date: shiftDate, selectDate } = useBusinessDate();
+  const shiftReceipts = recordsOnDate(receipts, shiftDate);
+  const dateLabel = formatCalendarDate(shiftDate);
 
   // Modal body scroll lock
   useEffect(() => {
@@ -44,22 +51,11 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
   const [searchReceipt, setSearchReceipt] = useState("");
   const [selectedReceipt, setSelectedReceipt] = useState<ShiftReceipt | null>(null);
 
-  // Compute live shift metrics
-  const totalSales = shiftReceipts.reduce((sum, r) => sum + r.total, 0);
-  const totalReceiptsCount = shiftReceipts.length;
-  const avgBasket = totalReceiptsCount > 0 ? totalSales / totalReceiptsCount : 0;
-
-  const cashReceipts = shiftReceipts.filter((r) => r.method.toLowerCase().includes("cash"));
-  const cashSalesTotal = cashReceipts.reduce((sum, r) => sum + r.total, 0);
-
-  const gcashReceipts = shiftReceipts.filter((r) => r.method.toLowerCase().includes("gcash"));
-  const gcashSalesTotal = gcashReceipts.reduce((sum, r) => sum + r.total, 0);
-
-  const cardReceipts = shiftReceipts.filter((r) => {
-    const m = r.method.toLowerCase();
-    return m.includes("card") || m.includes("credit") || m.includes("debit");
-  });
-  const cardSalesTotal = cardReceipts.reduce((sum, r) => sum + r.total, 0);
+  const {
+    completed: completedReceipts, total: totalSales, count: totalReceiptsCount,
+    average: avgBasket, cash: cashSalesTotal, gcash: gcashSalesTotal, card: cardSalesTotal,
+    cashCount, gcashCount, cardCount,
+  } = summarizeShiftSales(shiftReceipts);
 
   const cashPct = totalSales > 0 ? ((cashSalesTotal / totalSales) * 100).toFixed(1) : "0.0";
   const gcashPct = totalSales > 0 ? ((gcashSalesTotal / totalSales) * 100).toFixed(1) : "0.0";
@@ -68,7 +64,9 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
   // Cash in Drawer calculations
   const openingFloat = 5000.0;
   const cashDrop = 2000.0;
-  const currentExpectedCash = openingFloat + cashSalesTotal - cashDrop;
+  // Historical receipt browsing must not turn the active drawer into a past shift.
+  const currentCashSales = summarizeShiftSales(recordsOnDate(receipts, new Date())).cash;
+  const currentExpectedCash = openingFloat + currentCashSales - cashDrop;
 
   const calculateBills = (amount: number) => {
     let rem = Math.max(0, Math.floor(amount));
@@ -104,10 +102,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
             <span className="pill success" style={{ padding: "6px 12px", fontSize: 12 }}>
               <ShieldCheck size={13} style={{ marginRight: 4 }} /> Terminal #01 · Active
             </span>
-            <label className="date-control" data-testid="control-cashier-date">
-              <CalendarDays size={14} />
-              <span>September 1, 2026</span>
-            </label>
+            <DateControl date={shiftDate} onDateChange={selectDate} />
           </div>
         }
       />
@@ -125,12 +120,12 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <Receipt size={15} />
-                <h3 className="card-title" style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Today's Shift Sales</h3>
+                <h3 className="card-title" style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Shift Sales · {dateLabel}</h3>
               </div>
               <span className="pill neutral" style={{ fontSize: 12 }}>Feature 1</span>
             </div>
             <p className="muted" style={{ fontSize: 12, margin: 0, lineHeight: 1.5 }}>
-              View total sales made during your active shift, receipt counts, and revenue breakdown by payment method.
+              View completed sales for {dateLabel}, receipt counts, and revenue breakdown by payment method.
             </p>
           </div>
 
@@ -192,13 +187,13 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
               <span className="pill neutral" style={{ fontSize: 12 }}>Feature 3</span>
             </div>
             <p className="muted" style={{ fontSize: 12, margin: 0, lineHeight: 1.5 }}>
-              Transactions recorded during current shift. Search receipt numbers, inspect itemized sales, and audit cashier receipts.
+              Transactions recorded on {dateLabel}. Search receipt numbers, inspect itemized sales, and audit cashier receipts.
             </p>
           </div>
 
           <div style={{ marginTop: 20, paddingTop: 14, borderTop: "1px solid hsl(var(--border))", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div>
-              <div style={{ fontSize: 20, fontWeight: 700 }}>{totalReceiptsCount} Receipts Logged</div>
+              <div style={{ fontSize: 20, fontWeight: 700 }}>{shiftReceipts.length} Receipts Logged</div>
               <span className="muted" style={{ fontSize: 12 }}>Total {formatPeso(totalSales)} recorded</span>
             </div>
             <button className="button dark" style={{ padding: "6px 14px", fontSize: 12 }}>
@@ -253,8 +248,8 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
           <div className="modal" style={{ width: "min(680px, 100%)" }}>
             <div className="modal-header">
               <div>
-                <h2>Today's Shift Sales</h2>
-                <p className="modal-sub">Live sales performance summary for Shift #1</p>
+                <h2>Shift Sales · {dateLabel}</h2>
+                <p className="modal-sub">Completed sales recorded on {dateLabel}</p>
               </div>
               <button
                 type="button"
@@ -294,7 +289,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                 <div style={{ border: "1px solid hsl(var(--border))", borderRadius: 12, padding: "12px 14px", background: "hsl(var(--surface))" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                     <span style={{ fontSize: 12, fontWeight: 600 }}>Cash</span>
-                    <span className="pill success" style={{ fontSize: 12 }}>{cashReceipts.length} sale(s)</span>
+                    <span className="pill success" style={{ fontSize: 12 }}>{cashCount} sale(s)</span>
                   </div>
                   <strong style={{ fontSize: 16 }}>{formatPeso(cashSalesTotal)}</strong>
                   <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>{cashPct}% of total</div>
@@ -302,7 +297,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                 <div style={{ border: "1px solid hsl(var(--border))", borderRadius: 12, padding: "12px 14px", background: "hsl(var(--surface))" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                     <span style={{ fontSize: 12, fontWeight: 600 }}>GCash</span>
-                    <span className="pill neutral" style={{ fontSize: 12 }}>{gcashReceipts.length} sale(s)</span>
+                    <span className="pill neutral" style={{ fontSize: 12 }}>{gcashCount} sale(s)</span>
                   </div>
                   <strong style={{ fontSize: 16 }}>{formatPeso(gcashSalesTotal)}</strong>
                   <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>{gcashPct}% of total</div>
@@ -310,7 +305,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                 <div style={{ border: "1px solid hsl(var(--border))", borderRadius: 12, padding: "12px 14px", background: "hsl(var(--surface))" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                     <span style={{ fontSize: 12, fontWeight: 600 }}>Card</span>
-                    <span className="pill neutral" style={{ fontSize: 12 }}>{cardReceipts.length} sale(s)</span>
+                    <span className="pill neutral" style={{ fontSize: 12 }}>{cardCount} sale(s)</span>
                   </div>
                   <strong style={{ fontSize: 16 }}>{formatPeso(cardSalesTotal)}</strong>
                   <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>{cardPct}% of total</div>
@@ -336,7 +331,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {shiftReceipts.map((trx) => (
+                    {completedReceipts.map((trx) => (
                       <tr key={trx.id}>
                         <td><strong>{trx.id}</strong></td>
                         <td className="muted">{trx.time}</td>
@@ -346,6 +341,9 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                         <td><span className="pill success">{trx.status}</span></td>
                       </tr>
                     ))}
+                    {completedReceipts.length === 0 && (
+                      <tr><td colSpan={6} className="muted">No completed sales recorded on {dateLabel}.</td></tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -452,7 +450,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
             <div className="modal-header">
               <div>
                 <h2>Shift Receipts Log</h2>
-                <p className="modal-sub">Receipts and transactions recorded during current shift (Terminal #01)</p>
+                <p className="modal-sub">Receipts and transactions recorded on {dateLabel}</p>
               </div>
               <button
                 type="button"
@@ -525,7 +523,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                   {filteredShiftReceipts.length === 0 && (
                     <tr>
                       <td colSpan={6} style={{ textAlign: "center", padding: 24 }} className="muted">
-                        No shift receipts match that search query.
+                        No receipts match {dateLabel} and the current search.
                       </td>
                     </tr>
                   )}
@@ -718,9 +716,12 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                 <button
                   type="button"
                   className="button dark"
-                  onClick={() => {
-                    onToast(`Re-printing receipt ${selectedReceipt.id}...`);
-                    setSelectedReceipt(null);
+                  onClick={async () => {
+                    try {
+                      await printReceipt(selectedReceipt);
+                    } catch {
+                      onToast("Could not prepare the receipt. Please try printing again.");
+                    }
                   }}>
                   <Download size={13} /> Re-print Receipt
                 </button>

@@ -1,5 +1,8 @@
+import { retailSnapshotChecks } from "../retail-snapshot-contract";
 import {
     pgTable,
+    boolean,
+    jsonb,
     pgEnum,
     uuid,
     varchar,
@@ -50,11 +53,15 @@ export const transactionsTable = pgTable(
         amountTendered: money("amount_tendered").notNull().default("0.00"),
         changeAmount: money("change_amount").notNull().default("0.00"),
         paymentMethod: varchar("payment_method", { length: 50 }).notNull().default("Cash"),
+        checkoutPayload: jsonb("checkout_payload"),
+        cashierNameAtSale: varchar("cashier_name_at_sale", {length:255}),
+        calculationVersion: varchar("calculation_version", {length:32}),
         voidReason: text("void_reason"),
         createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
         updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     },
     (t) => [
+        ...retailSnapshotChecks.filter(c=>c.table_name==="transactions").map(c=>check(c.name,sql.raw(c.definition.slice(6)))),
         index("idx_transactions_cashier_id").on(t.cashierId),
         index("idx_transactions_customer_id").on(t.customerId),
         index("idx_transactions_date").on(t.transactionDate),
@@ -76,10 +83,17 @@ export const transactionItemsTable = pgTable(
         batchId: uuid("batch_id").references(() => batchInfoTable.id, { onDelete: "set null" }),
         quantity: integer("quantity").notNull(),
         unitPriceAtSale: money("unit_price_at_sale").notNull(),
+        productNameAtSale: varchar("product_name_at_sale", {length:255}),
+        isVatExemptAtSale: boolean("is_vat_exempt_at_sale"),
+        vatRateAtSale: numeric("vat_rate_at_sale", {precision:5,scale:2}),
+        vatAmount: money("vat_amount"),
+        netAmount: money("net_amount"),
+        discountAmount: money("discount_amount"),
         subtotal: money("subtotal").notNull(),
         createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     },
     (t) => [
+        ...retailSnapshotChecks.filter(c=>c.table_name==="transaction_items").map(c=>check(c.name,sql.raw(c.definition.slice(6)))),
         check("transaction_items_quantity_check", sql`${t.quantity} > 0`),
         check("transaction_items_unit_price_at_sale_check", sql`${t.unitPriceAtSale} >= 0`),
         check("transaction_items_subtotal_check", sql`${t.subtotal} >= 0`),
@@ -118,8 +132,10 @@ export const receiptsTable = pgTable("receipts", {
     receiptNumber: varchar("receipt_number", { length: 100 })
         .notNull()
         .unique("receipts_receipt_number_key"),
+    merchantNameAtIssue: varchar("merchant_name_at_issue", {length:255}),
     issuedAt: timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, () => retailSnapshotChecks.filter(c => c.table_name === "receipts")
+    .map(c => check(c.name, sql.raw(c.definition.slice(6)))));
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 export type Customer = typeof customersTable.$inferSelect;

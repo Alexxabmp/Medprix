@@ -8,7 +8,6 @@ import {
   Pencil,
   Plus,
   Search,
-  Trash2,
   Users,
   X,
 } from "lucide-react";
@@ -28,7 +27,7 @@ export default function UserManagementPage({
   refreshUsers?: () => void;
 }) {
   const [search, setSearch] = useState("");
-  const [dialog, setDialog] = useState<"create" | "edit" | "reset" | "delete" | null>(
+  const [dialog, setDialog] = useState<"create" | "edit" | "reset" | null>(
     null,
   );
   const [selected, setSelected] = useState<UserRecord | null>(null);
@@ -228,40 +227,6 @@ export default function UserManagementPage({
 
     setDialog(null);
     return;
-  };
-  const openDelete = (user: UserRecord) => {
-    setSelected(user);
-    setDialog("delete");
-  };
-
-  const remove = async () => {
-    if (!selected) return;
-    const userToRemove = selected;
-
-    try {
-      const response = await fetch(
-        `/api/users/${userToRemove.id}`,
-        {
-          method: "DELETE",
-          credentials: "include",
-        },
-      );
-
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        onToast(data.error ?? "Failed to delete user.");
-        return;
-      }
-
-      setUsers(users.filter((item) => item.id !== userToRemove.id));
-      refreshUsers?.();
-      setDialog(null);
-      setSelected(null);
-      onToast("User account removed");
-    } catch {
-      onToast("Could not reach the server.");
-    }
   };
   const reset = async (event: FormEvent) => {
     event.preventDefault();
@@ -507,13 +472,7 @@ export default function UserManagementPage({
                         }}>
                         <KeyRound size={13} />
                       </button>
-                      <button
-                        className="icon-button"
-                        data-testid={`button-delete-user-${user.id}`}
-                        aria-label={`Delete ${user.name}`}
-                        onClick={() => openDelete(user)}>
-                        <Trash2 size={13} />
-                      </button>
+
                     </div>
                   </td>
                 </tr>
@@ -650,63 +609,6 @@ export default function UserManagementPage({
                 </button>
               </div>
             </form>
-          </div>,
-          document.body,
-        )}
-      {dialog === "delete" &&
-        selected &&
-        createPortal(
-          <div
-            className="modal-backdrop"
-            onMouseDown={(event) =>
-              event.currentTarget === event.target && setDialog(null)
-            }>
-            <div className="modal dialog" data-testid="modal-delete-user">
-              <div className="modal-header">
-                <div>
-                  <h2>Delete user account</h2>
-                  <p className="modal-sub">
-                    Remove {selected.name} from Medprix.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  className="modal-close"
-                  data-testid="button-close-delete-user"
-                  onClick={() => setDialog(null)}>
-                  <X size={16} />
-                </button>
-              </div>
-              <div
-                style={{
-                  border: "1px solid hsl(var(--border))",
-                  borderRadius: 11,
-                  background: "hsl(var(--surface-soft))",
-                  padding: 12,
-                  fontSize: 12,
-                }}>
-                <strong>{selected.name}</strong>
-                <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-                  {selected.username} - {selected.role} - {selected.status}
-                </div>
-              </div>
-              <div className="modal-actions">
-                <button
-                  type="button"
-                  className="button soft"
-                  onClick={() => setDialog(null)}>
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="button dark"
-                  data-testid="button-confirm-delete-user"
-                  style={{ background: "#dc2626", borderColor: "#dc2626", color: "#fff" }}
-                  onClick={remove}>
-                  <Trash2 size={13} /> Delete account
-                </button>
-              </div>
-            </div>
           </div>,
           document.body,
         )}

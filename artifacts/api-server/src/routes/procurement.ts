@@ -1,7 +1,9 @@
-import { Router, type IRouter, type Request, type Response } from "express";
-import { and, desc, eq, ilike, inArray, or } from "drizzle-orm";
+import { deliveryKey, deliveryPayload, readDelivery, submitDelivery, DeliveryInputError, DeliveryReferenceConflict } from "../lib/supplier-delivery-submissions";
+import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
+import { asc, desc, eq, ilike, or } from "drizzle-orm";
 import {
   db,
+  queryDb,
   poItemsTable,
   productsTable,
   purchaseOrdersTable,
@@ -9,13 +11,16 @@ import {
   deliveryItemsTable,
   supplierInvoicesTable,
   suppliersTable,
-  batchInfoTable,
-  stockMovementsTable,
   accountsPayableTable,
-  supplierPaymentsTable,
 } from "@workspace/db";
 import { requireAuth, requireRoles } from "../middleware/auth";
 
+import { createSettlementService, SettlementError } from "../lib/supplier-payments";
+import { identifierConflict } from "../lib/identifier-conflicts";
+import { readSupplierPayables, readSupplierInvoices, readSupplierHistory } from "../lib/supplier-payable-read-model";
+import { readReceivedQuantities, readOrderReceivingState, ReceivingError } from "../lib/supplier-stock-receipts";
+
+const settlement = createSettlementService(db);
 const router: IRouter = Router();
 const poStatuses = purchaseOrdersTable.status.enumValues;
 const uuidPattern =
@@ -29,43 +34,6 @@ function asId(value: string | string[] | undefined): string {
 
 function formatAmount(value: string | number): string {
   return Number(value || 0).toFixed(2);
-}
-
-async function ensureAccountsPayableRecords(supplierId?: string) {
-  const invoices = supplierId
-    ? await db
-        .select()
-        .from(supplierInvoicesTable)
-        .where(eq(supplierInvoicesTable.supplierId, supplierId))
-    : await db.select().from(supplierInvoicesTable);
-  if (invoices.length === 0) return;
-
-  const invoiceIds = invoices.map((invoice) => invoice.id);
-  const existing = await db
-    .select({ invoiceId: accountsPayableTable.invoiceId })
-    .from(accountsPayableTable)
-    .where(inArray(accountsPayableTable.invoiceId, invoiceIds));
-  const existingIds = new Set(existing.map((payable) => payable.invoiceId));
-  const missing = invoices.filter(
-    (invoice) =>
-      !existingIds.has(invoice.id) && Number(invoice.invoiceAmount) > 0,
-  );
-  if (missing.length === 0) return;
-
-  await db
-    .insert(accountsPayableTable)
-    .values(
-      missing.map((invoice) => ({
-        supplierId: invoice.supplierId,
-        invoiceId: invoice.id,
-        totalOwed: formatAmount(invoice.invoiceAmount),
-        totalPaid: invoice.isPaid
-          ? formatAmount(invoice.invoiceAmount)
-          : "0.00",
-        balance: invoice.isPaid ? "0.00" : formatAmount(invoice.invoiceAmount),
-      })),
-    )
-    .onConflictDoNothing({ target: accountsPayableTable.invoiceId });
 }
 
 async function findSupplier(idOrName: string) {
@@ -227,37 +195,17 @@ router.get(
       .where(eq(suppliersTable.id, supplierId));
     if (!supplier)
       return res.status(404).json({ error: "Supplier not found." });
-    await ensureAccountsPayableRecords(supplierId);
-
-    const [orders, deliveries, invoices, payables] = await Promise.all([
-      db
-        .select()
-        .from(purchaseOrdersTable)
-        .where(eq(purchaseOrdersTable.supplierId, supplierId))
-        .orderBy(desc(purchaseOrdersTable.orderDate)),
+    const [orders, deliveries, model] = await Promise.all([
+      db.select().from(purchaseOrdersTable).where(eq(purchaseOrdersTable.supplierId,supplierId)).orderBy(desc(purchaseOrdersTable.orderDate)),
       db.select().from(supplierDeliveriesTable),
-      db
-        .select()
-        .from(supplierInvoicesTable)
-        .where(eq(supplierInvoicesTable.supplierId, supplierId))
-        .orderBy(desc(supplierInvoicesTable.createdAt)),
-      db
-        .select()
-        .from(accountsPayableTable)
-        .where(eq(accountsPayableTable.supplierId, supplierId)),
+      readSupplierHistory(queryDb,supplierId),
     ]);
+    const invoices=model.invoices,payables=model.payables;
     const orderIds = orders.map((order) => order.id);
     const supplierDeliveries = orderIds.length
       ? deliveries.filter((delivery) => orderIds.includes(delivery.poId))
       : [];
-    const payableIds = payables.map((payable) => payable.id);
-    const payments = payableIds.length
-      ? await db
-          .select()
-          .from(supplierPaymentsTable)
-          .where(inArray(supplierPaymentsTable.apId, payableIds))
-          .orderBy(desc(supplierPaymentsTable.paymentDate))
-      : [];
+    const payments=model.payments;
 
     return res.json({
       success: true,
@@ -270,12 +218,10 @@ router.get(
             0,
           ),
         ),
-        totalPaid: formatAmount(
-          payables.reduce((sum, payable) => sum + Number(payable.totalPaid), 0),
-        ),
-        openBalance: formatAmount(
-          payables.reduce((sum, payable) => sum + Number(payable.balance), 0),
-        ),
+        totalPaid: model.totalPaid,
+        openBalance: model.summary.totalOpen,
+        needsReview: model.summary.needsReview,
+        invoicesNeedingReview: model.reconciliation.invoicesNeedingReview,
       },
       orders,
       deliveries: supplierDeliveries,
@@ -290,131 +236,29 @@ router.get(
   "/accounts-payable",
   requireRoles("Admin", "FrontDesk"),
   async (_req: Request, res: Response) => {
-    await ensureAccountsPayableRecords();
-    const [payables, suppliers, invoices] = await Promise.all([
-      db
-        .select()
-        .from(accountsPayableTable)
-        .orderBy(desc(accountsPayableTable.createdAt)),
-      db.select().from(suppliersTable),
-      db.select().from(supplierInvoicesTable),
-    ]);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const rows = payables.map((payable) => {
-      const invoice = invoices.find((item) => item.id === payable.invoiceId);
-      const dueDate = invoice?.dueDate
-        ? new Date(`${invoice.dueDate}T00:00:00`)
-        : null;
-      const balance = Number(payable.balance);
-      return {
-        ...payable,
-        supplier:
-          suppliers.find((item) => item.id === payable.supplierId)
-            ?.supplierName || "Unknown supplier",
-        invoiceNumber: invoice?.invoiceNumber || "Unknown invoice",
-        dueDate: invoice?.dueDate || null,
-        status:
-          balance <= 0
-            ? "Paid"
-            : dueDate && dueDate < today
-              ? "Overdue"
-              : "Open",
-      };
-    });
-    const weekEnd = new Date(today);
-    weekEnd.setDate(weekEnd.getDate() + 7);
-    return res.json({
-      success: true,
-      accountsPayable: rows,
-      summary: {
-        totalOpen: formatAmount(
-          rows.reduce((sum, row) => sum + Number(row.balance), 0),
-        ),
-        overdue: formatAmount(
-          rows
-            .filter((row) => row.status === "Overdue")
-            .reduce((sum, row) => sum + Number(row.balance), 0),
-        ),
-        dueThisWeek: formatAmount(
-          rows
-            .filter(
-              (row) =>
-                row.dueDate &&
-                new Date(`${row.dueDate}T00:00:00`) >= today &&
-                new Date(`${row.dueDate}T00:00:00`) <= weekEnd,
-            )
-            .reduce((sum, row) => sum + Number(row.balance), 0),
-        ),
-      },
-    });
+    const model=await readSupplierPayables(queryDb);
+    return res.json({success:true,accountsPayable:model.payables,summary:model.summary,reconciliation:model.reconciliation});
   },
 );
 
-router.post(
-  "/supplier-payments",
-  requireRoles("Admin", "FrontDesk"),
-  async (req: Request, res: Response) => {
-    const { apId, amountPaid, paymentDate, notes } = req.body ?? {};
-    const amount = Number(amountPaid);
-    if (
-      !uuidPattern.test(String(apId || "")) ||
-      !Number.isFinite(amount) ||
-      amount <= 0
-    ) {
-      return res.status(400).json({
-        error: "A valid payable and positive payment amount are required.",
-      });
-    }
-    const [payable] = await db
-      .select()
-      .from(accountsPayableTable)
-      .where(eq(accountsPayableTable.id, apId));
-    if (!payable)
-      return res.status(404).json({ error: "Account payable not found." });
-    if (amount > Number(payable.balance))
-      return res
-        .status(400)
-        .json({ error: "Payment cannot exceed the outstanding balance." });
-    const paidAt = paymentDate
-      ? new Date(`${paymentDate}T00:00:00`)
-      : new Date();
-    if (Number.isNaN(paidAt.getTime()))
-      return res.status(400).json({ error: "Enter a valid payment date." });
+router.post("/supplier-payments", async (req: Request, res: Response) => {
+  try {
+    const result = await settlement.save(req.body, req.get("Idempotency-Key"));
+    return res.status(result.replayed ? 200 : 201).json({ success: true, ...result });
+  } catch (error) {
+    if (error instanceof SettlementError) return res.status(error.status).json({ error: error.message });
+    throw error;
+  }
+});
 
-    const result = await db.transaction(async (tx) => {
-      const newPaid = Number(payable.totalPaid) + amount;
-      const newBalance = Number(payable.balance) - amount;
-      const [payment] = await tx
-        .insert(supplierPaymentsTable)
-        .values({
-          apId: payable.id,
-          amountPaid: formatAmount(amount),
-          paymentDate: paidAt,
-          notes: typeof notes === "string" ? notes.trim() || null : null,
-        })
-        .returning();
-      const [updated] = await tx
-        .update(accountsPayableTable)
-        .set({
-          totalPaid: formatAmount(newPaid),
-          balance: formatAmount(newBalance),
-          lastPaymentDate: paidAt.toISOString().slice(0, 10),
-          updatedAt: new Date(),
-        })
-        .where(eq(accountsPayableTable.id, payable.id))
-        .returning();
-      if (newBalance === 0) {
-        await tx
-          .update(supplierInvoicesTable)
-          .set({ isPaid: true })
-          .where(eq(supplierInvoicesTable.id, payable.invoiceId));
-      }
-      return { payment, payable: updated };
-    });
-    return res.status(201).json({ success: true, ...result });
-  },
-);
+router.get("/supplier-payments/:key", async (req: Request, res: Response) => {
+  try {
+    return res.json({ success: true, ...await settlement.reconcile(String(req.query.apId || ""), asId(req.params.key)) });
+  } catch (error) {
+    if (error instanceof SettlementError) return res.status(error.status).json({ error: error.message });
+    throw error;
+  }
+});
 
 router.get("/suppliers", async (_req: Request, res: Response) => {
   const [suppliers, purchaseOrders] = await Promise.all([
@@ -459,11 +303,12 @@ router.get("/purchase-orders", async (_req: Request, res: Response) => {
     db
       .select()
       .from(purchaseOrdersTable)
-      .orderBy(desc(purchaseOrdersTable.orderDate)),
+      .orderBy(desc(purchaseOrdersTable.updatedAt), desc(purchaseOrdersTable.createdAt), asc(purchaseOrdersTable.id)),
     db.select().from(suppliersTable),
     db.select().from(poItemsTable),
     db.select().from(productsTable),
   ]);
+  const receivedQuantities = await readReceivedQuantities(db);
 
   const result = orders.map((order) => {
     const orderItems = items.filter((item) => item.poId === order.id);
@@ -486,6 +331,8 @@ router.get("/purchase-orders", async (_req: Request, res: Response) => {
           "Product",
         sku: products.find((p) => p.id === item.productId)?.sku || "",
         quantityOrdered: item.quantityOrdered,
+        quantityReceived: receivedQuantities.get(`${order.id}:${item.productId}`) || 0,
+        quantityRemaining: Math.max(0, item.quantityOrdered - (receivedQuantities.get(`${order.id}:${item.productId}`) || 0)),
         unitCost: formatAmount(item.unitCost),
         lineTotal: formatAmount(item.lineTotal),
       })),
@@ -510,6 +357,7 @@ router.get(
       db.select().from(poItemsTable).where(eq(poItemsTable.poId, order.id)),
       db.select().from(productsTable),
     ]);
+    const receiving = await readOrderReceivingState(db, order.id);
 
     return res.json({
       success: true,
@@ -522,6 +370,8 @@ router.get(
         sku:
           products.find((product) => product.id === item.productId)?.sku || "",
         quantityOrdered: item.quantityOrdered,
+        quantityReceived: receiving.find(row => row.productId === item.productId)?.quantityReceived || 0,
+        quantityRemaining: receiving.find(row => row.productId === item.productId)?.quantityRemaining || 0,
         unitCost: formatAmount(item.unitCost),
         lineTotal: formatAmount(item.lineTotal),
       })),
@@ -532,7 +382,7 @@ router.get(
 router.get("/supplier-deliveries", async (_req: Request, res: Response) => {
   const [deliveries, deliveryItems, orders, suppliers, products] =
     await Promise.all([
-      db.select().from(supplierDeliveriesTable),
+      db.select().from(supplierDeliveriesTable).orderBy(desc(supplierDeliveriesTable.createdAt), asc(supplierDeliveriesTable.id)),
       db.select().from(deliveryItemsTable),
       db.select().from(purchaseOrdersTable),
       db.select().from(suppliersTable),
@@ -574,212 +424,23 @@ router.get("/supplier-deliveries", async (_req: Request, res: Response) => {
 });
 
 router.get("/supplier-invoices", async (_req: Request, res: Response) => {
-  const [invoices, suppliers, orders] = await Promise.all([
-    db.select().from(supplierInvoicesTable),
-    db.select().from(suppliersTable),
-    db.select().from(purchaseOrdersTable),
-  ]);
-
-  const supplierById = new Map(suppliers.map((supplier) => [supplier.id, supplier]));
-  const orderById = new Map(orders.map((order) => [order.id, order]));
-  const result = invoices.map((invoice) => ({
-    id: invoice.id,
-    invoiceNumber: invoice.invoiceNumber,
-    supplierId: invoice.supplierId,
-    supplier:
-      supplierById.get(invoice.supplierId)?.supplierName || "Unknown supplier",
-    poId: invoice.poId,
-    poNumber:
-      (invoice.poId ? orderById.get(invoice.poId)?.poNumber : null) || null,
-    dueDate: invoice.dueDate,
-    invoiceAmount: formatAmount(invoice.invoiceAmount),
-    isPaid: invoice.isPaid,
-    status: invoice.isPaid ? "Paid" : "Unpaid",
-  }));
-
-  return res.json({ success: true, invoices: result });
+  const model=await readSupplierInvoices(queryDb);
+  return res.json({success:true,invoices:model.invoices,reconciliation:model.reconciliation});
 });
 
-router.post(
-  "/supplier-deliveries",
-  requireRoles("Admin", "FrontDesk"),
-  async (req: Request, res: Response) => {
-    const { poId, deliveryDate, deliveryStatus, items } = req.body as {
-      poId?: string;
-      deliveryDate?: string;
-      deliveryStatus?: string;
-      items?: Array<{
-        productId?: string;
-        batchNumber?: string;
-        expirationDate?: string;
-        quantityDelivered?: number | string;
-      }>;
-    };
-    const validStatuses = supplierDeliveriesTable.deliveryStatus.enumValues;
+router.get("/supplier-deliveries/:id", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  const id = deliveryKey(req.params.id);
+  const saved = await readDelivery(db, id);
+  return res.json(saved ? { success: true, state: "committed", ...saved } : { success: true, state: "not_found" });
+});
 
-    if (!poId || !Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: "Purchase order and at least one delivery item are required.",
-      });
-    }
-    const order = await findOrder(poId);
-    if (!order)
-      return res
-        .status(400)
-        .json({ success: false, error: "Purchase order not found." });
-    if (
-      deliveryDate &&
-      Number.isNaN(new Date(`${deliveryDate}T00:00:00`).getTime())
-    ) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Enter a valid delivery date." });
-    }
-
-    const resolvedItems: Array<{
-      productId: string;
-      batchNumber: string;
-      expirationDate: string;
-      quantityDelivered: number;
-    }> = [];
-    for (const item of items) {
-      const prod = await findProduct(item.productId || "");
-      if (!prod) continue;
-      const batch = String(
-        item.batchNumber || `BATCH-${Date.now().toString().slice(-6)}`,
-      )
-        .trim()
-        .toUpperCase();
-      const exp = String(item.expirationDate || "2028-12-31");
-      const qty = Math.max(1, Math.floor(Number(item.quantityDelivered) || 1));
-      if (!/^[A-Z0-9-]+$/.test(batch))
-        return res.status(400).json({
-          success: false,
-          error:
-            "Batch numbers may contain only letters, numbers, and hyphens.",
-        });
-      const expiryDate = new Date(`${exp}T00:00:00`);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      if (Number.isNaN(expiryDate.getTime()) || expiryDate < today)
-        return res.status(400).json({
-          success: false,
-          error: "Expiration date cannot be in the past.",
-        });
-      resolvedItems.push({
-        productId: prod.id,
-        batchNumber: batch,
-        expirationDate: exp,
-        quantityDelivered: qty,
-      });
-    }
-
-    if (resolvedItems.length === 0) {
-      return res
-        .status(400)
-        .json({ success: false, error: "No valid delivery items provided." });
-    }
-
-    const result = await db.transaction(async (tx) => {
-      const [delivery] = await tx
-        .insert(supplierDeliveriesTable)
-        .values({
-          poId: order.id,
-          deliveryDate: deliveryDate ? new Date(deliveryDate) : new Date(),
-          deliveryStatus: (deliveryStatus &&
-          validStatuses.includes(deliveryStatus as any)
-            ? deliveryStatus
-            : "Received") as any,
-        })
-        .returning();
-
-      const createdItems = await tx
-        .insert(deliveryItemsTable)
-        .values(
-          resolvedItems.map((item) => ({
-            deliveryId: delivery.id,
-            productId: item.productId,
-            batchNumber: item.batchNumber,
-            expirationDate: item.expirationDate,
-            quantityDelivered: item.quantityDelivered,
-          })),
-        )
-        .returning();
-
-      if (
-        ["Received", "Inspected", "Partial"].includes(delivery.deliveryStatus)
-      )
-        for (const item of resolvedItems) {
-          const [existingBatch] = await tx
-            .select()
-            .from(batchInfoTable)
-            .where(
-              and(
-                eq(batchInfoTable.productId, item.productId),
-                eq(batchInfoTable.batchNumber, item.batchNumber.toUpperCase()),
-              ),
-            );
-
-          if (existingBatch) {
-            await tx
-              .update(batchInfoTable)
-              .set({
-                quantityRemaining:
-                  existingBatch.quantityRemaining + item.quantityDelivered,
-                expirationDate:
-                  item.expirationDate || existingBatch.expirationDate,
-                updatedAt: new Date(),
-              })
-              .where(eq(batchInfoTable.id, existingBatch.id));
-          } else {
-            await tx.insert(batchInfoTable).values({
-              productId: item.productId,
-              batchNumber: item.batchNumber.toUpperCase(),
-              expirationDate: item.expirationDate || "2028-12-31",
-              quantityRemaining: item.quantityDelivered,
-              dateReceived:
-                deliveryDate || new Date().toISOString().slice(0, 10),
-            });
-          }
-
-          const [prod] = await tx
-            .select()
-            .from(productsTable)
-            .where(eq(productsTable.id, item.productId));
-          if (prod) {
-            await tx
-              .update(productsTable)
-              .set({
-                currentStock: prod.currentStock + item.quantityDelivered,
-                updatedAt: new Date(),
-              })
-              .where(eq(productsTable.id, prod.id));
-          }
-
-          await tx.insert(stockMovementsTable).values({
-            productId: item.productId,
-            movementType: "StockIn",
-            quantity: item.quantityDelivered,
-            notes: `Supplier delivery ${delivery.id.slice(0, 8)} (${order.poNumber})`,
-          });
-        }
-
-      if (["Received", "Inspected"].includes(delivery.deliveryStatus)) {
-        await tx
-          .update(purchaseOrdersTable)
-          .set({ status: "Fulfilled", updatedAt: new Date() })
-          .where(eq(purchaseOrdersTable.id, order.id));
-      }
-
-      return { delivery, items: createdItems };
-    });
-
-    return res
-      .status(201)
-      .json({ success: true, delivery: result.delivery, items: result.items });
-  },
-);
+router.post("/supplier-deliveries", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  const id = deliveryKey(req.get("Idempotency-Key"));
+  const result = await submitDelivery(id, deliveryPayload(req.body));
+  return res.status(result.replayed ? 200 : 201).json({ success: true, ...result });
+});
 
 router.post(
   "/supplier-invoices",
@@ -794,12 +455,14 @@ router.post(
         invoiceAmount?: number | string;
         isPaid?: boolean;
       };
-    if (!supplierId || !invoiceNumber?.trim() || !dueDate) {
+    if (!supplierId || typeof invoiceNumber !== 'string' || !invoiceNumber.trim() || !dueDate) {
       return res.status(400).json({
         success: false,
         error: "Supplier, invoice number, and due date are required.",
       });
     }
+    if (isPaid) return res.status(400).json({ error: "Create the invoice unpaid, then use Record payment to settle it." });
+    if (invoiceNumber.trim().length > 100) return res.status(400).json({ error: "Invoice number must be 100 characters or fewer." });
     const supplier = await findSupplier(supplierId);
     if (!supplier)
       return res
@@ -851,7 +514,12 @@ router.post(
           : null,
       });
       return created;
+    }).catch(error => {
+      if (!identifierConflict(error, ['supplier_invoices_invoice_number_key','uq_supplier_invoices_supplier_number_ci'])) throw error;
+      res.status(409).json({ success: false, error: "This invoice number already exists for this supplier.", errors: { invoiceNumber: "Use a different invoice number for this supplier." } });
+      return null;
     });
+    if (!invoice) return;
 
     return res.status(201).json({
       success: true,
@@ -913,7 +581,12 @@ router.post(
     }> = [];
     for (const item of items) {
       const prod = await findProduct(item.productId || "");
-      if (!prod) continue;
+      if (!prod) return res.status(400).json({ error: "Choose a valid product for every line item." });
+      if (resolvedItems.some((line) => line.productId === prod.id))
+        return res.status(409).json({ error: `${prod.productName} (${prod.sku}) is already listed. Edit the quantity on its existing line.` });
+      if (!Number.isInteger(Number(item.quantityOrdered)) || Number(item.quantityOrdered) <= 0 ||
+          !Number.isFinite(Number(item.unitCost)) || Number(item.unitCost) < 0)
+        return res.status(400).json({ error: "Each line needs a positive whole quantity and a valid unit cost." });
       const qty = Math.max(1, Math.floor(Number(item.quantityOrdered) || 1));
       const cost = Math.max(0, Number(item.unitCost) || 0);
       resolvedItems.push({
@@ -1000,55 +673,43 @@ router.patch(
       );
 
     if (!existing) {
-      return res.json({ success: true, purchaseOrder: { id: poId, status } });
+      return res.status(404).json({ error: "Purchase order not found." });
     }
 
-    const [updated] = await db
-      .update(purchaseOrdersTable)
-      .set({
-        status: status as (typeof poStatuses)[number],
-        updatedAt: new Date(),
-      })
-      .where(eq(purchaseOrdersTable.id, existing.id))
-      .returning();
+    const updated = await db.transaction(async (tx) => {
+      const [order] = await tx.select().from(purchaseOrdersTable)
+        .where(eq(purchaseOrdersTable.id, existing.id)).for("update");
+      if (!order) throw new ReceivingError("Purchase order no longer exists. Refresh the order list.");
+      if (order.status === status) return order;
+      if (["Fulfilled", "Cancelled"].includes(order.status))
+        throw new ReceivingError("Closed purchase orders cannot be reopened or cancelled through a status change. Recorded receipts must be retained.");
+      const receiving = await readOrderReceivingState(tx, order.id);
+      if (status === "Cancelled" && receiving.some(item => item.quantityReceived > 0))
+        throw new ReceivingError("This purchase order already has received stock. Use a reviewed return or correction; changing status cannot undo receiving.");
+      if (status === "Fulfilled" && (!receiving.length || receiving.some(item => item.quantityRemaining > 0)))
+        throw new ReceivingError("Record the outstanding products in Receiving Report Management with their actual batch and expiration dates. The order becomes Fulfilled when all quantities are received.");
+      const [saved] = await tx.update(purchaseOrdersTable)
+        .set({status: status as (typeof poStatuses)[number], updatedAt: new Date()})
+        .where(eq(purchaseOrdersTable.id, order.id)).returning();
+      return saved;
+    });
 
     return res.json({ success: true, purchaseOrder: updated });
   },
 );
 
-router.patch(
-  "/supplier-invoices/:id/status",
-  requireRoles("Admin", "FrontDesk"),
-  async (req: Request, res: Response) => {
-    const invoiceId = asId(req.params.id);
-    const { status } = req.body as { status?: string };
-    const isPaid = status === "Paid";
+router.patch("/supplier-invoices/:id/status", async (req: Request, res: Response) => {
+  const id = asId(req.params.id);
+  if (!uuidPattern.test(id)) return res.status(400).json({ error: "Invalid invoice ID." });
+  const [invoice] = await db.select().from(supplierInvoicesTable).where(eq(supplierInvoicesTable.id, id));
+  if (!invoice) return res.status(404).json({ error: "Invoice not found." });
+  return res.status(409).json({ error: "Use Record payment to settle this invoice. Status cannot be changed independently of payment history." });
+});
 
-    const [existing] = await db
-      .select()
-      .from(supplierInvoicesTable)
-      .where(
-        or(
-          eq(supplierInvoicesTable.id, invoiceId),
-          eq(supplierInvoicesTable.invoiceNumber, invoiceId),
-        ),
-      );
-
-    if (!existing) {
-      return res.json({
-        success: true,
-        invoice: { id: invoiceId, isPaid, status },
-      });
-    }
-
-    const [updated] = await db
-      .update(supplierInvoicesTable)
-      .set({ isPaid })
-      .where(eq(supplierInvoicesTable.id, existing.id))
-      .returning();
-
-    return res.json({ success: true, invoice: updated });
-  },
-);
+router.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
+  if (error instanceof ReceivingError || error instanceof DeliveryInputError)
+    return res.status(error.status).json({success: false, error: error.message, ...(error instanceof DeliveryReferenceConflict ? {code: error.code} : {})});
+  return next(error);
+});
 
 export default router;

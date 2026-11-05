@@ -1,3 +1,4 @@
+import { safeError, readResponse } from "./feedback";
 import { useState, useEffect, useCallback } from "react";
 import type { ProductItem, ShiftReceipt } from "./types";
 import { products as initialFallbackProducts } from "./data";
@@ -11,6 +12,8 @@ const formatPeso = (amount: number) =>
 export function mapTransactionsToReceipts(data: any[]): ShiftReceipt[] {
   if (!Array.isArray(data)) return [];
   return data.map((t: any) => {
+    const instant = typeof t.dateTime === "string" && /(?:Z|[+-]\d{2}:?\d{2})$/i.test(t.dateTime)
+      ? new Date(t.dateTime) : null;
     const totalNum =
       parseFloat(String(t.total || "0").replace("₱", "").replace(/,/g, "")) || 0;
     const itemCount = Array.isArray(t.items)
@@ -21,16 +24,29 @@ export function mapTransactionsToReceipts(data: any[]): ShiftReceipt[] {
         ? t.items.map((it: any) => `${it.product} (${it.quantity})`).join(", ")
         : `${itemCount} item(s)`;
     return {
+      printSource: {
+        transactionNumber: t.transactionNumber,
+        merchantNameAtIssue: t.merchantNameAtIssue,
+        calculationVersion: t.calculationVersion,
+        dateTime: t.dateTime,
+        user: t.user,
+        payment: t.payment,
+        status: t.status,
+        total: t.total,
+        itemsSummary: t.itemsSummary,
+      },
       id: t.transactionNumber || `TRX-${t.id}`,
       rawId: t.id,
-      time: t.dateTime
+      time: instant && Number.isFinite(instant.getTime())
+        ? new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(instant)
+        : t.dateTime
         ? t.dateTime.includes(" – ")
           ? t.dateTime.split(" – ")[1]
           : t.dateTime.includes(", ")
           ? t.dateTime.split(", ").slice(-1)[0]
           : t.dateTime
-        : new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      dateTime: t.dateTime || new Date().toLocaleString(),
+        : "Time not recorded",
+      dateTime: t.dateTime || "Date not recorded",
       items: itemCount,
       itemsList: t.items || [],
       itemsSummary,
@@ -38,6 +54,7 @@ export function mapTransactionsToReceipts(data: any[]): ShiftReceipt[] {
       totalFormatted: t.total || formatPeso(totalNum),
       subtotal: t.subtotal,
       vat: t.vat,
+      vatRelief: t.vatRelief,
       discount: t.discount,
       amountReceived: t.amountReceived,
       change: t.change,
@@ -60,38 +77,24 @@ function getLocalInventory(): ProductItem[] | null {
   return null;
 }
 
-function getLocalTransactions(): any[] | null {
-  try {
-    const raw = localStorage.getItem("medprix_cached_transactions");
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-    }
-  } catch {}
-  return null;
-}
-
 function saveLocalInventory(items: ProductItem[]) {
   try {
     localStorage.setItem("medprix_cached_inventory", JSON.stringify(items));
   } catch {}
 }
 
-function saveLocalTransactions(txs: any[]) {
-  try {
-    localStorage.setItem("medprix_cached_transactions", JSON.stringify(txs));
-  } catch {}
-}
-
 // Global in-memory cache shared across the single-page application
 let globalInventory: ProductItem[] | null = getLocalInventory();
-let globalTransactions: any[] | null = getLocalTransactions();
+let globalTransactions: any[] | null = null;
 let globalReceipts: ShiftReceipt[] | null = globalTransactions
   ? mapTransactionsToReceipts(globalTransactions)
   : null;
 
+let inventoryLoadError = "";
 let isInventoryLoading = false;
 let isTransactionsLoading = false;
+let transactionRevision = 0;
+let transactionRequest = 0;
 let isBackendConnected = false;
 
 const inventoryListeners = new Set<() => void>();
@@ -117,82 +120,41 @@ export async function fetchInventoryData(force = false): Promise<ProductItem[]> 
   if (!force && isInventoryLoading && globalInventory) return globalInventory;
   isInventoryLoading = true;
   try {
-    const res = await fetch("/api/inventory", { credentials: "include" });
-    if (res.ok) {
-      const data = await res.json();
-      if (data && Array.isArray(data.products) && data.products.length > 0) {
-        const localInv = getLocalInventory() || [];
-        if (localInv.length > 0) {
-          // Merge server data with local inventory so stock deductions are never lost
-          globalInventory = data.products.map((serverProd: ProductItem) => {
-            const localProd = localInv.find(
-              (lp) => lp.id === serverProd.id || lp.sku === serverProd.sku
-            );
-            if (!localProd) return serverProd;
-
-            // Preserve lower stock if items were sold locally
-            const minStock = Math.min(Number(serverProd.stock), Number(localProd.stock));
-            return {
-              ...serverProd,
-              stock: minStock,
-              batches: localProd.batches && localProd.batches.length > 0 ? localProd.batches : serverProd.batches,
-              status: minStock === 0 ? "Out of stock" : minStock <= serverProd.reorder ? "Low stock" : "Available",
-            };
-          });
-        } else {
-          globalInventory = data.products;
-        }
-
-        const resolvedInventory = globalInventory || initialFallbackProducts;
-        saveLocalInventory(resolvedInventory);
-        isBackendConnected = true;
-        notifyInventory();
-        return resolvedInventory;
-      }
-    }
-  } catch (err) {
-    console.warn("Inventory fetch notice:", err);
+    const response = await fetch("/api/inventory", { credentials: "include" });
+    const data = await readResponse(response, "Could not refresh inventory. Please try again.");
+    if (!Array.isArray(data.products)) throw new Error("Invalid stock response. Please refresh inventory.");
+    globalInventory = data.products;
+    inventoryLoadError = "";
+    saveLocalInventory(data.products);
+    isBackendConnected = true;
+    return data.products;
+  } catch (failure) {
+    inventoryLoadError = safeError(failure, "Could not refresh inventory. Please try again.");
   } finally {
     isInventoryLoading = false;
+    notifyInventory();
   }
   return globalInventory || initialFallbackProducts;
 }
 
 export async function fetchTransactionsData(force = false): Promise<any[]> {
   if (!force && isTransactionsLoading && globalTransactions) return globalTransactions;
+  const request = ++transactionRequest;
+  const revision = transactionRevision;
   isTransactionsLoading = true;
   try {
     const res = await fetch("/api/admin/transactions", { credentials: "include" });
+    if (res.status === 401 || res.status === 403) {
+      if (request === transactionRequest && revision === transactionRevision) clearTransactionSession();
+      return [];
+    }
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data)) {
-        const localTx = getLocalTransactions() || [];
-        const mergedMap = new Map<string, any>();
-
-        // 1. Add server transactions
-        for (const t of data) {
-          const key = t.transactionNumber || `TRX-${t.id}`;
-          mergedMap.set(key, t);
-        }
-
-        // 2. Preserve any newly created local transactions
-        for (const t of localTx) {
-          const key = t.transactionNumber || `TRX-${t.id}`;
-          if (!mergedMap.has(key)) {
-            mergedMap.set(key, t);
-          }
-        }
-
-        // Sort so newest transactions stay at top
-        const mergedList = Array.from(mergedMap.values()).sort((a, b) => {
-          const idA = Number(a.id) || 0;
-          const idB = Number(b.id) || 0;
-          return idB - idA;
-        });
-
-        globalTransactions = mergedList;
-        globalReceipts = mapTransactionsToReceipts(mergedList);
-        saveLocalTransactions(globalTransactions);
+        // A confirmed local save or newer fetch wins over an older response.
+        if (request !== transactionRequest || revision !== transactionRevision) return globalTransactions || [];
+        globalTransactions = [...data].sort((a, b) => new Date(b.createdAt ?? b.dateTime).getTime() - new Date(a.createdAt ?? a.dateTime).getTime());
+        globalReceipts = mapTransactionsToReceipts(globalTransactions);
         notifyTransactions();
         return globalTransactions;
       }
@@ -200,7 +162,7 @@ export async function fetchTransactionsData(force = false): Promise<any[]> {
   } catch (err) {
     console.warn("Transactions fetch notice:", err);
   } finally {
-    isTransactionsLoading = false;
+    if (request === transactionRequest) isTransactionsLoading = false;
   }
   return globalTransactions || [];
 }
@@ -211,10 +173,22 @@ export function setCachedInventory(products: ProductItem[]) {
   notifyInventory();
 }
 
+// Clear history at authentication boundaries, invalidating older in-flight responses.
+// Unconfirmed checkout state in sessionStorage is deliberately retained for reconciliation.
+export function clearTransactionSession() {
+  transactionRequest++;
+  transactionRevision++;
+  globalTransactions = [];
+  globalReceipts = [];
+  isTransactionsLoading = false;
+  try { for (const key of ["medprix_cached_transactions", "medprix_system_logs", "medprix_user_activities"]) localStorage.removeItem(key); } catch {}
+  notifyTransactions();
+}
+
 export function setCachedTransactions(transactions: any[]) {
+  transactionRevision++;
   globalTransactions = transactions;
   globalReceipts = mapTransactionsToReceipts(transactions);
-  saveLocalTransactions(transactions);
   notifyTransactions();
 }
 
@@ -258,13 +232,12 @@ export function deductProductStock(
 }
 
 export function recordTransaction(transaction: any) {
-  const currentTx = globalTransactions ?? getLocalTransactions() ?? [];
+  const currentTx = globalTransactions ?? [];
   const updatedTx = [
     transaction,
     ...currentTx.filter(
       (t) =>
-        t.id !== transaction.id &&
-        t.transactionNumber !== transaction.transactionNumber
+        !(transaction.id != null && t.id === transaction.id && t.source === transaction.source)
     ),
   ];
   setCachedTransactions(updatedTx);
@@ -279,11 +252,14 @@ export function prefetchPharmacyData() {
  * Hook for Inventory products
  */
 export function usePharmacyInventory() {
+  const [error, setError] = useState(inventoryLoadError);
   const [items, setItemsState] = useState<ProductItem[]>(() => globalInventory ?? initialFallbackProducts);
   const [loading, setLoading] = useState<boolean>(() => globalInventory === null);
 
   useEffect(() => {
     const handler = () => {
+      setError(inventoryLoadError);
+      setLoading(false);
       if (globalInventory) {
         setItemsState([...globalInventory]);
         setLoading(false);
@@ -312,7 +288,7 @@ export function usePharmacyInventory() {
 
   const refresh = useCallback(() => fetchInventoryData(true), []);
 
-  return { items, setItems, loading, refresh, isBackendConnected };
+  return { items, setItems, loading, refresh, isBackendConnected, error };
 }
 
 /**
@@ -332,6 +308,12 @@ export function usePharmacyTransactions() {
       }
     };
     transactionListeners.add(handler);
+    const refreshOnFocus = () => { void fetchTransactionsData(true); };
+    const refreshOnStorage = (event: StorageEvent) => {
+      if (event.key === "medprix_cached_transactions") refreshOnFocus();
+    };
+    window.addEventListener("focus", refreshOnFocus);
+    window.addEventListener("storage", refreshOnStorage);
 
     fetchTransactionsData().then((data) => {
       setTransactionsState([...data]);
@@ -341,6 +323,8 @@ export function usePharmacyTransactions() {
 
     return () => {
       transactionListeners.delete(handler);
+      window.removeEventListener("focus", refreshOnFocus);
+      window.removeEventListener("storage", refreshOnStorage);
     };
   }, []);
 
