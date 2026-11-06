@@ -5,14 +5,18 @@ import { useDialogAccessibility } from "@/lib/use-dialog-accessibility";
 
 export function WholesaleDialog({
   title,
+  description,
   busy,
   close,
   children,
+  review = false,
 }: {
   title: string;
+  description?: string;
   busy: boolean;
   close: () => void;
   children: ReactNode;
+  review?: boolean;
 }) {
   useDialogAccessibility(true, ".wholesale-dialog", close, busy);
   useEffect(() => {
@@ -23,11 +27,19 @@ export function WholesaleDialog({
     };
   }, []);
   return createPortal(
-    <div className="modal-backdrop">
-      <section className="modal wholesale-dialog">
+    <div className="modal-backdrop wholesale-backdrop">
+      <section
+        className={
+          "modal wholesale-dialog" + (review ? " wholesale-review-dialog" : "")
+        }
+      >
         <div className="modal-header">
-          <h2>{title}</h2>
+          <div>
+            <h2>{title}</h2>
+            {description && <p className="modal-sub">{description}</p>}
+          </div>
           <button
+            type="button"
             className="modal-close"
             aria-label="Close dialog"
             onClick={close}
@@ -36,7 +48,7 @@ export function WholesaleDialog({
             <X size={16} />
           </button>
         </div>
-        {children}
+        <div className="wholesale-dialog-body">{children}</div>
       </section>
     </div>,
     document.body,

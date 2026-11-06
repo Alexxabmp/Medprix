@@ -2547,6 +2547,96 @@ a {
   .wholesale-dialog { max-height: calc(100dvh - 24px); padding: 18px; }
 }
 
+.wholesale-details { display: grid; gap: 12px; overflow-wrap: anywhere; }
+.wholesale-details .field { display: grid; gap: 6px; min-width: 0; }
+.wholesale-details .modal-section { margin-top: 0; }
+.wholesale-reservation { display: grid; gap: 4px; padding: 12px 0; border-bottom: 1px solid hsl(var(--border)); }
+.wholesale-workspace td .button + .button { margin: 4px; }
+
+.wholesale-backdrop {
+  overflow: hidden;
+}
+.wholesale-dialog {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+  color-scheme: light;
+  --wholesale-secondary: color-mix(
+    in srgb,
+    hsl(var(--foreground)) 20%,
+    hsl(var(--muted))
+  );
+  animation: wholesaleDialogIn 0.16s ease-out both;
+}
+.dark .wholesale-dialog {
+  color-scheme: dark;
+}
+.wholesale-review-dialog {
+  height: min(760px, calc(100dvh - 36px));
+}
+.wholesale-dialog .modal-header {
+  flex: 0 0 auto;
+  padding: 24px;
+  margin: 0;
+  min-width: 0;
+}
+.wholesale-dialog .modal-header > div {
+  min-width: 0;
+}
+.wholesale-dialog-body {
+  min-height: 0;
+  margin: 0 12px 12px;
+  padding: 0 12px 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted)) hsl(var(--surface-soft));
+}
+.wholesale-dialog .field label,
+.wholesale-dialog .field-label,
+.wholesale-dialog .field-hint,
+.wholesale-dialog .modal-sub {
+  color: var(--wholesale-secondary);
+}
+.wholesale-dialog .field label,
+.wholesale-dialog .field-label {
+  margin: 0;
+}
+.wholesale-dialog .modal-section h3 {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.wholesale-dialog :is(input, select, textarea) {
+  min-width: 0;
+}
+.wholesale-dialog [aria-invalid="true"] {
+  border-color: hsl(var(--danger));
+}
+.wholesale-dialog :is(input, select, textarea, button):focus-visible {
+  outline: 2px solid hsl(var(--foreground));
+  outline-offset: 3px;
+  box-shadow: 0 0 0 3px hsl(var(--surface));
+}
+.wholesale-dialog :disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+.wholesale-dialog form > .inline-error {
+  margin-top: 12px;
+}
+.wholesale-line-error {
+  grid-column: 1 / -1;
+  overflow-wrap: anywhere;
+}
+.field-error {
+  color: hsl(var(--foreground));
+  font-size: var(--text-xs);
+  border-inline-start: 3px solid hsl(var(--danger));
+  padding-inline-start: 8px;
+}
 .loading-state {
   display: flex;
   align-items: center;
@@ -2561,7 +2651,38 @@ a {
 .loading-state > svg {
   flex: 0 0 auto;
 }
+@keyframes wholesaleDialogIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (max-width: 600px) {
+  .wholesale-dialog {
+    padding: 0;
+  }
+  .wholesale-review-dialog {
+    height: min(760px, calc(100dvh - 24px));
+  }
+  .wholesale-dialog .modal-header {
+    padding: 18px;
+  }
+  .wholesale-dialog-body {
+    margin: 0 8px 8px;
+    padding: 0 10px 10px;
+  }
+  .wholesale-backdrop {
+    padding: 12px;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
+  .wholesale-dialog {
+    animation: none;
+  }
   .loading-state .spin {
     animation: none;
   }

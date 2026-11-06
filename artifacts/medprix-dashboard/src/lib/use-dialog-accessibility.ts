@@ -32,8 +32,20 @@ export function useDialogAccessibility(
     controls()[0]?.focus();
     function keydown(event: KeyboardEvent) {
       // A nested payment dialog owns its own keyboard interaction.
-      if (event.target instanceof Node && !dialog!.contains(event.target))
+      if (
+        event.target instanceof Node &&
+        event.target !== document.body &&
+        !dialog!.contains(event.target)
+      )
         return;
+      if (event.target === document.body) {
+        const openDialogs = Array.from(
+          document.querySelectorAll<HTMLElement>(
+            '[role="dialog"][aria-modal="true"]',
+          ),
+        ).filter((element) => element.getClientRects().length > 0);
+        if (openDialogs.at(-1) !== dialog) return;
+      }
       if (event.key === "Escape" && !pendingRef.current) {
         event.preventDefault();
         closeRef.current();
@@ -42,6 +54,11 @@ export function useDialogAccessibility(
       const items = controls();
       if (!items.length) {
         event.preventDefault();
+        return;
+      }
+      if (document.activeElement === document.body) {
+        event.preventDefault();
+        (event.shiftKey ? items.at(-1) : items[0])?.focus();
         return;
       }
       if (event.shiftKey && document.activeElement === items[0]) {

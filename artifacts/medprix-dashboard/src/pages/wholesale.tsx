@@ -1,3 +1,4 @@
+import { WholesaleOrderDetails } from "@/components/wholesale-order-details";
 import { useEffect, useState } from "react";
 import { Plus, RefreshCw, Search } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
@@ -17,9 +18,10 @@ import {
 import type { ToastFn } from "@/lib/types";
 
 type Dialog =
-  | { kind: "client" }
+  | { kind: "client"; client?: WholesaleClient }
   | { kind: "price"; product: WholesaleProduct }
-  | { kind: "order"; order: WholesaleOrder | null };
+  | { kind: "order"; order: WholesaleOrder | null }
+  | { kind: "details"; order: WholesaleOrder };
 
 export default function WholesalePage({
   onToast,
@@ -103,6 +105,20 @@ export default function WholesalePage({
     void submit({ key: crypto.randomUUID(), path, method, body });
   }
   function open(next: Dialog) {
+    if (
+      next.kind === "order" &&
+      next.order &&
+      next.order.status !== "Pending"
+    ) {
+      onToast({
+        message:
+          next.order.status === "Confirmed"
+            ? "Confirmed orders cannot be edited. Use Review order to cancel it and release stock, then create a new draft."
+            : "This order can no longer be edited. Use Review order to view its saved details.",
+        variant: "warning",
+      });
+      return;
+    }
     setFormError("");
     setDialog(next);
   }
@@ -146,8 +162,8 @@ export default function WholesalePage({
         }
       />
       <p className="field-hint">
-        Drafts do not reserve stock. Delivery, price overrides and collections
-        will be available in subsequent phases.
+        Drafts do not reserve stock. Confirmation reserves stock. Delivery and
+        collections will be available in subsequent phases.
       </p>
       {error && (
         <div role="alert" className="inline-error">
@@ -233,8 +249,7 @@ export default function WholesalePage({
               {tab === "orders" && (
                 <table className="data-table">
                   <caption className="wholesale-caption">
-                    Latest 200 order drafts. Historical orders await separate
-                    review.
+                    Latest 200 orders. Historical orders await separate review.
                   </caption>
                   <thead>
                     <tr>
@@ -257,10 +272,17 @@ export default function WholesalePage({
                         <td>
                           <button
                             className="button soft"
-                            disabled={locked || order.status !== "Pending"}
+                            disabled={locked}
                             onClick={() => open({ kind: "order", order })}
                           >
                             Edit draft
+                          </button>
+                          <button
+                            className="button soft"
+                            disabled={locked}
+                            onClick={() => open({ kind: "details", order })}
+                          >
+                            Review order
                           </button>
                         </td>
                       </tr>
@@ -274,6 +296,7 @@ export default function WholesalePage({
                     <tr>
                       <th>Client</th>
                       <th>Address</th>
+                      <th>Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -281,6 +304,15 @@ export default function WholesalePage({
                       <tr key={client.id}>
                         <td>{client.name}</td>
                         <td>{client.address || "Not provided"}</td>
+                        <td>
+                          <button
+                            className="button soft"
+                            disabled={locked}
+                            onClick={() => open({ kind: "client", client })}
+                          >
+                            Edit client
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -293,6 +325,9 @@ export default function WholesalePage({
                       <th>Product / SKU</th>
                       <th>Wholesale unit price</th>
                       <th>VAT classification</th>
+                      <th>Physical</th>
+                      <th>Reserved</th>
+                      <th>Available</th>
                       {role === "Admin" && <th>Action</th>}
                     </tr>
                   </thead>
@@ -311,6 +346,9 @@ export default function WholesalePage({
                               ? "Exempt"
                               : "VATable"}
                         </td>
+                        <td>{product.physicalStock}</td>
+                        <td>{product.reservedStock}</td>
+                        <td>{product.availableStock}</td>
                         {role === "Admin" && (
                           <td>
                             <button
@@ -358,25 +396,55 @@ export default function WholesalePage({
           save={saveDraft}
         />
       )}
-      {dialog && dialog.kind !== "order" && (
+      {dialog?.kind === "details" && (
+        <WholesaleOrderDetails
+          order={dialog.order}
+          role={role}
+          busy={locked}
+          error={formError}
+          retry={pending && !busy ? () => void submit(pending) : undefined}
+          close={() => setDialog(null)}
+          mutate={mutate}
+        />
+      )}
+      {dialog && dialog.kind !== "order" && dialog.kind !== "details" && (
         <WholesaleDialog
           title={
             dialog.kind === "client"
-              ? "Add wholesale client"
+              ? dialog.client
+                ? "Edit wholesale client"
+                : "Add wholesale client"
               : "Set wholesale price"
           }
           busy={locked}
           close={() => setDialog(null)}
+          description={
+            dialog.kind === "client"
+              ? "Fields marked * are required. A delivery address is needed before confirmation."
+              : "Wholesale unit prices include VAT where applicable."
+          }
         >
           <form
             onSubmit={(event) => {
               event.preventDefault();
               const data = new FormData(event.currentTarget);
               if (dialog.kind === "client")
-                mutate("/clients", "POST", {
-                  name: data.get("name"),
-                  address: data.get("address"),
-                });
+                mutate(
+                  dialog.client ? "/clients/" + dialog.client.id : "/clients",
+                  dialog.client ? "PUT" : "POST",
+                  {
+                    ...(dialog.client
+                      ? {
+                          expected: {
+                            name: dialog.client.name,
+                            address: dialog.client.address,
+                          },
+                        }
+                      : {}),
+                    name: data.get("name"),
+                    address: data.get("address"),
+                  },
+                );
               else
                 mutate("/products/" + dialog.product.id + "/price", "PUT", {
                   wholesalePrice: data.get("price") || null,
@@ -387,21 +455,45 @@ export default function WholesalePage({
             <fieldset className="wholesale-fields" disabled={locked}>
               {dialog.kind === "client" ? (
                 <>
-                  <label className="field">
-                    Client name
-                    <input name="name" maxLength={255} required />
-                  </label>
-                  <label className="field">
-                    Delivery address
-                    <textarea name="address" maxLength={2000} />
-                  </label>
+                  <div className="field">
+                    <label htmlFor={"wholesale-client-name"}>
+                      Client name *
+                    </label>
+                    <input
+                      id={"wholesale-client-name"}
+                      name="name"
+                      maxLength={255}
+                      required
+                      defaultValue={
+                        dialog.kind === "client" ? dialog.client?.name : ""
+                      }
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor={"wholesale-client-address"}>
+                      Delivery address (optional)
+                    </label>
+                    <textarea
+                      id={"wholesale-client-address"}
+                      name="address"
+                      maxLength={2000}
+                      defaultValue={
+                        dialog.kind === "client"
+                          ? (dialog.client?.address ?? "")
+                          : ""
+                      }
+                    />
+                  </div>
                 </>
               ) : (
                 <>
                   <p>{dialog.product.name}</p>
-                  <label className="field">
-                    Wholesale unit price (VAT included where applicable)
+                  <div className="field">
+                    <label htmlFor={"wholesale-product-price"}>
+                      Wholesale unit price (₱)
+                    </label>
                     <input
+                      id={"wholesale-product-price"}
                       name="price"
                       type="number"
                       min="0"
@@ -409,7 +501,7 @@ export default function WholesalePage({
                       step="0.01"
                       defaultValue={dialog.product.wholesalePrice ?? ""}
                     />
-                  </label>
+                  </div>
                   <p className="field-hint">
                     Leave blank to mark the price unconfigured. Retail price is
                     unchanged.
@@ -423,9 +515,9 @@ export default function WholesalePage({
               </div>
             </fieldset>
             {formError && (
-              <p className="form-error" role="alert">
+              <div className="inline-error" role="alert">
                 {formError}
-              </p>
+              </div>
             )}
             {pending && !busy && (
               <button

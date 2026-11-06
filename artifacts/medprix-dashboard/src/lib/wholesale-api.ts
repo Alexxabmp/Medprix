@@ -1,6 +1,9 @@
 import { safeError } from "./feedback";
 
 export type WholesaleProduct = {
+  physicalStock: number;
+  reservedStock: number;
+  availableStock: number;
   id: string;
   sku: string;
   name: string;
@@ -81,3 +84,40 @@ export const wholesalePeso = (value: string | null) =>
         style: "currency",
         currency: "PHP",
       }).format(Number(value));
+
+export type WholesaleOverride = {
+  id: string;
+  productId: string;
+  revision: number;
+  price: string;
+  reason: string;
+  approvalReason: string | null;
+  approvedBy: string | null;
+  approvedByName: string | null;
+};
+export type WholesaleOrderDetail = {
+  snapshot: null | {
+    clientName: string;
+    address: string;
+    total: string;
+    vat: string;
+    lines: Array<
+      WholesaleLine & {
+        name: string;
+        unitPrice: string;
+        originalPrice: string;
+        override: null | { adminId: string; reason: string };
+      }
+    >;
+  };
+  overrides: WholesaleOverride[];
+  reservations: Array<{
+    id: string;
+    quantity: number;
+    batchNumber: string;
+    expiry: string;
+    product: string;
+    releasedAt: string | null;
+    consumedAt: string | null;
+  }>;
+};
