@@ -10,8 +10,10 @@ import {
   unique,
   index,
   check,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import { usersTable } from "./users";
 import { money } from "./_columns";
 import { productsTable } from "./inventory";
 
@@ -89,6 +91,9 @@ export const wholesaleOrdersTable = pgTable(
     contractId: uuid("contract_id").references(() => clientContractsTable.id, {
       onDelete: "set null",
     }),
+    orderNumber: varchar("order_number", { length: 100 }).unique("wholesale_orders_order_number_key"),
+    draftRevision: integer("draft_revision"),
+    createdBy: uuid("created_by").references(() => usersTable.id, { onDelete: "restrict" }),
     orderDate: timestamp("order_date", { withTimezone: true }).notNull().defaultNow(),
     status: wholesaleOrderStatusEnum("status").notNull().default("Pending"),
     totalOrderAmount: money("total_order_amount").notNull().default("0.00"),
@@ -96,6 +101,7 @@ export const wholesaleOrdersTable = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    check("wholesale_draft_revision_check", sql`${t.draftRevision} IS NULL OR (${t.draftRevision} > 0 AND ${t.orderNumber} IS NOT NULL AND ${t.createdBy} IS NOT NULL)`),
     check("wholesale_orders_total_order_amount_check", sql`${t.totalOrderAmount} >= 0`),
     index("idx_wholesale_orders_client_id").on(t.clientId),
     index("idx_wholesale_orders_status").on(t.status),
@@ -243,3 +249,10 @@ export type ArPayment = typeof arPaymentsTable.$inferSelect;
 export type InsertArPayment = typeof arPaymentsTable.$inferInsert;
 export type WholesaleOrderStatus = (typeof wholesaleOrderStatusEnum.enumValues)[number];
 export type DeliveryScheduleStatus = (typeof deliveryScheduleStatusEnum.enumValues)[number];
+export const wholesaleOperationsTable = pgTable("wholesale_operations", {
+  id: uuid("id").primaryKey(),
+  actorId: uuid("actor_id").notNull().references(() => usersTable.id, { onDelete: "restrict" }),
+  payload: jsonb("payload").notNull(),
+  result: jsonb("result"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
