@@ -1,3 +1,4 @@
+import { reservedByBatch, freeBatchQuantity } from "./reserved-stock";
 import { readRetailSales } from "./retail-sale-read-model";
 import {
   pharmacyDate,
@@ -210,6 +211,7 @@ export function createAtomicCheckout(transaction: Transaction, read: Query) {
           [ids],
         )
       ).rows;
+      const reserved = await reservedByBatch(query, ids);
       const today = pharmacyDate();
       let gross = 0n,
         discount = 0n,
@@ -251,7 +253,7 @@ export function createAtomicCheckout(transaction: Transaction, read: Query) {
             Number(b.quantity_remaining) > 0,
         );
         const available = eligible.reduce(
-          (sum, b) => sum + Number(b.quantity_remaining),
+          (sum, b) => sum + freeBatchQuantity(b, reserved),
           0,
         );
         if (available < line.quantity)
@@ -265,7 +267,7 @@ export function createAtomicCheckout(transaction: Transaction, read: Query) {
         for (const batch of eligible) {
           const quantity = Math.min(
             remaining,
-            Number(batch.quantity_remaining),
+            freeBatchQuantity(batch, reserved),
           );
           if (quantity) chosen.push({ batchId: batch.id, quantity });
           remaining -= quantity;

@@ -1,3 +1,4 @@
+import { createWholesaleConfirmation } from "../lib/wholesale-confirmation";
 import {
   Router,
   type IRouter,
@@ -11,6 +12,7 @@ import { createWholesaleDrafts, WholesaleError } from "../lib/wholesale-drafts";
 
 const router: IRouter = Router();
 const service = createWholesaleDrafts(queryDb, withTransaction);
+const confirmation = createWholesaleConfirmation(queryDb, withTransaction);
 
 router.use(
   "/wholesale",
@@ -111,4 +113,78 @@ router.put(
   }),
 );
 
+router.get(
+  "/wholesale/orders/:id",
+  handle(async (req, res) => {
+    res.json(await confirmation.detail(String(req.params.id)));
+  }),
+);
+router.post(
+  "/wholesale/orders/:id/overrides",
+  handle(async (req, res) => {
+    res
+      .status(201)
+      .json(
+        await confirmation.requestOverride(
+          res.locals.user!,
+          req.get("Idempotency-Key"),
+          String(req.params.id),
+          req.body,
+        ),
+      );
+  }),
+);
+router.post(
+  "/wholesale/overrides/:id/approve",
+  requireRoles("Admin"),
+  handle(async (req, res) => {
+    res.json(
+      await confirmation.approveOverride(
+        res.locals.user!,
+        req.get("Idempotency-Key"),
+        String(req.params.id),
+        req.body,
+      ),
+    );
+  }),
+);
+router.post(
+  "/wholesale/orders/:id/confirm",
+  handle(async (req, res) => {
+    res.json(
+      await confirmation.confirm(
+        res.locals.user!,
+        req.get("Idempotency-Key"),
+        String(req.params.id),
+        req.body,
+      ),
+    );
+  }),
+);
+router.post(
+  "/wholesale/orders/:id/cancel",
+  handle(async (req, res) => {
+    res.json(
+      await confirmation.cancel(
+        res.locals.user!,
+        req.get("Idempotency-Key"),
+        String(req.params.id),
+        req.body,
+      ),
+    );
+  }),
+);
+router.put(
+  "/wholesale/clients/:id",
+  handle(async (req, res) => {
+    res.json(
+      await service.updateClient(
+        res.locals.user!,
+        req.get("Idempotency-Key"),
+        String(req.params.id),
+        req.body,
+      ),
+    );
+  }),
+);
 export default router;

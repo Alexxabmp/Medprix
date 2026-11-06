@@ -1,46 +1,29 @@
 import { randomUUID } from "node:crypto";
-import { calculateRetailLine } from "@workspace/api-zod";
-import { writeAuditEvent, type AuditActor } from "./audit-events";
+import { calculateRetailLine, pharmacyDate } from "@workspace/api-zod";
+import type { AuditActor } from "./audit-events";
+import {
+  WholesaleError,
+  requireUuid,
+  wholesaleMoney,
+  cents,
+  money,
+  wholesaleAudit as audit,
+  createWholesaleOperation,
+  type WholesaleQuery as Query,
+  type WholesaleTransaction as Transaction,
+} from "./wholesale-operations";
+export {
+  WholesaleError,
+  requireUuid,
+  wholesaleMoney,
+} from "./wholesale-operations";
 
-type Query = (sql: string, params?: any[]) => Promise<{ rows: any[] }>;
-type Transaction = <T>(work: (query: Query) => Promise<T>) => Promise<T>;
 type DraftInput = {
   clientId: string;
   lines: Array<{ productId: string; quantity: number }>;
 };
-export class WholesaleError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-  ) {
-    super(message);
-  }
-}
-const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const maxMoney = 999999999999n;
 
-export function requireUuid(value: unknown): string {
-  if (typeof value !== "string" || !uuid.test(value)) {
-    throw new WholesaleError(400, "A valid record identifier is required.");
-  }
-  return value.toLowerCase();
-}
-export function wholesaleMoney(value: unknown): string {
-  if (typeof value !== "string" || !/^\d{1,10}(\.\d{1,2})?$/.test(value)) {
-    throw new WholesaleError(
-      400,
-      "Enter an amount with at most two decimal places.",
-    );
-  }
-  return Number(value).toFixed(2);
-}
-function cents(value: string): bigint {
-  const [whole, fraction = ""] = value.split(".");
-  return BigInt(whole) * 100n + BigInt(fraction.padEnd(2, "0"));
-}
-function money(value: bigint): string {
-  return `${value / 100n}.${String(value % 100n).padStart(2, "0")}`;
-}
 function parseDraft(value: any): DraftInput {
   if (
     !value ||
@@ -95,58 +78,24 @@ function parseDraft(value: any): DraftInput {
 }
 
 export function createWholesaleDrafts(read: Query, transaction: Transaction) {
-  async function audit(
-    query: Query,
-    actor: AuditActor,
-    action: string,
-    description: string,
-  ) {
-    await writeAuditEvent(query, {
-      actor,
-      action,
-      activity: action,
-      module: "Wholesale",
-      description,
-    });
-  }
-  async function operation<T>(
-    actor: AuditActor,
-    key: unknown,
-    payload: unknown,
-    work: (query: Query) => Promise<T>,
-  ) {
-    const id = requireUuid(key);
-    return transaction(async (query) => {
-      await query(
-        "INSERT INTO wholesale_operations(id,actor_id,payload) VALUES($1,$2,$3::text::jsonb) ON CONFLICT DO NOTHING",
-        [id, actor.id, JSON.stringify(payload)],
-      );
-      const {
-        rows: [saved],
-      } = await query(
-        "SELECT *,payload=$2::text::jsonb AS matches FROM wholesale_operations WHERE id=$1 FOR UPDATE",
-        [id, JSON.stringify(payload)],
-      );
-      if (saved.actor_id !== actor.id || !saved.matches) {
-        throw new WholesaleError(
-          409,
-          "This request identifier belongs to a different operation.",
-        );
-      }
-      if (saved.result !== null) return saved.result as T;
-      const result = await work(query);
-      await query(
-        "UPDATE wholesale_operations SET result=$2::text::jsonb WHERE id=$1",
-        [id, JSON.stringify(result)],
-      );
-      return result;
-    });
-  }
+  const operation = createWholesaleOperation(transaction);
   return {
     async catalog() {
-      const { rows } =
-        await read(`SELECT id,sku,product_name AS name,wholesale_price::text AS "wholesalePrice",
-        is_vat_exempt AS "isVatExempt" FROM products ORDER BY product_name,id`);
+      const { rows } = await read(
+        `SELECT p.id,p.sku,p.product_name AS name,p.wholesale_price::text AS "wholesalePrice",
+        p.is_vat_exempt AS "isVatExempt",
+        COALESCE((SELECT sum(b.quantity_remaining) FROM batch_info b WHERE b.product_id=p.id),0)::int AS "physicalStock",
+        COALESCE((SELECT sum(r.quantity) FROM wholesale_reservations r JOIN batch_info b ON b.id=r.batch_id
+          WHERE b.product_id=p.id AND r.released_at IS NULL AND r.consumed_at IS NULL),0)::int AS "reservedStock",
+        COALESCE((SELECT sum(GREATEST(0,b.quantity_remaining-COALESCE(r.quantity,0)))
+          FROM batch_info b LEFT JOIN (
+            SELECT batch_id,sum(quantity) AS quantity FROM wholesale_reservations
+            WHERE released_at IS NULL AND consumed_at IS NULL GROUP BY batch_id
+          ) r ON r.batch_id=b.id
+          WHERE b.product_id=p.id AND b.expiration_date >= $1::date),0)::int AS "availableStock"
+        FROM products p ORDER BY p.product_name,p.id`,
+        [pharmacyDate()],
+      );
       return rows;
     },
     async clients() {
@@ -192,6 +141,70 @@ export function createWholesaleDrafts(read: Query, transaction: Transaction) {
             "Created client " + client.id,
           );
           return client;
+        },
+      );
+    },
+    async updateClient(
+      actor: AuditActor,
+      key: unknown,
+      clientId: unknown,
+      input: any,
+    ) {
+      const id = requireUuid(clientId);
+      if (
+        typeof input?.name !== "string" ||
+        !input.name.trim() ||
+        input.name.trim().length > 255 ||
+        typeof input?.address !== "string" ||
+        input.address.length > 2000 ||
+        typeof input?.expected?.name !== "string" ||
+        !(
+          input.expected.address === null ||
+          typeof input.expected.address === "string"
+        )
+      ) {
+        throw new WholesaleError(400, "Enter a valid client name and address.");
+      }
+      const name = input.name.trim();
+      const address = input.address.trim() || null;
+      return operation(
+        actor,
+        key,
+        {
+          action: "update-client",
+          id,
+          name,
+          address,
+          expected: input.expected,
+        },
+        async (query) => {
+          const {
+            rows: [client],
+          } = await query(
+            "SELECT client_name,address FROM wholesale_clients WHERE id=$1 FOR UPDATE",
+            [id],
+          );
+          if (!client) throw new WholesaleError(404, "Client not found.");
+          if (
+            client.client_name !== input.expected.name ||
+            client.address !== input.expected.address
+          ) {
+            throw new WholesaleError(
+              409,
+              "This client changed. Refresh before editing.",
+            );
+          }
+          await query(
+            "UPDATE wholesale_clients SET client_name=$2,address=$3 WHERE id=$1",
+            [id, name, address],
+          );
+          await audit(
+            query,
+            actor,
+            "WHOLESALE_CLIENT_UPDATED",
+            "Updated client " + id,
+          );
+          return { id, name, address };
         },
       );
     },
@@ -260,7 +273,7 @@ export function createWholesaleDrafts(read: Query, transaction: Transaction) {
     async orders() {
       return (
         await read(`SELECT o.id,o.order_number AS "orderNumber",o.draft_revision AS revision,
-        o.status,o.client_id AS "clientId",c.client_name AS "clientName",o.total_order_amount::text AS total,
+        o.status,o.client_id AS "clientId",COALESCE(o.confirmation_snapshot->>'clientName',c.client_name) AS "clientName",o.total_order_amount::text AS total,
         o.updated_at AS "updatedAt",
         COALESCE((SELECT jsonb_agg(jsonb_build_object('productId',i.product_id,'quantity',i.quantity,
           'unitPrice',i.unit_price::text,'name',p.product_name) ORDER BY i.id)

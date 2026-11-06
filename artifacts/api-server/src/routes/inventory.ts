@@ -1,3 +1,5 @@
+import { queryDb } from "@workspace/db";
+import { reservedByBatch } from "../lib/reserved-stock";
 import { pharmacyDate } from "@workspace/api-zod";
 import { createStockMutations } from "../lib/stock-mutations";
 import { CheckoutError } from "../lib/atomic-checkout";
@@ -34,7 +36,7 @@ function asId(value: string | string[] | undefined): string {
   return Array.isArray(value) ? value[0] : (value ?? "");
 }
 
-function toApiProduct(product: typeof productsTable.$inferSelect, batches: (typeof batchInfoTable.$inferSelect)[]) {
+function toApiProduct(product: typeof productsTable.$inferSelect, batches: (typeof batchInfoTable.$inferSelect)[], reserved = new Map<string, number>()) {
   const stock = batches.reduce((sum, b) => sum + b.quantityRemaining, 0);
   return {
     id: product.id,
@@ -52,12 +54,16 @@ function toApiProduct(product: typeof productsTable.$inferSelect, batches: (type
       id: b.id,
       batchNumber: b.batchNumber,
       quantity: b.quantityRemaining,
+      reservedQuantity: reserved.get(b.id) ?? 0,
       expiryDate: b.expirationDate,
       mfgDate: b.mfgDate ?? undefined,
       dateReceived: b.dateReceived ?? undefined,
       supplier: b.supplier ?? undefined,
     })),
     stock,
+    reservedStock: batches.reduce((sum, batch) => sum + (reserved.get(batch.id) ?? 0), 0),
+    availableStock: batches.filter(batch => batch.expirationDate >= pharmacyDate())
+      .reduce((sum, batch) => sum + Math.max(0, batch.quantityRemaining - (reserved.get(batch.id) ?? 0)), 0),
   };
 }
 
@@ -108,7 +114,7 @@ async function fetchProductWithBatches(productId: string) {
     .select()
     .from(batchInfoTable)
     .where(eq(batchInfoTable.productId, product.id));
-  return toApiProduct(product, batches);
+  return toApiProduct(product, batches, await reservedByBatch(queryDb, [product.id]));
 }
 
 router.get("/inventory", async (_req: Request, res: Response) => {
@@ -119,6 +125,7 @@ router.get("/inventory", async (_req: Request, res: Response) => {
     .orderBy(asc(productsTable.productName), asc(productsTable.sku));
   const allBatches = await db.select().from(batchInfoTable);
 
+  const reserved = await reservedByBatch(queryDb, allProducts.map(product => product.id));
   const enriched = allProducts.map((p) => {
     const batches = allBatches.filter((b) => b.productId === p.id);
     const stock = batches.reduce((sum, b) => sum + b.quantityRemaining, 0);
@@ -140,7 +147,7 @@ router.get("/inventory", async (_req: Request, res: Response) => {
     else if (expiringSoonBatches.length > 0) status = "Expiring Soon";
     else if (stock <= p.minimumStockLevel) status = "Low Stock";
 
-    return { ...toApiProduct(p, batches), status, expiredBatches, expiringSoonBatches };
+    return { ...toApiProduct(p, batches, reserved), status, expiredBatches, expiringSoonBatches };
   });
 
   const nextDay = new Date(`${pharmacyDate(now)}T00:00:00+08:00`).getTime() + 86_400_000;
@@ -240,18 +247,25 @@ for (const kind of ["batches", "stock-in", "stock-out"] as const) {
   });
 }
 
-router.delete("/inventory/products/:id", async (req: Request, res: Response) => {
-  const id = asId(req.params.id);
-  const product = await findProduct(id);
-  if (!product) {
-    return res.status(404).json({ success: false, error: "Product not found." });
+router.delete("/inventory/products/:id", requireAuth, requireRoles("Admin"), async (req, res) => {
+  const product = await findProduct(asId(req.params.id));
+  if (!product) return res.status(404).json({ success: false, error: "Product not found." });
+  try {
+    await withTransaction(async query => {
+      await query("SELECT id FROM products WHERE id=$1 FOR UPDATE", [product.id]);
+      const { rows: references } = await query(
+        "SELECT id FROM wholesale_order_items WHERE product_id=$1 LIMIT 1", [product.id],
+      );
+      if (references.length) throw new CheckoutError(409, "This product has wholesale order history and cannot be deleted.");
+      await query("DELETE FROM batch_info WHERE product_id=$1", [product.id]);
+      await query("DELETE FROM stock_movements WHERE product_id=$1", [product.id]);
+      await query("DELETE FROM products WHERE id=$1", [product.id]);
+    });
+    return res.json({ success: true, message: "Product deleted." });
+  } catch (error) {
+    if (error instanceof CheckoutError) return res.status(error.status).json({ error: error.message });
+    throw error;
   }
-
-  await db.delete(batchInfoTable).where(eq(batchInfoTable.productId, product.id));
-  await db.delete(stockMovementsTable).where(eq(stockMovementsTable.productId, product.id));
-  await db.delete(productsTable).where(eq(productsTable.id, product.id));
-
-  return res.json({ success: true, message: `Product ${product.productName} deleted.` });
 });
 
 export default router;

@@ -1,3 +1,4 @@
+import { reservedByBatch, freeBatchQuantity } from "./reserved-stock";
 import { CheckoutError, type Transaction } from "./atomic-checkout";
 
 /** All quantity writers lock the product before its batches, matching checkout. */
@@ -79,8 +80,9 @@ export function createStockMutations(transaction: Transaction) {
         const eligible = number
           ? matches
           : batches;
+        const reserved = await reservedByBatch(query, [productId]);
         const available = eligible.reduce(
-          (sum, batch) => sum + Number(batch.quantity_remaining),
+          (sum, batch) => sum + freeBatchQuantity(batch, reserved),
           0,
         );
         if (available < input.quantity)
@@ -93,7 +95,7 @@ export function createStockMutations(transaction: Transaction) {
         for (const batch of eligible) {
           const quantity = Math.min(
             remaining,
-            Number(batch.quantity_remaining),
+            freeBatchQuantity(batch, reserved),
           );
           if (quantity > 0) {
             await query(
