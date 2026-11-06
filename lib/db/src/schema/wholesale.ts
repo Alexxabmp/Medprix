@@ -91,6 +91,12 @@ export const wholesaleOrdersTable = pgTable(
     contractId: uuid("contract_id").references(() => clientContractsTable.id, {
       onDelete: "set null",
     }),
+
+    confirmationSnapshot: jsonb("confirmation_snapshot"),
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+    confirmedBy: uuid("confirmed_by").references(() => usersTable.id, { onDelete: "restrict" }),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    cancelledBy: uuid("cancelled_by").references(() => usersTable.id, { onDelete: "restrict" }),
     orderNumber: varchar("order_number", { length: 100 }).unique("wholesale_orders_order_number_key"),
     draftRevision: integer("draft_revision"),
     createdBy: uuid("created_by").references(() => usersTable.id, { onDelete: "restrict" }),
@@ -101,6 +107,8 @@ export const wholesaleOrdersTable = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    check("wholesale_confirmation_check", sql`(${t.confirmationSnapshot} IS NULL AND ${t.confirmedAt} IS NULL AND ${t.confirmedBy} IS NULL)
+      OR (${t.confirmationSnapshot} IS NOT NULL AND jsonb_typeof(${t.confirmationSnapshot})='object' AND ${t.confirmedAt} IS NOT NULL AND ${t.confirmedBy} IS NOT NULL)`),
     check("wholesale_draft_revision_check", sql`${t.draftRevision} IS NULL OR (${t.draftRevision} > 0 AND ${t.orderNumber} IS NOT NULL AND ${t.createdBy} IS NOT NULL)`),
     check("wholesale_orders_total_order_amount_check", sql`${t.totalOrderAmount} >= 0`),
     index("idx_wholesale_orders_client_id").on(t.clientId),
