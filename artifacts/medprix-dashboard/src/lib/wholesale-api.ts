@@ -1,0 +1,83 @@
+import { safeError } from "./feedback";
+
+export type WholesaleProduct = {
+  id: string;
+  sku: string;
+  name: string;
+  wholesalePrice: string | null;
+  isVatExempt: boolean | null;
+};
+
+export type WholesaleClient = {
+  id: string;
+  name: string;
+  address: string | null;
+};
+
+export type WholesaleLine = {
+  productId: string;
+  quantity: number;
+};
+
+export type WholesaleOrder = {
+  id: string;
+  orderNumber: string;
+  revision: number;
+  status: string;
+  clientId: string;
+  clientName: string;
+  total: string;
+  updatedAt: string;
+  lines: Array<WholesaleLine & { unitPrice: string; name: string }>;
+};
+
+export type WholesaleRequest = {
+  key: string;
+  path: string;
+  method: string;
+  body: unknown;
+};
+
+export async function wholesaleGet<T>(path: string): Promise<T> {
+  const response = await fetch("/api/wholesale" + path, {
+    credentials: "include",
+  });
+  if (!response.ok)
+    throw new Error("Wholesale records are unavailable. Refresh to retry.");
+  return response.json();
+}
+
+export async function wholesaleWrite(request: WholesaleRequest) {
+  const response = await fetch("/api/wholesale" + request.path, {
+    method: request.method,
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": request.key,
+    },
+    body: JSON.stringify(request.body),
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    const error = new Error(
+      safeError(
+        { status: response.status, data },
+        "The result is uncertain. Retry the saved request.",
+      ),
+    );
+    Object.assign(error, {
+      definitive: response.status >= 400 && response.status < 500,
+    });
+    throw error;
+  }
+  if (!data)
+    throw new Error("The result is uncertain. Retry the saved request.");
+  return data;
+}
+export const wholesalePeso = (value: string | null) =>
+  value === null
+    ? "Not configured"
+    : new Intl.NumberFormat("en-PH", {
+        style: "currency",
+        currency: "PHP",
+      }).format(Number(value));

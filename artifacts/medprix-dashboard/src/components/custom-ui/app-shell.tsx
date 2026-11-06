@@ -212,7 +212,7 @@ export function AppShell({
                 )}
               </Route>
               <Route path="/wholesale">
-                <WholesalePage onToast={onToast} />
+                <WholesalePage onToast={onToast} role={role} />
               </Route>
               <Route path="/system-ad">
                 <SystemAdminPage onToast={onToast} />

@@ -1,179 +1,444 @@
-import { useState, type FormEvent } from "react";
-import { ArrowDownToLine, Check, Eye, Plus, Receipt, Search, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Plus, RefreshCw, Search } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
-import { Summary } from "@/components/custom-ui/summary-card";
+import { WholesaleDialog } from "@/components/wholesale-dialog";
+import { WholesaleOrderEditor } from "@/components/wholesale-order-editor";
+import { safeError } from "@/lib/feedback";
+import {
+  wholesaleGet,
+  wholesaleWrite,
+  wholesalePeso,
+  type WholesaleClient,
+  type WholesaleOrder,
+  type WholesaleProduct,
+  type WholesaleRequest,
+  type WholesaleLine,
+} from "@/lib/wholesale-api";
 import type { ToastFn } from "@/lib/types";
 
-export default function WholesalePage({ onToast }: { onToast: ToastFn }) {
-  const [statusFilter, setStatusFilter] = useState("All statuses");
-  const [orders, setOrders] = useState([
-    {
-      id: "WS-1608",
-      customer: "St. Luke\u2019s Clinic",
-      items: 38,
-      value: "₱18,450",
-      status: "In transit",
-    },
-    {
-      id: "WS-1607",
-      customer: "Greenfield Care Home",
-      items: 24,
-      value: "₱9,820",
-      status: "Processing",
-    },
-    {
-      id: "WS-1606",
-      customer: "Mabini Medical Center",
-      items: 62,
-      value: "₱42,150",
-      status: "Completed",
-    },
-    {
-      id: "WS-1605",
-      customer: "Brightwell Pharmacy",
-      items: 17,
-      value: "₱7,250",
-      status: "Completed",
-    },
-  ]);
+type Dialog =
+  | { kind: "client" }
+  | { kind: "price"; product: WholesaleProduct }
+  | { kind: "order"; order: WholesaleOrder | null };
 
-  const filtered = orders.filter(
-    (order) =>
-      statusFilter === "All statuses" || order.status === statusFilter,
+export default function WholesalePage({
+  onToast,
+  role,
+}: {
+  onToast: ToastFn;
+  role: string;
+}) {
+  const storageKey =
+    "medprix-wholesale-request:" +
+    (localStorage.getItem("medprix-username") ?? "");
+  const [clients, setClients] = useState<WholesaleClient[]>([]);
+  const [products, setProducts] = useState<WholesaleProduct[]>([]);
+  const [orders, setOrders] = useState<WholesaleOrder[]>([]);
+  const [tab, setTab] = useState<"orders" | "clients" | "prices">("orders");
+  const [dialog, setDialog] = useState<Dialog | null>(null);
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [ready, setReady] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [formError, setFormError] = useState("");
+  const [pending, setPending] = useState<WholesaleRequest | null>(() => {
+    try {
+      return JSON.parse(sessionStorage.getItem(storageKey) || "null");
+    } catch {
+      return null;
+    }
+  });
+
+  async function load() {
+    setLoading(true);
+    setError("");
+    try {
+      const [nextClients, nextProducts, nextOrders] = await Promise.all([
+        wholesaleGet<WholesaleClient[]>("/clients"),
+        wholesaleGet<WholesaleProduct[]>("/catalog"),
+        wholesaleGet<WholesaleOrder[]>("/orders"),
+      ]);
+      setClients(nextClients);
+      setProducts(nextProducts);
+      setOrders(nextOrders);
+      setReady(true);
+    } catch (failure) {
+      setReady(false);
+      setError(safeError(failure));
+    } finally {
+      setLoading(false);
+    }
+  }
+  useEffect(() => {
+    void load();
+  }, []);
+
+  async function submit(request: WholesaleRequest) {
+    setBusy(true);
+    setFormError("");
+    try {
+      sessionStorage.setItem(storageKey, JSON.stringify(request));
+      setPending(request);
+      await wholesaleWrite(request);
+      sessionStorage.removeItem(storageKey);
+      setPending(null);
+      setDialog(null);
+      onToast("Wholesale record saved.");
+      await load();
+    } catch (failure) {
+      const definitive = (failure as { definitive?: boolean }).definitive;
+      if (definitive) {
+        sessionStorage.removeItem(storageKey);
+        setPending(null);
+      }
+      const message = safeError(failure);
+      setFormError(message);
+      if (!dialog) setError(message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  function mutate(path: string, method: string, body: unknown) {
+    void submit({ key: crypto.randomUUID(), path, method, body });
+  }
+  function open(next: Dialog) {
+    setFormError("");
+    setDialog(next);
+  }
+  function saveDraft(draft: { clientId: string; lines: WholesaleLine[] }) {
+    const order = dialog?.kind === "order" ? dialog.order : null;
+    mutate(
+      order ? "/orders/" + order.id : "/orders",
+      order ? "PUT" : "POST",
+      order ? { revision: order.revision, draft } : draft,
+    );
+  }
+  const locked = busy || pending !== null;
+  const query = search.toLocaleLowerCase();
+  const visibleOrders = orders.filter((order) =>
+    (order.orderNumber + " " + order.clientName)
+      .toLocaleLowerCase()
+      .includes(query),
+  );
+  const visibleClients = clients.filter((client) =>
+    (client.name + " " + (client.address ?? ""))
+      .toLocaleLowerCase()
+      .includes(query),
+  );
+  const visibleProducts = products.filter((product) =>
+    (product.name + " " + product.sku).toLocaleLowerCase().includes(query),
   );
 
   return (
-    <div>
+    <div className="wholesale-workspace">
       <PageHeading
         title="Wholesale"
-        description="A focused view of partner orders and fulfillment."
+        description="Clients, wholesale prices and order drafts."
         action={
           <button
-            className="button dark"
-            data-testid="button-new-wholesale"
-            onClick={() => onToast("Wholesale order draft opened")}>
-            <Plus size={14} /> New wholesale order
+            className="button soft"
+            disabled={busy || loading}
+            onClick={() => void load()}
+          >
+            <RefreshCw size={15} /> Refresh
           </button>
         }
       />
-      <div className="summary-strip">
-        <Summary
-          label="Wholesale sales"
-          value="₱77,670"
-          caption="+14.2% this month"
-        />
-        <Summary
-          label="Open orders"
-          value="2"
-          caption="Ready for fulfillment"
-        />
-        <Summary
-          label="Partner accounts"
-          value="36"
-          caption="4 new this month"
-        />
-      </div>
-      <section className="surface-card table-card">
-        <div className="table-tools">
-          <div>
-            <h2 className="card-title">Partner orders</h2>
-            <p className="card-subtitle">Wholesale fulfillment queue</p>
-          </div>
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <select
-              className="select"
-              data-testid="select-wholesale-status-filter"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}>
-              <option>All statuses</option>
-              <option>Processing</option>
-              <option>In transit</option>
-              <option>Completed</option>
-            </select>
+      <p className="field-hint">
+        Drafts do not reserve stock. Delivery, price overrides and collections
+        will be available in subsequent phases.
+      </p>
+      {error && (
+        <div role="alert" className="inline-error">
+          {error}
+        </div>
+      )}
+      {pending && (
+        <div className="surface-card wholesale-notice" role="status">
+          <p>
+            A saved request needs confirmation. Retry it before starting another
+            change.
+          </p>
+          <button
+            className="button dark"
+            disabled={busy}
+            onClick={() => void submit(pending)}
+          >
+            Retry saved request
+          </button>
+        </div>
+      )}
+      <div className="wholesale-toolbar">
+        <div
+          className="wholesale-tabs"
+          role="group"
+          aria-label="Wholesale sections"
+        >
+          {(["orders", "clients", "prices"] as const).map((item) => (
             <button
-              className="button soft"
-              data-testid="button-wholesale-export"
-              onClick={() => onToast("Wholesale order list exported")}>
-              <ArrowDownToLine size={14} /> Export
+              key={item}
+              className={"button " + (tab === item ? "dark" : "soft")}
+              aria-pressed={tab === item}
+              onClick={() => {
+                setTab(item);
+                setSearch("");
+              }}
+            >
+              {item === "orders"
+                ? "Orders"
+                : item === "clients"
+                  ? "Clients"
+                  : "Wholesale prices"}
             </button>
-          </div>
+          ))}
         </div>
-        <div className="table-scroll">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Order</th>
-                <th>Partner</th>
-                <th>Items</th>
-                <th>Value</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((order) => {
-                const isCompleted = order.status === "Completed";
-                const isProcessing = order.status === "Processing";
-
-                return (
-                  <tr key={order.id}>
-                    <td>
-                      <strong>{order.id}</strong>
-                    </td>
-                    <td>{order.customer}</td>
-                    <td>{order.items}</td>
-                    <td>
-                      <strong>{order.value}</strong>
-                    </td>
-                    <td>
-                      <select
-                        className="select"
-                        data-testid={`select-status-${order.id}`}
-                        style={{
-                          height: 30,
-                          padding: "0 28px 0 12px",
-                          fontSize: 12,
-                          fontWeight: 600,
-                          borderRadius: 99,
-                          border: "1px solid hsl(var(--border))",
-                          background: isCompleted
-                            ? "hsl(var(--mint))"
-                            : isProcessing
-                              ? "hsl(var(--yellow))"
-                              : "hsl(var(--accent-soft))",
-                          color: isCompleted
-                            ? "#1B7A40"
-                            : isProcessing
-                              ? "#8B4500"
-                              : "hsl(var(--accent))",
-                          cursor: "pointer",
-                          outline: "none",
-                        }}
-                        value={order.status}
-                        onChange={(e) => {
-                          const newStatus = e.target.value;
-                          setOrders(
-                            orders.map((o) =>
-                              o.id === order.id
-                                ? { ...o, status: newStatus }
-                                : o,
-                            ),
-                          );
-                          onToast(
-                            `Order ${order.id} status changed to ${newStatus}`,
-                          );
-                        }}>
-                        <option value="Processing">Processing</option>
-                        <option value="In transit">In transit</option>
-                        <option value="Completed">Completed</option>
-                      </select>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
+        <label className="search-wrap">
+          <Search size={15} />
+          <input
+            aria-label="Search wholesale records"
+            placeholder="Search this section…"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </label>
+        {tab !== "prices" && (
+          <button
+            className="button dark"
+            disabled={
+              locked ||
+              !ready ||
+              loading ||
+              (tab === "orders" && !clients.length)
+            }
+            onClick={() =>
+              open(
+                tab === "orders"
+                  ? { kind: "order", order: null }
+                  : { kind: "client" },
+              )
+            }
+          >
+            <Plus size={15} />
+            {tab === "orders" ? "New draft" : "Add client"}
+          </button>
+        )}
+      </div>
+      {loading ? (
+        <p role="status">Loading wholesale records…</p>
+      ) : (
+        ready && (
+          <section className="surface-card table-card">
+            <div className="table-scroll">
+              {tab === "orders" && (
+                <table className="data-table">
+                  <caption className="wholesale-caption">
+                    Latest 200 order drafts. Historical orders await separate
+                    review.
+                  </caption>
+                  <thead>
+                    <tr>
+                      <th>Order</th>
+                      <th>Client</th>
+                      <th>Total including VAT</th>
+                      <th>Status</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleOrders.map((order) => (
+                      <tr key={order.id}>
+                        <td>{order.orderNumber}</td>
+                        <td>{order.clientName}</td>
+                        <td>{wholesalePeso(order.total)}</td>
+                        <td>
+                          {order.status === "Pending" ? "Draft" : order.status}
+                        </td>
+                        <td>
+                          <button
+                            className="button soft"
+                            disabled={locked || order.status !== "Pending"}
+                            onClick={() => open({ kind: "order", order })}
+                          >
+                            Edit draft
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              {tab === "clients" && (
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Client</th>
+                      <th>Address</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleClients.map((client) => (
+                      <tr key={client.id}>
+                        <td>{client.name}</td>
+                        <td>{client.address || "Not provided"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              {tab === "prices" && (
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Product / SKU</th>
+                      <th>Wholesale unit price</th>
+                      <th>VAT classification</th>
+                      {role === "Admin" && <th>Action</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleProducts.map((product) => (
+                      <tr key={product.id}>
+                        <td>
+                          {product.name}
+                          <div className="muted">{product.sku}</div>
+                        </td>
+                        <td>{wholesalePeso(product.wholesalePrice)}</td>
+                        <td>
+                          {product.isVatExempt === null
+                            ? "Needs classification"
+                            : product.isVatExempt
+                              ? "Exempt"
+                              : "VATable"}
+                        </td>
+                        {role === "Admin" && (
+                          <td>
+                            <button
+                              className="button soft"
+                              disabled={locked}
+                              onClick={() => open({ kind: "price", product })}
+                            >
+                              Set price
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            {!(
+              tab === "orders"
+                ? visibleOrders
+                : tab === "clients"
+                  ? visibleClients
+                  : visibleProducts
+            ).length && (
+              <div className="empty-state">
+                {search
+                  ? "No matching records."
+                  : tab === "orders"
+                    ? "No drafts yet. Add a client and configure wholesale prices to begin."
+                    : "No records yet."}
+              </div>
+            )}
+          </section>
+        )
+      )}
+      {dialog?.kind === "order" && (
+        <WholesaleOrderEditor
+          order={dialog.order}
+          clients={clients}
+          products={products}
+          busy={locked}
+          error={formError}
+          retry={pending && !busy ? () => void submit(pending) : undefined}
+          close={() => setDialog(null)}
+          save={saveDraft}
+        />
+      )}
+      {dialog && dialog.kind !== "order" && (
+        <WholesaleDialog
+          title={
+            dialog.kind === "client"
+              ? "Add wholesale client"
+              : "Set wholesale price"
+          }
+          busy={locked}
+          close={() => setDialog(null)}
+        >
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              const data = new FormData(event.currentTarget);
+              if (dialog.kind === "client")
+                mutate("/clients", "POST", {
+                  name: data.get("name"),
+                  address: data.get("address"),
+                });
+              else
+                mutate("/products/" + dialog.product.id + "/price", "PUT", {
+                  wholesalePrice: data.get("price") || null,
+                  expectedPrice: dialog.product.wholesalePrice,
+                });
+            }}
+          >
+            <fieldset className="wholesale-fields" disabled={locked}>
+              {dialog.kind === "client" ? (
+                <>
+                  <label className="field">
+                    Client name
+                    <input name="name" maxLength={255} required />
+                  </label>
+                  <label className="field">
+                    Delivery address
+                    <textarea name="address" maxLength={2000} />
+                  </label>
+                </>
+              ) : (
+                <>
+                  <p>{dialog.product.name}</p>
+                  <label className="field">
+                    Wholesale unit price (VAT included where applicable)
+                    <input
+                      name="price"
+                      type="number"
+                      min="0"
+                      max="9999999999.99"
+                      step="0.01"
+                      defaultValue={dialog.product.wholesalePrice ?? ""}
+                    />
+                  </label>
+                  <p className="field-hint">
+                    Leave blank to mark the price unconfigured. Retail price is
+                    unchanged.
+                  </p>
+                </>
+              )}
+              <div className="wholesale-actions">
+                <button className="button dark" type="submit">
+                  {busy ? "Saving…" : "Save"}
+                </button>
+              </div>
+            </fieldset>
+            {formError && (
+              <p className="form-error" role="alert">
+                {formError}
+              </p>
+            )}
+            {pending && !busy && (
+              <button
+                type="button"
+                className="button dark"
+                onClick={() => void submit(pending)}
+              >
+                Retry saved request
+              </button>
+            )}
+          </form>
+        </WholesaleDialog>
+      )}
     </div>
   );
 }
