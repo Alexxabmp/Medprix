@@ -1,3 +1,4 @@
+import { LoadingState } from "./loading-state";
 import { lazy, Suspense, useState, useEffect } from "react";
 import { Link, Route, Switch, useLocation } from "wouter";
 import { Moon, Pill, Sun, UserCog, X } from "lucide-react";
@@ -176,7 +177,10 @@ export function AppShell({
           </div>
         </header>
         <main className="content">
-          <Suspense fallback={<div className="muted">Loading page...</div>}>
+          <Suspense
+            key={location}
+            fallback={<LoadingState label={"Loading " + pageName + "…"} />}
+          >
             <Switch>
               <Route path="/">
                 {roleKey === "admin" ? (

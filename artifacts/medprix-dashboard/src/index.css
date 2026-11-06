@@ -2546,3 +2546,23 @@ a {
   .wholesale-toolbar > .button, .wholesale-toolbar .search-wrap { width: 100%; }
   .wholesale-dialog { max-height: calc(100dvh - 24px); padding: 18px; }
 }
+
+.loading-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  min-height: 112px;
+  margin-bottom: 16px;
+  color: hsl(var(--muted));
+  overflow-wrap: anywhere;
+}
+.loading-state > svg {
+  flex: 0 0 auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  .loading-state .spin {
+    animation: none;
+  }
+}
