@@ -1,24 +1,43 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ArrowUpRight, Download, X } from "lucide-react";
-import { cashMismatches, movementFast, movementSlow, products } from "@/lib/data";
+import {
+  buildReportPdf,
+  computeDashboardAnalytics,
+  formatPeso,
+  parseMoney,
+  type DashboardAnalytics,
+} from "@/lib/dashboard-analytics";
 import type { ReportType, ToastFn } from "@/lib/types";
 
 // --- Utility ---
 
-export function exportReport(type: ReportType, onToast: ToastFn) {
-  const content = `Medprix ${type} report\nGenerated August 18, 2026\n\nThis local report contains the latest pharmacy operations snapshot.`;
+export function exportReport(
+  type: ReportType,
+  onToast: ToastFn,
+  analytics?: DashboardAnalytics,
+) {
+  const resolved = analytics ?? computeDashboardAnalytics([], [], new Date());
+  const pdfBytes = buildReportPdf(type, resolved);
   const link = document.createElement("a");
-  link.href = URL.createObjectURL(new Blob([content], { type: "text/plain" }));
-  link.download = `medprix-${type}-report.txt`;
+  link.href = URL.createObjectURL(
+    new Blob([pdfBytes as unknown as BlobPart], { type: "application/pdf" }),
+  );
+  link.download = `medprix-${type}-report.pdf`;
   link.click();
   URL.revokeObjectURL(link.href);
-  onToast("Report exported successfully");
+  onToast("PDF report exported successfully");
 }
 
 // --- Sub-components ---
 
-export function ReportMetric({ label, value }: { label: string; value: string }) {
+export function ReportMetric({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
   return (
     <div className="report-metric">
       <span>{label}</span>
@@ -59,35 +78,55 @@ export function ModalTable({
   rows: string[][];
 }) {
   return (
-    <table>
-      <thead>
-        <tr>
-          {headers.map((h) => (
-            <th key={h}>{h}</th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row, index) => (
-          <tr key={`${row[0]}-${index}`}>
-            {row.map((cell, cellIndex) => (
-              <td key={`${cell}-${cellIndex}`}>
-                {cellIndex === row.length - 1 &&
-                (cell.includes("stock") || cell.includes("Available")) ? (
-                  <span className="pill success">{cell}</span>
-                ) : (
-                  cell
-                )}
-              </td>
+    <div style={{ maxHeight: 300, overflowY: "auto" }}>
+      <table>
+        <thead>
+          <tr>
+            {headers.map((h) => (
+              <th key={h}>{h}</th>
             ))}
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={`${row[0]}-${index}`}>
+              {row.map((cell, cellIndex) => {
+                const isLast = cellIndex === row.length - 1;
+                if (isLast && cell === "Available") {
+                  return (
+                    <td key={`${cell}-${cellIndex}`}>
+                      <span className="pill success">{cell}</span>
+                    </td>
+                  );
+                }
+                if (isLast && (cell === "Low stock" || cell === "Out of stock")) {
+                  return (
+                    <td key={`${cell}-${cellIndex}`}>
+                      <span
+                        className={`pill ${cell === "Out of stock" ? "danger" : "warning"}`}>
+                        {cell}
+                      </span>
+                    </td>
+                  );
+                }
+                return <td key={`${cell}-${cellIndex}`}>{cell}</td>;
+              })}
+            </tr>
+          ))}
+          {rows.length === 0 && (
+            <tr>
+              <td colSpan={headers.length} className="muted">
+                No records found.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
-// ΓöÇΓöÇΓöÇ Main component ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─── Main component ──────────────────────────────────────────────────────────
 
 export function ReportModal({
   type,
@@ -96,6 +135,8 @@ export function ReportModal({
   onToast,
   liveTransactions = [],
   liveProducts = [],
+  salesDate = new Date(),
+  analytics: providedAnalytics,
 }: {
   type: ReportType;
   initialCashDetailRow?: number | null;
@@ -103,10 +144,19 @@ export function ReportModal({
   onToast: ToastFn;
   liveTransactions?: any[];
   liveProducts?: any[];
+  salesDate?: Date;
+  analytics?: DashboardAnalytics;
 }) {
   const [movementTab, setMovementTab] = useState<"fast" | "slow">("fast");
   const [cashDetailRow, setCashDetailRow] = useState<number | null>(
     initialCashDetailRow,
+  );
+
+  const analytics = useMemo(
+    () =>
+      providedAnalytics ??
+      computeDashboardAnalytics(liveTransactions, liveProducts, salesDate),
+    [providedAnalytics, liveTransactions, liveProducts, salesDate],
   );
 
   useEffect(() => {
@@ -123,62 +173,9 @@ export function ReportModal({
     };
   }, []);
 
-  const formatPeso = (val: number) =>
-    `₱${val.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-  // Live Sales metrics
-  const hasLiveTx = liveTransactions.length > 0;
-  const liveTotalSales = liveTransactions.reduce((sum, t) => {
-    const val = parseFloat(String(t.total || "0").replace("₱", "").replace(/,/g, "")) || 0;
-    return sum + val;
-  }, 0);
-  const liveTotalTx = liveTransactions.length;
-  const liveProductsSold = liveTransactions.reduce((sum, t) => {
-    if (Array.isArray(t.items)) {
-      return sum + t.items.reduce((iSum: number, item: any) => iSum + (Number(item.quantity) || 1), 0);
-    }
-    return sum + 1;
-  }, 0);
-
-  const liveCashSales = liveTransactions
-    .filter((t) => (t.payment || "").toLowerCase().includes("cash"))
-    .reduce((sum, t) => sum + (parseFloat(String(t.total || "0").replace("₱", "").replace(/,/g, "")) || 0), 0);
-  const liveCardSales = liveTransactions
-    .filter((t) => {
-      const m = (t.payment || "").toLowerCase();
-      return m.includes("card") || m.includes("credit") || m.includes("debit");
-    })
-    .reduce((sum, t) => sum + (parseFloat(String(t.total || "0").replace("₱", "").replace(/,/g, "")) || 0), 0);
-  const liveWalletSales = liveTransactions
-    .filter((t) => {
-      const m = (t.payment || "").toLowerCase();
-      return m.includes("gcash") || m.includes("wallet") || m.includes("paymaya");
-    })
-    .reduce((sum, t) => sum + (parseFloat(String(t.total || "0").replace("₱", "").replace(/,/g, "")) || 0), 0);
-
-  // Live Inventory & Valuation metrics
-  const hasLiveProducts = liveProducts.length > 0;
-  const liveTotalProducts = liveProducts.length;
-  const liveLowStock = liveProducts.filter((p) => {
-    const stock = Array.isArray(p.batches)
-      ? p.batches.reduce((sum: number, b: any) => sum + (Number(b.quantity) || 0), 0)
-      : (Number(p.stock) || 0);
-    return stock <= (Number(p.reorder) || 10);
-  }).length;
-  const liveInStock = Math.max(0, liveTotalProducts - liveLowStock);
-  const liveTotalUnits = liveProducts.reduce((sum, p) => {
-    const stock = Array.isArray(p.batches)
-      ? p.batches.reduce((bSum: number, b: any) => bSum + (Number(b.quantity) || 0), 0)
-      : (Number(p.stock) || 0);
-    return sum + stock;
-  }, 0);
-  const liveTotalStockValuation = liveProducts.reduce((sum, p) => {
-    const stock = Array.isArray(p.batches)
-      ? p.batches.reduce((bSum: number, b: any) => bSum + (Number(b.quantity) || 0), 0)
-      : (Number(p.stock) || 0);
-    const priceNum = parseFloat(String(p.price || "0").replace("₱", "").replace(/,/g, "")) || 0;
-    return sum + stock * priceNum;
-  }, 0);
+  const cashMismatches = analytics.cash.mismatches;
+  const activeCashRow =
+    cashDetailRow !== null ? cashMismatches[cashDetailRow] ?? null : null;
 
   const titles: Record<ReportType, string> = {
     sales: "Daily sales report",
@@ -186,11 +183,16 @@ export function ReportModal({
     financial: "Financial summary",
     valuation: "Stock valuation",
     movement: "Product movement",
-    cash:
-      cashDetailRow !== null
-        ? `Cash mismatch – ${cashMismatches[cashDetailRow].date} ${cashMismatches[cashDetailRow].shift} shift`
-        : "Cash mismatch alerts",
+    cash: activeCashRow
+      ? `Cash mismatch – ${activeCashRow.date} ${activeCashRow.shift} shift`
+      : "Cash mismatch alerts",
   };
+
+  const subtitle = activeCashRow
+    ? `Shift reconciliation · ${activeCashRow.fullDateLabel} · Medprix Central`
+    : type === "financial" || type === "movement" || type === "cash"
+      ? `Period: ${analytics.periodLabel} · Medprix Central`
+      : `${analytics.salesDateLabel} · Medprix Central`;
 
   return createPortal(
     <div
@@ -207,15 +209,9 @@ export function ReportModal({
         <div className="modal-header">
           <div>
             <h2>{titles[type]}</h2>
-            <p className="modal-sub">
-              {cashDetailRow !== null
-                ? `Shift reconciliation · ${cashMismatches[cashDetailRow].date} · Medprix Central`
-                : type === "financial"
-                  ? "Period: August 2026"
-                  : "August 18, 2026 · Medprix Central"}
-            </p>
+            <p className="modal-sub">{subtitle}</p>
           </div>
-          {cashDetailRow !== null ? (
+          {activeCashRow ? (
             <button
               className="button soft"
               style={{ marginRight: 8 }}
@@ -235,14 +231,44 @@ export function ReportModal({
         {type === "sales" && (
           <>
             <div className="report-metrics">
-              <ReportMetric label="Total sales" value={hasLiveTx ? formatPeso(liveTotalSales) : "₱45,250"} />
-              <ReportMetric label="Transactions" value={hasLiveTx ? String(liveTotalTx) : "128"} />
-              <ReportMetric label="Products sold" value={hasLiveTx ? String(liveProductsSold) : "356"} />
+              <ReportMetric
+                label="Total sales"
+                value={formatPeso(analytics.dailySales.totalSales)}
+              />
+              <ReportMetric
+                label="Transactions"
+                value={String(analytics.dailySales.transactionCount)}
+              />
+              <ReportMetric
+                label="Products sold"
+                value={String(analytics.dailySales.productsSold)}
+              />
             </div>
             <ModalSection title="Payment method">
-              <ModalRow label="Cash" value={hasLiveTx ? formatPeso(liveCashSales) : "₱25,000"} />
-              <ModalRow label="Card" value={hasLiveTx ? formatPeso(liveCardSales) : "₱12,500"} />
-              <ModalRow label="E-wallet" value={hasLiveTx ? formatPeso(liveWalletSales) : "₱7,750"} />
+              <ModalRow
+                label={`Cash (${analytics.dailySales.cashCount} order(s))`}
+                value={formatPeso(analytics.dailySales.cashSales)}
+              />
+              <ModalRow
+                label={`Card (${analytics.dailySales.cardCount} order(s))`}
+                value={formatPeso(analytics.dailySales.cardSales)}
+              />
+              <ModalRow
+                label={`E-wallet (${analytics.dailySales.walletCount} order(s))`}
+                value={formatPeso(analytics.dailySales.walletSales)}
+              />
+            </ModalSection>
+            <ModalSection
+              title={`Completed orders on ${analytics.salesDateLabel} (${analytics.dailySales.transactionCount})`}>
+              <ModalTable
+                headers={["Receipt #", "Payment", "Cashier", "Total"]}
+                rows={analytics.dailySales.transactions.map((t) => [
+                  String(t.transactionNumber || t.id),
+                  String(t.payment || "Cash"),
+                  String(t.user || "Cashier"),
+                  formatPeso(parseMoney(t.total)),
+                ])}
+              />
             </ModalSection>
           </>
         )}
@@ -251,24 +277,29 @@ export function ReportModal({
         {type === "inventory" && (
           <>
             <div className="report-metrics">
-              <ReportMetric label="Total products" value={hasLiveProducts ? String(liveTotalProducts) : "850"} />
-              <ReportMetric label="In stock" value={hasLiveProducts ? String(liveInStock) : "720"} />
-              <ReportMetric label="Low stock" value={hasLiveProducts ? String(liveLowStock) : "95"} />
+              <ReportMetric
+                label="Total products"
+                value={String(analytics.inventory.totalProducts)}
+              />
+              <ReportMetric
+                label="In stock"
+                value={String(analytics.inventory.inStockCount)}
+              />
+              <ReportMetric
+                label="Low stock"
+                value={String(analytics.inventory.lowStockCount)}
+              />
             </div>
-            <ModalSection title="Stock watchlist">
+            <ModalSection
+              title={`Stock watchlist (${analytics.inventory.rows.length} SKUs)`}>
               <ModalTable
-                headers={["Product", "Stock", "Status"]}
-                rows={hasLiveProducts
-                  ? liveProducts.slice(0, 5).map((p) => {
-                      const stock = Array.isArray(p.batches)
-                        ? p.batches.reduce((sum: number, b: any) => sum + (Number(b.quantity) || 0), 0)
-                        : (Number(p.stock) || 0);
-                      const status = stock === 0 ? "Out of stock" : stock <= (Number(p.reorder) || 10) ? "Low stock" : "Available";
-                      return [p.name, String(stock), status];
-                    })
-                  : products
-                      .slice(0, 3)
-                      .map((p) => [p.name, String(p.stock ?? 0), p.status ?? "Available"])}
+                headers={["Product", "SKU", "Stock", "Status"]}
+                rows={analytics.inventory.rows.map((p) => [
+                  p.name,
+                  p.sku,
+                  `${p.stock} (min ${p.reorder})`,
+                  p.status,
+                ])}
               />
             </ModalSection>
           </>
@@ -278,14 +309,44 @@ export function ReportModal({
         {type === "financial" && (
           <>
             <div className="report-metrics">
-              <ReportMetric label="Total sales" value="₱450,000" />
-              <ReportMetric label="Expenses" value="₱85,000" />
-              <ReportMetric label="Net profit" value="₱365,000" />
+              <ReportMetric
+                label="Total sales"
+                value={formatPeso(analytics.financial.totalSales)}
+              />
+              <ReportMetric
+                label="Expenses (COGS)"
+                value={formatPeso(analytics.financial.expenses)}
+              />
+              <ReportMetric
+                label="Net profit"
+                value={formatPeso(analytics.financial.netProfit)}
+              />
             </div>
             <ModalSection title="Summary">
-              <ModalRow label="Gross margin" value="81.1%" />
-              <ModalRow label="Operating expenses" value="₱85,000" />
-              <ModalRow label="Net profit margin" value="81.1%" />
+              <ModalRow
+                label="Gross sales"
+                value={formatPeso(analytics.financial.grossSales)}
+              />
+              <ModalRow
+                label="Discounts granted"
+                value={formatPeso(analytics.financial.totalDiscount)}
+              />
+              <ModalRow
+                label="VAT collected"
+                value={formatPeso(analytics.financial.totalVat)}
+              />
+              <ModalRow
+                label="Cost of goods sold (COGS)"
+                value={formatPeso(analytics.financial.expenses)}
+              />
+              <ModalRow
+                label="Gross margin"
+                value={`${analytics.financial.grossMarginPct.toFixed(1)}%`}
+              />
+              <ModalRow
+                label="Net profit margin"
+                value={`${analytics.financial.netProfitMarginPct.toFixed(1)}%`}
+              />
             </ModalSection>
           </>
         )}
@@ -294,26 +355,29 @@ export function ReportModal({
         {type === "valuation" && (
           <>
             <div className="report-metrics">
-              <ReportMetric label="Current stock value" value={hasLiveProducts ? formatPeso(liveTotalStockValuation) : "₱825,450"} />
-              <ReportMetric label="Units held" value={hasLiveProducts ? liveTotalUnits.toLocaleString() : "4,280"} />
-              <ReportMetric label="SKUs tracked" value={hasLiveProducts ? String(liveTotalProducts) : "850"} />
+              <ReportMetric
+                label="Current stock value"
+                value={formatPeso(analytics.valuation.totalRetailValue)}
+              />
+              <ReportMetric
+                label="Units held"
+                value={analytics.valuation.totalUnits.toLocaleString()}
+              />
+              <ReportMetric
+                label="SKUs tracked"
+                value={String(analytics.valuation.skusTracked)}
+              />
             </div>
-            <ModalSection title="Value by product">
+            <ModalSection
+              title={`Value by product (${analytics.inventory.rows.length} SKUs)`}>
               <ModalTable
-                headers={["Product", "Qty", "Value"]}
-                rows={hasLiveProducts
-                  ? liveProducts.slice(0, 5).map((p) => {
-                      const stock = Array.isArray(p.batches)
-                        ? p.batches.reduce((sum: number, b: any) => sum + (Number(b.quantity) || 0), 0)
-                        : (Number(p.stock) || 0);
-                      const priceNum = parseFloat(String(p.price || "0").replace("₱", "").replace(/,/g, "")) || 0;
-                      return [p.name, String(stock), formatPeso(stock * priceNum)];
-                    })
-                  : [
-                      ["Paracetamol", "120", "₱600"],
-                      ["Amoxicillin", "80", "₱960"],
-                      ["Vitamin C", "50", "₱400"],
-                    ]}
+                headers={["Product", "Qty", "Unit price", "Value"]}
+                rows={analytics.inventory.rows.map((p) => [
+                  p.name,
+                  String(p.stock),
+                  formatPeso(p.price),
+                  formatPeso(p.retailValue),
+                ])}
               />
             </ModalSection>
           </>
@@ -337,130 +401,151 @@ export function ReportModal({
               </button>
             </div>
             <ModalTable
-              headers={["Product", "Units sold"]}
-              rows={(movementTab === "fast" ? movementFast : movementSlow).map(
-                (item) => [item.name, String(item.units)],
-              )}
+              headers={["Product", "Units sold", "Revenue", "Current stock"]}
+              rows={(movementTab === "fast"
+                ? analytics.movement.fastMovers
+                : analytics.movement.slowMovers
+              ).map((item) => [
+                item.name,
+                String(item.units),
+                formatPeso(item.revenue),
+                String(item.stock),
+              ])}
             />
           </>
         )}
 
-        {/* Cash mismatch ΓÇö list view */}
-        {type === "cash" && cashDetailRow === null && (
+        {/* Cash mismatch — list view */}
+        {type === "cash" && !activeCashRow && (
           <>
             <div className="report-metrics">
-              <ReportMetric label="Open alerts" value="2" />
-              <ReportMetric label="Short" value="₱500" />
-              <ReportMetric label="Over" value="₱1,000" />
+              <ReportMetric
+                label="Open alerts"
+                value={String(analytics.cash.openAlertsCount)}
+              />
+              <ReportMetric
+                label="Short"
+                value={formatPeso(analytics.cash.totalShortAmount)}
+              />
+              <ReportMetric
+                label="Over"
+                value={formatPeso(analytics.cash.totalOverAmount)}
+              />
             </div>
             <ModalSection
               title={`${cashMismatches.length} inconsistencies detected`}>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Shift</th>
-                    <th>Expected</th>
-                    <th>Recorded</th>
-                    <th>Difference</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cashMismatches.map((row, index) => (
-                    <tr key={row.date + row.shift}>
-                      <td>{row.date}</td>
-                      <td>{row.shift}</td>
-                      <td>{row.expected}</td>
-                      <td>{row.recorded}</td>
-                      <td
-                        style={{
-                          color: row.type === "short" ? "#ff8a7a" : "#7ed2a0",
-                          fontWeight: 600,
-                        }}>
-                        {row.difference}
-                      </td>
-                      <td>
-                        <button
-                          className="button soft"
-                          style={{
-                            fontSize: 12,
-                            padding: "4px 10px",
-                            height: "auto",
-                          }}
-                          data-testid={`button-view-cash-details-${index}`}
-                          onClick={() => setCashDetailRow(index)}>
-                          View details <ArrowUpRight size={11} />
-                        </button>
-                      </td>
+              <div style={{ maxHeight: 300, overflowY: "auto" }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Shift</th>
+                      <th>Expected</th>
+                      <th>Recorded</th>
+                      <th>Difference</th>
+                      <th></th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {cashMismatches.map((row, index) => (
+                      <tr key={row.dateKey + row.shift}>
+                        <td>{row.date}</td>
+                        <td>{row.shift}</td>
+                        <td>{row.expected}</td>
+                        <td>{row.recorded}</td>
+                        <td
+                          style={{
+                            color:
+                              row.type === "short" ? "#ff8a7a" : "#7ed2a0",
+                            fontWeight: 600,
+                          }}>
+                          {row.difference}
+                        </td>
+                        <td>
+                          <button
+                            className="button soft"
+                            style={{
+                              fontSize: 12,
+                              padding: "4px 10px",
+                              height: "auto",
+                            }}
+                            data-testid={`button-view-cash-details-${index}`}
+                            onClick={() => setCashDetailRow(index)}>
+                            View details <ArrowUpRight size={11} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {cashMismatches.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="muted">
+                          No cash discrepancies detected across recorded shifts.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </ModalSection>
           </>
         )}
 
-        {/* Cash mismatch ΓÇö detail view for a specific row */}
-        {type === "cash" &&
-          cashDetailRow !== null &&
-          (() => {
-            const row = cashMismatches[cashDetailRow];
-            return (
-              <>
-                <ModalSection title="Shift reconciliation">
-                  <ModalRow
-                    label="Date"
-                    value={`August ${row.date.split(" ")[1]}, 2026`}
-                  />
-                  <ModalRow label="Shift" value={row.shift} />
-                  <ModalRow label="Recorded sales" value={row.expected} />
-                  <ModalRow label="Expected cash" value={row.expected} />
-                  <ModalRow label="Actual cash" value={row.recorded} />
-                  <ModalRow label="Difference" value={row.difference} />
-                </ModalSection>
-                <div
-                  style={{
-                    marginTop: 16,
-                    padding: 13,
-                    borderRadius: 12,
-                    background: row.type === "short" ? "#30272b" : "#23302a",
-                    color: row.type === "short" ? "#ffb5ad" : "#7ed2a0",
-                    fontSize: 12,
-                  }}>
-                  {row.type === "short"
-                    ? `Cash is ${row.difference.replace("-", "")} short. Review the register transactions before closing the shift.`
-                    : `Cash is ${row.difference} over. Verify receipts and confirm no duplicate entries.`}
-                </div>
-                <div className="modal-actions">
-                  <button
-                    className="button dark"
-                    data-testid="button-view-transactions"
-                    onClick={() =>
-                      onToast(
-                        `Showing register transactions for the ${row.shift.toLowerCase()} shift`,
-                      )
-                    }>
-                    View transactions <ArrowUpRight size={13} />
-                  </button>
-                </div>
-              </>
-            );
-          })()}
-
-        {type !== "cash" && (
-          <div className="modal-actions">
-            <button
-              className="button dark"
-              data-testid="button-export-report"
-              onClick={() => exportReport(type, onToast)}>
-              <Download size={14} /> Export report
-            </button>
-          </div>
+        {/* Cash mismatch — detail view for a specific row */}
+        {type === "cash" && activeCashRow && (
+          <>
+            <ModalSection title="Shift reconciliation">
+              <ModalRow label="Date" value={activeCashRow.fullDateLabel} />
+              <ModalRow label="Shift" value={activeCashRow.shift} />
+              <ModalRow
+                label="Expected cash"
+                value={activeCashRow.expected}
+              />
+              <ModalRow
+                label="Recorded cash"
+                value={activeCashRow.recorded}
+              />
+              <ModalRow label="Difference" value={activeCashRow.difference} />
+            </ModalSection>
+            <ModalSection
+              title={`Discrepant transactions (${activeCashRow.discrepantTransactions.length})`}>
+              <ModalTable
+                headers={["Receipt #", "Time", "Status", "Total"]}
+                rows={activeCashRow.discrepantTransactions.map((t) => [
+                  t.transactionNumber,
+                  t.time,
+                  t.status,
+                  t.total,
+                ])}
+              />
+            </ModalSection>
+            <div
+              style={{
+                marginTop: 16,
+                padding: 13,
+                borderRadius: 12,
+                background:
+                  activeCashRow.type === "short" ? "#30272b" : "#23302a",
+                color:
+                  activeCashRow.type === "short" ? "#ffb5ad" : "#7ed2a0",
+                fontSize: 12,
+              }}>
+              {activeCashRow.type === "short"
+                ? `Cash is ${activeCashRow.difference.replace("-", "")} short due to cancelled/uncollected shift orders. Review the register transactions before closing the shift.`
+                : `Cash is ${activeCashRow.difference} over net completed sales due to voided cash receipts. Verify drawer returns and confirm no duplicate entries.`}
+            </div>
+          </>
         )}
+
+        <div className="modal-actions">
+          <button
+            className="button dark"
+            data-testid="button-export-report"
+            onClick={() => exportReport(type, onToast, analytics)}>
+            <Download size={14} /> Export report
+          </button>
+        </div>
       </section>
     </div>,
     document.body,
   );
 }
-

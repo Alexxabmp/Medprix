@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ArrowUpRight,
   BarChart3,
@@ -9,74 +9,39 @@ import {
 } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import { DateControl } from "@/components/custom-ui/date-control";
-import { formatCalendarDate, recordsOnDate } from "@/lib/business-date";
 import { useBusinessDate } from "@/lib/use-business-date";
 import { Kpi } from "@/components/custom-ui/kpi-card";
 import { MovementLineGraph } from "@/components/custom-ui/movement-line-graph";
 import { ReportModal } from "@/components/custom-ui/report-modal";
-import { cashMismatches, movementFast, movementSlow } from "@/lib/data";
+import { computeDashboardAnalytics, formatPeso } from "@/lib/dashboard-analytics";
 import type { ReportType, ToastFn } from "@/lib/types";
 import {
   usePharmacyTransactions,
   usePharmacyInventory,
 } from "@/lib/pharmacy-store";
 
-const formatPeso = (val: number) =>
-  `₱${val.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
 export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
   const [report, setReport] = useState<ReportType | null>(null);
   const [cashDetailRow, setCashDetailRow] = useState<number | null>(null);
   const { transactions } = usePharmacyTransactions();
   const { date: salesDate, selectDate } = useBusinessDate();
-  const dailyTransactions = recordsOnDate(transactions, salesDate).filter((transaction) => transaction.status === "Completed");
   const { items: inventoryProducts } = usePharmacyInventory();
 
-  const liveDailySales = dailyTransactions.reduce((sum, t) => {
-    const val =
-      parseFloat(
-        String(t.total || "0")
-          .replace("₱", "")
-          .replace(/,/g, ""),
-      ) || 0;
-    return sum + val;
-  }, 0);
-  const liveTxCount = dailyTransactions.length;
+  const analytics = useMemo(
+    () => computeDashboardAnalytics(transactions, inventoryProducts, salesDate),
+    [transactions, inventoryProducts, salesDate],
+  );
 
-  const liveProductCount = inventoryProducts.length;
-  const liveLowStockCount = inventoryProducts.filter((p) => {
-    const stock = Array.isArray(p.batches)
-      ? p.batches.reduce(
-          (sum: number, b: any) => sum + (Number(b.quantity) || 0),
-          0,
-        )
-      : Number(p.stock) || 0;
-    return stock <= (Number(p.reorder) || 10);
-  }).length;
-  const liveTotalStockUnits = inventoryProducts.reduce((sum, p) => {
-    const stock = Array.isArray(p.batches)
-      ? p.batches.reduce(
-          (bSum: number, b: any) => bSum + (Number(b.quantity) || 0),
-          0,
-        )
-      : Number(p.stock) || 0;
-    return sum + stock;
-  }, 0);
-  const liveStockValuation = inventoryProducts.reduce((sum, p) => {
-    const stock = Array.isArray(p.batches)
-      ? p.batches.reduce(
-          (bSum: number, b: any) => bSum + (Number(b.quantity) || 0),
-          0,
-        )
-      : Number(p.stock) || 0;
-    const priceNum =
-      parseFloat(
-        String(p.price || "0")
-          .replace("₱", "")
-          .replace(/,/g, ""),
-      ) || 0;
-    return sum + stock * priceNum;
-  }, 0);
+  const barItems = useMemo(
+    () => analytics.movement.chartFast.concat(analytics.movement.chartSlow),
+    [analytics.movement.chartFast, analytics.movement.chartSlow],
+  );
+  const maxBarUnits = useMemo(
+    () => Math.max(...barItems.map((item) => item.units), 1),
+    [barItems],
+  );
+
+  const displayedCashMismatches = analytics.cash.mismatches.slice(0, 4);
 
   return (
     <div className="grid grid-cols-1 gap-5">
@@ -84,7 +49,12 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
         title="Hello, Admin!"
         description="Here's the shape of your pharmacy today."
         action={
-          <DateControl label="Select date" testId="control-date" date={salesDate} onDateChange={selectDate} />
+          <DateControl
+            label="Select date"
+            testId="control-date"
+            date={salesDate}
+            onDateChange={selectDate}
+          />
         }
       />
 
@@ -92,32 +62,32 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
       <section className="kpi-grid">
         <Kpi
           label="Daily sales"
-          value={formatPeso(liveDailySales)}
-          change={`${liveTxCount} completed · ${formatCalendarDate(salesDate)}`}
+          value={formatPeso(analytics.dailySales.totalSales)}
+          change={`${analytics.dailySales.transactionCount} completed · ${analytics.salesDateLabel}`}
           icon={BarChart3}
           onClick={() => setReport("sales")}
           testId="card-report-sales"
         />
         <Kpi
           label="Inventory"
-          value={`${liveProductCount} products`}
-          change={`${liveLowStockCount} low stock`}
+          value={`${analytics.inventory.totalProducts} products`}
+          change={`${analytics.inventory.lowStockCount} low stock`}
           icon={Package}
           onClick={() => setReport("inventory")}
           testId="card-report-inventory"
         />
         <Kpi
           label="Financial"
-          value="₱450,000"
-          change="₱365K net profit"
+          value={formatPeso(analytics.financial.totalSales)}
+          change={`${formatPeso(analytics.financial.netProfit)} net profit`}
           icon={CircleDollarSign}
           onClick={() => setReport("financial")}
           testId="card-report-financial"
         />
         <Kpi
           label="Stock value"
-          value={formatPeso(liveStockValuation)}
-          change={`${liveTotalStockUnits.toLocaleString()} units held`}
+          value={formatPeso(analytics.valuation.totalRetailValue)}
+          change={`${analytics.valuation.totalUnits.toLocaleString()} units held`}
           icon={Boxes}
           onClick={() => setReport("valuation")}
           testId="card-report-valuation"
@@ -133,7 +103,9 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
         <div className="card-header">
           <div>
             <h2 className="card-title">Product movement</h2>
-            <p className="card-subtitle">Units sold · August 2026</p>
+            <p className="card-subtitle">
+              Units sold · {analytics.periodLabel} ({analytics.movement.totalUnitsSold.toLocaleString()} total units)
+            </p>
           </div>
           <div className="chart-legend">
             <span className="legend-dot" /> Units sold{" "}
@@ -141,11 +113,13 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
           </div>
         </div>
         <div className="bar-chart">
-          {movementFast.concat(movementSlow).map((item, i) => (
-            <div className="bar-wrap" key={item.name}>
+          {barItems.map((item, i) => (
+            <div className="bar-wrap" key={`${item.name}-${i}`}>
               <div
                 className={`bar ${i === 0 ? "peak" : ""}`}
-                style={{ height: `${Math.max((item.units / 250) * 82, 4)}%` }}
+                style={{
+                  height: `${Math.max((item.units / maxBarUnits) * 82, 4)}%`,
+                }}
               >
                 <span className="bar-value">{item.units}</span>
               </div>
@@ -162,7 +136,9 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
           <div className="card-header">
             <div>
               <h2 className="card-title">Cash mismatch</h2>
-              <p className="card-subtitle">2 inconsistencies detected</p>
+              <p className="card-subtitle">
+                {analytics.cash.openAlertsCount} inconsistencies detected
+              </p>
             </div>
             <button
               className="button soft"
@@ -172,8 +148,8 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
               View alerts
             </button>
           </div>
-          {cashMismatches.map((row, index) => (
-            <div className="list-row" key={row.date + row.shift}>
+          {displayedCashMismatches.map((row, index) => (
+            <div className="list-row" key={row.dateKey + row.shift}>
               <div className="row-icon">
                 <FileBarChart size={15} />
               </div>
@@ -209,6 +185,14 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
               </button>
             </div>
           ))}
+          {displayedCashMismatches.length === 0 && (
+            <div className="list-row">
+              <div className="row-main">
+                <strong>All shifts balanced</strong>
+                <span>No cash discrepancies detected in recorded transactions.</span>
+              </div>
+            </div>
+          )}
         </section>
 
         {/* Right: Product movement line graph */}
@@ -229,7 +213,10 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
               View all
             </button>
           </div>
-          <MovementLineGraph />
+          <MovementLineGraph
+            fastMovers={analytics.movement.chartFast}
+            slowMovers={analytics.movement.chartSlow}
+          />
         </section>
       </div>
 
@@ -239,6 +226,8 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
           initialCashDetailRow={cashDetailRow}
           liveTransactions={transactions}
           liveProducts={inventoryProducts}
+          salesDate={salesDate}
+          analytics={analytics}
           onClose={() => {
             setReport(null);
             setCashDetailRow(null);

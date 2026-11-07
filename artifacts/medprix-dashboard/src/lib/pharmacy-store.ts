@@ -83,9 +83,26 @@ function saveLocalInventory(items: ProductItem[]) {
   } catch {}
 }
 
+function getLocalTransactions(): any[] | null {
+  try {
+    const raw = sessionStorage.getItem("medprix_cached_transactions");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  return null;
+}
+
+function saveLocalTransactions(transactions: any[]) {
+  try {
+    sessionStorage.setItem("medprix_cached_transactions", JSON.stringify(transactions));
+  } catch {}
+}
+
 // Global in-memory cache shared across the single-page application
 let globalInventory: ProductItem[] | null = getLocalInventory();
-let globalTransactions: any[] | null = null;
+let globalTransactions: any[] | null = getLocalTransactions();
 let globalReceipts: ShiftReceipt[] | null = globalTransactions
   ? mapTransactionsToReceipts(globalTransactions)
   : null;
@@ -93,9 +110,15 @@ let globalReceipts: ShiftReceipt[] | null = globalTransactions
 let inventoryLoadError = "";
 let isInventoryLoading = false;
 let isTransactionsLoading = false;
+let inventoryInFlight: Promise<ProductItem[]> | null = null;
+let transactionsInFlight: Promise<any[]> | null = null;
+let lastInventoryFetchedAt = 0;
+let lastTransactionsFetchedAt = 0;
 let transactionRevision = 0;
 let transactionRequest = 0;
 let isBackendConnected = false;
+
+const CACHE_TTL_MS = 30_000;
 
 const inventoryListeners = new Set<() => void>();
 const transactionListeners = new Set<() => void>();
@@ -117,58 +140,84 @@ function notifyTransactions() {
 }
 
 export async function fetchInventoryData(force = false): Promise<ProductItem[]> {
-  if (!force && isInventoryLoading && globalInventory) return globalInventory;
-  isInventoryLoading = true;
-  try {
-    const response = await fetch("/api/inventory", { credentials: "include" });
-    const data = await readResponse(response, "Could not refresh inventory. Please try again.");
-    if (!Array.isArray(data.products)) throw new Error("Invalid stock response. Please refresh inventory.");
-    globalInventory = data.products;
-    inventoryLoadError = "";
-    saveLocalInventory(data.products);
-    isBackendConnected = true;
-    return data.products;
-  } catch (failure) {
-    inventoryLoadError = safeError(failure, "Could not refresh inventory. Please try again.");
-  } finally {
-    isInventoryLoading = false;
-    notifyInventory();
+  if (!force && isBackendConnected && globalInventory && Date.now() - lastInventoryFetchedAt < CACHE_TTL_MS) {
+    return globalInventory;
   }
-  return globalInventory || initialFallbackProducts;
+  if (!force && inventoryInFlight) {
+    return inventoryInFlight;
+  }
+  isInventoryLoading = true;
+  const requestPromise = (async () => {
+    try {
+      const response = await fetch("/api/inventory", { credentials: "include" });
+      const data = await readResponse(response, "Could not refresh inventory. Please try again.");
+      if (!Array.isArray(data.products)) throw new Error("Invalid stock response. Please refresh inventory.");
+      globalInventory = data.products;
+      inventoryLoadError = "";
+      lastInventoryFetchedAt = Date.now();
+      saveLocalInventory(data.products);
+      isBackendConnected = true;
+      return data.products;
+    } catch (failure) {
+      inventoryLoadError = safeError(failure, "Could not refresh inventory. Please try again.");
+    } finally {
+      isInventoryLoading = false;
+      inventoryInFlight = null;
+      notifyInventory();
+    }
+    return globalInventory || initialFallbackProducts;
+  })();
+  inventoryInFlight = requestPromise;
+  return requestPromise;
 }
 
 export async function fetchTransactionsData(force = false): Promise<any[]> {
-  if (!force && isTransactionsLoading && globalTransactions) return globalTransactions;
+  if (!force && globalTransactions && Date.now() - lastTransactionsFetchedAt < CACHE_TTL_MS) {
+    return globalTransactions;
+  }
+  if (!force && transactionsInFlight) {
+    return transactionsInFlight;
+  }
   const request = ++transactionRequest;
   const revision = transactionRevision;
   isTransactionsLoading = true;
-  try {
-    const res = await fetch("/api/admin/transactions", { credentials: "include" });
-    if (res.status === 401 || res.status === 403) {
-      if (request === transactionRequest && revision === transactionRevision) clearTransactionSession();
-      return [];
-    }
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        // A confirmed local save or newer fetch wins over an older response.
-        if (request !== transactionRequest || revision !== transactionRevision) return globalTransactions || [];
-        globalTransactions = [...data].sort((a, b) => new Date(b.createdAt ?? b.dateTime).getTime() - new Date(a.createdAt ?? a.dateTime).getTime());
-        globalReceipts = mapTransactionsToReceipts(globalTransactions);
-        notifyTransactions();
-        return globalTransactions;
+  const requestPromise = (async () => {
+    try {
+      const res = await fetch("/api/admin/transactions", { credentials: "include" });
+      if (res.status === 401 || res.status === 403) {
+        if (request === transactionRequest && revision === transactionRevision) clearTransactionSession();
+        return [];
+      }
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          // A confirmed local save or newer fetch wins over an older response.
+          if (request !== transactionRequest || revision !== transactionRevision) return globalTransactions || [];
+          globalTransactions = [...data].sort((a, b) => new Date(b.createdAt ?? b.dateTime).getTime() - new Date(a.createdAt ?? a.dateTime).getTime());
+          globalReceipts = mapTransactionsToReceipts(globalTransactions);
+          lastTransactionsFetchedAt = Date.now();
+          saveLocalTransactions(globalTransactions);
+          notifyTransactions();
+          return globalTransactions;
+        }
+      }
+    } catch (err) {
+      console.warn("Transactions fetch notice:", err);
+    } finally {
+      if (request === transactionRequest) {
+        isTransactionsLoading = false;
+        transactionsInFlight = null;
       }
     }
-  } catch (err) {
-    console.warn("Transactions fetch notice:", err);
-  } finally {
-    if (request === transactionRequest) isTransactionsLoading = false;
-  }
-  return globalTransactions || [];
+    return globalTransactions || [];
+  })();
+  transactionsInFlight = requestPromise;
+  return requestPromise;
 }
 
 export function setCachedInventory(products: ProductItem[]) {
   globalInventory = products;
+  lastInventoryFetchedAt = Date.now();
   saveLocalInventory(products);
   notifyInventory();
 }
@@ -180,8 +229,15 @@ export function clearTransactionSession() {
   transactionRevision++;
   globalTransactions = [];
   globalReceipts = [];
+  lastTransactionsFetchedAt = 0;
   isTransactionsLoading = false;
-  try { for (const key of ["medprix_cached_transactions", "medprix_system_logs", "medprix_user_activities"]) localStorage.removeItem(key); } catch {}
+  transactionsInFlight = null;
+  try {
+    for (const key of ["medprix_cached_transactions", "medprix_system_logs", "medprix_user_activities"]) {
+      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
+    }
+  } catch {}
   notifyTransactions();
 }
 
@@ -189,6 +245,8 @@ export function setCachedTransactions(transactions: any[]) {
   transactionRevision++;
   globalTransactions = transactions;
   globalReceipts = mapTransactionsToReceipts(transactions);
+  lastTransactionsFetchedAt = Date.now();
+  saveLocalTransactions(transactions);
   notifyTransactions();
 }
 
@@ -244,8 +302,8 @@ export function recordTransaction(transaction: any) {
 }
 
 export function prefetchPharmacyData() {
-  fetchInventoryData();
-  fetchTransactionsData();
+  void fetchInventoryData();
+  void fetchTransactionsData();
 }
 
 /**
