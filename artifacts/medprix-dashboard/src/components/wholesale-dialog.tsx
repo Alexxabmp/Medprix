@@ -10,6 +10,7 @@ export function WholesaleDialog({
   close,
   children,
   review = false,
+  className = "",
 }: {
   title: string;
   description?: string;
@@ -17,6 +18,7 @@ export function WholesaleDialog({
   close: () => void;
   children: ReactNode;
   review?: boolean;
+  className?: string;
 }) {
   useDialogAccessibility(true, ".wholesale-dialog", close, busy);
   useEffect(() => {
@@ -30,7 +32,9 @@ export function WholesaleDialog({
     <div className="modal-backdrop wholesale-backdrop">
       <section
         className={
-          "modal wholesale-dialog" + (review ? " wholesale-review-dialog" : "")
+          "modal wholesale-dialog" +
+          (review ? " wholesale-review-dialog" : "") +
+          (className ? " " + className : "")
         }
       >
         <div className="modal-header">

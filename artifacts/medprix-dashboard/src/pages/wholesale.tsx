@@ -1,3 +1,6 @@
+import { Summary } from "@/components/custom-ui/summary-card";
+import { LoadingState } from "@/components/custom-ui/loading-state";
+import { WholesaleDeliveryReceipts } from "@/components/wholesale-delivery-receipts";
 import { WholesaleOrderDetails } from "@/components/wholesale-order-details";
 import { useEffect, useState } from "react";
 import { Plus, RefreshCw, Search } from "lucide-react";
@@ -9,6 +12,7 @@ import {
   wholesaleGet,
   wholesaleWrite,
   wholesalePeso,
+  type DeliveryReceiptSummary,
   type WholesaleClient,
   type WholesaleOrder,
   type WholesaleProduct,
@@ -36,7 +40,10 @@ export default function WholesalePage({
   const [clients, setClients] = useState<WholesaleClient[]>([]);
   const [products, setProducts] = useState<WholesaleProduct[]>([]);
   const [orders, setOrders] = useState<WholesaleOrder[]>([]);
-  const [tab, setTab] = useState<"orders" | "clients" | "prices">("orders");
+  const [receipts, setReceipts] = useState<DeliveryReceiptSummary[]>([]);
+  const [tab, setTab] = useState<"orders" | "clients" | "prices" | "receipts">(
+    "orders",
+  );
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -56,14 +63,17 @@ export default function WholesalePage({
     setLoading(true);
     setError("");
     try {
-      const [nextClients, nextProducts, nextOrders] = await Promise.all([
-        wholesaleGet<WholesaleClient[]>("/clients"),
-        wholesaleGet<WholesaleProduct[]>("/catalog"),
-        wholesaleGet<WholesaleOrder[]>("/orders"),
-      ]);
+      const [nextClients, nextProducts, nextOrders, nextReceipts] =
+        await Promise.all([
+          wholesaleGet<WholesaleClient[]>("/clients"),
+          wholesaleGet<WholesaleProduct[]>("/catalog"),
+          wholesaleGet<WholesaleOrder[]>("/orders"),
+          wholesaleGet<DeliveryReceiptSummary[]>("/delivery-receipts"),
+        ]);
       setClients(nextClients);
       setProducts(nextProducts);
       setOrders(nextOrders);
+      setReceipts(nextReceipts);
       setReady(true);
     } catch (failure) {
       setReady(false);
@@ -146,25 +156,56 @@ export default function WholesalePage({
     (product.name + " " + product.sku).toLocaleLowerCase().includes(query),
   );
 
+  const openOrders = orders.filter((order) =>
+    ["Pending", "Confirmed", "Processing"].includes(order.status),
+  );
+  const draftCount = orders.filter(
+    (order) => order.status === "Pending",
+  ).length;
+  const reservedUnits = products.reduce(
+    (total, product) => total + product.reservedStock,
+    0,
+  );
+  const section = {
+    orders: {
+      title: "Wholesale orders",
+      description: "Drafts, agreed prices and delivery status",
+      placeholder: "Search order or client",
+    },
+    clients: {
+      title: "Wholesale clients",
+      description: "Client details and delivery addresses",
+      placeholder: "Search client or address",
+    },
+    prices: {
+      title: "Wholesale prices",
+      description:
+        "VAT-inclusive prices and physical, reserved and available stock",
+      placeholder: "Search product or SKU",
+    },
+    receipts: {
+      title: "Delivery receipts",
+      description: "View and reprint saved delivery receipts",
+      placeholder: "Search receipt, order or client",
+    },
+  }[tab];
+  const summaryValue = (value: number) => (ready ? String(value) : "—");
+
   return (
     <div className="wholesale-workspace">
       <PageHeading
         title="Wholesale"
-        description="Clients, wholesale prices and order drafts."
+        description="Clients, wholesale orders and full-order deliveries."
         action={
           <button
-            className="button soft"
-            disabled={busy || loading}
-            onClick={() => void load()}
+            className="button primary-action"
+            disabled={locked || !ready || loading || !clients.length}
+            onClick={() => open({ kind: "order", order: null })}
           >
-            <RefreshCw size={15} /> Refresh
+            <Plus size={14} /> New draft
           </button>
         }
       />
-      <p className="field-hint">
-        Drafts do not reserve stock. Confirmation reserves stock. Delivery and
-        collections will be available in subsequent phases.
-      </p>
       {error && (
         <div role="alert" className="inline-error">
           {error}
@@ -185,205 +226,254 @@ export default function WholesalePage({
           </button>
         </div>
       )}
-      <div className="wholesale-toolbar">
-        <div
-          className="wholesale-tabs"
-          role="group"
-          aria-label="Wholesale sections"
-        >
-          {(["orders", "clients", "prices"] as const).map((item) => (
-            <button
-              key={item}
-              className={"button " + (tab === item ? "dark" : "soft")}
-              aria-pressed={tab === item}
-              onClick={() => {
-                setTab(item);
-                setSearch("");
-              }}
-            >
-              {item === "orders"
-                ? "Orders"
-                : item === "clients"
-                  ? "Clients"
-                  : "Wholesale prices"}
-            </button>
-          ))}
-        </div>
-        <label className="search-wrap">
-          <Search size={15} />
-          <input
-            aria-label="Search wholesale records"
-            placeholder="Search this section…"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-        </label>
-        {tab !== "prices" && (
-          <button
-            className="button dark"
-            disabled={
-              locked ||
-              !ready ||
-              loading ||
-              (tab === "orders" && !clients.length)
-            }
-            onClick={() =>
-              open(
-                tab === "orders"
-                  ? { kind: "order", order: null }
-                  : { kind: "client" },
-              )
-            }
-          >
-            <Plus size={15} />
-            {tab === "orders" ? "New draft" : "Add client"}
-          </button>
-        )}
+      <div
+        className="summary-strip"
+        aria-label="Wholesale summary"
+        aria-busy={loading}
+      >
+        <Summary
+          label="Open orders"
+          value={summaryValue(openOrders.length)}
+          caption="Among the latest 200 orders"
+        />
+        <Summary
+          label="Awaiting confirmation"
+          value={summaryValue(draftCount)}
+          caption="Drafts in the latest 200 orders"
+          tone="warning"
+        />
+        <Summary
+          label="Reserved units"
+          value={summaryValue(reservedUnits)}
+          caption="Held across all wholesale orders"
+        />
       </div>
-      {loading ? (
-        <p role="status">Loading wholesale records…</p>
-      ) : (
-        ready && (
-          <section className="surface-card table-card">
-            <div className="table-scroll">
-              {tab === "orders" && (
-                <table className="data-table">
-                  <caption className="wholesale-caption">
-                    Latest 200 orders. Historical orders await separate review.
-                  </caption>
-                  <thead>
-                    <tr>
-                      <th>Order</th>
-                      <th>Client</th>
-                      <th>Total including VAT</th>
-                      <th>Status</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visibleOrders.map((order) => (
-                      <tr key={order.id}>
-                        <td>{order.orderNumber}</td>
-                        <td>{order.clientName}</td>
-                        <td>{wholesalePeso(order.total)}</td>
-                        <td>
-                          {order.status === "Pending" ? "Draft" : order.status}
-                        </td>
-                        <td>
-                          <button
-                            className="button soft"
-                            disabled={locked}
-                            onClick={() => open({ kind: "order", order })}
-                          >
-                            Edit draft
-                          </button>
-                          <button
-                            className="button soft"
-                            disabled={locked}
-                            onClick={() => open({ kind: "details", order })}
-                          >
-                            Review order
-                          </button>
-                        </td>
+      <div
+        className="table-tools supplier-invoices wholesale-tabs"
+        role="group"
+        aria-label="Wholesale sections"
+      >
+        {(["orders", "clients", "prices", "receipts"] as const).map((item) => (
+          <button
+            key={item}
+            className={"button " + (tab === item ? "primary-action" : "soft")}
+            aria-pressed={tab === item}
+            onClick={() => {
+              setTab(item);
+              setSearch("");
+            }}
+          >
+            {item === "orders"
+              ? "Orders"
+              : item === "clients"
+                ? "Clients"
+                : item === "prices"
+                  ? "Wholesale prices"
+                  : "Delivery receipts"}
+          </button>
+        ))}
+      </div>
+      <section className="surface-card table-card">
+        <div className="table-tools wholesale-table-tools">
+          <div>
+            <h2 className="card-title">{section.title}</h2>
+            <p className="card-subtitle">{section.description}</p>
+          </div>
+          <div className="wholesale-table-controls">
+            <div className="wholesale-search">
+              <Search size={15} aria-hidden="true" />
+              <input
+                type="search"
+                aria-label="Search wholesale records"
+                placeholder={section.placeholder}
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            </div>
+            <button
+              className="button soft"
+              disabled={busy || loading}
+              onClick={() => void load()}
+            >
+              <RefreshCw size={15} /> Refresh
+            </button>
+            {tab === "clients" && (
+              <button
+                className="button primary-action"
+                disabled={locked || !ready || loading}
+                onClick={() => open({ kind: "client" })}
+              >
+                <Plus size={14} /> Add client
+              </button>
+            )}
+          </div>
+        </div>
+        {loading ? (
+          <LoadingState label="Loading wholesale records…" />
+        ) : (
+          ready && (
+            <>
+              <div className="table-scroll">
+                {tab === "receipts" && (
+                  <WholesaleDeliveryReceipts
+                    receipts={receipts}
+                    search={search}
+                    disabled={locked}
+                  />
+                )}
+                {tab === "orders" && (
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Order</th>
+                        <th>Client</th>
+                        <th>Total including VAT</th>
+                        <th>Status</th>
+                        <th>Action</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-              {tab === "clients" && (
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Client</th>
-                      <th>Address</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visibleClients.map((client) => (
-                      <tr key={client.id}>
-                        <td>{client.name}</td>
-                        <td>{client.address || "Not provided"}</td>
-                        <td>
-                          <button
-                            className="button soft"
-                            disabled={locked}
-                            onClick={() => open({ kind: "client", client })}
-                          >
-                            Edit client
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-              {tab === "prices" && (
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Product / SKU</th>
-                      <th>Wholesale unit price</th>
-                      <th>VAT classification</th>
-                      <th>Physical</th>
-                      <th>Reserved</th>
-                      <th>Available</th>
-                      {role === "Admin" && <th>Action</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visibleProducts.map((product) => (
-                      <tr key={product.id}>
-                        <td>
-                          {product.name}
-                          <div className="muted">{product.sku}</div>
-                        </td>
-                        <td>{wholesalePeso(product.wholesalePrice)}</td>
-                        <td>
-                          {product.isVatExempt === null
-                            ? "Needs classification"
-                            : product.isVatExempt
-                              ? "Exempt"
-                              : "VATable"}
-                        </td>
-                        <td>{product.physicalStock}</td>
-                        <td>{product.reservedStock}</td>
-                        <td>{product.availableStock}</td>
-                        {role === "Admin" && (
+                    </thead>
+                    <tbody>
+                      {visibleOrders.map((order) => (
+                        <tr key={order.id}>
+                          <td>{order.orderNumber}</td>
+                          <td>{order.clientName}</td>
+                          <td>{wholesalePeso(order.total)}</td>
+                          <td>
+                            {order.status === "Pending"
+                              ? "Draft"
+                              : order.status}
+                          </td>
                           <td>
                             <button
                               className="button soft"
                               disabled={locked}
-                              onClick={() => open({ kind: "price", product })}
+                              onClick={() => open({ kind: "order", order })}
                             >
-                              Set price
+                              Edit draft
+                            </button>
+                            <button
+                              className="button soft"
+                              disabled={locked}
+                              onClick={() => open({ kind: "details", order })}
+                            >
+                              Review order
                             </button>
                           </td>
-                        )}
+                        </tr>
+                      ))}
+                      {!visibleOrders.length && (
+                        <tr>
+                          <td colSpan={5} className="muted">
+                            {search
+                              ? "No matching records."
+                              : "No wholesale orders found."}
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                )}
+                {tab === "clients" && (
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Client</th>
+                        <th>Address</th>
+                        <th>Action</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-            {!(
-              tab === "orders"
-                ? visibleOrders
-                : tab === "clients"
-                  ? visibleClients
-                  : visibleProducts
-            ).length && (
-              <div className="empty-state">
-                {search
-                  ? "No matching records."
-                  : tab === "orders"
-                    ? "No drafts yet. Add a client and configure wholesale prices to begin."
-                    : "No records yet."}
+                    </thead>
+                    <tbody>
+                      {visibleClients.map((client) => (
+                        <tr key={client.id}>
+                          <td>{client.name}</td>
+                          <td>{client.address || "Not provided"}</td>
+                          <td>
+                            <button
+                              className="button soft"
+                              disabled={locked}
+                              onClick={() => open({ kind: "client", client })}
+                            >
+                              Edit client
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      {!visibleClients.length && (
+                        <tr>
+                          <td colSpan={3} className="muted">
+                            {search
+                              ? "No matching records."
+                              : "No wholesale clients found."}
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                )}
+                {tab === "prices" && (
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Product / SKU</th>
+                        <th>Wholesale unit price</th>
+                        <th>VAT classification</th>
+                        <th>Physical</th>
+                        <th>Reserved</th>
+                        <th>Available</th>
+                        {role === "Admin" && <th>Action</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visibleProducts.map((product) => (
+                        <tr key={product.id}>
+                          <td>
+                            {product.name}
+                            <div className="muted">{product.sku}</div>
+                          </td>
+                          <td>{wholesalePeso(product.wholesalePrice)}</td>
+                          <td>
+                            {product.isVatExempt === null
+                              ? "Needs classification"
+                              : product.isVatExempt
+                                ? "Exempt"
+                                : "VATable"}
+                          </td>
+                          <td>{product.physicalStock}</td>
+                          <td>{product.reservedStock}</td>
+                          <td>{product.availableStock}</td>
+                          {role === "Admin" && (
+                            <td>
+                              <button
+                                className="button soft"
+                                disabled={locked}
+                                onClick={() => open({ kind: "price", product })}
+                              >
+                                Set price
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                      {!visibleProducts.length && (
+                        <tr>
+                          <td
+                            colSpan={role === "Admin" ? 7 : 6}
+                            className="muted"
+                          >
+                            {search
+                              ? "No matching records."
+                              : "No wholesale products found."}
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                )}
               </div>
-            )}
-          </section>
-        )
-      )}
+            </>
+          )
+        )}
+      </section>
       {dialog?.kind === "order" && (
         <WholesaleOrderEditor
           order={dialog.order}

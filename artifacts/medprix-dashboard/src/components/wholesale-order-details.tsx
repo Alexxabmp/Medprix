@@ -1,3 +1,5 @@
+import { DeliveryReceiptView } from "./delivery-receipt-view";
+import { WholesaleDeliveryPanel } from "./wholesale-delivery-panel";
 import { LoadingState } from "@/components/custom-ui/loading-state";
 import { useEffect, useState } from "react";
 import { WholesaleDialog } from "./wholesale-dialog";
@@ -26,6 +28,7 @@ export function WholesaleOrderDetails({
   close: () => void;
   mutate: (path: string, method: string, body: unknown) => void;
 }) {
+  const [showReceipt, setShowReceipt] = useState(false);
   const [detail, setDetail] = useState<WholesaleOrderDetail | null>(null);
   const [loadError, setLoadError] = useState("");
   const [selected, setSelected] = useState<Record<string, string>>({});
@@ -44,7 +47,12 @@ export function WholesaleOrderDetails({
     void load();
   }, [order.id]);
   const draft = order.status === "Pending";
-  const active = draft || order.status === "Confirmed";
+  const active =
+    draft ||
+    (order.status === "Confirmed" &&
+      !detail?.attempts.some((item) =>
+        ["Scheduled", "InTransit"].includes(item.status),
+      ));
   const current =
     detail?.overrides.filter((item) => item.revision === order.revision) ?? [];
   const displayLines =
@@ -61,13 +69,21 @@ export function WholesaleOrderDetails({
     );
     return sum + Number(override?.price ?? line.unitPrice) * line.quantity;
   }, 0);
+  if (showReceipt && detail?.receipt) {
+    return (
+      <DeliveryReceiptView
+        receipt={detail.receipt.snapshot}
+        close={() => setShowReceipt(false)}
+      />
+    );
+  }
   return (
     <WholesaleDialog
-      title={order.orderNumber + " · " + (draft ? "Draft" : order.status)}
+      title="Wholesale order"
       busy={busy}
       close={close}
       review
-      description="Review prices, approvals and stock reservations."
+      description={order.orderNumber + " · " + order.clientName}
     >
       {loadError && (
         <div role="alert" className="inline-error">
@@ -80,212 +96,297 @@ export function WholesaleOrderDetails({
       {!detail && !loadError && <LoadingState label="Loading order details…" />}
       {detail && (
         <div className="wholesale-details">
-          <p>
-            <strong>{detail.snapshot?.clientName ?? order.clientName}</strong>
-          </p>
-          {detail.snapshot && <p>{detail.snapshot.address}</p>}
-          <div className="wholesale-fields">
-            {displayLines.map((line) => {
-              const approvals = current.filter(
-                (item) => item.productId === line.productId && item.approvedBy,
-              );
-              return (
-                <div
-                  className="surface-card wholesale-notice"
-                  key={line.productId}
-                >
-                  <strong>{line.name}</strong>
-                  <p>
-                    {line.quantity} units × {wholesalePeso(line.unitPrice)}
-                  </p>
-                  {draft && (
-                    <div className="field">
-                      <label
-                        htmlFor={"wholesale-price-approval-" + line.productId}
-                      >
-                        Price approval
-                      </label>
-                      <select
-                        id={"wholesale-price-approval-" + line.productId}
-                        disabled={busy}
-                        value={selected[line.productId] ?? ""}
-                        onChange={(event) =>
-                          setSelected((value) => ({
-                            ...value,
-                            [line.productId]: event.target.value,
-                          }))
-                        }
-                      >
-                        <option value="">Use saved wholesale price</option>
-                        {approvals.map((approval) => (
-                          <option key={approval.id} value={approval.id}>
-                            {wholesalePeso(approval.price)} ·{" "}
-                            {approval.approvedByName}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                  {line.override && (
-                    <p className="field-hint">
-                      Original: {wholesalePeso(line.originalPrice)} · Approved
-                      by {line.override.adminId} · {line.override.reason}
-                    </p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          <p>
-            <strong>
-              {draft ? "Confirmation total" : "Agreed total"}:{" "}
-              {wholesalePeso(draft ? preview.toFixed(2) : order.total)}
-            </strong>
-          </p>
-          {detail.snapshot && (
-            <p>Included VAT: {wholesalePeso(detail.snapshot.vat)}</p>
-          )}
+          <dl className="wholesale-review-summary">
+            <div>
+              <dt>Status</dt>
+              <dd>
+                <span className="pill neutral">
+                  {draft ? "Draft" : order.status}
+                </span>
+              </dd>
+            </div>
+            <div>
+              <dt>Quantity</dt>
+              <dd>
+                {order.lines.reduce((sum, line) => sum + line.quantity, 0)}{" "}
+                units
+              </dd>
+            </div>
+            <div>
+              <dt>{draft ? "Confirmation total" : "Agreed total"}</dt>
+              <dd>
+                <strong>
+                  {wholesalePeso(draft ? preview.toFixed(2) : order.total)}
+                </strong>
+              </dd>
+            </div>
+          </dl>
+          <section className="wholesale-review-client">
+            <h3>Client</h3>
+            <p>
+              <strong>{detail.snapshot?.clientName ?? order.clientName}</strong>
+            </p>
+            {detail.snapshot && (
+              <p className="muted">{detail.snapshot.address}</p>
+            )}
+          </section>
+          <section className="wholesale-review-items">
+            <h3>Order items</h3>
+            <div className="table-scroll">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Product</th>
+                    <th>Quantity</th>
+                    <th>Unit price</th>
+                    <th>Line total</th>
+                    {draft && <th>Price approval</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayLines.map((line) => {
+                    const approvals = current.filter(
+                      (item) =>
+                        item.productId === line.productId && item.approvedBy,
+                    );
+                    const price =
+                      current.find(
+                        (item) => item.id === selected[line.productId],
+                      )?.price ?? line.unitPrice;
+                    return (
+                      <tr key={line.productId}>
+                        <td>
+                          <strong>{line.name}</strong>
+                          {line.override && (
+                            <p className="field-hint">
+                              Original: {wholesalePeso(line.originalPrice)} ·
+                              Approved override: {line.override.reason}
+                            </p>
+                          )}
+                        </td>
+                        <td>{line.quantity}</td>
+                        <td>{wholesalePeso(price)}</td>
+                        <td>
+                          {wholesalePeso(
+                            (Number(price) * line.quantity).toFixed(2),
+                          )}
+                        </td>
+                        {draft && (
+                          <td>
+                            <select
+                              aria-label={"Price approval for " + line.name}
+                              disabled={busy}
+                              value={selected[line.productId] ?? ""}
+                              onChange={(event) =>
+                                setSelected((value) => ({
+                                  ...value,
+                                  [line.productId]: event.target.value,
+                                }))
+                              }
+                            >
+                              <option value="">Saved wholesale price</option>
+                              {approvals.map((approval) => (
+                                <option key={approval.id} value={approval.id}>
+                                  {wholesalePeso(approval.price)} ·{" "}
+                                  {approval.approvedByName}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {detail.snapshot && (
+              <p className="wholesale-review-vat">
+                VAT included: {wholesalePeso(detail.snapshot.vat)}
+              </p>
+            )}
+          </section>
           {draft && (
-            <>
-              <section className="modal-section">
-                <h3>Request a price override</h3>
-                <form
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    const form = new FormData(event.currentTarget);
-                    mutate("/orders/" + order.id + "/overrides", "POST", {
-                      revision: order.revision,
-                      productId: form.get("productId"),
-                      price: form.get("price"),
-                      reason: form.get("reason"),
-                    });
-                  }}
-                >
-                  <fieldset disabled={busy} className="wholesale-fields">
-                    <div className="field">
-                      <label htmlFor={"wholesale-override-product"}>
-                        Product *
-                      </label>
-                      <select
-                        id={"wholesale-override-product"}
-                        required
-                        name="productId"
-                      >
-                        {order.lines.map((line) => (
-                          <option value={line.productId} key={line.productId}>
-                            {line.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="field">
-                      <label htmlFor={"wholesale-override-price"}>
-                        Requested unit price (₱) *
-                      </label>
-                      <input
-                        id={"wholesale-override-price"}
-                        required
-                        name="price"
-                        type="number"
-                        min="0"
-                        max="9999999999.99"
-                        step="0.01"
-                      />
-                    </div>
-                    <div className="field">
-                      <label htmlFor={"wholesale-override-reason"}>
-                        Request reason *
-                      </label>
-                      <input
-                        id={"wholesale-override-reason"}
-                        required
-                        name="reason"
-                        maxLength={500}
-                      />
-                    </div>
-                    <button className="button soft" type="submit">
-                      Request approval
-                    </button>
-                  </fieldset>
-                </form>
-              </section>
-              {current.map((request) => (
-                <section className="modal-section" key={request.id}>
-                  <p>
-                    {
-                      order.lines.find(
-                        (line) => line.productId === request.productId,
-                      )?.name
-                    }{" "}
-                    · {wholesalePeso(request.price)}
-                  </p>
-                  <p>{request.reason}</p>
-                  {request.approvedBy ? (
-                    <p>
-                      Approved by {request.approvedByName}:{" "}
-                      {request.approvalReason}
-                    </p>
-                  ) : role === "Admin" ? (
-                    <form
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        const form = new FormData(event.currentTarget);
-                        mutate(
-                          "/overrides/" + request.id + "/approve",
-                          "POST",
-                          { reason: form.get("reason") },
-                        );
-                      }}
-                    >
-                      <fieldset className="wholesale-fields" disabled={busy}>
-                        <div className="field">
-                          <label
-                            htmlFor={"wholesale-approval-reason-" + request.id}
-                          >
-                            Approval reason *
-                          </label>
-                          <input
-                            id={"wholesale-approval-reason-" + request.id}
-                            name="reason"
-                            maxLength={500}
-                            required
-                          />
-                        </div>
-                        <button className="button soft" type="submit">
-                          Approve override
-                        </button>
-                      </fieldset>
-                    </form>
-                  ) : (
-                    <p>Awaiting Admin approval.</p>
-                  )}
+            <details className="wholesale-review-overrides">
+              <summary>
+                Price overrides
+                {current.length ? " (" + current.length + ")" : ""}
+              </summary>
+              <div className="wholesale-details">
+                <section className="modal-section">
+                  <h3>Request a price override</h3>
+                  <form
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      const form = new FormData(event.currentTarget);
+                      mutate("/orders/" + order.id + "/overrides", "POST", {
+                        revision: order.revision,
+                        productId: form.get("productId"),
+                        price: form.get("price"),
+                        reason: form.get("reason"),
+                      });
+                    }}
+                  >
+                    <fieldset disabled={busy} className="wholesale-fields">
+                      <div className="field">
+                        <label htmlFor={"wholesale-override-product"}>
+                          Product *
+                        </label>
+                        <select
+                          id={"wholesale-override-product"}
+                          required
+                          name="productId"
+                        >
+                          {order.lines.map((line) => (
+                            <option value={line.productId} key={line.productId}>
+                              {line.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="field">
+                        <label htmlFor={"wholesale-override-price"}>
+                          Requested unit price (₱) *
+                        </label>
+                        <input
+                          id={"wholesale-override-price"}
+                          required
+                          name="price"
+                          type="number"
+                          min="0"
+                          max="9999999999.99"
+                          step="0.01"
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={"wholesale-override-reason"}>
+                          Request reason *
+                        </label>
+                        <input
+                          id={"wholesale-override-reason"}
+                          required
+                          name="reason"
+                          maxLength={500}
+                        />
+                      </div>
+                      <button className="button soft" type="submit">
+                        Request approval
+                      </button>
+                    </fieldset>
+                  </form>
                 </section>
-              ))}
-            </>
+                {current.map((request) => (
+                  <section className="modal-section" key={request.id}>
+                    <p>
+                      {
+                        order.lines.find(
+                          (line) => line.productId === request.productId,
+                        )?.name
+                      }{" "}
+                      · {wholesalePeso(request.price)}
+                    </p>
+                    <p>{request.reason}</p>
+                    {request.approvedBy ? (
+                      <p>
+                        Approved by {request.approvedByName}:{" "}
+                        {request.approvalReason}
+                      </p>
+                    ) : role === "Admin" ? (
+                      <form
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          const form = new FormData(event.currentTarget);
+                          mutate(
+                            "/overrides/" + request.id + "/approve",
+                            "POST",
+                            { reason: form.get("reason") },
+                          );
+                        }}
+                      >
+                        <fieldset className="wholesale-fields" disabled={busy}>
+                          <div className="field">
+                            <label
+                              htmlFor={
+                                "wholesale-approval-reason-" + request.id
+                              }
+                            >
+                              Approval reason *
+                            </label>
+                            <input
+                              id={"wholesale-approval-reason-" + request.id}
+                              name="reason"
+                              maxLength={500}
+                              required
+                            />
+                          </div>
+                          <button className="button soft" type="submit">
+                            Approve override
+                          </button>
+                        </fieldset>
+                      </form>
+                    ) : (
+                      <p>Awaiting Admin approval.</p>
+                    )}
+                  </section>
+                ))}
+              </div>
+            </details>
           )}
           {detail.reservations.length > 0 && (
             <section className="modal-section">
               <h3>Batch reservations</h3>
-              {detail.reservations.map((reservation) => (
-                <div className="wholesale-reservation" key={reservation.id}>
-                  <strong>{reservation.product}</strong>
-                  <span>
-                    {reservation.batchNumber} · expires {reservation.expiry} ·{" "}
-                    {reservation.quantity} units
-                  </span>
-                  <span>
-                    {reservation.releasedAt
-                      ? "Released"
-                      : reservation.consumedAt
-                        ? "Delivered"
-                        : "Reserved"}
-                  </span>
-                </div>
-              ))}
+              <div className="table-scroll">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Product</th>
+                      <th>Batch</th>
+                      <th>Expiry</th>
+                      <th>Quantity</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detail.reservations.map((reservation) => (
+                      <tr key={reservation.id}>
+                        <td>{reservation.product}</td>
+                        <td>{reservation.batchNumber}</td>
+                        <td>{reservation.expiry}</td>
+                        <td>{reservation.quantity}</td>
+                        <td>
+                          <span className="pill neutral">
+                            {reservation.releasedAt
+                              ? "Released"
+                              : reservation.consumedAt
+                                ? "Delivered"
+                                : "Reserved"}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </section>
+          )}
+          {!draft && (
+            <WholesaleDeliveryPanel
+              order={order}
+              detail={detail}
+              busy={busy}
+              mutate={mutate}
+              viewReceipt={() => setShowReceipt(true)}
+            />
           )}
           {active && !action && (
             <div className="wholesale-actions">
+              <button
+                className="button soft wholesale-review-close"
+                disabled={busy}
+                onClick={close}
+              >
+                Close
+              </button>
               <button
                 disabled={busy}
                 className="button soft"
@@ -378,6 +479,13 @@ export function WholesaleOrderDetails({
               </fieldset>
             </form>
           )}
+        </div>
+      )}
+      {(!active || action) && (
+        <div className="modal-actions">
+          <button className="button soft" disabled={busy} onClick={close}>
+            Close
+          </button>
         </div>
       )}
       {error && (

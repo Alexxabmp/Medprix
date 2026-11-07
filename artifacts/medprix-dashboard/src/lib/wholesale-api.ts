@@ -96,6 +96,13 @@ export type WholesaleOverride = {
   approvedByName: string | null;
 };
 export type WholesaleOrderDetail = {
+  attempts: Array<{
+    id: string;
+    date: string;
+    status: string;
+    notes: string | null;
+  }>;
+  receipt: { receiptId: string; snapshot: DeliveryReceipt } | null;
   snapshot: null | {
     clientName: string;
     address: string;
@@ -120,4 +127,41 @@ export type WholesaleOrderDetail = {
     releasedAt: string | null;
     consumedAt: string | null;
   }>;
+};
+
+export type DeliveryReceipt = {
+  merchantName: string;
+  receiptNumber: string;
+  orderNumber: string;
+  clientName: string;
+  address: string;
+  deliveredAt: string;
+  receivedBy: string;
+  dueDate: string;
+  total: string;
+  vat: string;
+  calculationVersion: string;
+  lines: Array<{
+    productId: string;
+    name: string;
+    sku: string;
+    quantity: number;
+    unitPrice: string;
+    total: string;
+    vat: string;
+    isVatExempt: boolean;
+  }>;
+  batches: Array<{
+    productId: string;
+    batchNumber: string;
+    expiry: string;
+    quantity: number;
+  }>;
+};
+export type DeliveryReceiptSummary = {
+  id: string;
+  receiptNumber: string;
+  orderNumber: string;
+  clientName: string;
+  deliveredAt: string;
 };
