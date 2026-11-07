@@ -1,3 +1,4 @@
+import { WholesaleReceivables } from "@/components/wholesale-receivables";
 import { Summary } from "@/components/custom-ui/summary-card";
 import { LoadingState } from "@/components/custom-ui/loading-state";
 import { WholesaleDeliveryReceipts } from "@/components/wholesale-delivery-receipts";
@@ -41,9 +42,9 @@ export default function WholesalePage({
   const [products, setProducts] = useState<WholesaleProduct[]>([]);
   const [orders, setOrders] = useState<WholesaleOrder[]>([]);
   const [receipts, setReceipts] = useState<DeliveryReceiptSummary[]>([]);
-  const [tab, setTab] = useState<"orders" | "clients" | "prices" | "receipts">(
-    "orders",
-  );
+  const [tab, setTab] = useState<
+    "orders" | "clients" | "prices" | "receipts" | "accounts"
+  >("orders");
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -183,6 +184,11 @@ export default function WholesalePage({
         "VAT-inclusive prices and physical, reserved and available stock",
       placeholder: "Search product or SKU",
     },
+    accounts: {
+      title: "Accounts receivable",
+      description: "Delivered orders, client collections and payment history",
+      placeholder: "Search order or client",
+    },
     receipts: {
       title: "Delivery receipts",
       description: "View and reprint saved delivery receipts",
@@ -195,7 +201,7 @@ export default function WholesalePage({
     <div className="wholesale-workspace">
       <PageHeading
         title="Wholesale"
-        description="Clients, wholesale orders and full-order deliveries."
+        description="Clients, orders, deliveries and client collections."
         action={
           <button
             className="button primary-action"
@@ -253,25 +259,29 @@ export default function WholesalePage({
         role="group"
         aria-label="Wholesale sections"
       >
-        {(["orders", "clients", "prices", "receipts"] as const).map((item) => (
-          <button
-            key={item}
-            className={"button " + (tab === item ? "primary-action" : "soft")}
-            aria-pressed={tab === item}
-            onClick={() => {
-              setTab(item);
-              setSearch("");
-            }}
-          >
-            {item === "orders"
-              ? "Orders"
-              : item === "clients"
-                ? "Clients"
-                : item === "prices"
-                  ? "Wholesale prices"
-                  : "Delivery receipts"}
-          </button>
-        ))}
+        {(["orders", "clients", "prices", "receipts", "accounts"] as const).map(
+          (item) => (
+            <button
+              key={item}
+              className={"button " + (tab === item ? "primary-action" : "soft")}
+              aria-pressed={tab === item}
+              onClick={() => {
+                setTab(item);
+                setSearch("");
+              }}
+            >
+              {item === "orders"
+                ? "Orders"
+                : item === "clients"
+                  ? "Clients"
+                  : item === "prices"
+                    ? "Wholesale prices"
+                    : item === "receipts"
+                      ? "Delivery receipts"
+                      : "Receivables"}
+            </button>
+          ),
+        )}
       </div>
       <section className="surface-card table-card">
         <div className="table-tools wholesale-table-tools">
@@ -314,6 +324,9 @@ export default function WholesalePage({
           ready && (
             <>
               <div className="table-scroll">
+                {tab === "accounts" && (
+                  <WholesaleReceivables search={search} role={role} />
+                )}
                 {tab === "receipts" && (
                   <WholesaleDeliveryReceipts
                     receipts={receipts}

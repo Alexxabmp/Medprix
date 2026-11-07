@@ -51,7 +51,11 @@ export async function wholesaleGet<T>(path: string): Promise<T> {
 }
 
 export async function wholesaleWrite(request: WholesaleRequest) {
-  const response = await fetch("/api/wholesale" + request.path, {
+  return writeWholesaleRequest("/api/wholesale", request);
+}
+
+async function writeWholesaleRequest(base: string, request: WholesaleRequest) {
+  const response = await fetch(base + request.path, {
     method: request.method,
     credentials: "include",
     headers: {
@@ -165,3 +169,75 @@ export type DeliveryReceiptSummary = {
   clientName: string;
   deliveredAt: string;
 };
+
+export type WholesaleReceivable = {
+  id: string;
+  orderNumber: string;
+  clientName: string;
+  total: string;
+  paid: string;
+  balance: string;
+  dueDate: string;
+  deliveredAt: string;
+};
+export type WholesaleReceivablePage = {
+  items: WholesaleReceivable[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+export type WholesaleCollection = {
+  id: string;
+  amount: string;
+  collectedAt: string;
+  method: string | null;
+  reference: string | null;
+  notes: string | null;
+  collectorId: string | null;
+  collectorName: string | null;
+  reversalId: string | null;
+  reversalReason: string | null;
+  reversedAt: string | null;
+};
+export type WholesaleReceivableDetail = WholesaleReceivable & {
+  payments: WholesaleCollection[];
+  reviewRequired: boolean;
+  methods: string[];
+};
+export function wholesaleDateTime(value: string) {
+  return new Intl.DateTimeFormat("en-PH", {
+    timeZone: "Asia/Manila",
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+export function wholesaleManilaInput() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+    fractionalSecondDigits: 3,
+  }).formatToParts(new Date());
+  const value = (name: string) =>
+    parts.find((part) => part.type === name)!.value;
+  return (
+    value("year") +
+    "-" +
+    value("month") +
+    "-" +
+    value("day") +
+    "T" +
+    value("hour") +
+    ":" +
+    value("minute") +
+    ":" +
+    value("second") +
+    "." +
+    value("fractionalSecond")
+  );
+}

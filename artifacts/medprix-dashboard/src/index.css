@@ -2931,3 +2931,25 @@ a {
     flex: 1 1 100%;
   }
 }
+
+.wholesale-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px;
+  font-size: var(--text-sm);
+}
+.wholesale-workspace .inline-error { margin: 12px; }
+.wholesale-details textarea {
+  width: 100%;
+  min-height: 80px;
+  padding: 10px 12px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  background: hsl(var(--surface-soft));
+  color: hsl(var(--foreground));
+  font: inherit;
+  resize: vertical;
+}
