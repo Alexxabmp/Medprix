@@ -1,3 +1,4 @@
+import { createWholesaleDelivery } from "../lib/wholesale-delivery";
 import { createWholesaleConfirmation } from "../lib/wholesale-confirmation";
 import {
   Router,
@@ -12,6 +13,7 @@ import { createWholesaleDrafts, WholesaleError } from "../lib/wholesale-drafts";
 
 const router: IRouter = Router();
 const service = createWholesaleDrafts(queryDb, withTransaction);
+const delivery = createWholesaleDelivery(queryDb, withTransaction);
 const confirmation = createWholesaleConfirmation(queryDb, withTransaction);
 
 router.use(
@@ -116,7 +118,10 @@ router.put(
 router.get(
   "/wholesale/orders/:id",
   handle(async (req, res) => {
-    res.json(await confirmation.detail(String(req.params.id)));
+    res.json({
+      ...(await confirmation.detail(String(req.params.id))),
+      ...(await delivery.detail(String(req.params.id))),
+    });
   }),
 );
 router.post(
@@ -179,6 +184,60 @@ router.put(
   handle(async (req, res) => {
     res.json(
       await service.updateClient(
+        res.locals.user!,
+        req.get("Idempotency-Key"),
+        String(req.params.id),
+        req.body,
+      ),
+    );
+  }),
+);
+
+router.get(
+  "/wholesale/delivery-receipts",
+  handle(async (_req, res) => {
+    res.set("Cache-Control", "no-store").json(await delivery.receipts());
+  }),
+);
+router.get(
+  "/wholesale/delivery-receipts/:id",
+  handle(async (req, res) => {
+    res
+      .set("Cache-Control", "no-store")
+      .json(await delivery.receipt(String(req.params.id)));
+  }),
+);
+router.post(
+  "/wholesale/orders/:id/schedule",
+  handle(async (req, res) => {
+    res.json(
+      await delivery.schedule(
+        res.locals.user!,
+        req.get("Idempotency-Key"),
+        String(req.params.id),
+        req.body,
+      ),
+    );
+  }),
+);
+router.post(
+  "/wholesale/orders/:id/delivery-status",
+  handle(async (req, res) => {
+    res.json(
+      await delivery.transition(
+        res.locals.user!,
+        req.get("Idempotency-Key"),
+        String(req.params.id),
+        req.body,
+      ),
+    );
+  }),
+);
+router.post(
+  "/wholesale/orders/:id/deliver",
+  handle(async (req, res) => {
+    res.json(
+      await delivery.fulfill(
         res.locals.user!,
         req.get("Idempotency-Key"),
         String(req.params.id),

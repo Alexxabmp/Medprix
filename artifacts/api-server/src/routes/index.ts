@@ -14,9 +14,9 @@ router.use(healthRouter);
 router.use(authRouter);
 router.use(usersRouter);
 router.use(posCheckoutRouter);
+router.use(wholesaleRouter);
 router.use(systemAdminRouter);
 router.use(inventoryRouter);
 router.use(procurementRouter);
-router.use(wholesaleRouter);
 
 export default router;

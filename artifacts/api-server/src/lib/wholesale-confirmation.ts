@@ -461,6 +461,15 @@ export function createWholesaleConfirmation(
         { action: "cancel", id, expected, explanation },
         async (query) => {
           await lockOrder(query, id, expected, ["Pending", "Confirmed"]);
+          const { rows: attempts } = await query(
+            "SELECT id FROM delivery_schedules WHERE order_id=$1 AND status IN ('Scheduled','InTransit')",
+            [id],
+          );
+          if (attempts.length)
+            throw new WholesaleError(
+              409,
+              "Close the active delivery attempt before cancelling this order.",
+            );
           const { rows: products } = await query(
             "SELECT product_id FROM wholesale_order_items WHERE order_id=$1 ORDER BY product_id",
             [id],
