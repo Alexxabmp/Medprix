@@ -1,3 +1,4 @@
+import { createWholesaleCollections } from "../lib/wholesale-collections";
 import { createWholesaleDelivery } from "../lib/wholesale-delivery";
 import { createWholesaleConfirmation } from "../lib/wholesale-confirmation";
 import {
@@ -13,6 +14,7 @@ import { createWholesaleDrafts, WholesaleError } from "../lib/wholesale-drafts";
 
 const router: IRouter = Router();
 const service = createWholesaleDrafts(queryDb, withTransaction);
+const collections = createWholesaleCollections(queryDb, withTransaction);
 const delivery = createWholesaleDelivery(queryDb, withTransaction);
 const confirmation = createWholesaleConfirmation(queryDb, withTransaction);
 
@@ -238,6 +240,52 @@ router.post(
   handle(async (req, res) => {
     res.json(
       await delivery.fulfill(
+        res.locals.user!,
+        req.get("Idempotency-Key"),
+        String(req.params.id),
+        req.body,
+      ),
+    );
+  }),
+);
+
+router.get(
+  "/wholesale/accounts-receivable",
+  handle(async (req, res) => {
+    res.json(
+      await collections.list(
+        res.locals.user!,
+        req.query.search ?? "",
+        req.query.page ?? "1",
+      ),
+    );
+  }),
+);
+router.get(
+  "/wholesale/accounts-receivable/:id",
+  handle(async (req, res) => {
+    res.json(await collections.detail(res.locals.user!, String(req.params.id)));
+  }),
+);
+router.post(
+  "/wholesale/accounts-receivable/:id/payments",
+  handle(async (req, res) => {
+    res.json(
+      await collections.collect(
+        res.locals.user!,
+        req.get("Idempotency-Key"),
+        String(req.params.id),
+        req.body,
+      ),
+    );
+  }),
+);
+router.post(
+  "/wholesale/payments/:id/reverse",
+  requireRoles("Admin"),
+  handle(async (req, res) => {
+    res.json(
+      await collections.reverse(
         res.locals.user!,
         req.get("Idempotency-Key"),
         String(req.params.id),
