@@ -9,6 +9,7 @@ import {
   timestamp,
   unique,
   index,
+  uniqueIndex,
   check,
   jsonb,
 } from "drizzle-orm/pg-core";
@@ -146,12 +147,20 @@ export const deliverySchedulesTable = pgTable(
     orderId: uuid("order_id")
       .notNull()
       .references(() => wholesaleOrdersTable.id, { onDelete: "cascade" }),
+    managedBy: uuid("managed_by").references(() => usersTable.id, {
+      onDelete: "restrict",
+    }),
     scheduledDate: date("scheduled_date").notNull(),
     status: deliveryScheduleStatusEnum("status").notNull().default("Scheduled"),
     notes: text("notes"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("idx_delivery_schedules_order_id").on(t.orderId)],
+  (t) => [
+    index("idx_delivery_schedules_order_id").on(t.orderId),
+    uniqueIndex("uq_wholesale_active_delivery")
+      .on(t.orderId)
+      .where(sql`${t.managedBy} IS NOT NULL AND ${t.status} IN ('Scheduled','InTransit')`),
+  ],
 );
 
 export const deliveryReceiptsTable = pgTable(

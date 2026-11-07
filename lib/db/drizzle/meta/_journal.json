@@ -19,6 +19,7 @@
     { "idx": 8, "version": "7", "when": 1793836800001, "tag": "0008_retire_legacy_cashier_storage", "breakpoints": true },
     { "idx": 9, "version": "7", "when": 1793836800002, "tag": "0009_supplier_delivery_calendar_date", "breakpoints": true },
     { "idx": 10, "version": "7", "when": 1793923200000, "tag": "0010_wholesale_draft_foundation", "breakpoints": true },
-    { "idx": 11, "version": "7", "when": 1793923200001, "tag": "0011_wholesale_reservations", "breakpoints": true }
+    { "idx": 11, "version": "7", "when": 1793923200001, "tag": "0011_wholesale_reservations", "breakpoints": true },
+    { "idx": 12, "version": "7", "when": 1794009600000, "tag": "0012_wholesale_fulfillment", "breakpoints": true }
   ]
 }
