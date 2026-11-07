@@ -174,7 +174,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
     getStored("medprix_procurement_deliveries", [])
   );
   const [invoices, setInvoices] = useState<Invoice[]>(() =>
-    []
+    getStored("medprix_procurement_invoices", [])
   );
   const [paymentInvoiceId, setPaymentInvoiceId] = useState<string | null>(null);
   const [poError, setPoError] = useState("");

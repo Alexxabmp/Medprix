@@ -45,13 +45,19 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
   const [selectedTrx, setSelectedTrx] = useState<UserTransaction | null>(null);
 
   // System Logs state
-  const [systemLogs, setSystemLogs] = useState<SystemLog[]>([]);
+  const [systemLogs, setSystemLogs] = useState<SystemLog[]>(() => {
+    try { const raw = sessionStorage.getItem("medprix_system_logs"); if (raw) { const p = JSON.parse(raw); if (Array.isArray(p)) return p; } } catch {}
+    return [];
+  });
   const [logSearch, setLogSearch] = useState("");
   const [logFilterStatus, setLogFilterStatus] = useState<string>("All");
   const [selectedLog, setSelectedLog] = useState<SystemLog | null>(null);
 
   // User Activity state
-  const [userActivities, setUserActivities] = useState<UserActivity[]>([]);
+  const [userActivities, setUserActivities] = useState<UserActivity[]>(() => {
+    try { const raw = sessionStorage.getItem("medprix_user_activities"); if (raw) { const p = JSON.parse(raw); if (Array.isArray(p)) return p; } } catch {}
+    return [];
+  });
   const [activitySearch, setActivitySearch] = useState("");
   const [activityModuleFilter, setActivityModuleFilter] = useState<string>("All");
 
@@ -74,18 +80,22 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
     };
   }, [selectedTrx, selectedLog]);
 
-  const loadBackendData = async () => {
+  const loadBackendData = async (force = false) => {
     setIsRefreshing(true);
     setAuditError("");
     try {
       const [, logs, activities] = await Promise.all([
-        refreshLiveTransactions(),
+        force || liveTransactions.length === 0 ? refreshLiveTransactions() : Promise.resolve(liveTransactions),
         fetch("/api/admin/system-logs", { credentials: "include" }).then(res => readResponse(res, "Audit records are unavailable. Refresh to retry.")),
         fetch("/api/admin/user-activities", { credentials: "include" }).then(res => readResponse(res, "Audit records are unavailable. Refresh to retry.")),
       ]);
       if (!Array.isArray(logs) || !Array.isArray(activities)) throw new Error("Invalid audit response");
       setSystemLogs(logs);
       setUserActivities(activities);
+      try {
+        sessionStorage.setItem("medprix_system_logs", JSON.stringify(logs));
+        sessionStorage.setItem("medprix_user_activities", JSON.stringify(activities));
+      } catch {}
     } catch (error) {
       setSystemLogs([]);
       setUserActivities([]);
@@ -230,7 +240,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
             <button
               type="button"
               className="button soft"
-              onClick={() => void loadBackendData()}
+              onClick={() => void loadBackendData(true)}
               disabled={isRefreshing}
               title="Refresh system administration data">
               <RefreshCw size={14} className={isRefreshing ? "spin" : ""} />{" "}
