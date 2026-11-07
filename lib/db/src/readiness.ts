@@ -1,3 +1,4 @@
+import { assertWholesaleCollectionsReady } from "./wholesale-collections-contract";
 import { assertWholesaleFulfillmentReady } from "./wholesale-fulfillment-contract";
 import { assertWholesaleReservationsReady } from "./wholesale-reservation-contract";
 import { assertWholesaleDraftReady } from "./wholesale-draft-contract";
@@ -40,14 +41,15 @@ export class SchemaReadinessError extends Error {
     this.name = "SchemaReadinessError";
   }
 }
-export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | "cashier" | "legacy-runtime" | "audit-runtime" | "identifier-runtime" | "pre-retail-runtime" | "pre-retirement-runtime" | "pre-delivery-runtime" | "pre-wholesale-runtime" | "wholesale-draft-runtime" | "wholesale-reservation-runtime" | "runtime" = "runtime", namespace = "public", existingTablesOnly = false) {
-  const fulfillment = scope === "runtime";
+export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | "cashier" | "legacy-runtime" | "audit-runtime" | "identifier-runtime" | "pre-retail-runtime" | "pre-retirement-runtime" | "pre-delivery-runtime" | "pre-wholesale-runtime" | "wholesale-draft-runtime" | "wholesale-reservation-runtime" | "wholesale-fulfillment-runtime" | "runtime" = "runtime", namespace = "public", existingTablesOnly = false) {
+  const collections = scope === "runtime";
+  const fulfillment = collections || scope === "wholesale-fulfillment-runtime";
   const reservations = fulfillment || scope === "wholesale-reservation-runtime";
   const wholesale = reservations || scope === "wholesale-draft-runtime";
   const calendar = wholesale || scope === "pre-wholesale-runtime";
   const retiredSales = calendar || scope === "pre-delivery-runtime";
   const retail = retiredSales || scope === "pre-retirement-runtime";
-  if (["pre-retail-runtime", "pre-retirement-runtime", "pre-delivery-runtime", "pre-wholesale-runtime", "wholesale-draft-runtime", "wholesale-reservation-runtime"].includes(scope)) scope = "runtime";
+  if (["pre-retail-runtime", "pre-retirement-runtime", "pre-delivery-runtime", "pre-wholesale-runtime", "wholesale-draft-runtime", "wholesale-reservation-runtime", "wholesale-fulfillment-runtime"].includes(scope)) scope = "runtime";
   const actual = await inspectSchema(query, namespace);
   const issues: string[] = [];
   const normalize = (v: unknown) => typeof v === "string" ? v.replaceAll(`"${namespace}".`, "public.").replaceAll(`${namespace}.`, "public.") : v;
@@ -142,6 +144,7 @@ export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | 
   if (wholesale) await assertWholesaleDraftReady(query, actual, namespace, existingTablesOnly, issues);
   if (reservations) await assertWholesaleReservationsReady(query, actual, namespace, existingTablesOnly, issues);
   if (fulfillment) await assertWholesaleFulfillmentReady(query, actual, namespace, existingTablesOnly, issues);
+  if (collections) await assertWholesaleCollectionsReady(query, actual, namespace, existingTablesOnly, issues);
   if (issues.length) throw new SchemaReadinessError(issues);
   return actual;
 }
