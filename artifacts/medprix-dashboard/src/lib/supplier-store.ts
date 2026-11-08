@@ -1,3 +1,4 @@
+import { readResponse } from "./feedback";
 export type SupplierRecord = {
   id: string;
   name: string;
@@ -20,17 +21,21 @@ export type AccountsPayableRecord = {
   supplier: string;
   invoiceNumber: string;
   dueDate: string | null;
-  totalOwed: string;
-  totalPaid: string;
-  balance: string;
+  totalOwed: string | null;
+  totalPaid: string | null;
+  balance: string | null;
+  needsReview?: boolean;
+  reviewReasons?: string[];
   lastPaymentDate: string | null;
   status: string;
 };
 
 export type PayableSummary = {
-  totalOpen: string;
-  overdue: string;
-  dueThisWeek: string;
+  totalOpen: string | null;
+  overdue: string | null;
+  dueThisWeek: string | null;
+  needsReview?: boolean;
+  invoicesNeedingReview?: number;
 };
 
 type PayablesCache = {
@@ -40,12 +45,6 @@ type PayablesCache = {
 
 const suppliersKey = "medprix_supplier_records";
 const payablesKey = "medprix_supplier_payables";
-const emptyPayableSummary: PayableSummary = {
-  totalOpen: "0.00",
-  overdue: "0.00",
-  dueThisWeek: "0.00",
-};
-
 function readSessionValue<T>(key: string): T | null {
   try {
     const raw = sessionStorage.getItem(key);
@@ -66,6 +65,7 @@ function writeSessionValue(key: string, value: unknown) {
 let suppliersCache = readSessionValue<SupplierRecord[]>(suppliersKey);
 let payablesCache = readSessionValue<PayablesCache>(payablesKey);
 let suppliersRequest: Promise<SupplierRecord[]> | null = null;
+let settlementRevision = 0;
 let payablesRequest: Promise<PayablesCache> | null = null;
 
 export function getCachedSuppliers() {
@@ -82,9 +82,10 @@ export async function fetchSupplierRecords() {
   if (suppliersRequest) return suppliersRequest;
   suppliersRequest = (async () => {
     const response = await fetch("/api/suppliers", { credentials: "include" });
-    const data = await response.json().catch(() => ({}));
+    const data = await readResponse(response, "Could not refresh supplier data. Please try again.");
     if (!response.ok)
       throw new Error(data.error || "Failed to load suppliers.");
+    if (!Array.isArray(data.suppliers)) throw new Error("Invalid supplier response. Please refresh.");
     const suppliers = Array.isArray(data.suppliers)
       ? (data.suppliers as SupplierRecord[])
       : [];
@@ -100,14 +101,16 @@ export async function fetchSupplierRecords() {
 }
 
 export async function fetchAccountsPayable() {
+  const revision = settlementRevision;
   if (payablesRequest) return payablesRequest;
   payablesRequest = (async () => {
     const response = await fetch("/api/accounts-payable", {
       credentials: "include",
     });
-    const data = await response.json().catch(() => ({}));
+    const data = await readResponse(response, "Could not refresh supplier data. Please try again.");
     if (!response.ok)
       throw new Error(data.error || "Failed to load supplier payables.");
+    if (!Array.isArray(data.accountsPayable) || !data.summary || ["totalOpen", "overdue", "dueThisWeek"].some((key) => data.summary[key] !== null && (typeof data.summary[key] !== 'string' || !/^\d+(?:\.\d{1,2})?$/.test(data.summary[key])))) throw new Error("Invalid payable response. Please refresh.");
     const summary =
       data.summary && typeof data.summary === "object" ? data.summary : {};
     const result: PayablesCache = {
@@ -115,20 +118,27 @@ export async function fetchAccountsPayable() {
         ? (data.accountsPayable as AccountsPayableRecord[])
         : [],
       summary: {
-        totalOpen: String(summary.totalOpen || emptyPayableSummary.totalOpen),
-        overdue: String(summary.overdue || emptyPayableSummary.overdue),
-        dueThisWeek: String(
-          summary.dueThisWeek || emptyPayableSummary.dueThisWeek,
-        ),
+        totalOpen: summary.totalOpen,
+        overdue: summary.overdue,
+        dueThisWeek: summary.dueThisWeek,
+        needsReview: Boolean(summary.needsReview),
+        invoicesNeedingReview: Number(summary.invoicesNeedingReview || 0),
       },
     };
+    if (revision !== settlementRevision) throw new Error("Balances changed during refresh. Please refresh again.");
     payablesCache = result;
     writeSessionValue(payablesKey, result);
     return result;
   })();
-  try {
-    return await payablesRequest;
-  } finally {
-    payablesRequest = null;
-  }
+  const request = payablesRequest;
+  try { return await request; } finally { if (payablesRequest === request) payablesRequest = null; }
+}
+
+export function invalidateSettlementCaches() {
+  settlementRevision += 1;
+  payablesRequest = null;
+  payablesCache = null;
+  sessionStorage.removeItem(payablesKey);
+  localStorage.removeItem("medprix_procurement_invoices");
+  window.dispatchEvent(new Event("supplier-payment-recorded"));
 }

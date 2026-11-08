@@ -40,12 +40,14 @@ app.use(
   }),
 );
 
-app.use(async (_req, _res, next) => {
+app.use(async (_req, res, next) => {
   if (initPromise) {
     try {
       await initPromise;
     } catch (e) {
-      console.warn("DB init notice in middleware:", e);
+      logger.error({ err: e }, "Database readiness failed; no schema repair was attempted");
+      res.status(503).json({ error: "Database storage is not ready. An administrator must run the explicit setup checks." });
+      return;
     }
   }
   next();
@@ -90,7 +92,7 @@ function sanitizeErrorMessage(err: any): string {
     lower.includes("drizzle");
 
   if (!isSqlOrDbError) {
-    return rawMessage || "Internal server error";
+    return "The request could not be completed. Please try again.";
   }
 
   const code = String(err.code || "");

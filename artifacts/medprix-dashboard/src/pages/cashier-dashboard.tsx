@@ -1,11 +1,16 @@
+import { calculateRetailLine } from "@workspace/api-zod";
+import { productStock as getProductStock, batchAllocations as getBatchAllocations, productAvailability } from "@/lib/stock-guidance";
+import { safeError, readResponse } from "@/lib/feedback";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
+  AlertTriangle,
   Check,
   ClipboardList,
   Download,
   Eye,
   Plus,
   Receipt,
+  RefreshCw,
   Search,
   ShieldCheck,
   ShoppingCart,
@@ -16,7 +21,8 @@ import { PageHeading } from "@/components/custom-ui/page-heading";
 import { DateControl } from "@/components/custom-ui/date-control";
 import { formatCalendarDate, recordsOnDate } from "@/lib/business-date";
 import { useBusinessDate } from "@/lib/use-business-date";
-import { createCheckoutSubmitter } from "@/lib/checkout";
+import { createCheckoutSubmitter, type PendingCheckout } from "@/lib/checkout";
+import { useDialogAccessibility } from "@/lib/use-dialog-accessibility";
 import { printReceipt } from "@/lib/receipt-print";
 import type { ProductItem, ToastFn, ShiftReceipt } from "@/lib/types";
 import {
@@ -33,15 +39,9 @@ type CartItem = {
   name: string;
   sku: string;
   price: number;
+  isVatExempt: boolean;
   qty: number;
 };
-
-function getProductStock(product: ProductItem): number {
-  if (Array.isArray(product.batches) && product.batches.length > 0) {
-    return product.batches.reduce((sum, batch) => sum + (Number(batch.quantity) || 0), 0);
-  }
-  return Number(product.stock) || 0;
-}
 
 function getProductPrice(product: ProductItem): number {
   return parseFloat(product.price.replace("₱", "").replace(",", "")) || 0;
@@ -51,37 +51,31 @@ function formatPeso(value: number): string {
   return `₱${value.toFixed(2)}`;
 }
 
-function getBatchAllocations(product: ProductItem, quantity: number) {
-  let remaining = quantity;
-  const allocations: { batchNumber: string; quantity: number }[] = [];
-  const batches = [...(product.batches || [])]
-    .filter((batch) => Number(batch.quantity) > 0)
-    .sort(
-      (a, b) =>
-        new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime(),
-    );
-
-  for (const batch of batches) {
-    if (remaining <= 0) break;
-    const allocated = Math.min(Number(batch.quantity), remaining);
-    allocations.push({ batchNumber: batch.batchNumber, quantity: allocated });
-    remaining -= allocated;
-  }
-
-  if (remaining > 0 && product.batches && product.batches.length > 0) {
-    allocations.push({ batchNumber: product.batches[0].batchNumber, quantity: remaining });
-    remaining = 0;
-  }
-
-  return remaining === 0 ? allocations : null;
-}
-
 export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
   const { date: shiftDate, selectDate } = useBusinessDate();
-  const { items: products, setItems: setProducts, refresh: fetchProducts, loading: isLoadingProducts } = usePharmacyInventory();
+  const { items: products, setItems: setProducts } = usePharmacyInventory();
   const { receipts, setReceipts, refresh: fetchTransactions } = usePharmacyTransactions();
   const [selectedProductId, setSelectedProductId] = useState("");
   const [productLoadError, setProductLoadError] = useState("");
+  const [stockChecking, setStockChecking] = useState(true);
+  const [checkoutError, setCheckoutError] = useState("");
+  const stockDayTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  async function refreshStock() {
+    clearTimeout(stockDayTimer.current);
+    setStockChecking(true);
+    try {
+      const response = await fetch("/api/inventory", { credentials: "include", signal: AbortSignal.timeout(15000) });
+      const data = await readResponse(response, "Could not verify current stock. Please refresh stock.");
+      if (!Array.isArray(data.products)) throw new Error("Invalid stock response. Please refresh stock.");
+      if (!data.pharmacyDate || !Number.isFinite(data.pharmacyDayRemainingMs)) throw new Error("Stock calendar data is missing. Restart the API and refresh stock.");
+      setProducts(data.products);
+      stockDayTimer.current = setTimeout(() => { void refreshStock(); }, Math.min(data.pharmacyDayRemainingMs, 2_147_483_647));
+      setProductLoadError("");
+      return data.products as ProductItem[];
+    } catch (failure) { setProductLoadError(safeError(failure)); return null; }
+    finally { setStockChecking(false); }
+  }
+  useEffect(() => { void refreshStock(); const refresh = () => { void refreshStock(); }; window.addEventListener("focus", refresh); return () => { clearTimeout(stockDayTimer.current); window.removeEventListener("focus", refresh); }; }, []);
   const [productSearch, setProductSearch] = useState("");
   const [qty, setQty] = useState(1);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -99,12 +93,50 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
   const submitting = useRef(false);
   const submitCheckout = useRef<ReturnType<typeof createCheckoutSubmitter> | null>(null);
   if (!submitCheckout.current) submitCheckout.current = createCheckoutSubmitter();
-
+  const [pendingCheckout, setPendingCheckout] = useState<PendingCheckout | null>(null);
+  const [checkoutReady, setCheckoutReady] = useState(false);
+  const [checkedMissing, setCheckedMissing] = useState(false);
+  function closeReceipt() {
+    setSelectedReceipt(null);
+  }
+  useDialogAccessibility(!!selectedReceipt, ".pos-receipt-dialog", closeReceipt);
   useEffect(() => {
-    if (products.length > 0 && !selectedProductId) {
-      setSelectedProductId(products[0].id);
-    }
-  }, [products, selectedProductId]);
+    if (pendingCheckout && !isSubmitting) document.getElementById("pos-check-result")?.focus();
+  }, [pendingCheckout, isSubmitting]);
+  useEffect(() => {
+    let active=true;
+    submitCheckout.current!.initialize().then(pending=>{
+      if(!active)return;setCheckoutReady(true);setPendingCheckout(pending??null);
+      if(!pending)return;
+      setCart(pending.payload.items.map(item=>({id:item.productId,name:item.product,sku:String(item.sku||''),qty:item.quantity,price:Number(item.unitPrice.replace(/[^0-9.]/g,'')),isVatExempt:item.isVatExempt===true})));
+      setCashTendered(pending.payload.amountReceived.replace(/[^0-9.]/g,''));setPaymentMethod(pending.payload.payment);setDiscountType(pending.payload.discountType);
+    }).catch(failure=>{if(active)setCheckoutError(safeError(failure));});
+    return()=>{active=false;};
+  }, []);
+
+  async function finishCheckout(saved: any) {
+    recordTransaction(saved);
+    setSelectedReceipt(mapTransactionsToReceipts([saved])[0]);
+    setCart([]);
+    setCashTendered("");
+    setPendingCheckout(null);
+    setCheckedMissing(false);
+    setCheckoutError("");
+    onToast(`Sale saved. Receipt ${saved.transactionNumber} is ready to print. Change: ${saved.change}`);
+    await refreshStock();
+    void fetchTransactions();
+  }
+  async function resolveCheckout(retry = false) {
+    if (submitting.current) return;
+    submitting.current = true; setIsSubmitting(true);
+    try {
+      const saved = retry ? await submitCheckout.current!.retry() : await submitCheckout.current!.reconcile();
+      if (saved) await finishCheckout(saved);
+      else { setCheckedMissing(true); setCheckoutError("No committed checkout was found. You can retry the same checkout using its retained reference."); }
+    } catch (error) { setCheckoutError(safeError(error, "Could not check this checkout. Keep its reference and try checking again.")); }
+    finally { setPendingCheckout(submitCheckout.current!.getPending() || null); submitting.current = false; setIsSubmitting(false); }
+  }
+
 
   const filteredProducts = products.filter((product) => {
     const q = productSearch.toLowerCase();
@@ -121,15 +153,26 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
   const selectedProductStock = selectedProduct ? getProductStock(selectedProduct) : 0;
   const selectedCartQuantity = cart.find((item) => item.id === selectedProductId)?.qty || 0;
   const selectedAvailableStock = Math.max(0, selectedProductStock - selectedCartQuantity);
+  const stockStatus = selectedProduct ? productAvailability(selectedProduct, selectedCartQuantity) : "";
+  const stockBlocked = stockChecking || !!productLoadError || !selectedProduct || !!stockStatus;
+  const previousAvailability = useRef({ id: "", status: "" });
+  useEffect(() => {
+    if (stockChecking || productLoadError) return;
+    const previous = previousAvailability.current;
+    previousAvailability.current = { id: selectedProductId, status: stockStatus };
+    if (selectedProduct && previous.id === selectedProductId && previous.status === "" &&
+        (stockStatus === "Out of stock" || stockStatus === "Stock unavailable")) {
+      onToast({ message: `${selectedProduct.name} is no longer available. Choose another medicine.`, variant: "warning" });
+    }
+  }, [stockChecking, productLoadError, selectedProductId, stockStatus, selectedProduct, onToast]);
   const getCartAvailableStock = (item: CartItem) => {
     const product = products.find((entry) => entry.id === item.id);
     return product ? getProductStock(product) : item.qty;
   };
 
   useEffect(() => {
-    if (filteredProducts.length === 0) return;
     if (!filteredProducts.some((product) => product.id === selectedProductId)) {
-      setSelectedProductId(filteredProducts[0].id);
+      setSelectedProductId("");
     }
   }, [filteredProducts, selectedProductId]);
 
@@ -138,22 +181,27 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
   }, [selectedProductId, selectedAvailableStock]);
 
 
-  const subtotal = cart.reduce((acc, item) => acc + item.price * item.qty, 0);
+  const subtotalCents = cart.reduce((sum, item) => sum + Math.round(item.price * 100) * item.qty, 0);
+  const pendingAmount = (value: unknown, fallback: number) => pendingCheckout && value != null ? Number(String(value).replace(/[^0-9.]/g,"")) : fallback;
+  const subtotal = pendingAmount(pendingCheckout?.payload.subtotal, subtotalCents / 100);
   const isDiscountEligible = discountType !== "None";
-  const discountRate = isDiscountEligible ? 0.2 : 0;
-  const discountAmount = subtotal * discountRate;
-  const vat = isDiscountEligible ? 0 : subtotal * 0.12;
-  const total = subtotal - discountAmount + vat;
+  const lineAmounts = cart.map(item=>calculateRetailLine(BigInt(Math.round(item.price*100)),item.qty,item.isVatExempt,discountType!=="None"));
+  const discountAmount = pendingAmount(pendingCheckout?.payload.discount, Number(lineAmounts.reduce((sum,line)=>sum+line.discount,0n))/100);
+  const vat = pendingAmount(pendingCheckout?.payload.vat, Number(lineAmounts.reduce((sum,line)=>sum+line.vat,0n))/100);
+  const vatRelief = pendingAmount(pendingCheckout?.payload.vatRelief, Number(lineAmounts.reduce((sum,line)=>sum+line.relief,0n))/100);
+  const total = pendingAmount(pendingCheckout?.payload.total, Number(lineAmounts.reduce((sum,line)=>sum+line.net,0n))/100);
   const tenderedNum = parseFloat(cashTendered) || 0;
   const changeDue =
     paymentMethod === "Cash" ? Math.max(0, tenderedNum - total) : 0;
 
   const handleAddToCart = () => {
+    if (stockBlocked) return;
     const prod = products.find((p) => p.id === selectedProductId);
     if (!prod) {
       onToast("Select a live inventory product first");
       return;
     }
+    if (typeof prod.isVatExempt !== "boolean") { onToast("Set this product's VAT treatment in Inventory before adding it."); return; }
     const availableStock = getProductStock(prod);
     const existing = cart.find((item) => item.id === prod.id);
     const remainingStock = Math.max(0, availableStock - (existing?.qty || 0));
@@ -180,6 +228,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
           name: prod.name,
           sku: prod.sku,
           price: numericPrice,
+          isVatExempt: prod.isVatExempt,
           qty,
         },
       ]);
@@ -229,7 +278,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
 
   const handleCheckout = async (e: FormEvent) => {
     e.preventDefault();
-    if (submitting.current) return;
+    if (!checkoutReady || submitting.current || pendingCheckout) return;
     if (cart.length === 0) {
       onToast("Cannot checkout an empty cart");
       return;
@@ -239,16 +288,21 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
       return;
     }
 
+    submitting.current = true;
+    setIsSubmitting(true);
+    setCheckoutError("");
+    const currentProducts = await refreshStock();
+    if (!currentProducts) { setCheckoutError("Stock could not be verified. Your cart and payment details are retained. Refresh stock before paying."); submitting.current = false; setIsSubmitting(false); return; }
     const allocations = cart.map((item) => {
-      const product = products.find((p) => p.id === item.id);
+      const product = currentProducts.find((p) => p.id === item.id);
       if (!product) return { item, product: null, batches: null };
       return { item, product, batches: getBatchAllocations(product, item.qty) };
     });
 
     const unavailable = allocations.find((entry) => !entry.product || !entry.batches);
     if (unavailable) {
-      onToast(`Insufficient live stock for ${unavailable.item.name}`);
-      await fetchProducts();
+      setCheckoutError(`${unavailable.item.name}: Only ${unavailable.product ? getProductStock(unavailable.product) : 0} units are currently available, or its batches are unavailable. Edit or remove this item, then refresh stock. Your cart and payment details are retained.`);
+      submitting.current = false; setIsSubmitting(false);
       return;
     }
 
@@ -265,15 +319,6 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
       localStorage.getItem("medprix-username") ||
       "Cashier Staff";
 
-    // Stock-out is submitted only after the payment is confirmed.
-    const flatAllocations = allocations.flatMap((entry) =>
-      (entry.batches || []).map((b) => ({
-        productId: entry.product!.id,
-        batchNumber: b.batchNumber,
-        quantity: b.quantity,
-      }))
-    );
-
     const transactionPayload = {
       dateTime,
       user: cashierName,
@@ -283,12 +328,17 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
       subtotal: formatPeso(subtotal),
       discount: formatPeso(discountAmount),
       vat: formatPeso(vat),
+      vatRelief: formatPeso(vatRelief),
       amountReceived:
         paymentMethod === "Cash" ? formatPeso(tenderedNum) : formatPeso(total),
       change: formatPeso(changeDue),
       payment: paymentMethod,
+      discountType,
       status: "Completed" as const,
       items: cart.map((item) => ({
+        productId: item.id,
+        sku: item.sku,
+        isVatExempt: item.isVatExempt,
         product: item.name,
         quantity: item.qty,
         unitPrice: formatPeso(item.price),
@@ -302,41 +352,14 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
       let saved;
       try {
         saved = await submitCheckout.current!(transactionPayload);
-      } catch {
-        onToast("Payment could not be confirmed. Your cart is retained. Retry unchanged without reloading this page.");
+      } catch (error) {
+        setPendingCheckout(submitCheckout.current!.getPending() || null);
+        setCheckedMissing(false);
+        setCheckoutError(safeError(error, "Checkout could not be confirmed. Check its result before another sale."));
         return;
       }
-      recordTransaction(saved);
-      setSelectedReceipt(mapTransactionsToReceipts([saved])[0]);
-      setCart([]);
-      setCashTendered("");
+      await finishCheckout(saved);
 
-      // Payment is already saved. Never repeat the sale to repair inventory.
-      const stockResults = await Promise.allSettled(flatAllocations.map(async (allocation) => {
-        const response = await fetch(`/api/inventory/products/${allocation.productId}/stock-out`, {
-          method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ batchNumber: allocation.batchNumber, quantity: allocation.quantity,
-            reason: `Retail sale ${saved.transactionNumber}` }),
-        });
-        if (!response.ok) throw new Error("Stock update failed");
-      }));
-      const stockFailed = stockResults.some((result) => result.status === "rejected");
-      await fetchProducts();
-      if (stockFailed) {
-        onToast(`Payment ${saved.transactionNumber} is saved, but stock needs administrator reconciliation. Do not repeat the sale.`);
-      } else {
-        onToast(`Sale saved. Receipt ${saved.transactionNumber} is ready to print. Change: ${saved.change}`);
-      }
-      void fetchTransactions();
-      for (const [url, details] of [
-        ["/api/admin/system-logs", { role: "Cashier", action: "Sales Transaction", module: "Sales POS",
-          description: `Completed retail receipt ${saved.transactionNumber} (${saved.total})`, status: "Success", deviceIp: "POS Terminal 1" }],
-        ["/api/admin/user-activities", { role: "Cashier", activity: "Transaction completed", module: "Sales & Wholesale Activity",
-          description: `Processed retail receipt ${saved.transactionNumber} (${saved.total})`, flag: "Normal" }],
-      ] as const) {
-        void fetch(url, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user: cashierName, ...details }) }).catch(() => {});
-      }
     } finally {
       submitting.current = false;
       setIsSubmitting(false);
@@ -351,7 +374,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
   );
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+    <div className="cashier-page" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       <PageHeading
         title="Cashier Terminal & Register"
         description="Shift 1 (08:00 AM – 04:00 PM) · Active Terminal #01"
@@ -368,7 +391,13 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
         }
       />
 
-      <fieldset disabled={isSubmitting} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, display: "flex", flexDirection: "column", gap: 18 }} aria-busy={isSubmitting}>
+      {pendingCheckout && <div className="inline-error" role="alert">
+        <AlertTriangle size={16} aria-hidden="true" />
+        <span>{checkoutError || "Checkout is awaiting confirmation. Your cart and payment details are retained and locked. Check the result before another sale."}</span>
+        <button id="pos-check-result" type="button" className="button soft" disabled={isSubmitting} onClick={() => void resolveCheckout()}>{isSubmitting ? "Checking…" : "Check payment result"}</button>
+        {checkedMissing && <button type="button" className="button soft" disabled={isSubmitting} onClick={() => void resolveCheckout(true)}>Retry same checkout</button>}
+      </div>}
+      <fieldset disabled={isSubmitting || !!pendingCheckout} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, display: "flex", flexDirection: "column", gap: 18 }} aria-busy={isSubmitting}>
       {/* Full-Screen Counter Sale Checkout Layout */}
       <section className="surface-card" style={{ padding: "22px 24px", width: "100%", borderRadius: 20 }}>
         <div className="card-header pos-card-header" style={{ marginBottom: 18, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -402,25 +431,15 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
 
         {/* Product Selection Form Bar */}
         <div
-          className="pos-product-bar"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(220px, .8fr) minmax(260px, 1fr) 90px auto",
-            gap: 12,
-            alignItems: "flex-end",
-            padding: "14px 16px",
-            background: "hsl(var(--surface-soft))",
-            border: "1px solid hsl(var(--border))",
-            borderRadius: 14,
-            marginBottom: 20,
-          }}>
+          className="pos-product-bar">
           <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "hsl(var(--muted))", display: "block", marginBottom: 5 }}>
+            <label htmlFor="pos-product-search">
               Search Product
             </label>
             <div className="search-wrap" style={{ height: 39 }}>
               <Search size={15} />
               <input
+                id="pos-product-search"
                 data-testid="input-pos-product-search"
                 type="search"
                 placeholder="Search product, SKU, category..."
@@ -430,51 +449,48 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
             </div>
           </div>
           <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "hsl(var(--muted))", display: "block", marginBottom: 5 }}>
-              Select Product / Medicine *
-            </label>
+            <div className="pos-product-label">
+              <label htmlFor="pos-product-select">Select Product / Medicine *</label>
+              <button type="button" className="icon-button pos-stock-refresh" aria-label="Refresh stock" title="Refresh stock"
+                disabled={stockChecking || isSubmitting} onClick={() => void refreshStock()}>
+                <RefreshCw size={14} className={stockChecking ? "spin" : undefined} />
+              </button>
+            </div>
             <select
+              id="pos-product-select"
               className="select"
+              aria-describedby={productLoadError ? "pos-stock-error" : undefined}
+              aria-busy={stockChecking}
               value={selectedProductId}
               onChange={(e) => {
                 setSelectedProductId(e.target.value);
                 setQty(1);
               }}
-              disabled={isLoadingProducts || filteredProducts.length === 0}
+              disabled={stockChecking || !!productLoadError || filteredProducts.length === 0}
               style={{ width: "100%", height: 39 }}>
-              {filteredProducts.length === 0 ? (
-                <option value="">
-                  {isLoadingProducts
-                    ? "Loading live inventory..."
-                    : products.length === 0
-                      ? "No live products available"
-                      : "No products match your search"}
-                </option>
-              ) : (
-                filteredProducts.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({p.sku}) - {p.price} [Stock: {getProductStock(p)}]
-                  </option>
-                ))
-              )}
+              <option value="" disabled>
+                {stockChecking ? "Loading stock…" : productLoadError ? "Stock unavailable" : filteredProducts.length === 0 ? "No products match your search" : "Select product / medicine"}
+              </option>
+              {filteredProducts.map((product) => {
+                const availability = productAvailability(product, cart.find((item) => item.id === product.id)?.qty || 0);
+                return <option key={product.id} value={product.id} disabled={!!availability}>
+                  {product.name} ({product.sku}) - {product.price}{availability ? ` — ${availability}` : ""}
+                </option>;
+              })}
             </select>
-            {productLoadError && (
-              <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-                {productLoadError}
-              </div>
-            )}
           </div>
           <div className="">
-            <label style={{ fontSize: 12, fontWeight: 600, color: "hsl(var(--muted))", display: "block", marginBottom: 5, textAlign: "start" }}>
+            <label htmlFor="pos-product-quantity">
               Quantity
             </label>
             <input
+              id="pos-product-quantity"
               type="number"
               min="1"
               max={Math.max(1, selectedAvailableStock)}
               step="1"
               value={qty}
-              disabled={!selectedProduct || selectedAvailableStock === 0}
+              disabled={stockBlocked}
               onChange={(e) => {
                 const nextQuantity = Number(e.target.value);
                 if (!Number.isInteger(nextQuantity)) return;
@@ -494,15 +510,11 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
             />
           </div>
           <div>
-            <div className="quantity-limit" aria-live="polite">
-              {selectedProduct
-                ? `${selectedAvailableStock} available to add`
-                : "Select a product"}
-            </div>
             <button
               type="button"
-              className="button dark"
-              disabled={isLoadingProducts || filteredProducts.length === 0 || selectedAvailableStock === 0}
+              className="button primary-action"
+              aria-describedby={productLoadError ? "pos-stock-error" : undefined}
+              disabled={stockBlocked || isSubmitting || filteredProducts.length === 0}
               style={{ height: 39, padding: "0 18px", display: "inline-flex", alignItems: "center", gap: 6 }}
               onClick={handleAddToCart}>
               <Plus size={15} /> Add to Cart
@@ -510,6 +522,12 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
           </div>
         </div>
 
+        {productLoadError && <div id="pos-stock-error" className="pos-stock-error" role="alert">
+          <AlertTriangle size={14} aria-hidden="true" /><span>Stock unavailable.</span>
+          <button type="button" className="pos-stock-retry" disabled={stockChecking || isSubmitting} onClick={() => void refreshStock()}>Retry stock</button>
+        </div>}
+
+        {checkoutError && !pendingCheckout && <div className="inline-error" role="alert"><AlertTriangle size={16} /><span>{checkoutError}</span></div>}
         {/* 2-Column POS Layout inside full-width card */}
         <div className="pos-checkout-grid">
           {/* Left: Cart Items Table */}
@@ -522,6 +540,9 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
 
             <div
               className="table-scroll"
+              role="region"
+              aria-label="Cart items. Scroll horizontally for quantity, price, and remove actions."
+              tabIndex={0}
               style={{
                 minHeight: 280,
                 maxHeight: 480,
@@ -696,9 +717,10 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                     justifyContent: "space-between",
                     color: "hsl(var(--muted))",
                   }}>
-                  <span>VAT (12% included)</span>
+                  <span>{pendingCheckout && pendingCheckout.payload.contractVersion !== 3 ? "VAT" : "VAT (included)"}</span>
                   <span>₱{vat.toFixed(2)}</span>
                 </div>
+                {vatRelief > 0 && <div style={{display:"flex",justifyContent:"space-between",color:"hsl(var(--muted))"}}><span>VAT exemption</span><span>-{formatPeso(vatRelief)}</span></div>}
                 {isDiscountEligible && (
                   <div
                     style={{
@@ -743,8 +765,12 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                   <button
                     key={type}
                     type="button"
-                    className={`button ${discountType === type ? "dark" : "soft"}`}
-                    style={{ height: 35, fontSize: 12, padding: "0 4px" }}
+                    className={`button ${discountType === type ? "primary-action" : "soft"}`}
+                    style={{ 
+                      height: 35,
+                      fontSize: 12,
+                      
+                      padding: 12, }}
                     onClick={() => setDiscountType(type)}>
                     {type === "None" ? "Standard (None)" : `${type} (-20%)`}
                   </button>
@@ -764,12 +790,14 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                 }}>
                 Payment Method
               </label>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+              <div style={{ 
+                display: "grid",
+                gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
                 {(["Cash", "GCash", "Card"] as const).map((method) => (
                   <button
                     key={method}
                     type="button"
-                    className={`button ${paymentMethod === method ? "dark" : "soft"}`}
+                    className={`button ${paymentMethod === method ? "primary-action" : "soft"}`}
                     style={{ height: 35, fontSize: 12 }}
                     onClick={() => setPaymentMethod(method)}>
                     {method}
@@ -851,8 +879,8 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
 
             <button
               type="submit"
-              className="button dark full"
-              disabled={isSubmitting || cart.length === 0}
+              className="button primary-action full"
+              disabled={!checkoutReady || isSubmitting || cart.length === 0}
               style={{
                 height: 46,
                 fontSize: 14,
@@ -992,10 +1020,10 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
       {selectedReceipt && (
         <div
           className="modal-backdrop"
-          onClick={() => setSelectedReceipt(null)}
+          onClick={closeReceipt}
           style={{ zIndex: 1100 }}>
           <div
-            className="modal dialog"
+            className="modal dialog pos-receipt-dialog"
             onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: 440, width: "90%" }}>
             <div className="modal-header">
@@ -1008,7 +1036,8 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
               <button
                 type="button"
                 className="modal-close"
-                onClick={() => setSelectedReceipt(null)}>
+                aria-label="Close receipt"
+                onClick={closeReceipt}>
                 <X size={16} />
               </button>
             </div>
@@ -1048,10 +1077,11 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
               )}
               {selectedReceipt.vat && (
                 <div style={{ display: "flex", justifyContent: "space-between", color: "hsl(var(--muted))" }}>
-                  <span>VAT (12% incl.)</span>
+                  <span>{selectedReceipt.printSource?.calculationVersion ? "VAT (included)" : "VAT"}</span>
                   <span>{selectedReceipt.vat}</span>
                 </div>
               )}
+              {selectedReceipt.vatRelief && <div style={{ display: "flex", justifyContent: "space-between", color: "hsl(var(--muted))" }}><span>VAT exemption</span><span>{selectedReceipt.vatRelief}</span></div>}
               {selectedReceipt.discount && selectedReceipt.discount !== "₱0.00" && (
                 <div style={{ display: "flex", justifyContent: "space-between", color: "#34C759", fontWeight: 600 }}>
                   <span>Privilege Discount</span>
@@ -1086,7 +1116,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
             <div className="modal-actions" style={{ marginTop: 16, display: "flex", justifyContent: "flex-end", gap: 8 }}>
               <button
                 type="button"
-                className="button dark"
+                className="button primary-action"
                 onClick={async () => {
                   try {
                     await printReceipt(selectedReceipt);
@@ -1170,7 +1200,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
             <div className="modal-actions" style={{ marginTop: 14 }}>
               <button
                 type="button"
-                className="button dark"
+                className="button primary-action"
                 onClick={() => {
                   onToast("Shift closed successfully. Z-Read report printed.");
                   setShowShiftModal(false);

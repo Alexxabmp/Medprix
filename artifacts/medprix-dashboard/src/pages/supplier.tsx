@@ -1,3 +1,6 @@
+import { useDialogAccessibility } from "@/lib/use-dialog-accessibility";
+import { SupplierPaymentDialog } from "@/components/supplier-payment-dialog";
+import { safeError, readResponse } from "@/lib/feedback";
 import {
   useCallback,
   useEffect,
@@ -36,14 +39,16 @@ type Supplier = SupplierRecord;
 type Payable = {
   id: string;
   invoiceId: string;
-  totalOwed: string;
-  totalPaid: string;
-  balance: string;
+  totalOwed: string | null;
+  totalPaid: string | null;
+  balance: string | null;
+  needsReview?: boolean;
 };
 
 type PaymentTarget = {
   id: string;
-  balance: string;
+  balance: string | null;
+  invoiceId: string;
   supplier?: string;
   invoiceNumber?: string;
 };
@@ -52,8 +57,9 @@ type SupplierHistory = {
   summary: {
     totalOrders: number;
     totalOrdered: string;
-    totalPaid: string;
-    openBalance: string;
+    totalPaid: string | null;
+    openBalance: string | null;
+    needsReview?: boolean;
   };
   orders: Array<{
     id: string;
@@ -68,6 +74,7 @@ type SupplierHistory = {
     dueDate: string;
     invoiceAmount: string;
     isPaid: boolean;
+    needsReview?: boolean;
   }>;
   payables: Payable[];
   payments: Array<{
@@ -110,8 +117,8 @@ const emptyHistory: SupplierHistory = {
   payments: [],
 };
 
-const peso = (value: string | number) =>
-  `₱${Number(value || 0).toLocaleString("en-PH", {
+const peso = (value: string | number | null) =>
+  value === null ? 'Needs review' : `₱${Number(value || 0).toLocaleString("en-PH", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
@@ -131,8 +138,9 @@ function normalizeHistory(value: unknown): SupplierHistory {
     summary: {
       totalOrders: Number(summary.totalOrders || 0),
       totalOrdered: String(summary.totalOrdered || "0.00"),
-      totalPaid: String(summary.totalPaid || "0.00"),
-      openBalance: String(summary.openBalance || "0.00"),
+      totalPaid: summary.totalPaid == null ? null : String(summary.totalPaid),
+      openBalance: summary.openBalance == null ? null : String(summary.openBalance),
+      needsReview: Boolean(summary.needsReview),
     },
     orders: arrayValue(data.orders),
     invoices: arrayValue(data.invoices),
@@ -218,14 +226,11 @@ export default function SupplierPage({
   const [paymentPayable, setPaymentPayable] = useState<PaymentTarget | null>(
     null,
   );
-  const [paymentForm, setPaymentForm] = useState({
-    amountPaid: "",
-    paymentDate: new Date().toISOString().slice(0, 10),
-    notes: "",
-  });
   const canManagePayables =
     currentRole === "Admin" || currentRole === "FrontDesk";
 
+  useDialogAccessibility(isAddOpen, '.supplier-form-modal', () => setIsAddOpen(false), isSaving);
+  useDialogAccessibility(!!selectedSupplier, '.supplier-history-modal', () => setSelectedSupplier(null));
   const fetchSuppliers = useCallback(async () => {
     const hasCachedData = getCachedSuppliers() !== null;
     try {
@@ -237,10 +242,7 @@ export default function SupplierPage({
         requestError instanceof Error
           ? requestError.message
           : "Could not reach the server.";
-      if (!hasCachedData) {
-        setError(message);
-        onToast(message);
-      }
+      setError(safeError(message));
     } finally {
       setIsLoading(false);
     }
@@ -263,7 +265,7 @@ export default function SupplierPage({
         requestError instanceof Error
           ? requestError.message
           : "Failed to load accounts payable.";
-      if (!hasCachedData) setPayablesError(message);
+      setPayablesError(safeError(message));
     } finally {
       setPayablesLoading(false);
     }
@@ -289,17 +291,17 @@ export default function SupplierPage({
       const response = await fetch(`/api/suppliers/${supplier.id}/history`, {
         credentials: "include",
       });
-      const data = await response.json().catch(() => ({}));
+      const data = await readResponse(response, "Could not load or save supplier data. Please try again.");
       if (!response.ok)
         throw new Error(data.error || "Failed to load supplier history.");
+      if (![data.orders, data.invoices, data.payables, data.payments].every(Array.isArray) || !data.summary) throw new Error("Invalid supplier history response. Please refresh.");
       setHistory(normalizeHistory(data));
     } catch (requestError) {
       const message =
         requestError instanceof Error
           ? requestError.message
           : "Failed to load supplier history.";
-      setHistoryError(message);
-      onToast(message);
+      setHistoryError(safeError(message));
     } finally {
       setHistoryLoading(false);
     }
@@ -349,56 +351,15 @@ export default function SupplierPage({
           paymentTerms: supplierForm.paymentTerms.trim(),
         }),
       });
-      const data = await response.json().catch(() => ({}));
+      const data = await readResponse(response, "Could not load or save supplier data. Please try again.");
       if (!response.ok)
         throw new Error(data.error || "Failed to add supplier.");
+      if (!data.success || !data.supplier?.id) throw new Error("Supplier save could not be confirmed. Check the supplier directory before retrying.");
       setIsAddOpen(false);
       await fetchSuppliers();
       onToast("Supplier added successfully.");
     } catch (requestError) {
-      setSupplierFormError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Failed to add supplier.",
-      );
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const submitPayment = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!paymentPayable) return;
-    setIsSaving(true);
-    try {
-      const response = await fetch("/api/supplier-payments", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          apId: paymentPayable.id,
-          ...paymentForm,
-          amountPaid: Number(paymentForm.amountPaid),
-        }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok)
-        throw new Error(data.error || "Failed to record payment.");
-      setPaymentPayable(null);
-      setPaymentForm({
-        amountPaid: "",
-        paymentDate: new Date().toISOString().slice(0, 10),
-        notes: "",
-      });
-      await loadPayables();
-      if (selectedSupplier) await loadHistory(selectedSupplier);
-      onToast("Supplier payment recorded.");
-    } catch (requestError) {
-      onToast(
-        requestError instanceof Error
-          ? requestError.message
-          : "Failed to record payment.",
-      );
+      setSupplierFormError(safeError(requestError, "Failed to add supplier."));
     } finally {
       setIsSaving(false);
     }
@@ -436,7 +397,7 @@ export default function SupplierPage({
         action={
           currentRole === "Admin" && activeSection === "directory" ? (
             <button
-              className="button dark"
+              className="button primary-action"
               data-testid="button-add-supplier"
               onClick={openAddSupplier}
             >
@@ -472,6 +433,8 @@ export default function SupplierPage({
         )}
       </div>
 
+      {error && <div className="inline-error" role="alert"><span>{error} Previously loaded supplier data may be out of date.</span><button className="button soft" onClick={() => void fetchSuppliers()}>Retry</button></div>}
+      {payablesError && <div className="inline-error" role="alert"><span>{payablesError} Previously loaded balances may be out of date.</span><button className="button soft" onClick={() => void loadPayables()}>Retry</button></div>}
       {activeSection === "directory" ? (
         <>
           <div className="summary-strip">
@@ -528,7 +491,7 @@ export default function SupplierPage({
                         Loading suppliers...
                       </td>
                     </tr>
-                  ) : error ? (
+                  ) : error && suppliers.length === 0 ? (
                     <tr>
                       <td colSpan={6}>
                         <div className="supplier-empty">
@@ -611,6 +574,7 @@ export default function SupplierPage({
               caption="Upcoming supplier obligations"
             />
           </div>
+          {payableSummary.needsReview && <div className="inline-error" role="alert">Some invoice or payment records disagree. Balances marked “Needs review” are unavailable until those records are reviewed.</div>}
           <section className="surface-card table-card supplier-directory">
             <div className="table-tools">
               <div>
@@ -629,6 +593,7 @@ export default function SupplierPage({
                 <option>Open</option>
                 <option>Overdue</option>
                 <option>Paid</option>
+                <option>Needs Review</option>
               </select>
             </div>
             <div className="table-scroll stable-data-table">
@@ -652,7 +617,7 @@ export default function SupplierPage({
                         Loading accounts payable...
                       </td>
                     </tr>
-                  ) : payablesError ? (
+                  ) : payablesError && accountsPayable.length === 0 ? (
                     <tr>
                       <td colSpan={8}>
                         <div className="supplier-empty">
@@ -709,23 +674,17 @@ export default function SupplierPage({
                           </span>
                         </td>
                         <td>
-                          {Number(payable.balance) > 0 ? (
+                          {payable.needsReview ? <span className="muted">Review required</span> : Number(payable.balance) > 0 ? (
                             <button
                               className="button soft"
                               type="button"
                               onClick={() => {
                                 setPaymentPayable({
                                   id: payable.id,
+                                  invoiceId: payable.invoiceId,
                                   balance: payable.balance,
                                   supplier: payable.supplier,
                                   invoiceNumber: payable.invoiceNumber,
-                                });
-                                setPaymentForm({
-                                  amountPaid: payable.balance,
-                                  paymentDate: new Date()
-                                    .toISOString()
-                                    .slice(0, 10),
-                                  notes: "",
                                 });
                               }}
                             >
@@ -893,7 +852,7 @@ export default function SupplierPage({
                   Cancel
                 </button>
                 <button
-                  className="button dark"
+                  className="button primary-action"
                   data-testid="button-save-supplier"
                   type="submit"
                   disabled={isSaving}
@@ -1119,9 +1078,9 @@ export default function SupplierPage({
                                         </span>
                                       </td>
                                       <td>{invoice.dueDate}</td>
-                                      <td>{peso(payable?.balance || 0)}</td>
+                                      <td>{peso(invoice.needsReview || payable?.needsReview ? null : payable?.balance ?? null)}</td>
                                       <td>
-                                        {!payable ? (
+                                        {invoice.needsReview || payable?.needsReview ? <span className="muted">Review required</span> : !payable ? (
                                           <span className="muted">
                                             Not payable
                                           </span>
@@ -1132,14 +1091,11 @@ export default function SupplierPage({
                                             onClick={() => {
                                               setPaymentPayable({
                                                 id: payable.id,
+                                  invoiceId: invoice.id,
                                                 balance: payable.balance,
                                                 supplier: selectedSupplier.name,
                                                 invoiceNumber:
                                                   invoice.invoiceNumber,
-                                              });
-                                              setPaymentForm({
-                                                ...paymentForm,
-                                                amountPaid: payable.balance,
                                               });
                                             }}
                                           >
@@ -1194,97 +1150,8 @@ export default function SupplierPage({
           document.body,
         )}
 
-      {paymentPayable &&
-        createPortal(
-          <div className="modal-backdrop supplier-payment-backdrop">
-            <form className="modal dialog" onSubmit={submitPayment}>
-              <div className="modal-header">
-                <div>
-                  <h2>Record supplier payment</h2>
-                  <p className="modal-sub">
-                    {paymentPayable.supplier &&
-                      `${paymentPayable.supplier}${paymentPayable.invoiceNumber ? ` · ${paymentPayable.invoiceNumber}` : ""} · `}
-                    Outstanding balance: {peso(paymentPayable.balance)}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  className="modal-close"
-                  onClick={() => setPaymentPayable(null)}
-                >
-                  <X size={16} />
-                </button>
-              </div>
-              <div className="form-grid">
-                <div className="field">
-                  <label htmlFor="payment-amount">Amount paid *</label>
-                  <input
-                    id="payment-amount"
-                    required
-                    type="number"
-                    min="0.01"
-                    max={paymentPayable.balance}
-                    step="0.01"
-                    value={paymentForm.amountPaid}
-                    onChange={(event) =>
-                      setPaymentForm({
-                        ...paymentForm,
-                        amountPaid: event.target.value,
-                      })
-                    }
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="payment-date">Payment date *</label>
-                  <input
-                    id="payment-date"
-                    required
-                    type="date"
-                    value={paymentForm.paymentDate}
-                    onChange={(event) =>
-                      setPaymentForm({
-                        ...paymentForm,
-                        paymentDate: event.target.value,
-                      })
-                    }
-                  />
-                </div>
-                <div className="field full-width">
-                  <label htmlFor="payment-notes">Notes</label>
-                  <input
-                    id="payment-notes"
-                    maxLength={500}
-                    value={paymentForm.notes}
-                    onChange={(event) =>
-                      setPaymentForm({
-                        ...paymentForm,
-                        notes: event.target.value,
-                      })
-                    }
-                  />
-                </div>
-              </div>
-              <div className="modal-actions">
-                <button
-                  className="button soft"
-                  type="button"
-                  onClick={() => setPaymentPayable(null)}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="button dark"
-                  type="submit"
-                  disabled={isSaving}
-                >
-                  <Check size={13} />{" "}
-                  {isSaving ? "Saving..." : "Record payment"}
-                </button>
-              </div>
-            </form>
-          </div>,
-          document.body,
-        )}
+      {paymentPayable && <SupplierPaymentDialog invoiceId={paymentPayable.invoiceId} onClose={() => setPaymentPayable(null)} onToast={onToast}
+        onSaved={async () => { await loadPayables(); if (selectedSupplier) await loadHistory(selectedSupplier); }} />}
     </div>
   );
 }

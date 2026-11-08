@@ -1,20 +1,14 @@
-import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { fileURLToPath } from "node:url";
 import bcrypt from "bcryptjs";
-import dotenv from "dotenv";
 import postgres from "postgres";
+import { databaseUrl, loadDatabaseEnvironment } from "./database-environment";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ quiet: true });
-dotenv.config({ path: path.resolve(__dirname, "../../../.env"), quiet: true });
+loadDatabaseEnvironment();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Config
 // ─────────────────────────────────────────────────────────────────────────────
 const argv = new Set(process.argv.slice(2));
-const RESET = argv.has("--reset") || process.env.SEED_RESET === "1";
-const ALLOW_PROD = argv.has("--allow-production");
 const SEED_PASSWORD = process.env.SEED_PASSWORD ?? "Password123!";
 const RNG_SEED = Number(process.env.SEED_RNG ?? 20260920);
 
@@ -24,9 +18,9 @@ const TZ_OFFSET_H = 8; // Asia/Manila (UTC+8)
 const VAT_RATE = 0.12;
 const SENIOR_PWD_DISCOUNT = 0.2;
 
-// Insert order == FK dependency order. Also used for TRUNCATE on --reset.
+// Insert order follows active FK dependencies. Seeding never resets existing data.
 const TABLE_ORDER = [
-  "roles", "permissions", "users", "user_roles", "role_permissions",
+  "users",
   "system_logs", "user_activities", "backup_records",
   "products", "batch_info", "stock_movements", "inventory_alerts",
   "customers", "transactions", "transaction_items", "discounts", "receipts",
@@ -235,7 +229,7 @@ interface Product {
 function buildData(passwordHash: string) {
   const day0 = at(-120, 9);
 
-  // ── Users, roles, permissions ────────────────────────────────────────────
+  // ── Users with fixed enum roles ────────────────────────────────────────────
   const userDefs = [
     { username: "admin", full_name: "Ana Reyes", role: "Admin", code: "EMP-001", ip: "192.168.1.10" },
     { username: "cashier", full_name: "Maria Santos", role: "Cashier", code: "EMP-002", ip: "192.168.1.11" },
@@ -253,45 +247,6 @@ function buildData(passwordHash: string) {
       role: u.role, is_active: true, created_at: day0, last_login: null, updated_at: day0,
     });
   }
-
-  const roleDefs = [
-    { name: "Admin", description: "Full access to every module, including user management and backups" },
-    { name: "Cashier", description: "Point-of-sale operations and read-only inventory lookup" },
-    { name: "FrontDesk", description: "Inventory receiving, procurement requests and wholesale order handling" },
-  ];
-  const roleId = new Map<string, string>();
-  for (const r of roleDefs) {
-    const id = randomUUID();
-    roleId.set(r.name, id);
-    T.roles.push({ id, role_name: r.name, description: r.description, created_at: day0 });
-  }
-  const MODULES = ["Sales", "Inventory", "Procurement", "Reports", "Wholesale", "Administration"];
-  const PERM_TYPES = ["View", "Create", "Edit", "Delete", "Approve"];
-  const permId = new Map<string, string>();
-  for (const m of MODULES) {
-    for (const p of PERM_TYPES) {
-      const id = randomUUID();
-      permId.set(`${m}:${p}`, id);
-      T.permissions.push({ id, module_name: m, permission_type: p, created_at: day0 });
-    }
-  }
-  const allow: Record<string, (m: string, p: string) => boolean> = {
-    Admin: () => true,
-    Cashier: (m, p) => (m === "Sales" && (p === "View" || p === "Create")) || (m === "Inventory" && p === "View"),
-    FrontDesk: (m, p) =>
-      (m === "Sales" && p === "View") ||
-      (m === "Inventory" && ["View", "Create", "Edit"].includes(p)) ||
-      (m === "Procurement" && (p === "View" || p === "Create")) ||
-      (m === "Wholesale" && ["View", "Create", "Edit"].includes(p)),
-  };
-  for (const r of roleDefs) {
-    for (const m of MODULES)
-      for (const p of PERM_TYPES)
-        if (allow[r.name]!(m, p))
-          T.role_permissions.push({ id: randomUUID(), role_id: roleId.get(r.name), permission_id: permId.get(`${m}:${p}`), granted_at: day0 });
-  }
-  for (const u of users)
-    T.user_roles.push({ id: randomUUID(), user_id: u.id, role_id: roleId.get(u.role), assigned_at: day0 });
 
   const lastLogin = new Map<string, Date>();
   const addLog = (
@@ -400,7 +355,7 @@ function buildData(passwordHash: string) {
     if (!d) return;
     const deliveryId = randomUUID();
     const deliveredAt = past(d.off, 10, 0);
-    T.supplier_deliveries.push({ id: deliveryId, po_id: poId, delivery_date: deliveredAt, delivery_status: d.status, created_at: deliveredAt });
+    T.supplier_deliveries.push({ id: deliveryId, po_id: poId, delivery_date: dateStr(d.off), delivery_status: d.status, created_at: deliveredAt });
     let invoiceTotal = 0;
     for (const l of o.lines) {
       const qty = d.status === "Partial" ? Math.max(10, Math.floor((l.qty * (d.fraction ?? 0.7)) / 10) * 10) : l.qty;
@@ -789,6 +744,7 @@ function buildData(passwordHash: string) {
   for (const p of products)
     T.products.push({
       id: p.id, sku: p.sku, product_name: p.def.name, generic_name: p.def.generic, category: p.def.cat, is_dangerous_drug: !!p.def.dd,
+      is_vat_exempt: false,
       selling_price: p.def.price, cost_price: p.def.cost, minimum_stock_level: p.minStock,
       current_stock: sum(p.batches.map((b) => b.remaining)), created_at: day0, updated_at: NOW,
     });
@@ -924,10 +880,9 @@ async function insertMany(tx: postgres.TransactionSql, table: string, rows: Row[
 }
 
 async function main() {
-  const url = process.env.DATABASE_URL;
-  if (!url) throw new Error("DATABASE_URL is not set");
-  if (process.env.NODE_ENV === "production" && !ALLOW_PROD)
-    throw new Error("Refusing to seed with NODE_ENV=production (pass --allow-production if you really mean it)");
+  if (argv.size || process.env.SEED_RESET === "1")
+    throw new Error("Seed/reset overrides are disabled. Seed a new disposable local test database explicitly; existing data will not be reset.");
+  const url = databaseUrl(process.env.DATABASE_URL);
 
   const isLocal = /@(localhost|127\.0\.0\.1)[:/]/.test(url);
   const sql = postgres(url, {
@@ -941,8 +896,8 @@ async function main() {
   try {
     const existing = await sql<{ n: number }[]>`select count(*)::int as n from users`;
     const n = existing[0]?.n ?? 0;
-    if (n > 0 && !RESET) {
-      console.log(`Database already has data (${n} users). Nothing done — re-run with --reset to wipe and reseed.`);
+    if (n > 0) {
+      console.log(`Database already has data (${n} users). Nothing done; use a new disposable test database for a fresh seed.`);
       return;
     }
 
@@ -950,9 +905,8 @@ async function main() {
     const passwordHash = await bcrypt.hash(SEED_PASSWORD, 10);
     const { users } = buildData(passwordHash);
 
-    console.log(RESET ? "Truncating tables and inserting…" : "Inserting…");
+    console.log("Inserting sample fixtures…");
     await sql.begin(async (tx) => {
-      if (RESET) await tx.unsafe(`truncate table ${TABLE_ORDER.map((t) => `"${t}"`).join(", ")} restart identity cascade`);
       for (const t of TABLE_ORDER) await insertMany(tx, t, T[t]);
     });
 

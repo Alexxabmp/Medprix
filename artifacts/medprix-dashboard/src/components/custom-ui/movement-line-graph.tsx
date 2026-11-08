@@ -1,6 +1,12 @@
-import { movementFast, movementSlow } from "@/lib/data";
+import type { MovementItem } from "@/lib/types";
 
-export function MovementLineGraph() {
+export function MovementLineGraph({
+  fastMovers = [],
+  slowMovers = [],
+}: {
+  fastMovers?: MovementItem[];
+  slowMovers?: MovementItem[];
+}) {
   const paddingLeft = 35;
   const paddingRight = 15;
   const paddingTop = 25;
@@ -11,9 +17,16 @@ export function MovementLineGraph() {
   const width = chartWidth - paddingLeft - paddingRight;
   const height = chartHeight - paddingTop - paddingBottom;
 
+  const paddedFast: MovementItem[] = [0, 1, 2].map(
+    (i) => fastMovers[i] ?? { name: `Item ${i + 1}`, units: 0 },
+  );
+  const paddedSlow: MovementItem[] = [0, 1, 2].map(
+    (i) => slowMovers[i] ?? { name: `Item ${i + 1}`, units: 0 },
+  );
+
   const maxVal = Math.max(
-    ...movementFast.map((d) => d.units),
-    ...movementSlow.map((d) => d.units),
+    ...paddedFast.map((d) => d.units),
+    ...paddedSlow.map((d) => d.units),
     10,
   );
   const yMax = maxVal * 1.15;
@@ -21,13 +34,13 @@ export function MovementLineGraph() {
   const getX = (index: number) => paddingLeft + (index / 2) * width;
   const getY = (val: number) => paddingTop + height - (val / yMax) * height;
 
-  const fastPoints = movementFast.map((d, i) => ({
+  const fastPoints = paddedFast.map((d, i) => ({
     x: getX(i),
     y: getY(d.units),
     label: d.units,
     name: d.name,
   }));
-  const slowPoints = movementSlow.map((d, i) => ({
+  const slowPoints = paddedSlow.map((d, i) => ({
     x: getX(i),
     y: getY(d.units),
     label: d.units,
@@ -187,8 +200,8 @@ export function MovementLineGraph() {
               fontSize="12px"
               fill="hsl(var(--muted))"
               style={{ maxWidth: 80 }}>
-              {movementFast[i].name.split(" ")[0]} /{" "}
-              {movementSlow[i].name.split(" ")[0]}
+              {paddedFast[i].name.split(" ")[0]} /{" "}
+              {paddedSlow[i].name.split(" ")[0]}
             </text>
           </g>
         ))}

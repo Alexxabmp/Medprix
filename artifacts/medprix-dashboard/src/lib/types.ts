@@ -1,6 +1,6 @@
 // Shared application types
 
-export type ToastFn = (message: string) => void;
+export type ToastFn = (message: string | import("./feedback").Feedback) => void;
 
 export type ReportType =
   | "sales"
@@ -22,6 +22,8 @@ export interface UserRecord {
 }
 
 export interface ProductBatch {
+  reservedQuantity?: number;
+  id?: string;
   batchNumber: string;
   quantity: number;
   expiryDate: string;
@@ -31,6 +33,8 @@ export interface ProductBatch {
 }
 
 export interface ProductItem {
+  pharmacyDate?: string;
+  isVatExempt?: boolean | null;
   id: string;
   name: string;
   genericName: string;
@@ -78,14 +82,23 @@ export interface CashMismatch {
 }
 
 export interface TransactionItem {
+  productId?: string;
   product: string;
   quantity: number;
   unitPrice: string;
   subtotal: string;
+  isVatExempt?: boolean | null;
+  vatRate?: string | null;
+  vat?: string;
+  discount?: string;
+  net?: string;
+  vatRelief?: string;
 }
 
 export interface UserTransaction {
-  id: number;
+  id: string;
+  source?: "canonical-retail" | "historical-normalized";
+  createdAt?: string;
   transactionNumber: string;
   dateTime: string;
   user: string;
@@ -103,19 +116,19 @@ export interface UserTransaction {
 }
 
 export interface SystemLog {
-  id: number;
+  id: string | number;
   dateTime: string;
   user: string;
   role: string;
   action: string;
   module: string;
   description: string;
-  status: "Success" | "Failed";
+  status: "Success" | "Failed" | "Warning";
   deviceIp: string;
 }
 
 export interface UserActivity {
-  id: number;
+  id: string | number;
   dateTime: string;
   user: string;
   role: string;
@@ -127,6 +140,8 @@ export interface UserActivity {
 
 export interface ShiftReceipt {
   printSource?: {
+    merchantNameAtIssue?: string;
+    calculationVersion?: string;
     transactionNumber?: string;
     dateTime?: string;
     user?: string;
@@ -136,7 +151,7 @@ export interface ShiftReceipt {
     itemsSummary?: string;
   };
   id: string;
-  rawId?: number;
+  rawId?: string;
   time: string;
   dateTime?: string;
   items: number;
@@ -146,6 +161,7 @@ export interface ShiftReceipt {
   totalFormatted: string;
   subtotal?: string;
   vat?: string;
+  vatRelief?: string;
   discount?: string;
   amountReceived?: string;
   change?: string;

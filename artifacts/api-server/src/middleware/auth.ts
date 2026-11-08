@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { db, usersTable } from "@workspace/db";
-import { eq, or } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import {
   readSessionCookie,
   verifySessionToken,
@@ -45,10 +45,7 @@ export async function requireAuth(
       })
       .from(usersTable)
       .where(
-        or(
-          eq(usersTable.username, session.username),
-          eq(usersTable.id, session.id),
-        ),
+        eq(usersTable.id, session.id),
       );
 
     if (!user || user.isActive === false) {

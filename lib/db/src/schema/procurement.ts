@@ -9,6 +9,7 @@ import {
   date,
   timestamp,
   index,
+  uniqueIndex,
   check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
@@ -98,7 +99,7 @@ export const supplierDeliveriesTable = pgTable(
     poId: uuid("po_id")
       .notNull()
       .references(() => purchaseOrdersTable.id, { onDelete: "restrict" }),
-    deliveryDate: timestamp("delivery_date", { withTimezone: true }).notNull().defaultNow(),
+    deliveryDate: date("delivery_date").notNull(),
     deliveryStatus: deliveryStatusEnum("delivery_status").notNull().default("Received"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -136,8 +137,7 @@ export const supplierInvoicesTable = pgTable(
       .notNull()
       .references(() => suppliersTable.id, { onDelete: "restrict" }),
     invoiceNumber: varchar("invoice_number", { length: 100 })
-      .notNull()
-      .unique("supplier_invoices_invoice_number_key"),
+      .notNull(),
     dueDate: date("due_date").notNull(),
     invoiceAmount: money("invoice_amount").notNull().default("0.00"),
     isPaid: boolean("is_paid").notNull().default(false),
@@ -145,6 +145,7 @@ export const supplierInvoicesTable = pgTable(
   },
   (t) => [
     check("supplier_invoices_invoice_amount_check", sql`${t.invoiceAmount} >= 0`),
+    uniqueIndex("uq_supplier_invoices_supplier_number_ci").on(t.supplierId,sql`upper(btrim(${t.invoiceNumber}))`),
     index("idx_supplier_invoices_supplier_id").on(t.supplierId),
     index("idx_supplier_invoices_po_id").on(t.poId),
   ],

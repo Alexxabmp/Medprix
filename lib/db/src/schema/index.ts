@@ -6,3 +6,6 @@ export * from "./sales";
 export * from "./procurement";
 export * from "./wholesale";
 export * from "./reports";
+export * from "./wholesale-reservations";
+export * from "./wholesale-fulfillment";
+export * from "./wholesale-collections";

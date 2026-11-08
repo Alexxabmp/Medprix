@@ -1,4 +1,4 @@
-# Medprix — Pharmacy Operations & Management Dashboard
+# Medprix
 
 A full-stack pharmacy management platform built with React 19, TypeScript, Express 5, and Drizzle ORM (PostgreSQL). It streamlines day-to-day operations including point-of-sale activities, real-time inventory and stock tracking, supplier management, purchase order procurement, wholesale invoicing, and embedded financial/operational analytics. Made for Software Engineering 2.
 
@@ -65,185 +65,117 @@ Medprix/
 
 - **Node.js**: `v20.x` or `v24.x` (recommended)
 - **Package Manager**: `npm` (v10+) or `pnpm` (v9+)
-- **Database**: `PostgreSQL 15+`
+- **Docker**: Docker Desktop (optional, for local development)
 
 ---
 
-## Environment Configuration
+## Local development
 
-Runtime configuration is read from process environment variables.
+Install **Node.js 24** and **Docker Desktop**. Keep Docker Desktop running, and run the commands below from the repository root.
 
-For local development, keep an uncommitted `.env` file at the repository root, next to `.env.example`. The database package and its scripts load this file automatically; variables already set in the shell take precedence. Production values should be supplied through the deployment platform or process manager.
+### 1. Install dependencies
 
-### Required Environment Variables
-
-| Variable | Description | Example |
-| :--- | :--- | :--- |
-| `DATABASE_URL` | PostgreSQL connection string for Drizzle ORM | `postgresql://postgres:password@localhost:5432/medprix` |
-| `SESSION_SECRET` | Secret used to sign login session cookies. Required in production. | `use-a-long-random-secret` |
-
-### Optional / Service-Specific Variables
-
-| Variable | Target Service | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `PORT` | `api-server` | `5000` | HTTP port for the Express backend |
-| `PORT` | `medprix-dashboard` | `3000` | HTTP port for the Vite development/preview server |
-| `NODE_ENV` | Global | `development` | Runtime environment (`development` / `production`) |
-| `LOG_LEVEL` | `api-server` | `info` | Pino logging level (`trace`, `debug`, `info`, `warn`, `error`) |
-| `CORS_ORIGIN` | `api-server` | Local dev origins only outside production | Comma-separated allowed frontend origins for credentialed requests |
-| `SESSION_TTL_SECONDS` | `api-server` | `28800` | Login session lifetime in seconds |
-| `BCRYPT_SALT_ROUNDS` | `api-server` | `12` | Bcrypt work factor, clamped between `10` and `14` |
-| `BASE_PATH` | `medprix-dashboard` | `/` | Base URL path for frontend assets |
-| `SEED_PASSWORD` | `db` seed script | `Password123!` | Password assigned to all generated sample users |
-| `SEED_RNG` | `db` seed script | `20260920` | Seed used to generate a repeatable sample dataset |
-
----
-
-## Development Setup
-
-### 1. Install Dependencies
-
-From the root directory, install all dependencies across the monorepo:
-
-```bash
-# Using npm:
+```sh
 npm install
-
-# Or using pnpm:
-pnpm install
 ```
 
-### 2. Configure Environment Variables
+### 2. Set up your environment
 
-Create a local `.env` file at the repository root if you want a file-based reference:
+If `.env` does not exist yet, create it by running **one** of the following commands based on your terminal:
 
-```bash
+**Windows PowerShell:**
+```powershell
+Copy-Item .env.example .env
+```
+
+**Git Bash / macOS / Linux:**
+```sh
 cp .env.example .env
 ```
 
-Do not commit `.env`. Database commands load the root file automatically. You can instead set values in your shell to override the file:
+Open `.env` and replace `SESSION_SECRET` with a random value of at least 32 characters. The default `DATABASE_URL` is already configured for the local Docker setup.
 
-```bash
-# Windows PowerShell
-$env:DATABASE_URL="postgresql://postgres:yourpassword@localhost:5432/medprix"
-$env:SESSION_SECRET="replace-with-a-long-random-secret"
+**Note:** If `.env` already exists, skip the copy command and update the existing  `.env` file instead.
 
-# Linux / macOS Bash / Git Bash
-export DATABASE_URL="postgresql://postgres:yourpassword@localhost:5432/medprix"
-export SESSION_SECRET="replace-with-a-long-random-secret"
+### 3. Start and initialize Postgres
+
+```sh
+docker compose up -d --wait
+npm run db:migrate -- apply
+npm run db:seed
 ```
 
-### 3. Initialize the Database
+Docker creates Postgres 17, the `medprix` user, and the `medprix_local_test` database on port **55432**. Migrations create the tables. Seeding adds sample data and login accounts. No separate Postgres installation or manual database creation is needed.
 
-Push the Drizzle ORM schema to your PostgreSQL database
+### 4. Start the app
 
-```bash
-npm run push --workspace=@workspace/db
-```
-
-Or using `pnpm`:
-
-```bash
-pnpm --filter @workspace/db run push
-```
-
-### 4. Seed the Database with Sample Data
-
-After pushing the schema, you can populate the database with sample data for testing:
-
-```bash
-# Using npm
-npm run seed --workspace=@workspace/db
-
-# Or using pnpm
-pnpm --filter @workspace/db run seed
-```
-
-If the database already contains users, the normal seed command exits without changing anything. To wipe all application-table data and repopulate the complete sample dataset, run:
-
-```bash
-# Using npm (destructive)
-npm run seed --workspace=@workspace/db -- --reset
-
-# Or using pnpm (destructive)
-pnpm --filter @workspace/db run seed -- --reset
-```
-
-This data refresh uses `TRUNCATE ... RESTART IDENTITY CASCADE` inside a transaction. It preserves the database schema and triggers. It refuses to run when `NODE_ENV=production` unless `--allow-production` is also passed deliberately.
-
-### 5. Run in Development Mode
-
-Run both the API server and frontend dashboard concurrently with hot reload:
-
-```bash
-# Using npm:
+```sh
 npm run dev
-
-# Or using pnpm:
-pnpm run dev
 ```
 
-This starts:
-- **API Server:** `http://localhost:5000` (health check: `http://localhost:5000/api/healthz`)
-- **Frontend Dashboard:** `http://localhost:3000`
+- Dashboard: http://localhost:3000
+- API: http://localhost:5000
 
----
+### Daily use
+
+Start the database and app:
+
+```sh
+docker compose up -d --wait
+npm run dev
+```
+
+Press **Ctrl+C** to stop the app, then stop the database:
+
+```sh
+docker compose down
+```
+
+Your database data is kept between restarts. Run `npm run db:migrate -- apply` after pulling changes that add migrations. Seeding is only needed for sample data during initial setup.
 
 ## Workspace Scripts Reference
 
 | Command | Description |
-| :--- | :--- |
-| `npm run dev` | Runs API server (`:5000`) and Vite dashboard (`:3000`) concurrently. |
-| `npm run build` | Builds the frontend production bundle. Run `npm run typecheck` separately. |
-| `npm run typecheck` | Typechecks the referenced library packages (`tsc --build`). |
-| `npm run push --workspace=@workspace/db` | Pushes Drizzle schema directly to the database. |
-| `npm run push-force --workspace=@workspace/db` | Pushes schema changes with forced migration. |
-| `npm run seed --workspace=@workspace/db` | Seeds an empty database with deterministic sample data; exits if user data already exists. |
-| `npm run seed --workspace=@workspace/db -- --reset` | **Destructive:** truncates application tables and repopulates the sample dataset while preserving the schema. |
-| `npm run fresh --workspace=@workspace/db` | **Destructive:** drops public application tables/types, pushes the current Drizzle schema, reinstalls triggers, and seeds sample data. |
-| `npm run codegen --workspace=@workspace/api-spec` | Regenerates React Query hooks & Zod schemas from `openapi.yaml`. |
+| --- | --- |
+| `npm run dev` | Starts the API (`:5000`) and dashboard (`:3000`). |
+| `npm run db:migrate -- status` | Checks applied and pending migrations. |
+| `npm run db:migrate -- plan` | Lists pending migrations without applying them. |
+| `npm run db:migrate -- apply` | Applies pending migrations to `DATABASE_URL`. |
+| `npm run db:seed` | Adds sample data if users are absent. |
+| `npm run build` | Builds the dashboard. |
+| `npm run typecheck` | Typechecks the referenced library packages. |
+| `npm run codegen --workspace=@workspace/api-spec` | Regenerates API hooks and validation schemas from the OpenAPI spec. |
 | `npm run start --workspace=@workspace/api-server` | Starts the bundled production API server. |
-| `npm run serve --workspace=@workspace/medprix-dashboard` | Previews the built frontend dashboard locally. |
+| `npm run serve --workspace=@workspace/medprix-dashboard` | Previews the built dashboard. |
 
----
+## Applying database changes
 
-## API Specification & Codegen
+Check pending migrations, review their SQL in `lib/db/drizzle`, then apply them:
 
-Medprix follows an API-first approach:
-
-1. **Spec Location:** `lib/api-spec/openapi.yaml`
-2. **Generator Configuration:** `lib/api-spec/orval.config.ts`
-3. **Generated Outputs:**
-   - Client hooks: `lib/api-client-react/src/generated/`
-   - Zod models: `lib/api-zod/src/generated/`
-
-Whenever updating `openapi.yaml`, re-run the code generation tool:
-
-```bash
-# Using npm:
-npm run codegen --workspace=@workspace/api-spec
-
-# Or using pnpm:
-pnpm --filter @workspace/api-spec run codegen
+```sh
+npm run db:migrate -- plan
+npm run db:migrate -- apply
 ```
 
----
+This also applies destructive schema changes, including the legacy cashier storage cleanup. Back up data you need first. The cleanup refuses to proceed if `cashier_transactions` still contains rows; export/review those records before proceeding, or reset a disposable local database below.
+
+### Reset the local database (destructive)
+
+To discard **all local database data** and rebuild from scratch, stop the app with **Ctrl+C**, confirm `.env` uses the local Docker database URL above, then run:
+
+```sh
+docker compose down -v
+docker compose up -d --wait
+npm run db:migrate -- apply
+npm run db:seed
+npm run dev
+```
+
+`down -v` deletes the local Postgres volume. Ordinary `docker compose down` keeps your data.
 
 ## Troubleshooting
 
-### 1. `DATABASE_URL must be set` Error
-- Ensure `DATABASE_URL` is set in the root `.env` file or the process environment before running the backend or database commands.
-- Confirm the URL uses the `postgresql://` or `postgres://` scheme; MySQL connection strings are not supported.
-- Verify the PostgreSQL service is active and the database name exists.
-
-### 2. `Cannot connect to PostgreSQL database`
-- Ensure PostgreSQL is running on the target port (default `5432`).
-- Verify credentials and create the database if needed:
-  ```sql
-  CREATE DATABASE medprix;
-  GRANT ALL PRIVILEGES ON DATABASE medprix TO your_user;
-  ```
-
-### 3. `Could not reach the server. Is the backend running?`
-- In development, ensure the API server is listening on port `5000`.
-- In production, check that your reverse proxy properly routes `/api` to the backend process.
+- **Docker cannot connect:** Start Docker Desktop, then retry `docker compose up -d --wait`.
+- **Database connection fails:** Run `docker compose ps` and check that `.env` uses the local URL above, including port `55432`. Environment variables set in your terminal override `.env`.
+- **Port already in use:** Stop any other app using ports `3000`, `5000`, or `55432`.
+- **Compose cannot find its configuration:** Run from the repository root, where `compose.yaml` is located.

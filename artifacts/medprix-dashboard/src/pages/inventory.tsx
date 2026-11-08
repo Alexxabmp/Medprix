@@ -1,3 +1,6 @@
+import { safeError, readResponse } from "@/lib/feedback";
+import { ProductDialog } from "@/components/custom-ui/product-dialog";
+import { matchesProductSearch } from "@/lib/product-form";
 import { useState, useEffect, useRef, type FormEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "wouter";
@@ -238,7 +241,7 @@ export default function InventoryPage({
   const canRecordStockOut = isAdmin || isCashier;
 
   // Inventory items state from shared pharmacy store
-  const { items, setItems, loading: isLoading, refresh: fetchInventory, isBackendConnected } = usePharmacyInventory();
+  const { items, setItems, loading: isLoading, refresh: fetchInventory, isBackendConnected, error: inventoryLoadError } = usePharmacyInventory();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All statuses");
   const [categoryFilter, setCategoryFilter] = useState("All categories");
@@ -247,6 +250,9 @@ export default function InventoryPage({
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
   const [viewProduct, setViewProduct] = useState<ProductItem | null>(null);
   const [editProduct, setEditProduct] = useState<ProductItem | null>(null);
+  const [movementError, setMovementError] = useState("");
+  const [movementSaving, setMovementSaving] = useState(false);
+  const movementBusy = useRef(false);
   const [batchProduct, setBatchProduct] = useState<ProductItem | null>(null);
   const [stockInProduct, setStockInProduct] = useState<ProductItem | null>(null);
   const [stockOutProduct, setStockOutProduct] = useState<ProductItem | null>(null);
@@ -254,41 +260,13 @@ export default function InventoryPage({
   const [alertSearch, setAlertSearch] = useState("");
 
   // Forms state
-  const [newProd, setNewProd] = useState({
-    name: "",
-    genericName: "",
-    sku: "",
-    category: "Pain relief",
-    price: "₱",
-    cost: "₱",
-    isDangerousDrug: false,
-    reorder: "20",
-    batchNumber: "B2026-01",
-    quantity: "50",
-    expiryDate: "2027-12-31",
-    mfgDate: "2025-12-01",
-    dateReceived: "2025-12-10",
-    supplier: "Southstar Distribution",
-  });
-
-  const [editProdData, setEditProdData] = useState({
-    name: "",
-    genericName: "",
-    sku: "",
-    category: "Pain relief",
-    price: "",
-    cost: "",
-    isDangerousDrug: false,
-    reorder: "",
-  });
-
   const [newBatchData, setNewBatchData] = useState({
     batchNumber: "",
     quantity: "",
     expiryDate: "",
-    mfgDate: "2025-01-01",
+    mfgDate: "",
     dateReceived: new Date().toISOString().slice(0, 10),
-    supplier: "Southstar Distribution",
+    supplier: "",
   });
 
   const [stockInData, setStockInData] = useState({
@@ -325,11 +303,9 @@ export default function InventoryPage({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setViewProduct(null);
-        setEditProduct(null);
         setBatchProduct(null);
         setStockInProduct(null);
         setStockOutProduct(null);
-        setIsAddProductOpen(false);
       }
     };
 
@@ -366,14 +342,7 @@ export default function InventoryPage({
   // Filtered products list
   const filtered = items.filter((product) => {
     const info = getProductStatusData(product);
-    const q = search.toLowerCase();
-    const matchesSearch =
-      !q ||
-      product.name.toLowerCase().includes(q) ||
-      product.genericName.toLowerCase().includes(q) ||
-      product.sku.toLowerCase().includes(q) ||
-      (product.category || "").toLowerCase().includes(q) ||
-      product.batches.some((b) => b.batchNumber.toLowerCase().includes(q));
+    const matchesSearch = matchesProductSearch(product, search);
 
     const matchesStatus =
       statusFilter === "All statuses" ||
@@ -423,199 +392,66 @@ export default function InventoryPage({
   );
 
   // Handlers
-  const handleOpenAddProduct = () => {
-    setNewProd({
-      name: "",
-      genericName: "",
-      sku: `MED-${Math.floor(1000 + Math.random() * 9000)}`,
-      category: availableCategories[0] || "",
-      price: "₱10.00",
-      cost: "₱6.00",
-      isDangerousDrug: false,
-      reorder: "20",
-      batchNumber: `B${new Date().getFullYear()}-${Math.floor(10 + Math.random() * 90)}`,
-      quantity: "50",
-      expiryDate: "2027-12-31",
-      mfgDate: "2025-12-01",
-      dateReceived: new Date().toISOString().slice(0, 10),
-      supplier: "Southstar Distribution",
-    });
-    setIsAddProductOpen(true);
-  };
-
-  const handleSaveNewProduct = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!newProd.name.trim() || !newProd.sku.trim()) {
-      onToast("Product name and code (SKU) are required");
-      return;
-    }
-
-    const priceFormatted = newProd.price.startsWith("₱")
-      ? newProd.price
-      : `₱${parseFloat(newProd.price.replace(/[^\d.]/g, "") || "0").toFixed(2)}`;
-
-    const costFormatted = newProd.cost.startsWith("₱")
-      ? newProd.cost
-      : `₱${parseFloat(newProd.cost.replace(/[^\d.]/g, "") || "0").toFixed(2)}`;
-
-    const parsedQty = parseInt(newProd.quantity, 10) || 0;
-    const parsedReorder = parseInt(newProd.reorder, 10) || 10;
-
-    const payload = {
-      name: newProd.name.trim(),
-      genericName: newProd.genericName.trim() || newProd.name.trim(),
-      sku: newProd.sku.trim().toUpperCase(),
-      category: newProd.category.trim(),
-      price: priceFormatted,
-      costPrice: costFormatted,
-      isDangerousDrug: newProd.isDangerousDrug,
-      reorder: parsedReorder,
-      batchNumber: newProd.batchNumber.trim().toUpperCase() || "B001",
-      quantity: parsedQty,
-      expiryDate: newProd.expiryDate || "2027-12-31",
-      mfgDate: newProd.mfgDate,
-      dateReceived: newProd.dateReceived,
-      supplier: newProd.supplier,
-    };
-
-    try {
-      const res = await fetch("/api/inventory/products", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        onToast(data?.error || "Failed to add product");
-        return;
-      }
-
-      await fetchInventory();
-      setIsAddProductOpen(false);
-      onToast(`Added product "${payload.name}" with initial batch`);
-    } catch (err) {
-      console.error("Add product failed:", err);
-      onToast("Couldn't reach the server. Product was not saved.");
-    }
-  };
-
-  const handleOpenEditProduct = (product: ProductItem) => {
-    setEditProdData({
-      name: product.name,
-      genericName: product.genericName || "",
-      sku: product.sku,
-      category: product.category,
-      price: product.price,
-      cost: product.cost || "",
-      isDangerousDrug: product.isDangerousDrug || false,
-      reorder: String(product.reorder),
-    });
-    setEditProduct(product);
-  };
-
-  const handleSaveEditProduct = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!editProduct) return;
-
-    const priceFormatted = editProdData.price.startsWith("₱")
-      ? editProdData.price
-      : `₱${parseFloat(editProdData.price.replace(/[^\d.]/g, "") || "0").toFixed(2)}`;
-
-    const costFormatted = editProdData.cost.startsWith("₱")
-      ? editProdData.cost
-      : `₱${parseFloat(editProdData.cost.replace(/[^\d.]/g, "") || "0").toFixed(2)}`;
-
-    const payload = {
-      name: editProdData.name.trim(),
-      genericName: editProdData.genericName.trim(),
-      sku: editProdData.sku.trim().toUpperCase(),
-      category: editProdData.category.trim(),
-      price: priceFormatted,
-      costPrice: costFormatted,
-      isDangerousDrug: editProdData.isDangerousDrug,
-      reorder: parseInt(editProdData.reorder, 10) || 10,
-    };
-
-    try {
-      const res = await fetch(`/api/inventory/products/${editProduct.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        onToast(data?.error || "Failed to update product");
-        return;
-      }
-
-      await fetchInventory();
-      setEditProduct(null);
-      onToast(`Updated product details for "${editProdData.name}"`);
-    } catch (err) {
-      console.error("Edit product failed:", err);
-      setItems((current) =>
-        current.map((product) =>
-          product.id === editProduct.id
-            ? updateProductStock({
-              ...product,
-              name: payload.name,
-              genericName: payload.genericName || payload.name,
-              sku: payload.sku,
-              category: payload.category,
-              price: priceFormatted,
-              cost: costFormatted,
-              isDangerousDrug: payload.isDangerousDrug,
-              reorder: payload.reorder,
-            })
-            : product,
-        ),
-      );
-      setEditProduct(null);
-      onToast(`Updated product details for "${editProdData.name}" offline`);
-    }
+  const handleOpenAddProduct = () => setIsAddProductOpen(true);
+  const handleOpenEditProduct = (product: ProductItem) => setEditProduct(product);
+  const handleProductSaved = (product: ProductItem) => {
+    setItems((current) => [...current.filter((item) => item.id !== product.id), updateProductStock(product)]);
+    onToast(editProduct ? "Product updated successfully." : "Product added successfully.");
   };
 
   const handleOpenAddBatch = (product: ProductItem) => {
     setNewBatchData({
-      batchNumber: `B${new Date().getFullYear()}-${Math.floor(10 + Math.random() * 90)}`,
-      quantity: "50",
-      expiryDate: "2028-06-30",
-      mfgDate: "2026-01-01",
+      batchNumber: "",
+      quantity: "",
+      expiryDate: "",
+      mfgDate: "",
       dateReceived: new Date().toISOString().slice(0, 10),
-      supplier: "Southstar Distribution",
+      supplier: "",
     });
+    setMovementError("");
     setBatchProduct(product);
   };
 
   const handleSaveAddBatch = async (e: FormEvent) => {
     e.preventDefault();
+    if (movementBusy.current) return;
+    setMovementError("");
     if (!batchProduct || !newBatchData.batchNumber.trim()) {
-      onToast("Batch number is required");
+      setMovementError("Batch number is required");
       return;
     }
 
-    const parsedQty = parseInt(newBatchData.quantity, 10) || 0;
+    const validation = validateStockMovementQuantity(newBatchData.quantity);
+    if (!validation.ok) {
+      setMovementError(validation.error);
+      return;
+    }
+    if (!newBatchData.expiryDate) {
+      setMovementError("Expiry date is required.");
+      return;
+    }
+    const parsedQty = validation.quantity;
     const newBatch = {
       batchNumber: newBatchData.batchNumber.trim().toUpperCase(),
       quantity: parsedQty,
-      expiryDate: newBatchData.expiryDate || "2028-06-30",
+      expiryDate: newBatchData.expiryDate,
       mfgDate: newBatchData.mfgDate,
       dateReceived: newBatchData.dateReceived,
       supplier: newBatchData.supplier,
     };
 
+    movementBusy.current = true; setMovementSaving(true);
     try {
       const res = await fetch(`/api/inventory/products/${batchProduct.id}/batches`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newBatch),
       });
-      const data = await res.json().catch(() => null);
+      const data = await readResponse(res, "Could not confirm this stock change. Refresh inventory and check the batch before retrying.");
+      if (!data.success || !data.product?.id) throw new Error("Stock change could not be confirmed. Refresh inventory and check the batch before retrying.");
 
       if (!res.ok) {
-        onToast(data?.error || "Failed to add batch");
+        setMovementError(safeError(data?.error || "Failed to add batch"));
         return;
       }
 
@@ -623,49 +459,38 @@ export default function InventoryPage({
       setBatchProduct(null);
       onToast(`Added batch ${newBatch.batchNumber} (${parsedQty} units) to ${batchProduct.name}`);
     } catch (err) {
-      console.error("Add batch failed:", err);
-      setItems((current) =>
-        current.map((p) => {
-          if (p.id !== batchProduct.id) return p;
-          const newStock = (p.stock || 0) + parsedQty;
-          return {
-            ...p,
-            stock: newStock,
-            batches: [...(p.batches || []), newBatch],
-            status:
-              newStock === 0
-                ? "Out of stock"
-                : newStock <= p.reorder
-                  ? "Low stock"
-                  : "Available",
-          };
-        })
-      );
-      setBatchProduct(null);
-      onToast(`Added batch ${newBatch.batchNumber} (${parsedQty} units) offline to ${batchProduct.name}`);
-    }
+      setMovementError(safeError(err, "The stock change could not be confirmed. Your entries are retained. Refresh inventory and check the batch before retrying."));
+    } finally { movementBusy.current = false; setMovementSaving(false); }
   };
 
   const handleOpenStockIn = (product: ProductItem) => {
     setStockInData({
-      batchNumber: product.batches[0]?.batchNumber || "B001",
-      quantity: "20",
+      batchNumber: "",
+      quantity: "",
       date: new Date().toISOString().slice(0, 10),
       reason: "Procurement Delivery",
     });
+    setMovementError("");
     setStockInProduct(product);
   };
 
   const handleSaveStockIn = async (e: FormEvent) => {
     e.preventDefault();
+    if (movementBusy.current) return;
+    setMovementError("");
     if (!stockInProduct) return;
+    if (!stockInData.batchNumber) {
+      setMovementError("Select an existing batch. If this product has no batches, use Add Batch first.");
+      return;
+    }
     const validation = validateStockMovementQuantity(stockInData.quantity);
     if (!validation.ok) {
-      onToast(validation.error);
+      setMovementError(validation.error);
       return;
     }
     const qty = validation.quantity;
 
+    movementBusy.current = true; setMovementSaving(true);
     try {
       const res = await fetch(`/api/inventory/products/${stockInProduct.id}/stock-in`, {
         method: "POST",
@@ -677,10 +502,11 @@ export default function InventoryPage({
           date: stockInData.date,
         }),
       });
-      const data = await res.json().catch(() => null);
+      const data = await readResponse(res, "Could not confirm this stock change. Refresh inventory and check the batch before retrying.");
+      if (!data.success || !data.product?.id) throw new Error("Stock change could not be confirmed. Refresh inventory and check the batch before retrying.");
 
       if (!res.ok) {
-        onToast(data?.error || "Failed to record stock in");
+        setMovementError(safeError(data?.error || "Failed to record stock in"));
         return;
       }
 
@@ -688,46 +514,8 @@ export default function InventoryPage({
       setStockInProduct(null);
       onToast(`Stock In recorded: +${qty} units added to ${stockInProduct.name} (${stockInData.reason})`);
     } catch (err) {
-      console.error("Stock in failed:", err);
-      setItems((current) =>
-        current.map((p) => {
-          if (p.id !== stockInProduct.id) return p;
-          const newStock = (p.stock || 0) + qty;
-          const batchExists = (p.batches || []).some(
-            (b) => b.batchNumber === stockInData.batchNumber
-          );
-          const updatedBatches = batchExists
-            ? (p.batches || []).map((b) =>
-              b.batchNumber === stockInData.batchNumber
-                ? { ...b, quantity: b.quantity + qty }
-                : b
-            )
-            : [
-              ...(p.batches || []),
-              {
-                batchNumber: stockInData.batchNumber,
-                quantity: qty,
-                expiryDate: "2028-12-31",
-                dateReceived: stockInData.date,
-                supplier: "Direct Delivery",
-              },
-            ];
-          return {
-            ...p,
-            stock: newStock,
-            batches: updatedBatches,
-            status:
-              newStock === 0
-                ? "Out of stock"
-                : newStock <= p.reorder
-                  ? "Low stock"
-                  : "Available",
-          };
-        })
-      );
-      setStockInProduct(null);
-      onToast(`Stock In recorded offline: +${qty} units added to ${stockInProduct.name}`);
-    }
+      setMovementError(safeError(err, "The stock change could not be confirmed. Your entries are retained. Refresh inventory and check the batch before retrying."));
+    } finally { movementBusy.current = false; setMovementSaving(false); }
   };
 
   const handleOpenStockOut = (product: ProductItem) => {
@@ -741,15 +529,18 @@ export default function InventoryPage({
       date: new Date().toISOString().slice(0, 10),
       reason: "Dispensed / OTC",
     });
+    setMovementError("");
     setStockOutProduct(product);
   };
 
   const handleSaveStockOut = async (e: FormEvent) => {
     e.preventDefault();
+    if (movementBusy.current) return;
+    setMovementError("");
     if (!stockOutProduct) return;
     const validation = validateStockMovementQuantity(stockOutData.quantity);
     if (!validation.ok) {
-      onToast(validation.error);
+      setMovementError(validation.error);
       return;
     }
     const qty = validation.quantity;
@@ -759,10 +550,11 @@ export default function InventoryPage({
     );
 
     if (!targetBatch || targetBatch.quantity < qty) {
-      onToast(`Insufficient batch stock. Available in ${stockOutData.batchNumber}: ${targetBatch?.quantity || 0} units`);
+      setMovementError(`Insufficient batch stock. Available in ${stockOutData.batchNumber}: ${targetBatch?.quantity || 0} units`);
       return;
     }
 
+    movementBusy.current = true; setMovementSaving(true);
     try {
       const res = await fetch(`/api/inventory/products/${stockOutProduct.id}/stock-out`, {
         method: "POST",
@@ -773,10 +565,11 @@ export default function InventoryPage({
           reason: stockOutData.reason,
         }),
       });
-      const data = await res.json().catch(() => null);
+      const data = await readResponse(res, "Could not confirm this stock change. Refresh inventory and check the batch before retrying.");
+      if (!data.success || !data.product?.id) throw new Error("Stock change could not be confirmed. Refresh inventory and check the batch before retrying.");
 
       if (!res.ok) {
-        onToast(data?.error || "Failed to record stock out");
+        setMovementError(safeError(data?.error || "Failed to record stock out"));
         return;
       }
 
@@ -785,12 +578,13 @@ export default function InventoryPage({
       onToast(`Stock Out recorded: -${qty} units removed from ${stockOutProduct.name} (${stockOutData.reason})`);
     } catch (err) {
       console.error("Stock out failed:", err);
-      onToast("Couldn't reach the server. Stock out was not recorded.");
-    }
+      setMovementError("Stock out could not be confirmed. Refresh inventory and check the batch before retrying.");
+    } finally { movementBusy.current = false; setMovementSaving(false); }
   };
 
   return (
     <div>
+      {inventoryLoadError && <div className="inline-error" role="alert"><span>{inventoryLoadError} Previously loaded stock may be out of date.</span><button className="button soft" onClick={() => void fetchInventory()}>Retry</button></div>}
       <PageHeading
         title="Inventory"
         description="Real-time stock levels, multi-batch tracking, expiry alerts, and stock movements."
@@ -882,16 +676,11 @@ export default function InventoryPage({
       {/* ========================================================================= */}
       <section className="surface-card table-card">
         <div
-          className="table-tools"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            flexWrap: "nowrap",
-          }}>
-          <div className="search-wrap" style={{ flex: 1, minWidth: 260, height: 39 }}>
+          className="table-tools product-search-tools">
+          <div className="search-wrap product-search">
             <Search size={15} />
             <input
+              aria-label="Search products by name, generic name, code, category, or batch"
               data-testid="input-inventory-search"
               type="search"
               placeholder="Search product name, generic, SKU..."
@@ -902,10 +691,10 @@ export default function InventoryPage({
 
           <select
             className="select"
+            aria-label="Filter products by category"
             data-testid="select-inventory-category"
             value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            style={{ width: 190, minWidth: 190, maxWidth: 190, flex: "0 0 190px", height: 39 }}>
+            onChange={(e) => setCategoryFilter(e.target.value)}>
             {categories.map((c) => (
               <option key={c} value={c}>
                 {c}
@@ -915,10 +704,10 @@ export default function InventoryPage({
 
           <select
             className="select"
+            aria-label="Filter products by status"
             data-testid="select-inventory-filter"
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            style={{ width: 190, minWidth: 190, maxWidth: 190, flex: "0 0 190px", height: 39 }}>
+            onChange={(e) => setStatusFilter(e.target.value)}>
             <option>All statuses</option>
             <option>In Stock</option>
             <option>Low Stock</option>
@@ -1005,7 +794,9 @@ export default function InventoryPage({
                       </td>
                       <td>
                         <div style={{ fontSize: 12 }}>
-                          {product.batches.length === 1 ? (
+                          {product.batches.length === 0 ? (
+                            <span className="muted">No batches</span>
+                          ) : product.batches.length === 1 ? (
                             <span>
                               {product.batches[0].batchNumber} (
                               {product.batches[0].quantity}u)
@@ -1251,6 +1042,14 @@ export default function InventoryPage({
                     </div>
                     <strong style={{ fontSize: 13 }}>{viewProduct.cost}</strong>
                   </div>
+                  <div>
+                    <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
+                      VAT treatment
+                    </div>
+                    <strong style={{ fontSize: 13 }}>
+                      {viewProduct.isVatExempt === true ? "VAT-exempt" : viewProduct.isVatExempt === false ? "VATable" : "Not classified"}
+                    </strong>
+                  </div>
                 </div>
                 <div
                   style={{
@@ -1351,400 +1150,14 @@ export default function InventoryPage({
       {/* ========================================================================= */}
       {/* 2. ADD PRODUCT MODAL (ADMIN & FRONT DESK) */}
       {/* ========================================================================= */}
-      {isAddProductOpen &&
-        createPortal(
-          <div
-            className="modal-backdrop"
-            onMouseDown={(e) => e.currentTarget === e.target && setIsAddProductOpen(false)}
-            data-testid="modal-add-product">
-            <div
-              className="modal"
-              style={{ width: "min(580px, 100%)" }}>
-              <div className="modal-header">
-                <div>
-                  <h2>Add New Product</h2>
-                  <p className="modal-sub">Product details and initial batch registration</p>
-                </div>
-                <button
-                  type="button"
-                  className="modal-close"
-                  onClick={() => setIsAddProductOpen(false)}>
-                  <X size={16} />
-                </button>
-              </div>
-
-              <form onSubmit={handleSaveNewProduct}>
-                <div className="form-grid">
-                  <div className="field">
-                    <label>Product Name *</label>
-                    <input
-                      required
-                      placeholder="e.g. Paracetamol 500mg"
-                      value={newProd.name}
-                      onChange={(e) =>
-                        setNewProd({ ...newProd, name: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="field">
-                    <label>Generic Name *</label>
-                    <input
-                      required
-                      placeholder="e.g. Acetaminophen"
-                      value={newProd.genericName}
-                      onChange={(e) =>
-                        setNewProd({ ...newProd, genericName: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="field">
-                    <label>Product Code (SKU) *</label>
-                    <input
-                      required
-                      placeholder="e.g. MED-0421"
-                      value={newProd.sku}
-                      onChange={(e) =>
-                        setNewProd({ ...newProd, sku: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="field">
-                    <label>Category</label>
-                    <select
-                      value={newProd.category}
-                      onChange={(e) =>
-                        setNewProd({ ...newProd, category: e.target.value })
-                      }>
-                      {categoryOptions.map((c) => (
-                        <option key={c} value={c === "None" ? "" : c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="field">
-                    <label>Unit Price *</label>
-                    <input
-                      required
-                      placeholder="₱10.00"
-                      value={newProd.price}
-                      onChange={(e) =>
-                        setNewProd({ ...newProd, price: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="field">
-                    <label>Cost Price *</label>
-                    <input
-                      required
-                      placeholder="₱6.00"
-                      value={newProd.cost}
-                      onChange={(e) =>
-                        setNewProd({ ...newProd, cost: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="field">
-                    <label>Reorder Level *</label>
-                    <input
-                      type="number"
-                      min="1"
-                      required
-                      value={newProd.reorder}
-                      onChange={(e) =>
-                        setNewProd({ ...newProd, reorder: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="field full-width">
-                    <label>Controlled Item</label>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 12,
-                        minHeight: 39,
-                        border: "1px solid hsl(var(--border))",
-                        borderRadius: 11,
-                        background: "hsl(var(--surface-soft))",
-                        padding: "8px 11px",
-                      }}>
-                      <div>
-                        <strong style={{ display: "block", fontSize: 12 }}>
-                          Dangerous drug
-                        </strong>
-                        <span className="muted" style={{ fontSize: 12 }}>
-                          Requires controlled tracking
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        className={`toggle ${newProd.isDangerousDrug ? "on" : ""}`}
-                        aria-pressed={newProd.isDangerousDrug}
-                        aria-label="Toggle dangerous drug tracking"
-                        onClick={() =>
-                          setNewProd({
-                            ...newProd,
-                            isDangerousDrug: !newProd.isDangerousDrug,
-                          })
-                        }>
-                        <span />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Initial Batch Information */}
-                <div className="modal-section">
-                  <h4>Initial Batch Information</h4>
-                  <div className="form-grid">
-                    <div className="field">
-                      <label>Batch Number *</label>
-                      <input
-                        required
-                        placeholder="e.g. B2026-01"
-                        value={newProd.batchNumber}
-                        onChange={(e) =>
-                          setNewProd({
-                            ...newProd,
-                            batchNumber: e.target.value,
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="field">
-                      <label>Quantity *</label>
-                      <input
-                        type="number"
-                        min="1"
-                        required
-                        value={newProd.quantity}
-                        onChange={(e) =>
-                          setNewProd({ ...newProd, quantity: e.target.value })
-                        }
-                      />
-                    </div>
-                    <div className="field">
-                      <label>Expiry Date *</label>
-                      <input
-                        type="date"
-                        required
-                        value={newProd.expiryDate}
-                        onChange={(e) =>
-                          setNewProd({ ...newProd, expiryDate: e.target.value })
-                        }
-                      />
-                    </div>
-                    <div className="field">
-                      <label>Date Received</label>
-                      <input
-                        type="date"
-                        value={newProd.dateReceived}
-                        onChange={(e) =>
-                          setNewProd({
-                            ...newProd,
-                            dateReceived: e.target.value,
-                          })
-                        }
-                      />
-                    </div>
-                    {isAdmin && (
-                      <div className="field full-width">
-                        <label>Supplier</label>
-                        <select
-                          value={newProd.supplier}
-                          onChange={(e) =>
-                            setNewProd({ ...newProd, supplier: e.target.value })
-                          }>
-                          {suppliers.map((s) => (
-                            <option key={s.name} value={s.name}>
-                              {s.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="modal-actions">
-                  <button type="submit" className="button dark">
-                    Save Product
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>,
-          document.body,
-        )}
-
-      {/* ========================================================================= */}
-      {/* 3. EDIT PRODUCT MODAL (ADMIN & FRONT DESK) */}
-      {/* ========================================================================= */}
-      {editProduct &&
-        createPortal(
-          <div
-            className="modal-backdrop"
-            onMouseDown={(e) => e.currentTarget === e.target && setEditProduct(null)}
-            data-testid="modal-edit-product">
-            <div className="modal dialog" style={{ maxWidth: 500 }}>
-              <div className="modal-header">
-                <div>
-                  <h2>Update Product Information</h2>
-                  <p className="modal-sub">
-                    Edit product details and reorder thresholds
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  className="modal-close"
-                  onClick={() => setEditProduct(null)}>
-                  <X size={15} />
-                </button>
-              </div>
-
-              <form onSubmit={handleSaveEditProduct}>
-                <div className="form-grid">
-                  <div className="field full-width">
-                    <label>Product Name *</label>
-                    <input
-                      required
-                      value={editProdData.name}
-                      onChange={(e) =>
-                        setEditProdData({ ...editProdData, name: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="field full-width">
-                    <label>Generic Name</label>
-                    <input
-                      value={editProdData.genericName}
-                      onChange={(e) =>
-                        setEditProdData({
-                          ...editProdData,
-                          genericName: e.target.value,
-                        })
-                      }
-                    />
-                  </div>
-                  <div className="field">
-                    <label>Product Code (SKU) *</label>
-                    <input
-                      required
-                      value={editProdData.sku}
-                      onChange={(e) =>
-                        setEditProdData({
-                          ...editProdData,
-                          sku: e.target.value,
-                        })
-                      }
-                    />
-                  </div>
-                  <div className="field">
-                    <label>Category</label>
-                    <select
-                      value={editProdData.category}
-                      onChange={(e) =>
-                        setEditProdData({
-                          ...editProdData,
-                          category: e.target.value,
-                        })
-                      }>
-                      {categoryOptions.map((c) => (
-                        <option key={c} value={c === "None" ? "" : c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="field">
-                    <label>Price (₱) *</label>
-                    <input
-                      required
-                      value={editProdData.price}
-                      onChange={(e) =>
-                        setEditProdData({
-                          ...editProdData,
-                          price: e.target.value,
-                        })
-                      }
-                    />
-                  </div>
-                  <div className="field">
-                    <label>Cost Price (₱) *</label>
-                    <input
-                      required
-                      value={editProdData.cost}
-                      onChange={(e) =>
-                        setEditProdData({ ...editProdData, cost: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="field">
-                    <label>Reorder Level *</label>
-                    <input
-                      type="number"
-                      min="1"
-                      required
-                      value={editProdData.reorder}
-                      onChange={(e) =>
-                        setEditProdData({
-                          ...editProdData,
-                          reorder: e.target.value,
-                        })
-                      }
-                    />
-                  </div>
-                  <div className="field full-width">
-                    <label>Controlled Item</label>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 12,
-                        minHeight: 39,
-                        border: "1px solid hsl(var(--border))",
-                        borderRadius: 11,
-                        background: "hsl(var(--surface-soft))",
-                        padding: "8px 11px",
-                      }}>
-                      <div>
-                        <strong style={{ display: "block", fontSize: 12 }}>
-                          Dangerous drug
-                        </strong>
-                        <span className="muted" style={{ fontSize: 12 }}>
-                          Requires controlled tracking
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        className={`toggle ${editProdData.isDangerousDrug ? "on" : ""}`}
-                        aria-pressed={editProdData.isDangerousDrug}
-                        aria-label="Toggle dangerous drug tracking"
-                        onClick={() =>
-                          setEditProdData({
-                            ...editProdData,
-                            isDangerousDrug: !editProdData.isDangerousDrug,
-                          })
-                        }>
-                        <span />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="modal-actions">
-                  <button type="submit" className="button dark">
-                    Update Details
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>,
-          document.body,
-        )}
+      {(isAddProductOpen || editProduct) && <ProductDialog
+        key={editProduct?.id ?? "new"}
+        product={editProduct ?? undefined}
+        categories={availableCategories}
+        suppliers={suppliers.map((supplier) => supplier.name)}
+        onClose={() => { setIsAddProductOpen(false); setEditProduct(null); }}
+        onSaved={handleProductSaved}
+      />}
 
       {/* ========================================================================= */}
       {/* 4. ADD BATCH / BATCH EXPIRY DATE MODAL (ADMIN & FRONT DESK) */}
@@ -1782,6 +1195,7 @@ export default function InventoryPage({
                     <input
                       required
                       placeholder="e.g. B2026-03"
+                      maxLength={100}
                       value={newBatchData.batchNumber}
                       onChange={(e) =>
                         setNewBatchData({
@@ -1796,6 +1210,8 @@ export default function InventoryPage({
                     <input
                       type="number"
                       min="1"
+                      max={MAX_STOCK_MOVEMENT_QUANTITY}
+                      step="1"
                       required
                       value={newBatchData.quantity}
                       onChange={(e) =>
@@ -1858,6 +1274,7 @@ export default function InventoryPage({
                               supplier: e.target.value,
                             })
                           }>
+                          <option value="">Select supplier (optional)</option>
                           {suppliers.map((s) => (
                             <option key={s.name} value={s.name}>
                               {s.name}
@@ -1869,8 +1286,10 @@ export default function InventoryPage({
                   )}
                 </div>
 
+                {movementSaving && <p role="status">Saving stock change…</p>}
+                {movementError && <div className="inline-error" role="alert">{movementError}</div>}
                 <div className="modal-actions">
-                  <button type="submit" className="button dark">
+                  <button type="submit" disabled={movementSaving} className="button dark">
                     Record Batch
                   </button>
                 </div>
@@ -1910,6 +1329,7 @@ export default function InventoryPage({
                   <div className="field full-width">
                     <label>Target Batch *</label>
                     <select
+                      required
                       value={stockInData.batchNumber}
                       onChange={(e) =>
                         setStockInData({
@@ -1917,6 +1337,7 @@ export default function InventoryPage({
                           batchNumber: e.target.value,
                         })
                       }>
+                      <option value="">{stockInProduct.batches.length ? "Select an existing batch" : "No batches — use Add Batch first"}</option>
                       {stockInProduct.batches.map((b) => (
                         <option key={b.batchNumber} value={b.batchNumber}>
                           {b.batchNumber} (Current: {b.quantity} units, Exp:{" "}
@@ -1968,8 +1389,10 @@ export default function InventoryPage({
                   </div>
                 </div>
 
+                {movementSaving && <p role="status">Saving stock change…</p>}
+                {movementError && <div className="inline-error" role="alert">{movementError}</div>}
                 <div className="modal-actions">
-                  <button type="submit" className="button dark">
+                  <button type="submit" disabled={movementSaving} className="button dark">
                     <ArrowDownLeft size={14} /> Confirm Stock In
                   </button>
                 </div>
@@ -2089,9 +1512,11 @@ export default function InventoryPage({
                   </div>
                 </div>
 
+                {movementSaving && <p role="status">Saving stock change…</p>}
+                {movementError && <div className="inline-error" role="alert">{movementError}</div>}
                 <div className="modal-actions">
                   <button
-                    type="submit"
+                    type="submit" disabled={movementSaving}
                     className="button dark"
                     style={{ background: "#dc2626", borderColor: "#dc2626" }}>
                     <ArrowUpRight size={14} /> Confirm Stock Out

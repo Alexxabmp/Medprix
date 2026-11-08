@@ -1,0 +1,19 @@
+name: medprix-local-dev
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: medprix
+      POSTGRES_PASSWORD: local-development-only
+      POSTGRES_DB: medprix_local_test
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - local_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U medprix -d medprix_local_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+volumes:
+  local_db:

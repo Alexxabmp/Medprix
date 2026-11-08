@@ -94,6 +94,7 @@ export function getAllowedHrefs(role: string): string[] {
 }
 
 export function getDefaultRoute(role: string): string {
+  if (role === "FrontDesk") return "/wholesale";
   return getAllowedHrefs(role)[0] ?? "/login";
 }
 
@@ -337,7 +338,7 @@ export const cashMismatches: CashMismatch[] = [
 
 export const initialTransactionsData: UserTransaction[] = [
   {
-    id: 1,
+    id: "00000000-0000-4000-8000-000000000001",
     transactionNumber: "TRX-0001",
     dateTime: "Sept. 1, 2026 – 9:00 AM",
     user: "Maria Santos",
@@ -358,7 +359,7 @@ export const initialTransactionsData: UserTransaction[] = [
     ],
   },
   {
-    id: 2,
+    id: "00000000-0000-4000-8000-000000000002",
     transactionNumber: "TRX-0002",
     dateTime: "Sept. 1, 2026 – 9:15 AM",
     user: "John Cruz",
@@ -378,7 +379,7 @@ export const initialTransactionsData: UserTransaction[] = [
     ],
   },
   {
-    id: 3,
+    id: "00000000-0000-4000-8000-000000000003",
     transactionNumber: "TRX-0003",
     dateTime: "Sept. 1, 2026 – 9:30 AM",
     user: "Maria Santos",
@@ -398,7 +399,7 @@ export const initialTransactionsData: UserTransaction[] = [
     ],
   },
   {
-    id: 4,
+    id: "00000000-0000-4000-8000-000000000004",
     transactionNumber: "TRX-0004",
     dateTime: "Sept. 1, 2026 – 10:05 AM",
     user: "Maria Santos",
@@ -418,7 +419,7 @@ export const initialTransactionsData: UserTransaction[] = [
     ],
   },
   {
-    id: 5,
+    id: "00000000-0000-4000-8000-000000000005",
     transactionNumber: "TRX-0005",
     dateTime: "Sept. 1, 2026 – 11:20 AM",
     user: "John Cruz",
