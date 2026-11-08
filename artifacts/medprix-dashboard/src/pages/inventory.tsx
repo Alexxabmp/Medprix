@@ -41,7 +41,7 @@ import {
 } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import { Summary } from "@/components/custom-ui/summary-card";
-import { suppliers } from "@/lib/data";
+import { fetchSupplierRecords, type SupplierRecord } from "@/lib/supplier-store";
 import type { ProductItem, ProductBatch, ToastFn } from "@/lib/types";
 
 const MAX_STOCK_MOVEMENT_QUANTITY = 1_000_000;
@@ -240,6 +240,22 @@ export default function InventoryPage({
   const canAddFullBatchInfo = isAdmin;
   const canRecordStockIn = isAdmin || isCashier;
   const canRecordStockOut = isAdmin || isCashier;
+
+  const [suppliers, setSuppliers] = useState<SupplierRecord[]>([]);
+  useEffect(() => {
+    if (isCashier) return;
+    let active = true;
+    fetchSupplierRecords()
+      .then((records) => {
+        if (active) setSuppliers(records);
+      })
+      .catch((failure) => {
+        if (active) onToast({ message: safeError(failure), variant: "error" });
+      });
+    return () => {
+      active = false;
+    };
+  }, [isCashier, onToast]);
 
   // Inventory items state from shared pharmacy store
   const { items, setItems, loading: isLoading, refresh: fetchInventory, isBackendConnected, error: inventoryLoadError } = usePharmacyInventory();

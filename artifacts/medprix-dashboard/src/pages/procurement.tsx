@@ -14,7 +14,6 @@ import { Summary } from "@/components/custom-ui/summary-card";
 import type { ToastFn } from "@/lib/types";
 import { fetchInventoryData, usePharmacyInventory } from "@/lib/pharmacy-store";
 import { fetchAccountsPayable } from "@/lib/supplier-store";
-import { products as initialFallbackProducts } from "@/lib/data";
 
 type Supplier = { id: string; name: string };
 type Product = {
@@ -138,28 +137,10 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
     getStored("medprix_procurement_suppliers", [])
   );
   const { items: inventoryItems, refresh: refreshInventory } = usePharmacyInventory();
-  const [products, setProducts] = useState<Product[]>(() => {
-    const cached = getStored<any[]>("medprix_cached_inventory", []);
-    if (cached.length > 0) {
-      return cached.map((p) => ({
-        id: p.id,
-        name: p.name,
-        sku: p.sku,
-        price: p.price,
-        cost: p.cost || p.price,
-      }));
-    }
-    return initialFallbackProducts.map((p) => ({
-      id: p.id,
-      name: p.name,
-      sku: p.sku,
-      price: p.price,
-      cost: (p as any).cost || p.price,
-    }));
-  });
+  const [products, setProducts] = useState<Product[]>([]);
 
   useEffect(() => {
-    if (inventoryItems && inventoryItems.length > 0) {
+    if (inventoryItems) {
       setProducts(
         inventoryItems.map((p) => ({
           id: p.id,
