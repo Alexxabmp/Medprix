@@ -270,16 +270,20 @@ export function createWholesaleDrafts(read: Query, transaction: Transaction) {
         },
       );
     },
-    async orders() {
+    async orders(orderId?: string) {
+      const id = orderId ? requireUuid(orderId) : null;
       return (
-        await read(`SELECT o.id,o.order_number AS "orderNumber",o.draft_revision AS revision,
+        await read(
+          `SELECT o.id,o.order_number AS "orderNumber",o.draft_revision AS revision,
         o.status,o.client_id AS "clientId",COALESCE(o.confirmation_snapshot->>'clientName',c.client_name) AS "clientName",o.total_order_amount::text AS total,
         o.updated_at AS "updatedAt",
         COALESCE((SELECT jsonb_agg(jsonb_build_object('productId',i.product_id,'quantity',i.quantity,
           'unitPrice',i.unit_price::text,'name',p.product_name) ORDER BY i.id)
           FROM wholesale_order_items i JOIN products p ON p.id=i.product_id WHERE i.order_id=o.id),'[]'::jsonb) AS lines
         FROM wholesale_orders o JOIN wholesale_clients c ON c.id=o.client_id
-        WHERE o.draft_revision IS NOT NULL ORDER BY o.updated_at DESC,o.id DESC LIMIT 200`)
+        WHERE o.draft_revision IS NOT NULL AND ($1::uuid IS NULL OR o.id=$1) ORDER BY o.updated_at DESC,o.id DESC LIMIT 200`,
+          [id],
+        )
       ).rows;
     },
     async save(

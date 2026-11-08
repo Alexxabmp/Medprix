@@ -1,3 +1,5 @@
+import { createWholesaleWorkspace } from "../lib/wholesale-workspace";
+import { createWholesaleOverview } from "../lib/wholesale-overview";
 import { createWholesaleCollections } from "../lib/wholesale-collections";
 import { createWholesaleDelivery } from "../lib/wholesale-delivery";
 import { createWholesaleConfirmation } from "../lib/wholesale-confirmation";
@@ -14,6 +16,8 @@ import { createWholesaleDrafts, WholesaleError } from "../lib/wholesale-drafts";
 
 const router: IRouter = Router();
 const service = createWholesaleDrafts(queryDb, withTransaction);
+const workspace = createWholesaleWorkspace(queryDb);
+const overview = createWholesaleOverview(queryDb);
 const collections = createWholesaleCollections(queryDb, withTransaction);
 const delivery = createWholesaleDelivery(queryDb, withTransaction);
 const confirmation = createWholesaleConfirmation(queryDb, withTransaction);
@@ -41,6 +45,37 @@ function handle(work: (req: Request, res: Response) => Promise<unknown>) {
     }
   };
 }
+
+router.get(
+  "/wholesale/pending-orders",
+  handle(async (req, res) => {
+    res.json(
+      await workspace.pendingOrders(
+        req.query.search ?? "",
+        req.query.page ?? "1",
+      ),
+    );
+  }),
+);
+router.get(
+  "/wholesale/deliveries",
+  handle(async (req, res) => {
+    res.json(
+      await workspace.deliveries(
+        req.query.search ?? "",
+        req.query.page ?? "1",
+        req.query.status ?? "active",
+      ),
+    );
+  }),
+);
+
+router.get(
+  "/wholesale/overview",
+  handle(async (_req, res) => {
+    res.json(await overview(res.locals.user!));
+  }),
+);
 
 router.get(
   "/wholesale/catalog",
@@ -121,6 +156,7 @@ router.get(
   "/wholesale/orders/:id",
   handle(async (req, res) => {
     res.json({
+      order: (await service.orders(String(req.params.id)))[0],
       ...(await confirmation.detail(String(req.params.id))),
       ...(await delivery.detail(String(req.params.id))),
     });
@@ -257,6 +293,7 @@ router.get(
         res.locals.user!,
         req.query.search ?? "",
         req.query.page ?? "1",
+        req.query.status ?? "all",
       ),
     );
   }),

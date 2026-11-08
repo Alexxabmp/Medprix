@@ -1,3 +1,4 @@
+import { wholesaleOverdue, wholesalePaymentStatus } from "./wholesale-overview";
 import { isCalendarDate } from "@workspace/api-zod";
 import type { AuditActor } from "./audit-events";
 import {
@@ -49,7 +50,7 @@ async function account(query: WholesaleQuery, id: string) {
   const {
     rows: [row],
   } = await query(
-    `SELECT a.*,a.due_date::text AS due_day,f.delivered_at,f.snapshot->>'total' AS sale_total,
+    `SELECT a.*,${wholesalePaymentStatus} AS payment_status,a.due_date::text AS due_day,f.delivered_at,f.snapshot->>'total' AS sale_total,
     f.snapshot->>'clientName' AS client_name,o.order_number
     FROM accounts_receivable a JOIN wholesale_fulfillments f ON f.ar_id=a.id
     JOIN wholesale_orders o ON o.id=a.order_id WHERE a.id=$1 FOR UPDATE OF a`,
@@ -86,7 +87,12 @@ export function createWholesaleCollections(
 ) {
   const operation = createWholesaleOperation(transaction);
   return {
-    async list(actor: AuditActor, search: unknown = "", page: unknown = "1") {
+    async list(
+      actor: AuditActor,
+      search: unknown = "",
+      page: unknown = "1",
+      status: unknown = "all",
+    ) {
       access(actor);
       if (
         typeof search !== "string" ||
@@ -98,16 +104,29 @@ export function createWholesaleCollections(
           400,
           "Choose a valid account search and page.",
         );
+      if (
+        typeof status !== "string" ||
+        !["all", "outstanding", "overdue", "paid"].includes(status)
+      )
+        throw new WholesaleError(400, "Choose a valid payment status.");
+      const filter =
+        status === "overdue"
+          ? wholesaleOverdue
+          : status === "outstanding"
+            ? "a.balance > 0"
+            : status === "paid"
+              ? "a.balance = 0"
+              : "true";
       const where = `FROM accounts_receivable a JOIN wholesale_fulfillments f ON f.ar_id=a.id
         JOIN wholesale_orders o ON o.id=a.order_id
-        WHERE strpos(lower(o.order_number || ' ' || (f.snapshot->>'clientName')),lower($1))>0`;
+        WHERE strpos(lower(o.order_number || ' ' || (f.snapshot->>'clientName')),lower($1))>0 AND (${filter})`;
       const {
         rows: [count],
       } = await read("SELECT count(*)::int AS total " + where, [search.trim()]);
       const { rows: items } = await read(
         `SELECT a.id,o.order_number AS "orderNumber",
         f.snapshot->>'clientName' AS "clientName",a.total_owed::text AS total,
-        a.total_paid::text AS paid,a.balance::text,a.due_date::text AS "dueDate",f.delivered_at AS "deliveredAt"
+        a.total_paid::text AS paid,a.balance::text,${wholesalePaymentStatus} AS status,a.due_date::text AS "dueDate",f.delivered_at AS "deliveredAt"
         ${where} ORDER BY f.delivered_at DESC,a.id LIMIT 50 OFFSET $2`,
         [search.trim(), (Number(page) - 1) * 50],
       );
@@ -142,6 +161,7 @@ export function createWholesaleCollections(
           paid: row.total_paid,
           balance: row.balance,
           dueDate: row.due_day,
+          status: row.payment_status,
           deliveredAt: row.delivered_at,
           payments,
           reviewRequired,
