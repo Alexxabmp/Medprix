@@ -10,22 +10,37 @@ import {
   wholesaleDateTime,
   wholesaleManilaInput,
   type WholesaleReceivablePage,
+  type WholesaleAccountFilter,
   type WholesaleReceivableDetail,
 } from "@/lib/wholesale-api";
 
 export function WholesaleReceivables({
   search,
   role,
+  status = "all",
+  onChanged,
+  initialDetail,
+  detailsOnly = false,
+  onClose,
 }: {
   search: string;
   role: string;
+  status?: WholesaleAccountFilter;
+  onChanged?: () => void;
+  initialDetail?: WholesaleReceivableDetail;
+  detailsOnly?: boolean;
+  onClose?: () => void;
 }) {
   const [page, setPage] = useState(1);
   const [data, setData] = useState<WholesaleReceivablePage | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [detail, setDetail] = useState<WholesaleReceivableDetail | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(
+    initialDetail?.id ?? null,
+  );
+  const [detail, setDetail] = useState<WholesaleReceivableDetail | null>(
+    initialDetail ?? null,
+  );
   const [opening, setOpening] = useState(false);
   const [mode, setMode] = useState("view");
   const [method, setMethod] = useState("Cash");
@@ -37,11 +52,14 @@ export function WholesaleReceivables({
     if (body) body.scrollTop = 0;
   }, [mode, selectedId]);
   async function load() {
+    if (detailsOnly) return;
     const result = await wholesaleGet<WholesaleReceivablePage>(
       "/accounts-receivable?search=" +
         encodeURIComponent(search) +
         "&page=" +
-        page,
+        page +
+        "&status=" +
+        status,
     );
     setData(result);
   }
@@ -56,11 +74,13 @@ export function WholesaleReceivables({
     await load();
     if (selectedId) await loadDetail(selectedId);
     setMode("view");
+    onChanged?.();
   });
   useEffect(() => {
     setPage(1);
-  }, [search]);
+  }, [search, status]);
   useEffect(() => {
+    if (detailsOnly) return;
     let active = true;
     setLoading(true);
     setLoadError("");
@@ -69,7 +89,9 @@ export function WholesaleReceivables({
         "/accounts-receivable?search=" +
           encodeURIComponent(search) +
           "&page=" +
-          page,
+          page +
+          "&status=" +
+          status,
       )
         .then((value) => {
           if (active) setData(value);
@@ -85,7 +107,26 @@ export function WholesaleReceivables({
       active = false;
       clearTimeout(timer);
     };
-  }, [search, page]);
+  }, [search, page, status, detailsOnly]);
+  useEffect(() => {
+    if (request.locked) return;
+    const refresh = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        await load();
+        if (selectedId && mode === "view") await loadDetail(selectedId);
+        setLoadError("");
+      } catch (failure) {
+        setLoadError(safeError(failure));
+      }
+    };
+    window.addEventListener("focus", refresh);
+    const timer = window.setInterval(refresh, 60000);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      window.clearInterval(timer);
+    };
+  }, [search, page, status, selectedId, mode, request.locked]);
   async function open(id: string) {
     setOpening(true);
     setLoadError("");
@@ -104,90 +145,111 @@ export function WholesaleReceivables({
   }
   return (
     <>
-      {!selectedId && <WholesaleRequestFeedback {...request} />}
-      {opening && !selectedId && <LoadingState label="Opening account..." />}
-      {loadError && (
-        <div role="alert" className="inline-error">
-          {loadError}
-        </div>
-      )}
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>Order / client</th>
-            <th>Total</th>
-            <th>Paid</th>
-            <th>Balance</th>
-            <th>Due date</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {!loading &&
-            !loadError &&
-            data?.items.map((item) => (
-              <tr key={item.id}>
-                <td>
-                  <strong>{item.orderNumber}</strong>
-                  <div className="muted">{item.clientName}</div>
-                </td>
-                <td>{wholesalePeso(item.total)}</td>
-                <td>{wholesalePeso(item.paid)}</td>
-                <td>
-                  <strong>{wholesalePeso(item.balance)}</strong>
-                </td>
-                <td>{item.dueDate}</td>
-                <td>
-                  <button
-                    className="button soft"
-                    disabled={request.locked || opening}
-                    onClick={() => void open(item.id)}
-                  >
-                    View account
-                  </button>
-                </td>
-              </tr>
-            ))}
-          {loading ? (
-            <tr>
-              <td colSpan={6}>
-                <LoadingState label="Loading receivables…" />
-              </td>
-            </tr>
-          ) : (
-            !loadError &&
-            !data?.items.length && (
-              <tr>
-                <td colSpan={6} className="muted">
-                  {search
-                    ? "No matching receivables."
-                    : "No delivered receivables found."}
-                </td>
-              </tr>
-            )
+      {!detailsOnly && (
+        <>
+          {!selectedId && <WholesaleRequestFeedback {...request} />}
+          {opening && !selectedId && (
+            <LoadingState label="Opening account..." />
           )}
-        </tbody>
-      </table>
-      {data && data.total > data.pageSize && (
-        <div className="wholesale-pagination">
-          <button
-            className="button soft"
-            disabled={loading || page === 1}
-            onClick={() => setPage((value) => value - 1)}
-          >
-            Previous
-          </button>
-          <span>
-            Page {page} of {Math.ceil(data.total / data.pageSize)}
-          </span>
-          <button
-            className="button soft"
-            disabled={loading || page * data.pageSize >= data.total}
-            onClick={() => setPage((value) => value + 1)}
-          >
-            Next
-          </button>
-        </div>
+          {loadError && (
+            <div role="alert" className="inline-error">
+              {loadError}
+            </div>
+          )}
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Order / client</th>
+                <th>Total</th>
+                <th>Paid</th>
+                <th>Balance</th>
+                <th>Due date</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {!loading &&
+                !loadError &&
+                data?.items.map((item) => (
+                  <tr key={item.id}>
+                    <td>
+                      <strong>{item.orderNumber}</strong>
+                      <div className="muted">{item.clientName}</div>
+                    </td>
+                    <td>{wholesalePeso(item.total)}</td>
+                    <td>{wholesalePeso(item.paid)}</td>
+                    <td>
+                      <strong>{wholesalePeso(item.balance)}</strong>
+                    </td>
+                    <td>{item.dueDate}</td>
+                    <td>
+                      <span
+                        className={
+                          "pill " +
+                          (item.status === "Overdue"
+                            ? "danger"
+                            : item.status === "Paid"
+                              ? "success"
+                              : "neutral")
+                        }
+                      >
+                        {item.status}
+                      </span>
+                    </td>
+                    <td>
+                      <button
+                        className="button soft"
+                        disabled={request.locked || opening}
+                        onClick={() => void open(item.id)}
+                      >
+                        View account
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              {loading ? (
+                <tr>
+                  <td colSpan={7}>
+                    <LoadingState label="Loading receivables…" />
+                  </td>
+                </tr>
+              ) : (
+                !loadError &&
+                !data?.items.length && (
+                  <tr>
+                    <td colSpan={7} className="muted">
+                      {search
+                        ? "No matching receivables."
+                        : "No delivered receivables found."}
+                    </td>
+                  </tr>
+                )
+              )}
+            </tbody>
+          </table>
+          {data && data.total > data.pageSize && (
+            <div className="wholesale-pagination">
+              <button
+                className="button soft"
+                disabled={loading || page === 1}
+                onClick={() => setPage((value) => value - 1)}
+              >
+                Previous
+              </button>
+              <span>
+                Page {page} of {Math.ceil(data.total / data.pageSize)}
+              </span>
+              <button
+                className="button soft"
+                disabled={loading || page * data.pageSize >= data.total}
+                onClick={() => setPage((value) => value + 1)}
+              >
+                Next
+              </button>
+            </div>
+          )}
+        </>
       )}
       {selectedId && (
         <WholesaleDialog
@@ -198,7 +260,10 @@ export function WholesaleReceivables({
               : "Loading account"
           }
           busy={request.locked || opening}
-          close={() => setSelectedId(null)}
+          close={() => {
+            setSelectedId(null);
+            onClose?.();
+          }}
           className="wholesale-account-dialog"
         >
           {validation && (
@@ -252,15 +317,17 @@ export function WholesaleReceivables({
                         <tbody>
                           {detail.payments.map((payment) => (
                             <tr key={payment.id}>
-                              <td>{wholesaleDateTime(payment.collectedAt)}</td>
-                              <td>
+                              <td data-label="Collected">
+                                {wholesaleDateTime(payment.collectedAt)}
+                              </td>
+                              <td data-label="Amount / method">
                                 {wholesalePeso(payment.amount)}
                                 <div className="muted">
                                   {payment.method ??
                                     "Unclassified historical payment"}
                                 </div>
                               </td>
-                              <td>
+                              <td data-label="Collector / reference">
                                 {payment.collectorName ?? "Unknown collector"}
                                 {payment.reference && (
                                   <div className="muted">
@@ -271,7 +338,7 @@ export function WholesaleReceivables({
                                   <div className="muted">{payment.notes}</div>
                                 )}
                               </td>
-                              <td>
+                              <td data-label="Status">
                                 {payment.reversalId ? (
                                   <>
                                     <span className="pill neutral">
@@ -291,7 +358,7 @@ export function WholesaleReceivables({
                                 )}
                               </td>
                               {role === "Admin" && (
-                                <td>
+                                <td data-label="Action">
                                   {payment.method &&
                                     !payment.reversalId &&
                                     !detail.reviewRequired && (
@@ -325,13 +392,6 @@ export function WholesaleReceivables({
                     </div>
                   </section>
                   <div className="wholesale-actions">
-                    <button
-                      className="button soft"
-                      disabled={request.locked || opening}
-                      onClick={() => void open(selectedId)}
-                    >
-                      {opening ? "Refreshing account..." : "Refresh account"}
-                    </button>
                     <button
                       className="button primary-action"
                       disabled={

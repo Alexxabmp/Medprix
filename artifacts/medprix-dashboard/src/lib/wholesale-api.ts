@@ -170,7 +170,20 @@ export type DeliveryReceiptSummary = {
   deliveredAt: string;
 };
 
+export type WholesaleAccountFilter = "all" | "outstanding" | "overdue" | "paid";
+
+export type WholesaleOverview = {
+  today: string;
+  openOrders: number;
+  activeDeliveries: number;
+  drafts: number;
+  outstanding: string;
+  overdue: string;
+  overdueCount: number;
+};
+
 export type WholesaleReceivable = {
+  status: string;
   id: string;
   orderNumber: string;
   clientName: string;
@@ -241,3 +254,26 @@ export function wholesaleManilaInput() {
     value("fractionalSecond")
   );
 }
+
+export type WholesalePendingOrder = {
+  id: string;
+  orderNumber: string;
+  clientName: string;
+  status: string;
+  total: string;
+};
+export type WholesaleDelivery = {
+  id: string;
+  orderId: string;
+  orderNumber: string;
+  clientName: string;
+  date: string;
+  status: string;
+  notes: string | null;
+};
+export type WholesalePageResult<T> = {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+};

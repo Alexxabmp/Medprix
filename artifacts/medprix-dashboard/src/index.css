@@ -2620,7 +2620,7 @@ a {
 .wholesale-dialog [aria-invalid="true"] {
   border-color: hsl(var(--danger));
 }
-.wholesale-dialog :is(input, select, textarea, button):focus-visible {
+.wholesale-dialog button:focus-visible {
   outline: 2px solid hsl(var(--foreground));
   outline-offset: 3px;
   box-shadow: 0 0 0 3px hsl(var(--surface));
@@ -2764,11 +2764,15 @@ a {
   margin: 10px 0 0;
 }
 .wholesale-review-overrides {
-  border: 1px solid hsl(var(--border));
-  border-radius: 8px;
-  padding: 14px;
+  border-top: 1px solid hsl(var(--border));
+  padding-top: 16px;
 }
 .wholesale-review-overrides summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  list-style: none;
   cursor: pointer;
   font-size: var(--text-sm);
   font-weight: 600;
@@ -2795,9 +2799,6 @@ a {
 .wholesale-details .table-scroll {
   min-width: 0;
   max-width: 100%;
-}
-.wholesale-review-close {
-  margin-right: auto;
 }
 
 .wholesale-details .data-table th {
@@ -2952,4 +2953,289 @@ a {
   color: hsl(var(--foreground));
   font: inherit;
   resize: vertical;
+}
+
+.wholesale-table-controls > select {
+  min-width: 0;
+  max-width: 100%;
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: hsl(var(--surface));
+  color: hsl(var(--foreground));
+  font: inherit;
+}
+
+.wholesale-review-overrides summary::-webkit-details-marker { display: none; }
+.wholesale-review-overrides summary svg { flex: 0 0 auto; }
+.wholesale-review-overrides[open] summary svg { transform: rotate(180deg); }
+.wholesale-dialog-static,
+.wholesale-dialog-static .wholesale-dialog { animation: none; }
+.wholesale-receipt-open { min-width: 112px; }
+.wholesale-account-dialog .wholesale-details { font-size: var(--text-sm); }
+.wholesale-dialog :is(input, select, textarea) { font-family: var(--app-font-sans); font-size: var(--text-xs); }
+.wholesale-table-controls > select { font-size: var(--text-sm); }
+.modal.wholesale-dialog :is(input, select, textarea):is(:focus, :focus-visible),
+.wholesale-workspace :is(input, select, textarea):is(:focus, :focus-visible) { outline: none; box-shadow: none; border-color: hsl(var(--border)); }
+.wholesale-summary-alert .summary-box { height: 100%; }
+.wholesale-summary-action { font-size: var(--text-xs); padding: 2px 8px; min-height: 22px; border-radius: 6px; font-weight: 600; line-height: 1; }
+
+.wholesale-dialog-title { display: flex; align-items: center; gap: 8px; }
+.wholesale-dialog-title > svg { flex: 0 0 auto; color: hsl(var(--muted)); }
+
+.summary-strip.wholesale-summary-strip {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.wholesale-summary-strip > *,
+.wholesale-summary-strip .summary-box {
+  min-width: 0;
+}
+.wholesale-summary-strip .summary-box {
+  height: 100%;
+}
+.wholesale-summary-strip .summary-box > div {
+  flex-wrap: wrap;
+}
+.wholesale-summary-strip .summary-box strong {
+  font-size: clamp(18px, 2vw, 26px);
+  overflow-wrap: anywhere;
+}
+.wholesale-summary-strip .summary-box small {
+  overflow-wrap: anywhere;
+}
+.wholesale-summary-dialog {
+  width: min(960px, 100%);
+}
+.wholesale-summary-dialog .modal-header h2 {
+  font-size: 18px;
+  letter-spacing: normal;
+}
+.wholesale-summary-dialog .wholesale-dialog-body {
+  margin: 0 12px 12px;
+  padding-bottom: 12px;
+}
+.wholesale-summary-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.wholesale-summary-search {
+  flex: 1 1 240px;
+  min-width: 0;
+  height: 40px;
+}
+.modal.wholesale-summary-dialog .wholesale-summary-controls > select {
+  flex: 0 1 200px;
+  width: auto;
+  max-width: 100%;
+}
+.modal.wholesale-summary-dialog .search-wrap input {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  outline: none;
+  padding: 0;
+  height: 100%;
+  font-size: 13px;
+  text-align: left;
+  min-width: 0;
+}
+.wholesale-summary-table {
+  max-height: min(480px, 55dvh);
+  overflow-y: auto;
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+}
+.wholesale-summary-table .data-table,
+.wholesale-account-dialog .data-table {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+}
+.wholesale-summary-table :is(th, td),
+.wholesale-account-dialog .data-table :is(th, td) {
+  min-width: 0;
+  max-width: none;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+.wholesale-summary-table th:first-child {
+  width: 28%;
+}
+.wholesale-summary-table td:last-child {
+  text-align: left;
+}
+.wholesale-summary-table .button {
+  padding: 6px 10px;
+  font-size: 12px;
+  white-space: normal;
+  max-width: 100%;
+}
+.wholesale-summary-client {
+  display: block;
+  margin-top: 4px;
+  font-size: var(--text-xs);
+}
+.wholesale-summary-table .pill {
+  max-width: 100%;
+  white-space: normal;
+  justify-self: start;
+}
+.wholesale-summary-table td[colspan] {
+  text-align: center;
+  padding: 24px;
+}
+.wholesale-summary-dialog .wholesale-pagination {
+  padding: 16px 0 0;
+}
+.wholesale-account-dialog .data-table td:first-child {
+  min-width: 0;
+  max-width: none;
+}
+.wholesale-account-dialog .table-scroll {
+  overflow-x: visible;
+}
+@media (max-width: 760px) {
+  .wholesale-summary-table thead,
+  .wholesale-account-dialog .data-table thead {
+    display: none;
+  }
+  .wholesale-summary-table :is(table, tbody),
+  .wholesale-account-dialog .data-table,
+  .wholesale-account-dialog .data-table tbody {
+    display: block;
+  }
+  .wholesale-summary-table tr,
+  .wholesale-account-dialog .data-table tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    padding: 14px;
+    border-bottom: 1px solid hsl(var(--border));
+  }
+  .wholesale-summary-table tr:last-child,
+  .wholesale-account-dialog .data-table tr:last-child {
+    border-bottom: 0;
+  }
+  .wholesale-summary-table td,
+  .wholesale-account-dialog .data-table td {
+    display: grid;
+    grid-template-columns: minmax(80px, 32%) minmax(0, 1fr);
+    gap: 12px;
+    width: 100%;
+    padding: 8px 0;
+    border: 0;
+  }
+  .wholesale-summary-table td[data-label]::before,
+  .wholesale-account-dialog .data-table td[data-label]::before {
+    content: attr(data-label);
+    color: hsl(var(--muted));
+    font-size: var(--text-xs);
+    font-weight: 600;
+  }
+  .wholesale-summary-table td[colspan],
+  .wholesale-account-dialog .data-table td[colspan] {
+    display: block;
+  }
+  .wholesale-summary-table td[data-label="Order / client"] {
+    display: block;
+  }
+  .wholesale-summary-table td[data-label="Order / client"]::before {
+    display: block;
+    margin-bottom: 6px;
+  }
+  .wholesale-summary-table .button {
+    justify-self: start;
+  }
+  .modal.wholesale-summary-dialog .wholesale-summary-controls > select {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+}
+
+@media (max-width: 760px) {
+  .wholesale-account-dialog .data-table td[data-label] {
+    display: block;
+  }
+  .wholesale-account-dialog .data-table td[data-label]::before {
+    display: block;
+    margin-bottom: 6px;
+  }
+}
+.wholesale-dialog .modal-sub,
+.wholesale-dialog-title h2 {
+  overflow-wrap: anywhere;
+}
+.wholesale-dialog-title h2 {
+  min-width: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .wholesale-backdrop { animation: none; }
+}
+.wholesale-dialog-header-actions {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+.wholesale-dialog-header-actions .modal-close {
+  flex: 0 0 31px;
+}
+.wholesale-dialog-back.button {
+  height: 31px;
+  min-height: 31px;
+  padding: 0 10px;
+  line-height: 1;
+}
+.wholesale-receipt-open {
+  justify-content: center;
+  text-align: center;
+}
+.wholesale-summary-dialog .wholesale-details .data-table {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+}
+.wholesale-summary-dialog .wholesale-details .data-table :is(th, td) {
+  min-width: 0;
+  max-width: none;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.wholesale-summary-dialog .wholesale-details .data-table select {
+  min-width: 0;
+}
+@media (max-width: 760px) {
+  .wholesale-summary-dialog .wholesale-details .data-table thead {
+    display: none;
+  }
+  .wholesale-summary-dialog .wholesale-details .data-table,
+  .wholesale-summary-dialog .wholesale-details .data-table tbody {
+    display: block;
+  }
+  .wholesale-summary-dialog .wholesale-details .data-table tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    padding: 14px;
+    border-bottom: 1px solid hsl(var(--border));
+  }
+  .wholesale-summary-dialog .wholesale-details .data-table td {
+    display: block;
+    width: 100%;
+    border: 0;
+    padding: 8px 0;
+  }
+  .wholesale-summary-dialog
+    .wholesale-details
+    .data-table
+    td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 6px;
+    font-size: var(--text-xs);
+    color: hsl(var(--muted));
+    font-weight: 600;
+  }
 }

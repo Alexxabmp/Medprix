@@ -97,7 +97,7 @@ export function WholesaleDeliveryPanel({
                 maxLength={500}
               />
             </div>
-            <button className="button dark" type="submit">
+            <button className="button dark w-fit" type="submit">
               Schedule delivery
             </button>
           </fieldset>

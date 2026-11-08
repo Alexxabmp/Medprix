@@ -29,7 +29,7 @@ export function useDialogAccessibility(
           'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]',
         ),
       ).filter((element) => element.getClientRects().length > 0);
-    controls()[0]?.focus();
+    controls()[0]?.focus({ preventScroll: true });
     function keydown(event: KeyboardEvent) {
       // A nested payment dialog owns its own keyboard interaction.
       if (

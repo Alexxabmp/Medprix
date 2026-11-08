@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { LoadingState } from "@/components/custom-ui/loading-state";
 import { DeliveryReceiptView } from "./delivery-receipt-view";
 import {
   wholesaleGet,
@@ -32,7 +31,6 @@ export function WholesaleDeliveryReceipts({
           {error}
         </div>
       )}
-      {opening && <LoadingState label="Opening delivery receipt…" />}
       <table className="data-table">
         <thead>
           <tr>
@@ -50,7 +48,9 @@ export function WholesaleDeliveryReceipts({
               <td>{row.clientName}</td>
               <td>
                 <button
-                  className="button soft"
+                  className="button soft wholesale-receipt-open"
+                  aria-busy={opening}
+                  aria-label="View receipt"
                   disabled={disabled || opening}
                   onClick={async () => {
                     setOpening(true);
@@ -68,7 +68,7 @@ export function WholesaleDeliveryReceipts({
                     }
                   }}
                 >
-                  View receipt
+                  {opening ? "Opening..." : "View receipt"}
                 </button>
               </td>
             </tr>

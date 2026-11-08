@@ -1,10 +1,16 @@
+import {
+  WholesaleSummaryModal,
+  wholesaleSummaryPath,
+  type WholesaleSummaryKind,
+  type WholesaleSummaryRow,
+} from "@/components/wholesale-workspace-tables";
 import { WholesaleReceivables } from "@/components/wholesale-receivables";
 import { Summary } from "@/components/custom-ui/summary-card";
 import { LoadingState } from "@/components/custom-ui/loading-state";
 import { WholesaleDeliveryReceipts } from "@/components/wholesale-delivery-receipts";
 import { WholesaleOrderDetails } from "@/components/wholesale-order-details";
 import { useEffect, useState } from "react";
-import { Plus, RefreshCw, Search } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import { WholesaleDialog } from "@/components/wholesale-dialog";
 import { WholesaleOrderEditor } from "@/components/wholesale-order-editor";
@@ -19,6 +25,10 @@ import {
   type WholesaleProduct,
   type WholesaleRequest,
   type WholesaleLine,
+  type WholesaleOverview,
+  type WholesaleReceivableDetail,
+  type WholesalePageResult,
+  type WholesaleAccountFilter,
 } from "@/lib/wholesale-api";
 import type { ToastFn } from "@/lib/types";
 
@@ -42,6 +52,19 @@ export default function WholesalePage({
   const [products, setProducts] = useState<WholesaleProduct[]>([]);
   const [orders, setOrders] = useState<WholesaleOrder[]>([]);
   const [receipts, setReceipts] = useState<DeliveryReceiptSummary[]>([]);
+  const [overview, setOverview] = useState<WholesaleOverview | null>(null);
+  const [overviewError, setOverviewError] = useState("");
+  const [summary, setSummary] = useState<{
+    kind: WholesaleSummaryKind;
+    data: WholesalePageResult<WholesaleSummaryRow>;
+  } | null>(null);
+  const [openingSummary, setOpeningSummary] =
+    useState<WholesaleSummaryKind | null>(null);
+  const [summaryAccount, setSummaryAccount] =
+    useState<WholesaleReceivableDetail | null>(null);
+  const [openingAccount, setOpeningAccount] = useState(false);
+  const [accountStatus, setAccountStatus] =
+    useState<WholesaleAccountFilter>("all");
   const [tab, setTab] = useState<
     "orders" | "clients" | "prices" | "receipts" | "accounts"
   >("orders");
@@ -60,33 +83,90 @@ export default function WholesalePage({
     }
   });
 
-  async function load() {
-    setLoading(true);
+  async function load(background = false) {
+    if (!background) setLoading(true);
     setError("");
     try {
-      const [nextClients, nextProducts, nextOrders, nextReceipts] =
-        await Promise.all([
-          wholesaleGet<WholesaleClient[]>("/clients"),
-          wholesaleGet<WholesaleProduct[]>("/catalog"),
-          wholesaleGet<WholesaleOrder[]>("/orders"),
-          wholesaleGet<DeliveryReceiptSummary[]>("/delivery-receipts"),
-        ]);
+      const [
+        nextClients,
+        nextProducts,
+        nextOrders,
+        nextReceipts,
+        nextOverview,
+      ] = await Promise.all([
+        wholesaleGet<WholesaleClient[]>("/clients"),
+        wholesaleGet<WholesaleProduct[]>("/catalog"),
+        wholesaleGet<WholesaleOrder[]>("/orders"),
+        wholesaleGet<DeliveryReceiptSummary[]>("/delivery-receipts"),
+        wholesaleGet<WholesaleOverview>("/overview"),
+      ]);
+      setOverview(nextOverview);
+      setOverviewError("");
       setClients(nextClients);
       setProducts(nextProducts);
       setOrders(nextOrders);
       setReceipts(nextReceipts);
       setReady(true);
     } catch (failure) {
-      setReady(false);
+      if (!background) setReady(false);
+      setOverview(null);
       setError(safeError(failure));
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
   }
   useEffect(() => {
     void load();
   }, []);
 
+  async function refreshOverview() {
+    try {
+      setOverview(await wholesaleGet<WholesaleOverview>("/overview"));
+      setOverviewError("");
+    } catch (failure) {
+      setOverview(null);
+      setOverviewError(safeError(failure));
+    }
+  }
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === "visible") void load(true);
+    };
+    window.addEventListener("focus", refresh);
+    const timer = window.setInterval(refresh, 60000);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      window.clearInterval(timer);
+    };
+  }, []);
+  async function openSummary(kind: WholesaleSummaryKind) {
+    setOpeningSummary(kind);
+    setError("");
+    try {
+      const data = await wholesaleGet<WholesalePageResult<WholesaleSummaryRow>>(
+        wholesaleSummaryPath(kind),
+      );
+      setSummary({ kind, data });
+    } catch (failure) {
+      setError(safeError(failure));
+    } finally {
+      setOpeningSummary(null);
+    }
+  }
+  async function viewSummaryAccount(id: string) {
+    setOpeningAccount(true);
+    try {
+      const detail = await wholesaleGet<WholesaleReceivableDetail>(
+        "/accounts-receivable/" + id,
+      );
+      setSummary(null);
+      setSummaryAccount(detail);
+    } catch (failure) {
+      setError(safeError(failure));
+    } finally {
+      setOpeningAccount(false);
+    }
+  }
   async function submit(request: WholesaleRequest) {
     setBusy(true);
     setFormError("");
@@ -97,6 +177,7 @@ export default function WholesalePage({
       sessionStorage.removeItem(storageKey);
       setPending(null);
       setDialog(null);
+      setSummary(null);
       onToast("Wholesale record saved.");
       await load();
     } catch (failure) {
@@ -141,7 +222,8 @@ export default function WholesalePage({
       order ? { revision: order.revision, draft } : draft,
     );
   }
-  const locked = busy || pending !== null;
+  const locked =
+    busy || pending !== null || openingAccount || openingSummary !== null;
   const query = search.toLocaleLowerCase();
   const visibleOrders = orders.filter((order) =>
     (order.orderNumber + " " + order.clientName)
@@ -157,16 +239,6 @@ export default function WholesalePage({
     (product.name + " " + product.sku).toLocaleLowerCase().includes(query),
   );
 
-  const openOrders = orders.filter((order) =>
-    ["Pending", "Confirmed", "Processing"].includes(order.status),
-  );
-  const draftCount = orders.filter(
-    (order) => order.status === "Pending",
-  ).length;
-  const reservedUnits = products.reduce(
-    (total, product) => total + product.reservedStock,
-    0,
-  );
   const section = {
     orders: {
       title: "Wholesale orders",
@@ -195,7 +267,6 @@ export default function WholesalePage({
       placeholder: "Search receipt, order or client",
     },
   }[tab];
-  const summaryValue = (value: number) => (ready ? String(value) : "—");
 
   return (
     <div className="wholesale-workspace">
@@ -215,6 +286,11 @@ export default function WholesalePage({
       {error && (
         <div role="alert" className="inline-error">
           {error}
+          {!loading && (
+            <button className="button soft" onClick={() => void load()}>
+              Retry loading
+            </button>
+          )}
         </div>
       )}
       {pending && (
@@ -233,27 +309,114 @@ export default function WholesalePage({
         </div>
       )}
       <div
-        className="summary-strip"
+        className="summary-strip wholesale-summary-strip"
         aria-label="Wholesale summary"
         aria-busy={loading}
       >
         <Summary
-          label="Open orders"
-          value={summaryValue(openOrders.length)}
-          caption="Among the latest 200 orders"
+          label="Pending Orders"
+          value={overview ? String(overview.openOrders) : "—"}
+          caption="Orders awaiting delivery"
+          action={
+            <button
+              className="button soft wholesale-summary-action"
+              disabled={locked || !overview}
+              onClick={() => void openSummary("pending")}
+            >
+              {openingSummary === "pending" ? "Opening..." : "View orders"}
+            </button>
+          }
         />
         <Summary
-          label="Awaiting confirmation"
-          value={summaryValue(draftCount)}
-          caption="Drafts in the latest 200 orders"
-          tone="warning"
+          label="Deliveries"
+          value={overview ? String(overview.activeDeliveries) : "—"}
+          caption="Scheduled or in transit"
+          action={
+            <button
+              className="button soft wholesale-summary-action"
+              disabled={locked || !overview}
+              onClick={() => void openSummary("deliveries")}
+            >
+              {openingSummary === "deliveries"
+                ? "Opening..."
+                : "View deliveries"}
+            </button>
+          }
         />
         <Summary
-          label="Reserved units"
-          value={summaryValue(reservedUnits)}
-          caption="Held across all wholesale orders"
+          label="Outstanding Balance"
+          value={overview ? wholesalePeso(overview.outstanding) : "—"}
+          caption="Unpaid client balances"
+          action={
+            <button
+              className="button soft wholesale-summary-action"
+              disabled={locked || !overview}
+              onClick={() => void openSummary("outstanding")}
+            >
+              {openingSummary === "outstanding"
+                ? "Opening..."
+                : "View accounts"}
+            </button>
+          }
         />
+        <div className="wholesale-summary-alert" role="status">
+          <Summary
+            label="Overdue Balance"
+            value={overview ? wholesalePeso(overview.overdue) : "—"}
+            caption={
+              overview
+                ? overview.overdueCount
+                  ? overview.overdueCount +
+                    (overview.overdueCount === 1
+                      ? " overdue account"
+                      : " overdue accounts")
+                  : "No overdue accounts"
+                : "Unavailable"
+            }
+            tone="warning"
+            action={
+              <button
+                className="button soft wholesale-summary-action"
+                disabled={locked || !overview}
+                onClick={() => void openSummary("overdue")}
+              >
+                {openingSummary === "overdue"
+                  ? "Opening..."
+                  : "View overdue accounts"}
+              </button>
+            }
+          />
+        </div>
       </div>
+      {overviewError && (
+        <div role="alert" className="inline-error">
+          {overviewError}
+        </div>
+      )}
+      {summary && (
+        <WholesaleSummaryModal
+          kind={summary.kind}
+          initialData={summary.data}
+          busy={busy || pending !== null || openingAccount}
+          close={() => setSummary(null)}
+          role={role}
+          mutate={mutate}
+          error={formError}
+          retry={pending ? () => void submit(pending) : undefined}
+          viewAccount={(id) => void viewSummaryAccount(id)}
+        />
+      )}
+      {summaryAccount && (
+        <WholesaleReceivables
+          key={summaryAccount.id}
+          search=""
+          role={role}
+          initialDetail={summaryAccount}
+          detailsOnly
+          onClose={() => setSummaryAccount(null)}
+          onChanged={() => void refreshOverview()}
+        />
+      )}
       <div
         className="table-tools supplier-invoices wholesale-tabs"
         role="group"
@@ -268,6 +431,7 @@ export default function WholesalePage({
               onClick={() => {
                 setTab(item);
                 setSearch("");
+                setAccountStatus("all");
               }}
             >
               {item === "orders"
@@ -300,13 +464,20 @@ export default function WholesalePage({
                 onChange={(event) => setSearch(event.target.value)}
               />
             </div>
-            <button
-              className="button soft"
-              disabled={busy || loading}
-              onClick={() => void load()}
-            >
-              <RefreshCw size={15} /> Refresh
-            </button>
+            {tab === "accounts" && (
+              <select
+                aria-label="Payment status"
+                value={accountStatus}
+                onChange={(event) =>
+                  setAccountStatus(event.target.value as WholesaleAccountFilter)
+                }
+              >
+                <option value="all">All accounts</option>
+                <option value="outstanding">Outstanding</option>
+                <option value="overdue">Overdue</option>
+                <option value="paid">Paid</option>
+              </select>
+            )}
             {tab === "clients" && (
               <button
                 className="button primary-action"
@@ -325,7 +496,12 @@ export default function WholesalePage({
             <>
               <div className="table-scroll">
                 {tab === "accounts" && (
-                  <WholesaleReceivables search={search} role={role} />
+                  <WholesaleReceivables
+                    search={search}
+                    role={role}
+                    status={accountStatus}
+                    onChanged={() => void refreshOverview()}
+                  />
                 )}
                 {tab === "receipts" && (
                   <WholesaleDeliveryReceipts

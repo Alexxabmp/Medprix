@@ -1,3 +1,4 @@
+import { ChevronDown } from "lucide-react";
 import { DeliveryReceiptView } from "./delivery-receipt-view";
 import { WholesaleDeliveryPanel } from "./wholesale-delivery-panel";
 import { LoadingState } from "@/components/custom-ui/loading-state";
@@ -8,6 +9,7 @@ import {
   wholesalePeso,
   type WholesaleOrder,
   type WholesaleOrderDetail,
+  type DeliveryReceipt,
 } from "@/lib/wholesale-api";
 import { safeError } from "@/lib/feedback";
 
@@ -19,6 +21,9 @@ export function WholesaleOrderDetails({
   retry,
   close,
   mutate,
+  embedded = false,
+  initialDetail,
+  viewReceipt,
 }: {
   order: WholesaleOrder;
   role: string;
@@ -27,9 +32,14 @@ export function WholesaleOrderDetails({
   retry?: () => void;
   close: () => void;
   mutate: (path: string, method: string, body: unknown) => void;
+  embedded?: boolean;
+  initialDetail?: WholesaleOrderDetail;
+  viewReceipt?: (receipt: DeliveryReceipt) => void;
 }) {
   const [showReceipt, setShowReceipt] = useState(false);
-  const [detail, setDetail] = useState<WholesaleOrderDetail | null>(null);
+  const [detail, setDetail] = useState<WholesaleOrderDetail | null>(
+    initialDetail ?? null,
+  );
   const [loadError, setLoadError] = useState("");
   const [selected, setSelected] = useState<Record<string, string>>({});
   const [action, setAction] = useState<"confirm" | "cancel" | null>(null);
@@ -44,8 +54,8 @@ export function WholesaleOrderDetails({
     }
   }
   useEffect(() => {
-    void load();
-  }, [order.id]);
+    if (!initialDetail) void load();
+  }, [order.id, initialDetail]);
   const draft = order.status === "Pending";
   const active =
     draft ||
@@ -77,14 +87,8 @@ export function WholesaleOrderDetails({
       />
     );
   }
-  return (
-    <WholesaleDialog
-      title="Wholesale order"
-      busy={busy}
-      close={close}
-      review
-      description={order.orderNumber + " · " + order.clientName}
-    >
+  const content = (
+    <>
       {loadError && (
         <div role="alert" className="inline-error">
           {loadError}
@@ -155,7 +159,7 @@ export function WholesaleOrderDetails({
                       )?.price ?? line.unitPrice;
                     return (
                       <tr key={line.productId}>
-                        <td>
+                        <td data-label="Product">
                           <strong>{line.name}</strong>
                           {line.override && (
                             <p className="field-hint">
@@ -164,15 +168,15 @@ export function WholesaleOrderDetails({
                             </p>
                           )}
                         </td>
-                        <td>{line.quantity}</td>
-                        <td>{wholesalePeso(price)}</td>
-                        <td>
+                        <td data-label="Quantity">{line.quantity}</td>
+                        <td data-label="Unit price">{wholesalePeso(price)}</td>
+                        <td data-label="Line total">
                           {wholesalePeso(
                             (Number(price) * line.quantity).toFixed(2),
                           )}
                         </td>
                         {draft && (
-                          <td>
+                          <td data-label="Price approval">
                             <select
                               aria-label={"Price approval for " + line.name}
                               disabled={busy}
@@ -209,8 +213,11 @@ export function WholesaleOrderDetails({
           {draft && (
             <details className="wholesale-review-overrides">
               <summary>
-                Price overrides
-                {current.length ? " (" + current.length + ")" : ""}
+                <span>
+                  Price overrides
+                  {current.length ? " (" + current.length + ")" : ""}
+                </span>
+                <ChevronDown size={16} aria-hidden="true" />
               </summary>
               <div className="wholesale-details">
                 <section className="modal-section">
@@ -349,11 +356,11 @@ export function WholesaleOrderDetails({
                   <tbody>
                     {detail.reservations.map((reservation) => (
                       <tr key={reservation.id}>
-                        <td>{reservation.product}</td>
-                        <td>{reservation.batchNumber}</td>
-                        <td>{reservation.expiry}</td>
-                        <td>{reservation.quantity}</td>
-                        <td>
+                        <td data-label="Product">{reservation.product}</td>
+                        <td data-label="Batch">{reservation.batchNumber}</td>
+                        <td data-label="Expiry">{reservation.expiry}</td>
+                        <td data-label="Quantity">{reservation.quantity}</td>
+                        <td data-label="Status">
                           <span className="pill neutral">
                             {reservation.releasedAt
                               ? "Released"
@@ -375,18 +382,15 @@ export function WholesaleOrderDetails({
               detail={detail}
               busy={busy}
               mutate={mutate}
-              viewReceipt={() => setShowReceipt(true)}
+              viewReceipt={() => {
+                if (viewReceipt && detail.receipt)
+                  viewReceipt(detail.receipt.snapshot);
+                else setShowReceipt(true);
+              }}
             />
           )}
           {active && !action && (
             <div className="wholesale-actions">
-              <button
-                className="button soft wholesale-review-close"
-                disabled={busy}
-                onClick={close}
-              >
-                Close
-              </button>
               <button
                 disabled={busy}
                 className="button soft"
@@ -481,13 +485,6 @@ export function WholesaleOrderDetails({
           )}
         </div>
       )}
-      {(!active || action) && (
-        <div className="modal-actions">
-          <button className="button soft" disabled={busy} onClick={close}>
-            Close
-          </button>
-        </div>
-      )}
       {error && (
         <div role="alert" className="inline-error">
           {error}
@@ -498,6 +495,19 @@ export function WholesaleOrderDetails({
           Retry saved request
         </button>
       )}
+    </>
+  );
+  return embedded ? (
+    content
+  ) : (
+    <WholesaleDialog
+      title="Wholesale order"
+      busy={busy}
+      close={close}
+      review
+      description={order.orderNumber + " \u00b7 " + order.clientName}
+    >
+      {content}
     </WholesaleDialog>
   );
 }
