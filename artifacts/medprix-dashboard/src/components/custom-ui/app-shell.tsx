@@ -51,12 +51,6 @@ export function AppShell({
   }, [role]);
   const roleKey = role.toLowerCase();
   const homeHref = getDefaultRoute(role);
-  const pageName =
-    location === "/dashboard"
-      ? "Dashboard"
-      : (navGroups
-          .flatMap((group) => group.items)
-          .find((item) => item.href === location)?.label ?? "Dashboard");
 
   const storedFullName = localStorage.getItem("medprix-fullname");
   const storedUsername = localStorage.getItem("medprix-username");
@@ -210,7 +204,7 @@ export function AppShell({
               )}
             </Route>
             <Route path="/wholesale">
-              <WholesalePage onToast={onToast} />
+              <WholesalePage onToast={onToast} role={role} />
             </Route>
             <Route path="/system-ad">
               <SystemAdminPage onToast={onToast} />

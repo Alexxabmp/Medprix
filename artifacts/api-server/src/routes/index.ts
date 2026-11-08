@@ -1,3 +1,4 @@
+import wholesaleRouter from "./wholesale";
 import { Router, type IRouter } from "express";
 import healthRouter from "./health";
 import authRouter from "./auth";
@@ -13,6 +14,7 @@ router.use(healthRouter);
 router.use(authRouter);
 router.use(usersRouter);
 router.use(posCheckoutRouter);
+router.use(wholesaleRouter);
 router.use(systemAdminRouter);
 router.use(inventoryRouter);
 router.use(procurementRouter);

@@ -40,6 +40,7 @@ export const productsTable = pgTable(
         isVatExempt: boolean("is_vat_exempt"),
         isDangerousDrug: boolean("is_dangerous_drug").notNull().default(false),
         sellingPrice: money("selling_price").notNull().default("0.00"),
+        wholesalePrice: money("wholesale_price"),
         costPrice: money("cost_price").notNull().default("0.00"),
         minimumStockLevel: integer("minimum_stock_level").notNull().default(0),
         currentStock: integer("current_stock").notNull().default(0),
@@ -49,6 +50,7 @@ export const productsTable = pgTable(
     (t) => [
         uniqueIndex("uq_products_sku_ci").on(sql`upper(btrim(${t.sku}))`),
         check("products_selling_price_check", sql`${t.sellingPrice} >= 0`),
+        check("products_wholesale_price_check", sql`${t.wholesalePrice} >= 0`),
         check("products_cost_price_check", sql`${t.costPrice} >= 0`),
         check("products_minimum_stock_level_check", sql`${t.minimumStockLevel} >= 0`),
         index("idx_products_category").on(t.category),

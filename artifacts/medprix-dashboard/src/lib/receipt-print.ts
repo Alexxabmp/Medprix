@@ -59,6 +59,10 @@ export function receiptDocument(receipt: ShiftReceipt): string {
 let printing = false;
 
 export async function printReceipt(receipt: ShiftReceipt): Promise<void> {
+  await printDocument(receiptDocument(receipt));
+}
+
+export async function printDocument(html: string): Promise<void> {
   if (printing) return;
   printing = true;
   const frame = document.createElement("iframe");
@@ -77,7 +81,7 @@ export async function printReceipt(receipt: ShiftReceipt): Promise<void> {
       frame.onerror = () => reject(new Error("Could not prepare receipt."));
       timer = setTimeout(() => reject(new Error("Receipt preparation timed out.")), 15_000);
     });
-    frame.srcdoc = receiptDocument(receipt);
+    frame.srcdoc = html;
     document.body.appendChild(frame);
     await loaded;
     clearTimeout(timer);

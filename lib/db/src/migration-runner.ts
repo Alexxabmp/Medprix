@@ -24,7 +24,7 @@ export async function runMigrations(options: { client: postgres.Sql; command: Mi
     adoptionRequired: false,
     historyTransferRequired: history.legacy.length > history.native.length,
   });
-  const scopeAt = (count: number) => count >= 10 ? 'runtime' : count === 9 ? 'pre-delivery-runtime' : count === 8 ? 'pre-retirement-runtime' : count === 7 ? 'pre-retail-runtime' : count === 6 ? 'identifier-runtime' : count === 5 ? 'audit-runtime' : count >= 3 ? 'legacy-runtime' : count === 2 ? 'cashier' : 'initial';
+  const scopeAt = (count: number) => count >= 14 ? 'runtime' : count === 13 ? 'wholesale-fulfillment-runtime' : count === 12 ? 'wholesale-reservation-runtime' : count === 11 ? 'wholesale-draft-runtime' : count === 10 ? 'pre-wholesale-runtime' : count === 9 ? 'pre-delivery-runtime' : count === 8 ? 'pre-retirement-runtime' : count === 7 ? 'pre-retail-runtime' : count === 6 ? 'identifier-runtime' : count === 5 ? 'audit-runtime' : count >= 3 ? 'legacy-runtime' : count === 2 ? 'cashier' : 'initial';
   if (options.command === 'status' || options.command === 'plan') {
     return options.client.begin('read only', async tx => {
       const q: CatalogQuery = async (sql, params = []) => ({ rows: await tx.unsafe(sql, params) });

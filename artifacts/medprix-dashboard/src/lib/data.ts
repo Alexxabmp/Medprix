@@ -94,6 +94,7 @@ export function getAllowedHrefs(role: string): string[] {
 }
 
 export function getDefaultRoute(role: string): string {
+  if (role === "FrontDesk") return "/wholesale";
   return getAllowedHrefs(role)[0] ?? "/login";
 }
 

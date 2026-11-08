@@ -1,3 +1,4 @@
+import { LoadingState } from "@/components/custom-ui/loading-state";
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -61,7 +62,8 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
   const [activityModuleFilter, setActivityModuleFilter] = useState<string>("All");
 
   const [auditError, setAuditError] = useState("");
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(true);
   const [isBackingUp, setIsBackingUp] = useState(false);
 
   // Keep transactions in sync with pharmacy-store
@@ -98,7 +100,10 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
       setSystemLogs([]);
       setUserActivities([]);
       setAuditError(safeError(error, "Audit records are unavailable. Refresh to retry."));
-    } finally { setIsRefreshing(false); }
+    } finally {
+      setIsRefreshing(false);
+      setHasLoaded(true);
+    }
   };
 
   // Fetch from API backend on mount
@@ -253,6 +258,13 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
         }
       />
 
+      {isRefreshing && (
+        <LoadingState
+          label={hasLoaded
+            ? "Refreshing System Administration records…"
+            : "Loading System Administration records…"}
+        />
+      )}
       {auditError && <div role="alert" className="surface-card" style={{ padding: 12, marginBottom: 12 }}>{auditError}</div>}
 
       {/* Feature selection tabs */}
@@ -283,7 +295,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
       {/* ========================================================================= */}
       {/* 1. USER TRANSACTIONS FEATURE */}
       {/* ========================================================================= */}
-      {activeTab === "transactions" && (
+      {hasLoaded && activeTab === "transactions" && (
         <div>
           <div className="summary-strip">
             <Summary
@@ -435,7 +447,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
       {/* ========================================================================= */}
       {/* 2. SYSTEM LOGS FEATURE */}
       {/* ========================================================================= */}
-      {activeTab === "systemLogs" && (
+      {hasLoaded && activeTab === "systemLogs" && (
         <div>
           <div className="summary-strip">
             <Summary
@@ -559,7 +571,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
       {/* ========================================================================= */}
       {/* 3. USER ACTIVITY FEATURE */}
       {/* ========================================================================= */}
-      {activeTab === "userActivity" && (
+      {hasLoaded && activeTab === "userActivity" && (
         <div>
           <div className="summary-strip">
             <Summary

@@ -1,17 +1,28 @@
-import type { ProductItem } from "./types";
+import type { ProductItem, ProductBatch } from "./types";
+
+const freeQuantity = (batch: ProductBatch) =>
+  typeof batch.reservedQuantity === "number" && batch.reservedQuantity >= 0
+    ? Math.max(0, Number(batch.quantity) - batch.reservedQuantity)
+    : 0;
 
 // Use the server's pharmacy calendar date, never the device's local calendar.
-const eligible = (product: ProductItem) => (product.batches || []).filter(batch =>
-  Boolean(product.pharmacyDate) && batch.expiryDate >= product.pharmacyDate! && Number(batch.quantity) > 0);
+const eligible = (product: ProductItem) =>
+  (product.batches || []).filter(
+    (batch) =>
+      Boolean(product.pharmacyDate) &&
+      batch.expiryDate >= product.pharmacyDate! &&
+      freeQuantity(batch) > 0,
+  );
 
 export function productStock(product: ProductItem): number {
-  return eligible(product).reduce((sum, batch) => sum + Number(batch.quantity), 0);
+  return eligible(product).reduce((sum, batch) => sum + freeQuantity(batch), 0);
 }
 
 export function productAvailability(product: ProductItem, inCart = 0) {
   const stock = productStock(product);
   if (!product.pharmacyDate) return "Stock unavailable";
-  if (!product.batches?.length && Number(product.stock) > 0) return "Stock unavailable";
+  if (!product.batches?.length && Number(product.stock) > 0)
+    return "Stock unavailable";
   if (!stock) return "Out of stock";
   if (!product.batches?.some((batch) => Number(batch.quantity) > 0))
     return "Stock unavailable";
@@ -23,13 +34,13 @@ export function batchAllocations(product: ProductItem, quantity: number) {
   if (!Number.isInteger(quantity) || quantity < 1) return null;
   let remaining = quantity;
   const allocations: { batchNumber: string; quantity: number }[] = [];
-  const batches = eligible(product)
-    .sort(
-      (a, b) =>
-        a.expiryDate.localeCompare(b.expiryDate) || (a.id ?? a.batchNumber).localeCompare(b.id ?? b.batchNumber),
-    );
+  const batches = eligible(product).sort(
+    (a, b) =>
+      a.expiryDate.localeCompare(b.expiryDate) ||
+      (a.id ?? a.batchNumber).localeCompare(b.id ?? b.batchNumber),
+  );
   for (const batch of batches) {
-    const allocated = Math.min(Number(batch.quantity), remaining);
+    const allocated = Math.min(freeQuantity(batch), remaining);
     if (allocated <= 0) break;
     allocations.push({ batchNumber: batch.batchNumber, quantity: allocated });
     remaining -= allocated;

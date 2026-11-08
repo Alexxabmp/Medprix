@@ -22,6 +22,7 @@ export interface UserRecord {
 }
 
 export interface ProductBatch {
+  reservedQuantity?: number;
   id?: string;
   batchNumber: string;
   quantity: number;
