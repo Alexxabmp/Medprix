@@ -1,3 +1,4 @@
+import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { LoadingState } from "./custom-ui/loading-state";
 import { WholesaleDialog } from "./wholesale-dialog";
@@ -218,11 +219,11 @@ export function WholesaleReceivables({
                 !loadError &&
                 !data?.items.length && (
                   <tr>
-                    <td colSpan={7} className="muted">
+                    <TableEmptyState colSpan={7}>
                       {search
                         ? "No matching receivables."
                         : "No delivered receivables found."}
-                    </td>
+                    </TableEmptyState>
                   </tr>
                 )
               )}
@@ -379,12 +380,9 @@ export function WholesaleReceivables({
                           ))}
                           {!detail.payments.length && (
                             <tr>
-                              <td
-                                colSpan={role === "Admin" ? 5 : 4}
-                                className="muted"
-                              >
+                              <TableEmptyState colSpan={role === "Admin" ? 5 : 4}>
                                 No payments recorded.
-                              </td>
+                              </TableEmptyState>
                             </tr>
                           )}
                         </tbody>

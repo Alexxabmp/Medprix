@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { Truck } from "lucide-react";
+import { EmptyState } from "./custom-ui/empty-state";
 import { pharmacyDate } from "@workspace/api-zod";
 import type { WholesaleOrder, WholesaleOrderDetail } from "@/lib/wholesale-api";
 import { wholesalePeso } from "@/lib/wholesale-api";
@@ -26,7 +28,7 @@ export function WholesaleDeliveryPanel({
     <section className="modal-section wholesale-details">
       <h3>Delivery</h3>
       {detail.attempts.length === 0 && (
-        <p className="field-hint">No delivery attempts scheduled.</p>
+        <EmptyState icon={Truck}>No delivery attempts scheduled.</EmptyState>
       )}
       {detail.attempts.length > 0 && (
         <div className="table-scroll">

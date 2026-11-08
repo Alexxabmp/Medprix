@@ -1,3 +1,4 @@
+import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { parseCalendarDate, formatCalendarDate } from "@/lib/business-date";
 import { pharmacyDate } from "@workspace/api-zod";
 import { createReceivingSubmitter, type PendingReceiving } from "@/lib/receiving-submission";
@@ -737,9 +738,9 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 {tableMessage(7, loadingSections.orders, orders.length) ||
                   (filteredOrders.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="muted">
+                      <TableEmptyState colSpan={7} icon={Package}>
                         {orderSearch || status !== "All orders" ? "No purchase orders match these filters." : "No purchase orders found."}
-                      </td>
+                      </TableEmptyState>
                     </tr>
                   ) : (
                     filteredOrders.map((order) => (
@@ -842,7 +843,13 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               <tbody>
                 {tableMessage(8, loadingSections.deliveries, deliveries.length) ||
                   (filteredReceivingRows.length === 0 ? (
-                    <tr><td colSpan={8} className="muted">{receivingSearch ? "No receiving reports match this search." : "No receiving reports found."}</td></tr>
+                    <tr>
+                      <TableEmptyState colSpan={8} icon={Package}>
+                        {receivingSearch
+                          ? "No receiving reports match this search."
+                          : "No receiving reports found."}
+                      </TableEmptyState>
+                    </tr>
                   ) : filteredReceivingRows.map(({delivery, item}) => {
                     const expiry = expiryStatus(item.expirationDate);
                     return <tr key={item.id}>
@@ -903,9 +910,9 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 {tableMessage(6, loadingSections.invoices, invoices.length) ||
                   (filteredInvoices.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="muted">
+                      <TableEmptyState colSpan={6} icon={Package}>
                         {invoiceSearch ? "No supplier invoices match this search." : "No supplier invoices found."}
-                      </td>
+                      </TableEmptyState>
                     </tr>
                   ) : (
                     filteredInvoices.map((invoice) => (

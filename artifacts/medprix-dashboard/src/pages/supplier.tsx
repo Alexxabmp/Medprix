@@ -1,3 +1,4 @@
+import { EmptyState, TableEmptyState } from "@/components/custom-ui/empty-state";
 import { useDialogAccessibility } from "@/lib/use-dialog-accessibility";
 import { SupplierPaymentDialog } from "@/components/supplier-payment-dialog";
 import { safeError, readResponse } from "@/lib/feedback";
@@ -507,9 +508,9 @@ export default function SupplierPage({
                     </tr>
                   ) : filtered.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="muted">
+                      <TableEmptyState colSpan={6} icon={Building2}>
                         No suppliers found.
-                      </td>
+                      </TableEmptyState>
                     </tr>
                   ) : (
                     filtered.map((supplier) => (
@@ -634,9 +635,9 @@ export default function SupplierPage({
                     </tr>
                   ) : filteredPayables.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="muted">
+                      <TableEmptyState colSpan={8} icon={Building2}>
                         No supplier invoices match this status.
-                      </td>
+                      </TableEmptyState>
                     </tr>
                   ) : (
                     filteredPayables.map((payable) => (
@@ -1040,9 +1041,9 @@ export default function SupplierPage({
                             ))
                           ) : (
                             <tr>
-                              <td colSpan={4} className="muted">
+                              <TableEmptyState colSpan={4} icon={Building2}>
                                 No purchase orders recorded.
-                              </td>
+                              </TableEmptyState>
                             </tr>
                           )}
                         </tbody>
@@ -1110,9 +1111,9 @@ export default function SupplierPage({
                                 })
                               ) : (
                                 <tr>
-                                  <td colSpan={4} className="muted">
+                                  <TableEmptyState colSpan={4} icon={Building2}>
                                     No invoices recorded.
-                                  </td>
+                                  </TableEmptyState>
                                 </tr>
                               )}
                             </tbody>
@@ -1137,7 +1138,9 @@ export default function SupplierPage({
                               </div>
                             ))
                           ) : (
-                            <p className="muted">No payments recorded.</p>
+                            <EmptyState icon={CircleDollarSign}>
+                              No payments recorded.
+                            </EmptyState>
                           )}
                         </div>
                       </section>

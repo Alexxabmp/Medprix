@@ -1,3 +1,4 @@
+import { EmptyState } from "@/components/custom-ui/empty-state";
 import { useMemo, useState } from "react";
 import {
   ArrowUpRight,
@@ -186,12 +187,9 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
             </div>
           ))}
           {displayedCashMismatches.length === 0 && (
-            <div className="list-row">
-              <div className="row-main">
-                <strong>All shifts balanced</strong>
-                <span>No cash discrepancies detected in recorded transactions.</span>
-              </div>
-            </div>
+            <EmptyState>
+              No cash discrepancies detected in recorded transactions.
+            </EmptyState>
           )}
         </section>
 

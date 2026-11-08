@@ -1,3 +1,4 @@
+import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { safeError, readResponse } from "@/lib/feedback";
 import { ProductDialog } from "@/components/custom-ui/product-dialog";
 import { matchesProductSearch } from "@/lib/product-form";
@@ -1136,6 +1137,13 @@ export default function InventoryPage({
                           </tr>
                         );
                       })}
+                      {viewProduct.batches.length === 0 && (
+                        <tr>
+                          <TableEmptyState colSpan={6} icon={Package}>
+                            No batches recorded for this product.
+                          </TableEmptyState>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -1641,9 +1649,9 @@ export default function InventoryPage({
                         })}
                       {lowStockItems.length === 0 && (
                         <tr>
-                          <td colSpan={6} style={{ textAlign: "center", padding: 24 }} className="muted">
+                          <TableEmptyState colSpan={6} icon={Package}>
                             All products have optimal stock levels.
-                          </td>
+                          </TableEmptyState>
                         </tr>
                       )}
                     </tbody>
@@ -1775,9 +1783,9 @@ export default function InventoryPage({
                         ))}
                       {expiredItems.length === 0 && expiringSoonItems.length === 0 && (
                         <tr>
-                          <td colSpan={6} style={{ textAlign: "center", padding: 24 }} className="muted">
+                          <TableEmptyState colSpan={6} icon={Package}>
                             No expired or expiring products found in inventory.
-                          </td>
+                          </TableEmptyState>
                         </tr>
                       )}
                     </tbody>

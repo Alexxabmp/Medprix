@@ -1,3 +1,4 @@
+import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import {
   WholesaleSummaryModal,
   wholesaleSummaryPath,
@@ -552,11 +553,11 @@ export default function WholesalePage({
                       ))}
                       {!visibleOrders.length && (
                         <tr>
-                          <td colSpan={5} className="muted">
+                          <TableEmptyState colSpan={5}>
                             {search
                               ? "No matching records."
                               : "No wholesale orders found."}
-                          </td>
+                          </TableEmptyState>
                         </tr>
                       )}
                     </tbody>
@@ -589,11 +590,11 @@ export default function WholesalePage({
                       ))}
                       {!visibleClients.length && (
                         <tr>
-                          <td colSpan={3} className="muted">
+                          <TableEmptyState colSpan={3}>
                             {search
                               ? "No matching records."
                               : "No wholesale clients found."}
-                          </td>
+                          </TableEmptyState>
                         </tr>
                       )}
                     </tbody>
@@ -645,14 +646,11 @@ export default function WholesalePage({
                       ))}
                       {!visibleProducts.length && (
                         <tr>
-                          <td
-                            colSpan={role === "Admin" ? 7 : 6}
-                            className="muted"
-                          >
+                          <TableEmptyState colSpan={role === "Admin" ? 7 : 6}>
                             {search
                               ? "No matching records."
                               : "No wholesale products found."}
-                          </td>
+                          </TableEmptyState>
                         </tr>
                       )}
                     </tbody>

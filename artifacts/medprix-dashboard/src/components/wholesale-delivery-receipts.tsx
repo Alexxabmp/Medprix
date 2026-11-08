@@ -1,3 +1,4 @@
+import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { useState } from "react";
 import { DeliveryReceiptView } from "./delivery-receipt-view";
 import {
@@ -75,11 +76,11 @@ export function WholesaleDeliveryReceipts({
           ))}
           {!visible.length && (
             <tr>
-              <td colSpan={4} className="muted">
+              <TableEmptyState colSpan={4}>
                 {search
                   ? "No matching receipts."
                   : "No delivery receipts found."}
-              </td>
+              </TableEmptyState>
             </tr>
           )}
         </tbody>

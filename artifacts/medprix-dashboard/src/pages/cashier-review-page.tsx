@@ -1,3 +1,4 @@
+import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -342,7 +343,11 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                       </tr>
                     ))}
                     {completedReceipts.length === 0 && (
-                      <tr><td colSpan={6} className="muted">No completed sales recorded on {dateLabel}.</td></tr>
+                      <tr>
+                        <TableEmptyState colSpan={6} icon={Receipt}>
+                          No completed sales recorded on {dateLabel}.
+                        </TableEmptyState>
+                      </tr>
                     )}
                   </tbody>
                 </table>
@@ -522,9 +527,9 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                   ))}
                   {filteredShiftReceipts.length === 0 && (
                     <tr>
-                      <td colSpan={6} style={{ textAlign: "center", padding: 24 }} className="muted">
+                      <TableEmptyState colSpan={6} icon={Receipt}>
                         No receipts match {dateLabel} and the current search.
-                      </td>
+                      </TableEmptyState>
                     </tr>
                   )}
                 </tbody>
