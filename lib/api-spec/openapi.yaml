@@ -24,7 +24,43 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /finance/summary:
+    get:
+      operationId: getFinanceSummary
+      tags: [finance]
+      summary: Read the finance summary
+      parameters:
+        - $ref: "#/components/parameters/FromDate"
+        - $ref: "#/components/parameters/ToDate"
+      responses:
+        "200":
+          description: Finance summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FinanceSummary"
+        "400":
+          description: Invalid date range
+        "401":
+          description: Unauthenticated
+        "403":
+          description: Insufficient role
 components:
+  parameters:
+    FromDate:
+      name: from
+      in: query
+      required: true
+      schema:
+        type: string
+        format: date
+    ToDate:
+      name: to
+      in: query
+      required: true
+      schema:
+        type: string
+        format: date
   schemas:
     HealthStatus:
       type: object
@@ -33,4 +69,99 @@ components:
           type: string
       required:
         - status
-
+    FinanceSummary:
+      type: object
+      required:
+        - success
+        - from
+        - to
+        - asOf
+        - revenue
+        - costOfGoodsSold
+        - grossProfit
+        - grossMargin
+        - cashCollected
+        - cashPaid
+        - accountsReceivable
+        - accountsPayable
+        - itemsMissingCost
+        - warnings
+        - costBasis
+        - operatingExpensesIncluded
+        - operatingExpensesNote
+      properties:
+        success:
+          type: boolean
+        from:
+          type: string
+          format: date
+        to:
+          type: string
+          format: date
+        asOf:
+          type: string
+          format: date
+        revenue:
+          $ref: "#/components/schemas/FinanceRevenue"
+        costOfGoodsSold:
+          type: string
+        grossProfit:
+          type: string
+        grossMargin:
+          type: number
+          nullable: true
+        cashCollected:
+          type: string
+        cashPaid:
+          type: string
+        accountsReceivable:
+          $ref: "#/components/schemas/FinanceBalanceStatus"
+        accountsPayable:
+          $ref: "#/components/schemas/FinanceBalanceStatus"
+        itemsMissingCost:
+          type: object
+          required: [count, affectedRevenue]
+          properties:
+            count:
+              type: integer
+            affectedRevenue:
+              type: string
+        warnings:
+          type: array
+          items:
+            type: string
+        costBasis:
+          type: string
+        operatingExpensesIncluded:
+          type: boolean
+        operatingExpensesNote:
+          type: string
+    FinanceRevenue:
+      type: object
+      required: [retail, wholesale, total]
+      properties:
+        retail:
+          type: string
+        wholesale:
+          type: string
+        total:
+          type: string
+    FinanceBalanceStatus:
+      type: object
+      required:
+        - outstanding
+        - overdue
+        - overdueCount
+        - needsReviewCount
+        - needsReviewAmount
+      properties:
+        outstanding:
+          type: string
+        overdue:
+          type: string
+        overdueCount:
+          type: integer
+        needsReviewCount:
+          type: integer
+        needsReviewAmount:
+          type: string

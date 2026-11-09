@@ -7,6 +7,7 @@ import systemAdminRouter from "./systemAdmin";
 import inventoryRouter from "./inventory";
 import procurementRouter from "./procurement";
 import posCheckoutRouter from "./pos-checkouts";
+import financeRouter from "./finance";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(wholesaleRouter);
 router.use(systemAdminRouter);
 router.use(inventoryRouter);
 router.use(procurementRouter);
+router.use(financeRouter);
 
 export default router;
