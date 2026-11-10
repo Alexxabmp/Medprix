@@ -62,7 +62,7 @@ retail AS (
     COALESCE((SELECT SUM(net_amount) FROM retail_transactions WHERE status = 'Completed'), 0)::text AS revenue,
     COALESCE(SUM(ti.quantity * p.cost_price) FILTER (WHERE t.status = 'Completed'), 0)::text AS cogs,
     COUNT(*) FILTER (WHERE t.status = 'Completed' AND (p.id IS NULL OR p.cost_price <= 0))::int AS missing_cost_items,
-    COALESCE(SUM(ti.net_amount) FILTER (WHERE t.status = 'Completed' AND (p.id IS NULL OR p.cost_price <= 0)), 0)::text AS missing_cost_revenue
+    COALESCE(SUM(ti.subtotal) FILTER (WHERE t.status = 'Completed' AND (p.id IS NULL OR p.cost_price <= 0)), 0)::text AS missing_cost_revenue
   FROM transactions t
   LEFT JOIN transaction_items ti ON ti.transaction_id = t.id
   LEFT JOIN products p ON p.id = ti.product_id
@@ -127,7 +127,7 @@ wholesale_snapshot_warnings AS (
   FROM wholesale_snapshots
   WHERE total IS NULL
 ),
-wholesale_payments AS (
+period_ar_payments AS (
   SELECT COALESCE(SUM(p.amount_paid), 0)::text AS collected
   FROM ar_payments p
   LEFT JOIN wholesale_collection_reversals r ON r.collection_id = p.id
@@ -135,7 +135,7 @@ wholesale_payments AS (
     AND (p.payment_date AT TIME ZONE 'Asia/Manila')::date >= $1::date
     AND (p.payment_date AT TIME ZONE 'Asia/Manila')::date < ($2::date + 1)
 ),
-supplier_payments AS (
+period_supplier_payments AS (
   SELECT COALESCE(SUM(amount_paid), 0)::text AS paid
   FROM supplier_payments
   WHERE (payment_date AT TIME ZONE 'Asia/Manila')::date >= $1::date
@@ -240,8 +240,8 @@ SELECT
   wholesale.missing_cost_items AS wholesale_missing_cost_items,
   wholesale.missing_cost_revenue AS wholesale_missing_cost_revenue,
   wholesale_snapshot_warnings.malformed_count AS malformed_wholesale_snapshot_count,
-  wholesale_payments.collected AS wholesale_collected,
-  supplier_payments.paid AS supplier_paid,
+  period_ar_payments.collected AS wholesale_collected,
+  period_supplier_payments.paid AS supplier_paid,
   (now() AT TIME ZONE 'Asia/Manila')::date::text AS as_of,
   ar_totals.outstanding AS ar_outstanding,
   ar_totals.overdue AS ar_overdue,
@@ -256,7 +256,7 @@ SELECT
   ap_totals.review_amount AS ap_review_amount
   , ap_warnings.missing_payable_count AS ap_missing_payable_count
 FROM retail, wholesale, wholesale_revenue, wholesale_snapshot_warnings,
-  wholesale_payments, supplier_payments, ar_totals, ar_warnings, ap_totals,
+  period_ar_payments, period_supplier_payments, ar_totals, ar_warnings, ap_totals,
   ap_warnings
 `;
 
@@ -352,6 +352,7 @@ export async function readFinanceSummary(
     },
     itemsMissingCost: {
       count: missingCostItems,
+      // This is missing-cost line subtotal before transaction-level discounts.
       affectedRevenue: money(missingCostRevenue),
     },
     warnings,
