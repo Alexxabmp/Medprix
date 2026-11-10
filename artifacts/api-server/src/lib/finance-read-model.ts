@@ -127,6 +127,17 @@ wholesale_snapshot_warnings AS (
   FROM wholesale_snapshots
   WHERE total IS NULL
 ),
+ar_fulfillment_snapshots AS (
+  SELECT
+    f.id AS fulfillment_id,
+    CASE
+      WHEN jsonb_typeof(f.snapshot) = 'object'
+        AND jsonb_typeof(f.snapshot->'lines') = 'array'
+        AND f.snapshot->>'total' ~ '^-?[0-9]+(\\.[0-9]+)?$'
+      THEN f.snapshot->>'total'
+    END AS total
+  FROM wholesale_fulfillments f
+),
 period_ar_payments AS (
   SELECT COALESCE(SUM(p.amount_paid), 0)::text AS collected
   FROM ar_payments p
@@ -168,7 +179,7 @@ ar_facts AS (
     ) AS reconciled
   FROM accounts_receivable a
   LEFT JOIN wholesale_fulfillments raw_f ON raw_f.ar_id = a.id
-  LEFT JOIN wholesale_snapshots f ON f.fulfillment_id = raw_f.id
+  LEFT JOIN ar_fulfillment_snapshots f ON f.fulfillment_id = raw_f.id
   LEFT JOIN ar_history h ON h.ar_id = a.id
 ),
 ar_warnings AS (
