@@ -14,3 +14,50 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * @summary Read the finance summary
+ */
+export const GetFinanceSummaryQueryParams = zod.object({
+  from: zod.date(),
+  to: zod.date(),
+});
+
+export const GetFinanceSummaryResponse = zod.object({
+  success: zod.boolean(),
+  from: zod.coerce.date(),
+  to: zod.coerce.date(),
+  asOf: zod.coerce.date(),
+  revenue: zod.object({
+    retail: zod.string(),
+    wholesale: zod.string(),
+    total: zod.string(),
+  }),
+  costOfGoodsSold: zod.string(),
+  grossProfit: zod.string(),
+  grossMargin: zod.number().nullable(),
+  cashCollected: zod.string(),
+  cashPaid: zod.string(),
+  accountsReceivable: zod.object({
+    outstanding: zod.string(),
+    overdue: zod.string(),
+    overdueCount: zod.number(),
+    needsReviewCount: zod.number(),
+    needsReviewAmount: zod.string(),
+  }),
+  accountsPayable: zod.object({
+    outstanding: zod.string(),
+    overdue: zod.string(),
+    overdueCount: zod.number(),
+    needsReviewCount: zod.number(),
+    needsReviewAmount: zod.string(),
+  }),
+  itemsMissingCost: zod.object({
+    count: zod.number(),
+    affectedRevenue: zod.string(),
+  }),
+  warnings: zod.array(zod.string()),
+  costBasis: zod.string(),
+  operatingExpensesIncluded: zod.boolean(),
+  operatingExpensesNote: zod.string(),
+});

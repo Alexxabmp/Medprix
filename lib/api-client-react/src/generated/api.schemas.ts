@@ -8,3 +8,51 @@
 export interface HealthStatus {
   status: string;
 }
+
+export type FinanceSummaryItemsMissingCost = {
+  count: number;
+  affectedRevenue: string;
+};
+
+export interface FinanceRevenue {
+  retail: string;
+  wholesale: string;
+  total: string;
+}
+
+export interface FinanceBalanceStatus {
+  outstanding: string;
+  overdue: string;
+  overdueCount: number;
+  needsReviewCount: number;
+  needsReviewAmount: string;
+}
+
+export interface FinanceSummary {
+  success: boolean;
+  from: string;
+  to: string;
+  asOf: string;
+  revenue: FinanceRevenue;
+  costOfGoodsSold: string;
+  grossProfit: string;
+  grossMargin: number | null;
+  cashCollected: string;
+  cashPaid: string;
+  accountsReceivable: FinanceBalanceStatus;
+  accountsPayable: FinanceBalanceStatus;
+  itemsMissingCost: FinanceSummaryItemsMissingCost;
+  warnings: string[];
+  costBasis: string;
+  operatingExpensesIncluded: boolean;
+  operatingExpensesNote: string;
+}
+
+export type FromDateParameter = string;
+
+export type ToDateParameter = string;
+
+export type GetFinanceSummaryParams = {
+  from: FromDateParameter;
+  to: ToDateParameter;
+};
