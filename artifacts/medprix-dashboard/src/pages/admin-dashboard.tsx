@@ -73,7 +73,7 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
           testId="card-report-inventory"
         />
         <Kpi
-          label="Financial"
+          label="Financial · All Time"
           value={
             financial.status === "ready"
               ? formatPeso(financial.data.revenue.total)
