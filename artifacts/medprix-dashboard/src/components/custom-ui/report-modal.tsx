@@ -4,6 +4,9 @@ import { ArrowUpRight, Download, X } from "lucide-react";
 import {
   buildReportPdf,
   computeDashboardAnalytics,
+  financialPeriodLabel,
+  financialReportRows,
+  financialReportNotes,
   formatPeso,
   parseMoney,
   type DashboardAnalytics,
@@ -18,6 +21,10 @@ export function exportReport(
   analytics?: DashboardAnalytics,
 ) {
   const resolved = analytics ?? computeDashboardAnalytics([], [], new Date());
+  if (type === "financial" && resolved.financial.status !== "ready") {
+    onToast("Financial summary is unavailable. Load it before exporting.");
+    return;
+  }
   const pdfBytes = buildReportPdf(type, resolved);
   const link = document.createElement("a");
   link.href = URL.createObjectURL(
@@ -137,6 +144,7 @@ export function ReportModal({
   liveProducts = [],
   salesDate = new Date(),
   analytics: providedAnalytics,
+  onRetryFinance,
 }: {
   type: ReportType;
   initialCashDetailRow?: number | null;
@@ -146,6 +154,7 @@ export function ReportModal({
   liveProducts?: any[];
   salesDate?: Date;
   analytics?: DashboardAnalytics;
+  onRetryFinance?: () => void;
 }) {
   const [movementTab, setMovementTab] = useState<"fast" | "slow">("fast");
   const [cashDetailRow, setCashDetailRow] = useState<number | null>(
@@ -173,6 +182,7 @@ export function ReportModal({
     };
   }, []);
 
+  const financial = analytics.financial;
   const cashMismatches = analytics.cash.mismatches;
   const activeCashRow =
     cashDetailRow !== null ? cashMismatches[cashDetailRow] ?? null : null;
@@ -190,9 +200,13 @@ export function ReportModal({
 
   const subtitle = activeCashRow
     ? `Shift reconciliation · ${activeCashRow.fullDateLabel} · Medprix Central`
-    : type === "financial" || type === "movement" || type === "cash"
-      ? `Period: ${analytics.periodLabel} · Medprix Central`
-      : `${analytics.salesDateLabel} · Medprix Central`;
+    : type === "financial"
+      ? financial.status === "ready"
+        ? `Period: ${financialPeriodLabel(financial.data)} \u00b7 Medprix Central`
+        : "Financial summary"
+      : type === "movement" || type === "cash"
+        ? `Period: ${analytics.periodLabel} · Medprix Central`
+        : `${analytics.salesDateLabel} · Medprix Central`;
 
   return createPortal(
     <div
@@ -306,50 +320,66 @@ export function ReportModal({
         )}
 
         {/* Financial */}
-        {type === "financial" && (
-          <>
-            <div className="report-metrics">
-              <ReportMetric
-                label="Total sales"
-                value={formatPeso(analytics.financial.totalSales)}
-              />
-              <ReportMetric
-                label="Expenses (COGS)"
-                value={formatPeso(analytics.financial.expenses)}
-              />
-              <ReportMetric
-                label="Net profit"
-                value={formatPeso(analytics.financial.netProfit)}
-              />
+        {type === "financial" &&
+          (financial.status === "ready" ? (
+            <>
+              {financial.isRefreshing && (
+                <p role="status">Refreshing financial summary...</p>
+              )}
+              {financial.refreshError && (
+                <div className="inline-error" role="alert">
+                  <p>
+                    Refresh failed; showing the last successful financial
+                    summary. {financial.refreshError}
+                  </p>
+                  {onRetryFinance && (
+                    <button
+                      className="button soft"
+                      disabled={financial.isRefreshing}
+                      onClick={onRetryFinance}
+                    >
+                      Retry
+                    </button>
+                  )}
+                </div>
+              )}
+              <div className="report-metrics">
+                <ReportMetric
+                  label="Total revenue"
+                  value={formatPeso(financial.data.revenue.total)}
+                />
+                <ReportMetric
+                  label="Cost of goods sold (COGS)"
+                  value={formatPeso(financial.data.costOfGoodsSold)}
+                />
+                <ReportMetric
+                  label="Gross profit"
+                  value={formatPeso(financial.data.grossProfit)}
+                />
+              </div>
+              <ModalSection title="Summary">
+                {financialReportRows(financial.data).map(([label, value]) => (
+                  <ModalRow key={label} label={label} value={value} />
+                ))}
+              </ModalSection>
+              <ModalSection title="Financial notes and warnings">
+                {financialReportNotes(financial.data).map((note, index) => (
+                  <p key={index}>{note}</p>
+                ))}
+              </ModalSection>
+            </>
+          ) : financial.status === "loading" ? (
+            <p role="status">Loading financial summary...</p>
+          ) : (
+            <div className="inline-error" role="alert">
+              <p>{financial.error}</p>
+              {onRetryFinance && (
+                <button className="button soft" onClick={onRetryFinance}>
+                  Retry
+                </button>
+              )}
             </div>
-            <ModalSection title="Summary">
-              <ModalRow
-                label="Gross sales"
-                value={formatPeso(analytics.financial.grossSales)}
-              />
-              <ModalRow
-                label="Discounts granted"
-                value={formatPeso(analytics.financial.totalDiscount)}
-              />
-              <ModalRow
-                label="VAT collected"
-                value={formatPeso(analytics.financial.totalVat)}
-              />
-              <ModalRow
-                label="Cost of goods sold (COGS)"
-                value={formatPeso(analytics.financial.expenses)}
-              />
-              <ModalRow
-                label="Gross margin"
-                value={`${analytics.financial.grossMarginPct.toFixed(1)}%`}
-              />
-              <ModalRow
-                label="Net profit margin"
-                value={`${analytics.financial.netProfitMarginPct.toFixed(1)}%`}
-              />
-            </ModalSection>
-          </>
-        )}
+          ))}
 
         {/* Valuation */}
         {type === "valuation" && (
@@ -540,6 +570,7 @@ export function ReportModal({
           <button
             className="button dark"
             data-testid="button-export-report"
+            disabled={type === "financial" && financial.status !== "ready"}
             onClick={() => exportReport(type, onToast, analytics)}>
             <Download size={14} /> Export report
           </button>

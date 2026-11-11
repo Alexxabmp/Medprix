@@ -13,7 +13,11 @@ import type {
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { HealthStatus } from "./api.schemas";
+import type {
+  FinanceSummary,
+  GetFinanceSummaryParams,
+  HealthStatus,
+} from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
 import type { ErrorType } from "../custom-fetch";
@@ -92,6 +96,103 @@ export function useHealthCheck<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getHealthCheckQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Read the finance summary
+ */
+export const getGetFinanceSummaryUrl = (params: GetFinanceSummaryParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/finance/summary?${stringifiedParams}`
+    : `/api/finance/summary`;
+};
+
+export const getFinanceSummary = async (
+  params: GetFinanceSummaryParams,
+  options?: RequestInit,
+): Promise<FinanceSummary> => {
+  return customFetch<FinanceSummary>(getGetFinanceSummaryUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetFinanceSummaryQueryKey = (
+  params?: GetFinanceSummaryParams,
+) => {
+  return [`/api/finance/summary`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetFinanceSummaryQueryOptions = <
+  TData = Awaited<ReturnType<typeof getFinanceSummary>>,
+  TError = ErrorType<void>,
+>(
+  params: GetFinanceSummaryParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFinanceSummary>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetFinanceSummaryQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getFinanceSummary>>
+  > = ({ signal }) => getFinanceSummary(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getFinanceSummary>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetFinanceSummaryQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getFinanceSummary>>
+>;
+export type GetFinanceSummaryQueryError = ErrorType<void>;
+
+/**
+ * @summary Read the finance summary
+ */
+
+export function useGetFinanceSummary<
+  TData = Awaited<ReturnType<typeof getFinanceSummary>>,
+  TError = ErrorType<void>,
+>(
+  params: GetFinanceSummaryParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFinanceSummary>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetFinanceSummaryQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

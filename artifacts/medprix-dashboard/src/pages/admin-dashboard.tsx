@@ -13,24 +13,20 @@ import { useBusinessDate } from "@/lib/use-business-date";
 import { Kpi } from "@/components/custom-ui/kpi-card";
 import { MovementLineGraph } from "@/components/custom-ui/movement-line-graph";
 import { ReportModal } from "@/components/custom-ui/report-modal";
-import { computeDashboardAnalytics, formatPeso } from "@/lib/dashboard-analytics";
-import type { ReportType, ToastFn } from "@/lib/types";
 import {
-  usePharmacyTransactions,
-  usePharmacyInventory,
-} from "@/lib/pharmacy-store";
+  financialArReviewMessage,
+  formatPeso,
+} from "@/lib/dashboard-analytics";
+import { useDashboardAnalytics } from "@/lib/use-dashboard-analytics";
+import type { ReportType, ToastFn } from "@/lib/types";
 
 export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
   const [report, setReport] = useState<ReportType | null>(null);
   const [cashDetailRow, setCashDetailRow] = useState<number | null>(null);
-  const { transactions } = usePharmacyTransactions();
   const { date: salesDate, selectDate } = useBusinessDate();
-  const { items: inventoryProducts } = usePharmacyInventory();
-
-  const analytics = useMemo(
-    () => computeDashboardAnalytics(transactions, inventoryProducts, salesDate),
-    [transactions, inventoryProducts, salesDate],
-  );
+  const { analytics, transactions, inventoryProducts, retryFinance } =
+    useDashboardAnalytics(salesDate);
+  const financial = analytics.financial;
 
   const barItems = useMemo(
     () => analytics.movement.chartFast.concat(analytics.movement.chartSlow),
@@ -78,8 +74,20 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
         />
         <Kpi
           label="Financial"
-          value={formatPeso(analytics.financial.totalSales)}
-          change={`${formatPeso(analytics.financial.netProfit)} net profit`}
+          value={
+            financial.status === "ready"
+              ? formatPeso(financial.data.revenue.total)
+              : financial.status === "loading"
+                ? "Loading\u2026"
+                : "Unavailable"
+          }
+          change={
+            financial.status === "ready"
+              ? financialArReviewMessage(financial.data)
+              : financial.status === "loading"
+                ? "Loading financial summary"
+                : "Financial summary unavailable"
+          }
           icon={CircleDollarSign}
           onClick={() => setReport("financial")}
           testId="card-report-financial"
@@ -104,7 +112,8 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
           <div>
             <h2 className="card-title">Product movement</h2>
             <p className="card-subtitle">
-              Units sold · {analytics.periodLabel} ({analytics.movement.totalUnitsSold.toLocaleString()} total units)
+              Units sold · {analytics.periodLabel} (
+              {analytics.movement.totalUnitsSold.toLocaleString()} total units)
             </p>
           </div>
           <div className="chart-legend">
@@ -189,7 +198,9 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
             <div className="list-row">
               <div className="row-main">
                 <strong>All shifts balanced</strong>
-                <span>No cash discrepancies detected in recorded transactions.</span>
+                <span>
+                  No cash discrepancies detected in recorded transactions.
+                </span>
               </div>
             </div>
           )}
@@ -228,6 +239,7 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
           liveProducts={inventoryProducts}
           salesDate={salesDate}
           analytics={analytics}
+          onRetryFinance={retryFinance}
           onClose={() => {
             setReport(null);
             setCashDetailRow(null);

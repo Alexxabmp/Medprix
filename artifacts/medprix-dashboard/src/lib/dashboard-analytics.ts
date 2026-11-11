@@ -1,3 +1,4 @@
+import type { FinanceSummary } from "@workspace/api-client-react";
 import { formatCalendarDate, localDateKey, parseCalendarDate, recordsOnDate, transactionDateKey } from "./business-date";
 import type { CashMismatch, MovementItem, ProductItem, ReportType } from "./types";
 
@@ -56,6 +57,142 @@ export interface LiveMovementItem extends MovementItem {
   stock: number;
 }
 
+export interface DashboardFinanceData {
+  from: string;
+  to: string;
+  asOf: string;
+  revenue: { retail: number; wholesale: number; total: number };
+  costOfGoodsSold: number;
+  grossProfit: number;
+  grossMarginPct: number | null;
+  accountsReceivable: { needsReviewCount: number; needsReviewAmount: number };
+  itemsMissingCost: { count: number; affectedRevenue: number };
+  warnings: string[];
+  costBasis: string;
+  operatingExpensesNote: string;
+}
+
+export type DashboardFinanceState =
+  | { status: "loading" }
+  | { status: "error"; error: string }
+  | {
+      status: "ready";
+      data: DashboardFinanceData;
+      isRefreshing: boolean;
+      refreshError?: string;
+    };
+
+export interface DashboardFinanceInput {
+  data?: FinanceSummary;
+  isLoading?: boolean;
+  isRefreshing?: boolean;
+  error?: string;
+}
+
+function mapDashboardFinance(
+  input?: DashboardFinanceInput,
+): DashboardFinanceState {
+  if (!input?.data) {
+    return input?.isLoading
+      ? { status: "loading" }
+      : {
+          status: "error",
+          error: input?.error || "Financial summary is unavailable.",
+        };
+  }
+  const data = input.data;
+  return {
+    status: "ready",
+    isRefreshing: !!input.isRefreshing,
+    refreshError: input.error,
+    data: {
+      from: data.from,
+      to: data.to,
+      asOf: data.asOf,
+      revenue: {
+        retail: parseMoney(data.revenue.retail),
+        wholesale: parseMoney(data.revenue.wholesale),
+        total: parseMoney(data.revenue.total),
+      },
+      costOfGoodsSold: parseMoney(data.costOfGoodsSold),
+      grossProfit: parseMoney(data.grossProfit),
+      grossMarginPct: data.grossMargin === null ? null : data.grossMargin * 100,
+      accountsReceivable: {
+        needsReviewCount: data.accountsReceivable.needsReviewCount,
+        needsReviewAmount: parseMoney(
+          data.accountsReceivable.needsReviewAmount,
+        ),
+      },
+      itemsMissingCost: {
+        count: data.itemsMissingCost.count,
+        affectedRevenue: parseMoney(data.itemsMissingCost.affectedRevenue),
+      },
+      warnings: data.warnings,
+      costBasis: data.costBasis,
+      operatingExpensesNote: data.operatingExpensesNote,
+    },
+  };
+}
+
+export function financialPeriodLabel(fin: DashboardFinanceData): string {
+  return fin.from + " to " + fin.to;
+}
+
+export function financialArReviewMessage(fin: DashboardFinanceData): string {
+  const ar = fin.accountsReceivable;
+  return ar.needsReviewCount > 0
+    ? ar.needsReviewCount +
+        " AR record(s) need review (" +
+        formatPeso(ar.needsReviewAmount) +
+        ")"
+    : "No AR records need review";
+}
+
+export function financialReportRows(fin: DashboardFinanceData): string[][] {
+  return [
+    ["Total revenue", formatPeso(fin.revenue.total)],
+    ["Retail revenue", formatPeso(fin.revenue.retail)],
+    ["Wholesale revenue", formatPeso(fin.revenue.wholesale)],
+    ["Cost of goods sold (COGS)", formatPeso(fin.costOfGoodsSold)],
+    ["Gross profit", formatPeso(fin.grossProfit)],
+    [
+      "Gross margin",
+      fin.grossMarginPct === null
+        ? "\u2014"
+        : fin.grossMarginPct.toFixed(1) + "%",
+    ],
+  ];
+}
+
+export function financialReportNotes(fin: DashboardFinanceData): string[] {
+  const costBasis =
+    fin.costBasis === "current-product-cost-excluding-missing-cost-lines"
+      ? "Current product costs, excluding sold lines without a positive cost."
+      : fin.costBasis;
+  return [
+    financialArReviewMessage(fin),
+    "Missing-cost sold line items: " +
+      fin.itemsMissingCost.count +
+      "; affected revenue (before transaction discounts): " +
+      formatPeso(fin.itemsMissingCost.affectedRevenue) +
+      ". These lines are excluded from COGS.",
+    "Cost basis: " + costBasis,
+    fin.operatingExpensesNote,
+    "As of: " + fin.asOf,
+    ...fin.warnings,
+  ];
+}
+
+function requireFinancialData(
+  financial: DashboardFinanceState,
+): DashboardFinanceData {
+  if (financial.status !== "ready")
+    throw new Error(
+      "Financial summary is unavailable. Load it before exporting.",
+    );
+  return financial.data;
+}
+
 export interface DashboardAnalytics {
   salesDateKey: string;
   salesDateLabel: string;
@@ -96,20 +233,7 @@ export interface DashboardAnalytics {
       status: "Available" | "Low stock" | "Out of stock";
     }[];
   };
-  financial: {
-    totalSales: number;
-    grossSales: number;
-    totalDiscount: number;
-    totalVat: number;
-    expenses: number;
-    netProfit: number;
-    grossMarginPct: number;
-    netProfitMarginPct: number;
-    completedOrdersCount: number;
-    cashRevenue: number;
-    cardRevenue: number;
-    walletRevenue: number;
-  };
+  financial: DashboardFinanceState;
   valuation: {
     totalRetailValue: number;
     totalCostValue: number;
@@ -168,6 +292,7 @@ export function computeDashboardAnalytics(
   allTransactions: any[] = [],
   inventoryProducts: ProductItem[] = [],
   salesDate = new Date(),
+  finance?: DashboardFinanceInput,
 ): DashboardAnalytics {
   const safeTransactions = Array.isArray(allTransactions) ? allTransactions : [];
   const safeProducts = Array.isArray(inventoryProducts) ? inventoryProducts : [];
@@ -205,8 +330,6 @@ export function computeDashboardAnalytics(
   const walletTxs = dailyCompleted.filter((t) => isWallet(String(t.payment || "")));
 
   // 2. Inventory & Stock Valuation
-  const costById = new Map<string, number>();
-  const costByName = new Map<string, number>();
   const stockByName = new Map<string, { stock: number; sku: string; category: string }>();
 
   const inventoryRows = safeProducts.map((p: any) => {
@@ -218,10 +341,8 @@ export function computeDashboardAnalytics(
     const status: "Available" | "Low stock" | "Out of stock" =
       stock <= 0 ? "Out of stock" : stock <= reorder ? "Low stock" : "Available";
 
-    if (p.id) costById.set(String(p.id), cost);
     if (p.name) {
       const key = String(p.name).trim().toLowerCase();
-      costByName.set(key, cost);
       stockByName.set(key, { stock, sku: p.sku || "—", category: p.category || "General" });
     }
 
@@ -248,16 +369,8 @@ export function computeDashboardAnalytics(
   const totalRetailValue = inventoryRows.reduce((sum, r) => sum + r.retailValue, 0);
   const totalCostValue = inventoryRows.reduce((sum, r) => sum + r.costValue, 0);
 
-  // 3. Financial Summary & Product Movement across all Completed Transactions
+  // 3. Product Movement across all Completed Transactions
   const allCompleted = safeTransactions.filter((t) => t.status === "Completed");
-  let finTotalSales = 0;
-  let finGrossSales = 0;
-  let finTotalDiscount = 0;
-  let finTotalVat = 0;
-  let finExpenses = 0;
-  let finCashRevenue = 0;
-  let finCardRevenue = 0;
-  let finWalletRevenue = 0;
 
   const movementMap = new Map<string, LiveMovementItem>();
   for (const row of inventoryRows) {
@@ -274,21 +387,6 @@ export function computeDashboardAnalytics(
   const completedDateKeys: string[] = [];
 
   for (const tx of allCompleted) {
-    const net = parseMoney(tx.total);
-    const gross = parseMoney(tx.subtotal) || net;
-    const disc = parseMoney(tx.discount);
-    const vat = parseMoney(tx.vat);
-
-    finTotalSales += net;
-    finGrossSales += gross;
-    finTotalDiscount += disc;
-    finTotalVat += vat;
-
-    const paymentStr = String(tx.payment || "");
-    if (isCash(paymentStr)) finCashRevenue += net;
-    else if (isCard(paymentStr)) finCardRevenue += net;
-    else if (isWallet(paymentStr)) finWalletRevenue += net;
-
     const dk = transactionDateKey(tx.dateTime || tx.createdAt);
     if (dk) completedDateKeys.push(dk);
 
@@ -298,13 +396,6 @@ export function computeDashboardAnalytics(
         const prodName = String(item.product || "Item").trim();
         const nameKey = prodName.toLowerCase();
         const itemRevenue = parseMoney(item.subtotal) || parseMoney(item.unitPrice) * qty;
-        const unitPrice = parseMoney(item.unitPrice) || (qty > 0 ? itemRevenue / qty : 0);
-
-        const knownCost =
-          (item.productId && costById.get(String(item.productId))) ??
-          costByName.get(nameKey) ??
-          Number((unitPrice * 0.68).toFixed(2));
-        finExpenses += knownCost * qty;
 
         const existing = movementMap.get(nameKey);
         if (existing) {
@@ -322,14 +413,8 @@ export function computeDashboardAnalytics(
           });
         }
       }
-    } else {
-      finExpenses += net * 0.68;
     }
   }
-
-  const netProfit = finTotalSales - finExpenses;
-  const grossMarginPct = finTotalSales > 0 ? ((finTotalSales - finExpenses) / finTotalSales) * 100 : 0;
-  const netProfitMarginPct = finGrossSales > 0 ? (netProfit / finGrossSales) * 100 : 0;
 
   completedDateKeys.sort();
   const minDateKey = completedDateKeys[0];
@@ -492,20 +577,7 @@ export function computeDashboardAnalytics(
       totalUnits,
       rows: inventoryRows,
     },
-    financial: {
-      totalSales: finTotalSales,
-      grossSales: finGrossSales,
-      totalDiscount: finTotalDiscount,
-      totalVat: finTotalVat,
-      expenses: finExpenses,
-      netProfit,
-      grossMarginPct,
-      netProfitMarginPct,
-      completedOrdersCount: allCompleted.length,
-      cashRevenue: finCashRevenue,
-      cardRevenue: finCardRevenue,
-      walletRevenue: finWalletRevenue,
-    },
+    financial: mapDashboardFinance(finance),
     valuation: {
       totalRetailValue,
       totalCostValue,
@@ -607,31 +679,24 @@ export function buildReportText(type: ReportType, analytics: DashboardAnalytics)
   }
 
   if (type === "financial") {
-    const fin = analytics.financial;
+    const fin = requireFinancialData(analytics.financial);
     return [
       divider,
       "MEDPRIX PHARMACY - FINANCIAL SUMMARY REPORT",
       divider,
-      `Period      : ${analytics.periodLabel}`,
-      `Generated   : ${generatedAt}`,
+      "Period      : " + financialPeriodLabel(fin),
+      "Generated   : " + generatedAt,
       subDivider,
-      "KEY FINANCIAL METRICS",
-      `  Total Net Sales      : ${formatPeso(fin.totalSales)}`,
-      `  Gross Sales          : ${formatPeso(fin.grossSales)}`,
-      `  Total Discounts      : ${formatPeso(fin.totalDiscount)}`,
-      `  Total VAT Collected  : ${formatPeso(fin.totalVat)}`,
-      `  Cost of Goods (COGS) : ${formatPeso(fin.expenses)}`,
-      `  Net Profit           : ${formatPeso(fin.netProfit)}`,
+      ...financialReportRows(fin).map(([label, value]) => label + ": " + value),
       subDivider,
-      "PROFITABILITY & MARGINS",
-      `  Completed Orders     : ${fin.completedOrdersCount.toLocaleString()}`,
-      `  Gross Margin         : ${fin.grossMarginPct.toFixed(1)}%`,
-      `  Net Profit Margin    : ${fin.netProfitMarginPct.toFixed(1)}%`,
-      subDivider,
-      "REVENUE BY PAYMENT CHANNEL",
-      `  Cash Revenue         : ${formatPeso(fin.cashRevenue)}`,
-      `  Card Revenue         : ${formatPeso(fin.cardRevenue)}`,
-      `  E-Wallet Revenue     : ${formatPeso(fin.walletRevenue)}`,
+      ...financialReportNotes(fin),
+      ...(analytics.financial.status === "ready" &&
+      analytics.financial.refreshError
+        ? [
+            "Refresh failed; showing the last successful financial summary. " +
+              analytics.financial.refreshError,
+          ]
+        : []),
       divider,
     ].join("\n");
   }
@@ -835,14 +900,24 @@ function buildPdfReportSpec(type: ReportType, analytics: DashboardAnalytics): Pd
   }
 
   if (type === "financial") {
-    const fin = analytics.financial;
+    const fin = requireFinancialData(analytics.financial);
+    const notes = financialReportNotes(fin);
+    if (
+      analytics.financial.status === "ready" &&
+      analytics.financial.refreshError
+    ) {
+      notes.unshift(
+        "Refresh failed; showing the last successful financial summary. " +
+          analytics.financial.refreshError,
+      );
+    }
     return {
       title: "FINANCIAL SUMMARY REPORT",
-      periodLabel: `Period: ${analytics.periodLabel}`,
+      periodLabel: financialPeriodLabel(fin),
       kpis: [
-        { label: "TOTAL SALES", value: formatPeso(fin.totalSales) },
-        { label: "EXPENSES (COGS)", value: formatPeso(fin.expenses) },
-        { label: "NET PROFIT", value: formatPeso(fin.netProfit) },
+        { label: "TOTAL REVENUE", value: formatPeso(fin.revenue.total) },
+        { label: "COGS", value: formatPeso(fin.costOfGoodsSold) },
+        { label: "GROSS PROFIT", value: formatPeso(fin.grossProfit) },
       ],
       sections: [
         {
@@ -851,29 +926,17 @@ function buildPdfReportSpec(type: ReportType, analytics: DashboardAnalytics): Pd
             { header: "Financial Metric", width: 315 },
             { header: "Value", width: 200 },
           ],
-          rows: [
-            ["Gross Sales", formatPeso(fin.grossSales)],
-            ["Discounts Granted", formatPeso(fin.totalDiscount)],
-            ["Total Net Sales (Revenue)", formatPeso(fin.totalSales)],
-            ["VAT Collected", formatPeso(fin.totalVat)],
-            ["Cost of Goods Sold (COGS)", formatPeso(fin.expenses)],
-            ["Net Profit", formatPeso(fin.netProfit)],
-            ["Completed Orders Count", fin.completedOrdersCount.toLocaleString()],
-            ["Gross Margin", `${fin.grossMarginPct.toFixed(1)}%`],
-            ["Net Profit Margin", `${fin.netProfitMarginPct.toFixed(1)}%`],
-          ],
+          rows: financialReportRows(fin),
         },
         {
-          title: "Revenue by Payment Channel",
-          columns: [
-            { header: "Payment Channel", width: 315 },
-            { header: "Total Revenue", width: 200 },
-          ],
-          rows: [
-            ["Cash Revenue", formatPeso(fin.cashRevenue)],
-            ["Card Revenue", formatPeso(fin.cardRevenue)],
-            ["E-Wallet Revenue (GCash / Maya)", formatPeso(fin.walletRevenue)],
-          ],
+          title: "Financial Notes & Warnings",
+          columns: [{ header: "Details", width: 515 }],
+          // The PDF table clips long cells; wrap notes into complete continuation rows.
+          rows: notes.flatMap((note) =>
+            (note.match(/.{1,105}(?:\s|$)|\S{1,105}/g) ?? [note]).map(
+              (line) => [line.trim()],
+            ),
+          ),
         },
       ],
     };
