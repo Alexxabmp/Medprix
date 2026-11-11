@@ -122,7 +122,6 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                 <Receipt size={15} />
                 <h3 className="card-title" style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Shift Sales · {dateLabel}</h3>
               </div>
-              <span className="pill neutral" style={{ fontSize: 12 }}>Feature 1</span>
             </div>
             <p className="muted" style={{ fontSize: 12, margin: 0, lineHeight: 1.5 }}>
               View completed sales for {dateLabel}, receipt counts, and revenue breakdown by payment method.
@@ -153,7 +152,6 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                 <CircleDollarSign size={15} />
                 <h3 className="card-title" style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Cash in Drawer</h3>
               </div>
-              <span className="pill neutral" style={{ fontSize: 12 }}>Feature 2</span>
             </div>
             <p className="muted" style={{ fontSize: 12, margin: 0, lineHeight: 1.5 }}>
               Monitor physical cash float, incoming cash transactions, mid-day safe drops, and expected cash in the register.
@@ -184,7 +182,6 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                 <Receipt size={15} />
                 <h3 className="card-title" style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Shift Receipts Log</h3>
               </div>
-              <span className="pill neutral" style={{ fontSize: 12 }}>Feature 3</span>
             </div>
             <p className="muted" style={{ fontSize: 12, margin: 0, lineHeight: 1.5 }}>
               Transactions recorded on {dateLabel}. Search receipt numbers, inspect itemized sales, and audit cashier receipts.
@@ -215,7 +212,6 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                 <ShieldCheck size={15} />
                 <h3 className="card-title" style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Till Status</h3>
               </div>
-              <span className="pill neutral" style={{ fontSize: 12 }}>Feature 4</span>
             </div>
             <p className="muted" style={{ fontSize: 12, margin: 0, lineHeight: 1.5 }}>
               Check live cash till balance status (Balanced, Over, Short), discrepancy checks, and supervisor verification logs.
