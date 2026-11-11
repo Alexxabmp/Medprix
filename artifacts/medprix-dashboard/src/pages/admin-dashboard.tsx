@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ArrowUpRight,
   BarChart3,
@@ -13,89 +13,20 @@ import { useBusinessDate } from "@/lib/use-business-date";
 import { Kpi } from "@/components/custom-ui/kpi-card";
 import { MovementLineGraph } from "@/components/custom-ui/movement-line-graph";
 import { ReportModal } from "@/components/custom-ui/report-modal";
-import { safeError } from "@/lib/feedback";
-import { computeDashboardAnalytics, formatPeso } from "@/lib/dashboard-analytics";
-import type { ReportType, ToastFn } from "@/lib/types";
 import {
-  usePharmacyTransactions,
-  usePharmacyInventory,
-} from "@/lib/pharmacy-store";
-
-type FinanceSummary = {
-  revenue: { total: string };
-  grossProfit: string;
-  costOfGoodsSold: string;
-  accountsReceivable: {
-    needsReviewCount: number;
-    needsReviewAmount: string;
-  };
-  itemsMissingCost: { count: number };
-};
-
-function manilaDateKey() {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Manila",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
+  financialArReviewMessage,
+  formatPeso,
+} from "@/lib/dashboard-analytics";
+import { useDashboardAnalytics } from "@/lib/use-dashboard-analytics";
+import type { ReportType, ToastFn } from "@/lib/types";
 
 export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
   const [report, setReport] = useState<ReportType | null>(null);
   const [cashDetailRow, setCashDetailRow] = useState<number | null>(null);
-  const [financeSummary, setFinanceSummary] = useState<FinanceSummary | null>(null);
-  const [financeLoading, setFinanceLoading] = useState(true);
-  const [financeError, setFinanceError] = useState("");
-  const { transactions } = usePharmacyTransactions();
   const { date: salesDate, selectDate } = useBusinessDate();
-  const { items: inventoryProducts } = usePharmacyInventory();
-
-  useEffect(() => {
-    // Include all historical finance data while keeping the endpoint date-bounded.
-    const from = "2000-01-01";
-    const to = manilaDateKey();
-
-    let active = true;
-    setFinanceLoading(true);
-    setFinanceError("");
-    fetch(`/api/finance/summary?from=${from}&to=${to}`, {
-      credentials: "include",
-    })
-      .then(async (response) => {
-        const data = await response.json().catch(() => null);
-        if (!response.ok) {
-          throw new Error(
-            safeError(
-              { status: response.status, data },
-              "Financial summary is unavailable.",
-            ),
-          );
-        }
-        return data as FinanceSummary;
-      })
-      .then((data) => {
-        if (active) setFinanceSummary(data);
-      })
-      .catch((error) => {
-        if (active) {
-          setFinanceSummary(null);
-          setFinanceError(safeError(error, "Financial summary is unavailable."));
-        }
-      })
-      .finally(() => {
-        if (active) setFinanceLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const analytics = useMemo(
-    () => computeDashboardAnalytics(transactions, inventoryProducts, salesDate),
-    [transactions, inventoryProducts, salesDate],
-  );
+  const { analytics, transactions, inventoryProducts, retryFinance } =
+    useDashboardAnalytics(salesDate);
+  const financial = analytics.financial;
 
   const barItems = useMemo(
     () => analytics.movement.chartFast.concat(analytics.movement.chartSlow),
@@ -141,41 +72,26 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
           onClick={() => setReport("inventory")}
           testId="card-report-inventory"
         />
-        <div>
-          <Kpi
-            label="Financial · All time"
-            value={
-              financeLoading
-                ? "Loading…"
-                : financeSummary
-                  ? formatPeso(Number(financeSummary.revenue.total))
-                  : "Unavailable"
-            }
-            change={
-              financeSummary
-                ? `Retail + wholesale · Gross profit ${formatPeso(Number(financeSummary.grossProfit))} · Cost of goods sold ${formatPeso(Number(financeSummary.costOfGoodsSold))}`
-                : financeLoading
-                  ? "Loading financial summary"
-                  : "Financial summary unavailable"
-            }
-            icon={CircleDollarSign}
-            onClick={() => setReport("financial")}
-            testId="card-report-financial"
-          />
-          {financeError && (
-            <div className="inline-error" role="alert">
-              {financeError}
-            </div>
-          )}
-          {financeSummary && !financeLoading && (
-            <div className="muted" role="status" style={{ fontSize: 12, marginTop: 6 }}>
-              {financeSummary.accountsReceivable.needsReviewCount > 0 &&
-                `${financeSummary.accountsReceivable.needsReviewCount} AR record(s) need review (${formatPeso(Number(financeSummary.accountsReceivable.needsReviewAmount))}). `}
-              {financeSummary.itemsMissingCost.count > 0 &&
-                `${financeSummary.itemsMissingCost.count} sold line item(s) missing cost; excluded from cost of goods sold.`}
-            </div>
-          )}
-        </div>
+        <Kpi
+          label="Financial"
+          value={
+            financial.status === "ready"
+              ? formatPeso(financial.data.revenue.total)
+              : financial.status === "loading"
+                ? "Loading\u2026"
+                : "Unavailable"
+          }
+          change={
+            financial.status === "ready"
+              ? financialArReviewMessage(financial.data)
+              : financial.status === "loading"
+                ? "Loading financial summary"
+                : "Financial summary unavailable"
+          }
+          icon={CircleDollarSign}
+          onClick={() => setReport("financial")}
+          testId="card-report-financial"
+        />
         <Kpi
           label="Stock value"
           value={formatPeso(analytics.valuation.totalRetailValue)}
@@ -196,7 +112,8 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
           <div>
             <h2 className="card-title">Product movement</h2>
             <p className="card-subtitle">
-              Units sold · {analytics.periodLabel} ({analytics.movement.totalUnitsSold.toLocaleString()} total units)
+              Units sold · {analytics.periodLabel} (
+              {analytics.movement.totalUnitsSold.toLocaleString()} total units)
             </p>
           </div>
           <div className="chart-legend">
@@ -281,7 +198,9 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
             <div className="list-row">
               <div className="row-main">
                 <strong>All shifts balanced</strong>
-                <span>No cash discrepancies detected in recorded transactions.</span>
+                <span>
+                  No cash discrepancies detected in recorded transactions.
+                </span>
               </div>
             </div>
           )}
@@ -320,6 +239,7 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
           liveProducts={inventoryProducts}
           salesDate={salesDate}
           analytics={analytics}
+          onRetryFinance={retryFinance}
           onClose={() => {
             setReport(null);
             setCashDetailRow(null);

@@ -396,6 +396,7 @@ a {
 }
 
 .kpi-grid {
+  grid-auto-rows: 1fr;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 12px;
@@ -452,9 +453,11 @@ a {
 }
 
 .kpi-change {
+  display: flex;
+  flex: flex-col;
+  flex-direction: items-center;
   font-size: var(--text-xs);
   color: #34c759;
-  margin-left: 6px;
   letter-spacing: 0;
   font-family: var(--app-font-sans);
   font-weight: 600;
