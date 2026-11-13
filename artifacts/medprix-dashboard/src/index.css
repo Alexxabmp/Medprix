@@ -2485,6 +2485,21 @@ a {
 .receiving-recovery-copy { flex: 1 1 280px; min-width: 0; }
 .receiving-recovery p { margin: 4px 0 0; }
 .receiving-recovery .modal-actions { flex-wrap: wrap; margin: 0; }
+.receiving-recovery-actions { display: flex; flex: 1 1 240px; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.receiving-recovery-actions .button { flex: 1 1 180px; white-space: normal; }
+.receiving-dialog .receiving-recovery { margin-top: 0; padding: 12px; border-radius: 12px; }
+.receiving-dialog .receiving-recovery-copy { flex-basis: 100%; }
+.receiving-choice-trigger { font-size: var(--text-xs); border-radius: 11px; min-height: 39px; }
+.receiving-choice-menu { width: min(460px, calc(100vw - 36px)); min-width: min(var(--radix-popover-trigger-width), calc(100vw - 36px)); }
+.receiving-choice-menu [cmdk-list] { max-height: min(280px, 40dvh); }
+.receiving-choice-menu [cmdk-item] { align-items: flex-start; }
+.receiving-choice-menu [cmdk-item] > svg { margin-top: 3px; }
+.receiving-choice-menu [cmdk-item] strong { white-space: normal; overflow-wrap: anywhere; }
+.receiving-dialog[aria-busy="true"] .receiving-choice-trigger:disabled { opacity: 1; cursor: wait; }
+.receiving-access-notice, .receiving-empty { margin-bottom: 16px; }
+.receiving-empty .button, .receiving-access-notice .button { margin-top: 8px; }
+.receiving-load-error { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.receiving-load-error > span { flex: 1 1 200px; min-width: 0; }
 
 /* Keep receiving scroll and floating batch choices independent. */
 .receiving-backdrop { overflow: hidden; }

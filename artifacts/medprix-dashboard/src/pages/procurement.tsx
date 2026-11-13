@@ -4,10 +4,11 @@ import { createReceivingSubmitter, type PendingReceiving } from "@/lib/receiving
 import { useDialogAccessibility } from "@/lib/use-dialog-accessibility";
 import { SupplierPaymentDialog } from "@/components/supplier-payment-dialog";
 import { ReceivingBatchPicker } from "@/components/custom-ui/receiving-batch-picker";
+import { ReceivingChoicePicker } from "@/components/custom-ui/receiving-choice-picker";
 import { safeError, readResponse } from "@/lib/feedback";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
-import { Check, Eye, Package, Plus, Trash2, X, PackagePlus, Search } from "lucide-react";
+import { Check, Eye, Package, Plus, Trash2, X, PackagePlus, Search, LoaderCircle } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import { Summary } from "@/components/custom-ui/summary-card";
 import type { ToastFn } from "@/lib/types";
@@ -190,12 +191,32 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
   const [invoiceRefreshError, setInvoiceRefreshError] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isDeliveryOpen, setIsDeliveryOpen] = useState(false);
+  const [isPreparingReceiving, setIsPreparingReceiving] = useState(false);
+  const [showReceivingLoading, setShowReceivingLoading] = useState(false);
+  useEffect(() => {
+    if (!isDeliveryOpen || !isPreparingReceiving) {
+      setShowReceivingLoading(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setShowReceivingLoading(true), 250);
+    return () => window.clearTimeout(timer);
+  }, [isDeliveryOpen, isPreparingReceiving]);
+  const [receivingLoadError, setReceivingLoadError] = useState("");
+  const receivingPreparation = useRef<AbortController | null>(null);
   const [batchPopupContainer, setBatchPopupContainer] = useState<HTMLDivElement | null>(null);
   useEffect(() => {
-    if (!isDeliveryOpen) return;
+    if (!isDeliveryOpen) {
+      receivingPreparation.current?.abort();
+      receivingPreparation.current = null;
+      return;
+    }
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = previousOverflow; };
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      receivingPreparation.current?.abort();
+      receivingPreparation.current = null;
+    };
   }, [isDeliveryOpen]);
   const [isInvoiceOpen, setIsInvoiceOpen] = useState(false);
   const [selectedOrderForItems, setSelectedOrderForItems] = useState<PurchaseOrder | null>(null);
@@ -209,19 +230,34 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
   const receivingSubmitter = useRef<ReturnType<typeof createReceivingSubmitter> | null>(null);
   const receivingBusy = useRef(false);
   const [pendingReceiving, setPendingReceiving] = useState<PendingReceiving | null>(null);
-  const [receivingReady, setReceivingReady] = useState(false);
+  const receivingBody = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (pendingReceiving && isDeliveryOpen) receivingBody.current?.scrollTo({ top: 0 });
+  }, [pendingReceiving?.key, isDeliveryOpen]);
+  const [receivingAccess, setReceivingAccess] = useState<"loading" | "ready" | "failed">("loading");
+  const [receivingAccessAttempt, setReceivingAccessAttempt] = useState(0);
+  const receivingReady = receivingAccess === "ready";
   useEffect(() => {
     let active = true;
-    fetch("/api/me", {credentials: "include", cache: "no-store"}).then(async response => {
-      const actor = await response.json();
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 15000);
+    setReceivingAccess("loading");
+    setReceivingError("");
+    fetch("/api/me", {credentials: "include", cache: "no-store", signal: controller.signal}).then(async response => {
+      const actor = await readResponse(response, "Could not verify receiving access. Retry receiving access before saving.");
       if (!response.ok || !actor?.id || !["Admin", "FrontDesk"].includes(actor.role)) throw new Error("Could not verify receiving access. Refresh before saving.");
       if (!active) return;
       receivingSubmitter.current = createReceivingSubmitter(actor.id);
       setPendingReceiving(receivingSubmitter.current.getPending());
-      setReceivingReady(true);
-    }).catch(failure => { if (active) setReceivingError(safeError(failure)); });
-    return () => { active = false; receivingSubmitter.current = null; };
-  }, []);
+      setReceivingAccess("ready");
+    }).catch(failure => {
+      if (active) {
+        setReceivingAccess("failed");
+        setReceivingError(safeError(failure, "Could not verify receiving access. Retry receiving access before saving."));
+      }
+    }).finally(() => window.clearTimeout(timeout));
+    return () => { active = false; controller.abort(); window.clearTimeout(timeout); receivingSubmitter.current = null; };
+  }, [receivingAccessAttempt]);
   const recoverReceiving = async (retry: boolean) => {
     if (receivingBusy.current || !receivingSubmitter.current) return;
     receivingBusy.current = true; setIsSaving(true); setReceivingError("");
@@ -229,7 +265,11 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
       const result = retry ? await receivingSubmitter.current.submit() : await receivingSubmitter.current.check();
       if (result) { setError(""); setIsDeliveryOpen(false); onToast("Receiving report confirmed."); await Promise.all([loadData(), fetchInventoryData(true)]); }
       else setReceivingError("No saved report was found yet. Retry the same report using its retained reference; do not create a replacement.");
-    } catch (failure) { setReceivingError(safeError(failure)); }
+    } catch (failure) {
+      const message = safeError(failure);
+      setReceivingError(message);
+      if (!receivingSubmitter.current?.getPending()) setError(message);
+    }
     finally { setPendingReceiving(receivingSubmitter.current?.getPending() ?? null); receivingBusy.current = false; setIsSaving(false); }
   };
   const [deliveryForm, setDeliveryForm] = useState({
@@ -249,6 +289,9 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
   const receivingOrder = receivingOrders.find(order => order.id === deliveryForm.poId);
   const receivingItems = receivingOrder?.items?.filter(item => item.quantityRemaining > 0) ?? [];
   const receivingItem = receivingItems.find(item => item.productId === deliveryForm.productId);
+  const receivingProductChoices = (receivingOrder ? [receivingOrder] : receivingOrders).flatMap(order =>
+    (order.items ?? []).filter(item => item.quantityRemaining > 0).map(item => ({ order, item })));
+  const receivingFieldsDisabled = isSaving || isPreparingReceiving || Boolean(receivingLoadError) || Boolean(pendingReceiving);
   const receivingProblem = receivingDataProblem(orders);
   const [invoiceForm, setInvoiceForm] = useState({
     supplierId: "",
@@ -403,17 +446,34 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
   };
 
   const openReceiving = async (orderId = "") => {
-    if (!receivingReady || pendingReceiving) { setReceivingError("Confirm the pending receiving report before starting another."); return; }
+    if (receivingBusy.current) return;
+    receivingPreparation.current?.abort();
+    const controller = new AbortController();
+    receivingPreparation.current = controller;
     setError("");
-    setReceivingError("");
-    setIsSaving(true);
+    setReceivingLoadError("");
+    setSelectedOrderForItems(null);
+    setIsDeliveryOpen(true);
+    if (pendingReceiving) { setIsPreparingReceiving(false); return; }
+    const cachedItem = orders.find(order => order.id === orderId)?.items?.find(item => item.quantityRemaining > 0);
+    setDeliveryForm({poId: orderId, productId: cachedItem?.productId ?? "", quantityDelivered: String(cachedItem?.quantityRemaining ?? 1),
+      deliveryDate: pharmacyDate(), deliveryStatus: "Received", batchNumber: "", expirationDate: ""});
+    setIsPreparingReceiving(true);
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const [response] = await Promise.all([
-        fetch("/api/purchase-orders", {credentials: "include"}),
+      const deadline = new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error("Loading receiving details took too long. Retry loading to continue."));
+          controller.abort();
+        }, 15000);
+      });
+      const [data] = await Promise.race([Promise.all([
+        fetch("/api/purchase-orders", {credentials: "include", signal: controller.signal})
+          .then(response => readResponse(response, "Could not refresh purchase orders.")),
         fetchInventoryData(true),
-      ]);
-      const data = await readResponse(response, "Could not refresh purchase orders.");
-      if (!response.ok || !Array.isArray(data.purchaseOrders)) throw new Error(data.error || "Could not refresh purchase orders.");
+      ]), deadline]);
+      if (receivingPreparation.current !== controller) return;
+      if (!Array.isArray(data.purchaseOrders)) throw new Error("Could not refresh purchase orders.");
       const freshOrders = data.purchaseOrders as PurchaseOrder[];
       setOrders(freshOrders);
       saveStored("medprix_procurement_orders", freshOrders);
@@ -425,11 +485,13 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
         throw new Error("This purchase order has no outstanding items to receive. Review the refreshed order list.");
       setDeliveryForm({poId: orderId, productId: item?.productId ?? "", quantityDelivered: item ? String(item.quantityRemaining) : "1",
         deliveryDate: pharmacyDate(), deliveryStatus: "Received", batchNumber: "", expirationDate: ""});
-      setSelectedOrderForItems(null);
-      setIsDeliveryOpen(true);
     } catch (requestError) {
-      setReceivingError(safeError(requestError, "Could not prepare the receiving report."));
-    } finally { setIsSaving(false); }
+      if (receivingPreparation.current === controller)
+        setReceivingLoadError(safeError(requestError, "Could not prepare the receiving report. Retry loading to continue."));
+    } finally {
+      clearTimeout(timer);
+      if (receivingPreparation.current === controller) setIsPreparingReceiving(false);
+    }
   };
 
   const openItemsModal = async (order: PurchaseOrder) => {
@@ -518,8 +580,10 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
       setError("Select an outstanding product from this purchase order and review its remaining quantity.");
       return;
     }
-    if (receivingBusy.current || !receivingSubmitter.current || !receivingReady || pendingReceiving) return;
+    if (receivingBusy.current || isPreparingReceiving || receivingLoadError || !receivingSubmitter.current || !receivingReady || pendingReceiving) return;
     receivingBusy.current = true;
+    setError("");
+    setReceivingError("");
     try {
       setIsSaving(true);
       await receivingSubmitter.current.submit({
@@ -533,7 +597,9 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
       onToast(["Received", "Inspected", "Partial"].includes(deliveryForm.deliveryStatus)
         ? "Receiving report saved and inventory updated." : "Receiving report saved. Inventory was not changed.");
     } catch (requestError) {
-      setError(receivingSubmitter.current?.getPending() ? "" : safeError(requestError, "Failed to create receiving report."));
+      const message = safeError(requestError, "Receiving could not be confirmed. Check the saved result before retrying.");
+      if (receivingSubmitter.current?.getPending()) setReceivingError(message);
+      else setError(message);
     } finally {
       setPendingReceiving(receivingSubmitter.current?.getPending() ?? null);
       receivingBusy.current = false;
@@ -629,6 +695,21 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
     return null;
   };
 
+  const receivingRecovery = () => pendingReceiving && (
+    <div className="card receiving-recovery" role="status">
+      <div className="receiving-recovery-copy">
+        <strong>Receiving report awaiting confirmation</strong>
+        <p className="muted">Your submitted details are retained. Check the result or retry this same report before starting another.</p>
+        <p className="muted">Reference: <code>{pendingReceiving.key}</code></p>
+        {receivingError && <p className="inline-error" role="alert">{receivingError}</p>}
+      </div>
+      <div className="receiving-recovery-actions">
+        <button type="button" className="button soft" disabled={isSaving} onClick={() => void recoverReceiving(false)}>Check receiving result</button>
+        <button type="button" className="button dark" disabled={isSaving} onClick={() => void recoverReceiving(true)}>Retry same receiving report</button>
+      </div>
+    </div>
+  );
+
   return (
     <div>
       {paymentInvoiceId && <SupplierPaymentDialog invoiceId={paymentInvoiceId} onClose={() => setPaymentInvoiceId(null)} onToast={onToast} onSaved={refreshInvoicesAndPayables} />}
@@ -647,16 +728,8 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
           </button>
         ) : undefined}
       />
-      {pendingReceiving && <div className="card receiving-recovery" role="status">
-        <div className="receiving-recovery-copy"><strong>Receiving report awaiting confirmation</strong>
-        <p className="muted">Your submitted details are retained. Check the result or retry this same report before starting another.</p>
-        <p className="muted">Reference: <code>{pendingReceiving.key}</code></p></div>
-        <div className="modal-actions">
-          <button type="button" className="button soft" disabled={isSaving} onClick={() => void recoverReceiving(false)}>Check receiving result</button>
-          <button type="button" className="button dark" disabled={isSaving} onClick={() => void recoverReceiving(true)}>Retry same receiving report</button>
-        </div>
-      </div>}
-      {(error || statusError || receivingError || receivingProblem) && <div className="inline-error" role="alert"><span>{statusError || receivingError || receivingProblem || error} Previously loaded data may be out of date.</span><button className="button soft" onClick={() => { setReceivingError(""); void loadData(); }}>Retry refresh</button></div>}
+      {!isDeliveryOpen && receivingRecovery()}
+      {(error || statusError || receivingError || receivingProblem) && <div className="inline-error" role="alert"><span>{statusError || receivingError || receivingProblem || error} Previously loaded data may be out of date.</span><button className="button soft" disabled={receivingAccess === "loading" || isSaving} onClick={() => { setReceivingError(""); if (!receivingReady) setReceivingAccessAttempt(attempt => attempt + 1); void loadData(); }}>{receivingAccess === "loading" ? "Checking receiving access..." : !receivingReady ? "Retry receiving access" : "Retry refresh"}</button></div>}
       <div className="summary-strip">
         <Summary
           label="Open orders"
@@ -1248,12 +1321,12 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               event.currentTarget === event.target && setIsDeliveryOpen(false)
             }>
             <div className="receiving-dialog-frame" ref={setBatchPopupContainer}>
-            <form className="modal dialog receiving-dialog" onSubmit={submitDelivery}>
+            <form className="modal dialog receiving-dialog" onSubmit={submitDelivery} aria-busy={isPreparingReceiving}>
               <div className="modal-header">
                 <div>
                   <h2>Add receiving report</h2>
                   <p className="modal-sub">
-                    Record delivered items, batches, and expiry dates.
+                    Choose an order or product, then record the delivered batch and quantity.
                   </p>
                 </div>
                 <button
@@ -1263,16 +1336,33 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                   <X size={16} />
                 </button>
               </div>
-              <div className="receiving-dialog-body">
-              {receivingOrders.length === 0 && <p className="modal-sub" role="status">No open purchase orders have outstanding products to receive. Create a purchase order in Purchase Order Monitoring first.</p>}
-              <fieldset className="form-grid receiving-fields" disabled={isSaving || Boolean(pendingReceiving)}>
+              <div className="receiving-dialog-body" ref={receivingBody}>
+              {receivingRecovery()}
+              <span className="sr-only" role="status" aria-live="polite">{showReceivingLoading && isPreparingReceiving ? "Loading purchase orders and inventory…" : receivingAccess === "loading" ? "Checking receiving access…" : ""}</span>
+              {receivingLoadError && <div className="inline-error receiving-load-error" role="alert"><span>{receivingLoadError}</span><button type="button" className="button soft" onClick={() => void openReceiving(deliveryForm.poId)}>Retry loading</button></div>}
+              {receivingAccess === "failed" && !pendingReceiving && <div className="receiving-access-notice" role="status">
+                <p className="modal-sub">{receivingError || "Receiving access is unavailable. Retry to continue."}</p>
+                <button type="button" className="button soft" onClick={() => setReceivingAccessAttempt(attempt => attempt + 1)}>Retry receiving access</button>
+              </div>}
+              {!isPreparingReceiving && !receivingLoadError && receivingOrders.length === 0 && !pendingReceiving && <div className="receiving-empty" role="status">
+                <p className="modal-sub">No open purchase orders have products left to receive. Create a purchase order with the delivered products first.</p>
+                <button type="button" className="button soft" onClick={() => { setIsDeliveryOpen(false); setActiveSection("Purchase Order Monitoring"); setIsCreateOpen(true); }}>Create purchase order</button>
+              </div>}
+              <fieldset className="form-grid receiving-fields" disabled={receivingFieldsDisabled}>
                 <div className="field">
-                  <label>Purchase order *</label>
-                  <select
-                    required
+                  <label htmlFor="receiving-order">Purchase order *</label>
+                  <ReceivingChoicePicker
+                    id="receiving-order"
+                    label="Purchase order"
+                    placeholder="Choose a purchase order"
+                    searchPlaceholder="Search purchase orders"
+                    emptyMessage="No outstanding purchase orders match."
+                    disabled={receivingFieldsDisabled}
+                    popupContainer={batchPopupContainer}
+                    options={receivingOrders.map(order => ({ id: order.id, label: order.poNumber,
+                      detail: `${order.supplier} · ${order.items?.filter(item => item.quantityRemaining > 0).length ?? 0} outstanding product(s)` }))}
                     value={deliveryForm.poId}
-                    onChange={(event) => {
-                      const selectedPoId = event.target.value;
+                    onChange={(selectedPoId) => {
                       const order = orders.find((o) => o.id === selectedPoId);
                       const firstItem = order?.items?.find(item => item.quantityRemaining > 0);
                       setDeliveryForm({
@@ -1286,14 +1376,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                           ? String(firstItem.quantityRemaining)
                           : "1",
                       });
-                    }}>
-                    <option value="">Select purchase order</option>
-                    {receivingOrders.map((order) => (
-                      <option key={order.id} value={order.id}>
-                        {order.poNumber} - {order.supplier} ({order.status})
-                      </option>
-                    ))}
-                  </select>
+                    }} />
                 </div>
                 <div className="field">
                   <label>Delivery status *</label>
@@ -1328,27 +1411,24 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                   />
                 </div>
                 <div className="field">
-                  <label>Product *</label>
-                  <select
-                    required
-                    value={deliveryForm.productId}
-                    disabled={!receivingOrder}
-                    onChange={(event) =>
-                      setDeliveryForm({
-                        ...deliveryForm,
-                        productId: event.target.value,
-                        quantityDelivered: String(receivingItems.find(item => item.productId === event.target.value)?.quantityRemaining ?? 1),
-                        batchNumber: "",
-                        expirationDate: "",
-                      })
-                    }>
-                    <option value="">{receivingOrder ? "Select product" : "Select purchase order first"}</option>
-                    {receivingItems.map((item) => (
-                      <option key={item.productId} value={item.productId}>
-                        {item.product} ({item.sku})
-                      </option>
-                    ))}
-                  </select>
+                  <label htmlFor="receiving-product">Product *</label>
+                  <ReceivingChoicePicker
+                    id="receiving-product"
+                    label="Product"
+                    placeholder="Choose an outstanding product"
+                    searchPlaceholder="Search products, SKU or purchase order"
+                    emptyMessage="No outstanding products match."
+                    disabled={receivingFieldsDisabled}
+                    popupContainer={batchPopupContainer}
+                    options={receivingProductChoices.map(({order, item}) => ({ id: `${order.id}:${item.productId}`,
+                      label: `${item.product} (${item.sku})`, detail: `${order.poNumber} · ${order.supplier} · ${item.quantityRemaining} left to receive` }))}
+                    value={deliveryForm.productId ? `${deliveryForm.poId}:${deliveryForm.productId}` : ""}
+                    onChange={choiceId => {
+                      const choice = receivingProductChoices.find(({order, item}) => `${order.id}:${item.productId}` === choiceId);
+                      if (!choice) return;
+                      setDeliveryForm(current => ({ ...current, poId: choice.order.id, productId: choice.item.productId,
+                        quantityDelivered: String(choice.item.quantityRemaining), batchNumber: "", expirationDate: "" }));
+                    }} />
                 </div>
                 <div className="field">
                   <label htmlFor="receiving-batch">Batch number *</label>
@@ -1395,9 +1475,11 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               {error && <div className="inline-error" role="alert">{error}</div>}
               </div>
               <div className="modal-actions">
-                <button className="button primary-action" type="submit" disabled={isSaving || !receivingItem || !receivingReady || Boolean(pendingReceiving)}>
-                  <Check size={13} /> {isSaving ? "Saving..." : "Save receiving report"}
-                </button>
+                {pendingReceiving ? <button className="button soft" type="button" disabled={isSaving} onClick={() => setIsDeliveryOpen(false)}>Close report</button> :
+                <button className="button primary-action" type="submit" disabled={isSaving || isPreparingReceiving || Boolean(receivingLoadError) || !receivingItem || !receivingReady || Boolean(pendingReceiving)}>
+                  {showReceivingLoading && isPreparingReceiving ? <LoaderCircle size={13} className="animate-spin" aria-hidden="true" /> : <Check size={13} aria-hidden="true" />}
+                  {isSaving ? "Saving..." : "Save receiving report"}
+                </button>}
               </div>
             </form>
             </div>
