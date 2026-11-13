@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { WholesaleDialog } from "./wholesale-dialog";
 import {
   wholesaleGet,
+  getCachedWholesale,
   wholesalePeso,
   type WholesaleOrder,
   type WholesaleOrderDetail,
@@ -38,7 +39,7 @@ export function WholesaleOrderDetails({
 }) {
   const [showReceipt, setShowReceipt] = useState(false);
   const [detail, setDetail] = useState<WholesaleOrderDetail | null>(
-    initialDetail ?? null,
+    () => initialDetail ?? getCachedWholesale<WholesaleOrderDetail>("/orders/" + order.id),
   );
   const [loadError, setLoadError] = useState("");
   const [selected, setSelected] = useState<Record<string, string>>({});

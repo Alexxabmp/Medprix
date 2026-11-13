@@ -241,7 +241,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
           className="modal-backdrop"
           onMouseDown={(event) => event.currentTarget === event.target && setActiveModal(null)}
         >
-          <div className="modal" style={{ width: "min(680px, 100%)" }}>
+          <div className="modal dialog" style={{ width: "min(680px, 100%)" }}>
             <div className="modal-header">
               <div>
                 <h2>Shift Sales · {dateLabel}</h2>
@@ -331,7 +331,13 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                       <tr key={trx.id}>
                         <td><strong>{trx.id}</strong></td>
                         <td className="muted">{trx.time}</td>
-                        <td style={{ maxWidth: 220, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{trx.itemsSummary}</td>
+                        <td style={{ maxWidth: 220 }}>
+                          <div style={{ maxHeight: 48, overflowY: "auto", fontSize: 12 }}>
+                            {trx.itemsSummary.split(", ").map((s, i) => (
+                              <div key={i}>{s}</div>
+                            ))}
+                          </div>
+                        </td>
                         <td><span className="pill neutral">{trx.method}</span></td>
                         <td style={{ textAlign: "right" }}><strong>{trx.totalFormatted}</strong></td>
                         <td><span className="pill success">{trx.status}</span></td>
@@ -357,7 +363,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
           className="modal-backdrop"
           onMouseDown={(event) => event.currentTarget === event.target && setActiveModal(null)}
         >
-          <div className="modal" style={{ width: "min(640px, 100%)" }}>
+          <div className="modal dialog" style={{ width: "min(640px, 100%)" }}>
             <div className="modal-header">
               <div>
                 <h2>Cash in Drawer</h2>
@@ -442,7 +448,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
           className="modal-backdrop"
           onMouseDown={(event) => event.currentTarget === event.target && setActiveModal(null)}
         >
-          <div className="modal" style={{ width: "min(760px, 100%)" }}>
+          <div className="modal dialog" style={{ width: "min(760px, 100%)" }}>
             <div className="modal-header">
               <div>
                 <h2>Shift Receipts Log</h2>
@@ -494,7 +500,13 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                         <div className="muted" style={{ fontSize: 12 }}>{r.items} items</div>
                       </td>
                       <td className="muted">{r.time}</td>
-                      <td style={{ fontSize: 12 }}>{r.itemsSummary}</td>
+                      <td style={{ fontSize: 12, maxWidth: 220 }}>
+                        <div style={{ maxHeight: 48, overflowY: "auto" }}>
+                          {r.itemsSummary.split(", ").map((s, i) => (
+                            <div key={i}>{s}</div>
+                          ))}
+                        </div>
+                      </td>
                       <td>
                         <span className={`pill ${r.method === "Cash" ? "success" : "neutral"}`} style={{ fontSize: 12, padding: "2px 8px" }}>
                           {r.method}
@@ -539,7 +551,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
           className="modal-backdrop"
           onMouseDown={(event) => event.currentTarget === event.target && setActiveModal(null)}
         >
-          <div className="modal" style={{ width: "min(620px, 100%)" }}>
+          <div className="modal dialog" style={{ width: "min(620px, 100%)" }}>
             <div className="modal-header">
               <div>
                 <h2>Till Status &amp; Cash Reconciliation</h2>
@@ -671,16 +683,18 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                   <span className="muted">Payment Method</span>
                   <strong>{selectedReceipt.method}</strong>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span className="muted">Items Summary</span>
-                  <span
-                    style={{
-                      fontSize: 12,
-                      textAlign: "right",
-                      maxWidth: 240,
-                    }}>
-                    {selectedReceipt.itemsSummary}
-                  </span>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <span className="muted">Items</span>
+                  <div style={{ fontSize: 12, textAlign: "right", maxWidth: 240 }}>
+                    {selectedReceipt.itemsList && selectedReceipt.itemsList.length > 0
+                      ? selectedReceipt.itemsList.map((item, i) => (
+                          <div key={i}>{item.product} ×{item.quantity}{item.unitPrice ? ` @ ${item.unitPrice}` : ""}</div>
+                        ))
+                      : selectedReceipt.itemsSummary.split(", ").map((s, i) => (
+                          <div key={i}>{s}</div>
+                        ))
+                    }
+                  </div>
                 </div>
                 {selectedReceipt.amountReceived && (
                   <div style={{ display: "flex", justifyContent: "space-between" }}>

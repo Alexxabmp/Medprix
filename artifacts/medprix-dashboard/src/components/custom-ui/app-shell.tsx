@@ -8,6 +8,7 @@ import {
   fetchAccountsPayable,
   fetchSupplierRecords,
 } from "@/lib/supplier-store";
+import { prefetchWholesaleData } from "@/lib/wholesale-api";
 
 import NotFound from "@/pages/not-found";
 import DashboardPage from "@/pages/admin-dashboard";
@@ -43,11 +44,21 @@ export function AppShell({
   const [showUserMenu, setShowUserMenu] = useState(false);
 
   useEffect(() => {
-    prefetchPharmacyData();
+    prefetchPharmacyData(role);
     if (role === "Admin" || role === "FrontDesk") {
-      void fetchSupplierRecords().catch(() => undefined);
-      void fetchAccountsPayable().catch(() => undefined);
+      const t1 = window.setTimeout(() => {
+        void fetchSupplierRecords().catch(() => undefined);
+        void fetchAccountsPayable().catch(() => undefined);
+      }, 300);
+      const t2 = window.setTimeout(() => {
+        prefetchWholesaleData();
+      }, 700);
+      return () => {
+        window.clearTimeout(t1);
+        window.clearTimeout(t2);
+      };
     }
+    return undefined;
   }, [role]);
   const roleKey = role.toLowerCase();
   const homeHref = getDefaultRoute(role);

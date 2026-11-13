@@ -41,7 +41,16 @@ function AppContent() {
   const [toast, setToast] = useState<Feedback | null>(null);
   const notifications = useMemo(() => createFeedbackNotifier(setToast), []);
   useEffect(() => () => notifications.dispose(), [notifications]);
-  const [users, setUsers] = useState<UserRecord[]>([]);
+  const [users, setUsers] = useState<UserRecord[]>(() => {
+    try {
+      const raw = localStorage.getItem("medprix_cached_users");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return [];
+  });
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
@@ -85,6 +94,7 @@ function AppContent() {
           };
         });
         setUsers(mapped);
+        try { localStorage.setItem("medprix_cached_users", JSON.stringify(mapped)); } catch {}
       })
       .catch(() => {
         // Backend offline — users list stays empty

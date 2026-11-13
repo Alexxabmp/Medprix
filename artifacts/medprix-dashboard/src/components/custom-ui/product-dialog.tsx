@@ -114,9 +114,7 @@ export function ProductDialog({ product, categories, suppliers, onClose, onSaved
                 {!product && <>
                   {field("strength", "Strength", { placeholder: "e.g. 500mg or 125mg/5mL" })}
                   {field("medicineForm", "Medicine form", { placeholder: "e.g. Tablet or Syrup" })}
-                  <div className="product-name-preview field full-width"><span className="field-hint">Saved product name</span><strong>{payload.name || "Enter a product name to preview it here."}</strong></div>
                 </>}
-                {field("sku", "Product code (SKU)", { required: true, placeholder: "e.g. MED-0421", hint: product ? `${PRODUCT_CODE_HINT} An unchanged existing code can be kept.` : PRODUCT_CODE_HINT })}
                 {field("category", "Category", { choices: categories })}
                 {field("price", "Selling price (₱)", { required: true, placeholder: "e.g. 10.00" })}
                 {field("vatClassification", "VAT treatment", {required:true, choices:["VATable", "VAT-exempt"], hint:"Selling price includes VAT where applicable."})}

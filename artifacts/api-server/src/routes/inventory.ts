@@ -163,12 +163,33 @@ router.post("/inventory/products", async (req: Request, res: Response) => {
   const body = req.body ?? {};
   const errors = validateProductInput(body, { batch: true });
   if (Object.keys(errors).length) return res.status(400).json({ success: false, error: Object.values(errors)[0], errors });
-  const sku = normalizeProductCode(body.sku);
-  const [existing] = await db.select().from(productsTable).where(eq(productsTable.sku, sku));
-  if (existing) return res.status(409).json({ success: false, error: "This product code already exists.", errors: { sku: "Choose a different product code." } });
   const hasBatch = PRODUCT_BATCH_FIELDS.some((key) => body[key] !== undefined && body[key] !== null);
   try {
     const product = await db.transaction(async (tx) => {
+      const existingProducts = await tx.select({ sku: productsTable.sku }).from(productsTable);
+      const usedSkus = new Set(existingProducts.map((p) => p.sku.trim().toUpperCase()));
+      let sku = typeof body.sku === "string" && body.sku.trim() ? normalizeProductCode(body.sku) : "";
+      if (sku && usedSkus.has(sku)) {
+        const conflictErr: any = new Error("This product code already exists.");
+        conflictErr.code = "23505";
+        conflictErr.constraint = "uq_products_sku_ci";
+        throw conflictErr;
+      }
+      if (!sku) {
+        let maxNum = 0;
+        for (const existingSku of usedSkus) {
+          const match = /^MED-(\d+)$/i.exec(existingSku);
+          if (match) {
+            const num = parseInt(match[1], 10);
+            if (Number.isFinite(num) && num > maxNum) maxNum = num;
+          }
+        }
+        let nextNum = maxNum + 1;
+        do {
+          sku = `MED-${String(nextNum).padStart(4, "0")}`;
+          nextNum++;
+        } while (usedSkus.has(sku));
+      }
       const [saved] = await tx.insert(productsTable).values({
         sku, productName: body.name.trim(), genericName: body.genericName.trim(), category: (body.category ?? "").trim(),
         sellingPrice: parseProductMoney(body.price)!, costPrice: parseProductMoney(body.costPrice)!,

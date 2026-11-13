@@ -45,9 +45,11 @@ type PayablesCache = {
 
 const suppliersKey = "medprix_supplier_records";
 const payablesKey = "medprix_supplier_payables";
+const supplierHistoryPrefix = "medprix_supplier_history:";
+
 function readSessionValue<T>(key: string): T | null {
   try {
-    const raw = sessionStorage.getItem(key);
+    const raw = sessionStorage.getItem(key) || localStorage.getItem(key);
     return raw ? (JSON.parse(raw) as T) : null;
   } catch {
     return null;
@@ -56,7 +58,9 @@ function readSessionValue<T>(key: string): T | null {
 
 function writeSessionValue(key: string, value: unknown) {
   try {
-    sessionStorage.setItem(key, JSON.stringify(value));
+    const json = JSON.stringify(value);
+    sessionStorage.setItem(key, json);
+    localStorage.setItem(key, json);
   } catch {
     return;
   }
@@ -64,6 +68,7 @@ function writeSessionValue(key: string, value: unknown) {
 
 let suppliersCache = readSessionValue<SupplierRecord[]>(suppliersKey);
 let payablesCache = readSessionValue<PayablesCache>(payablesKey);
+const supplierHistoryCache = new Map<string, unknown>();
 let suppliersRequest: Promise<SupplierRecord[]> | null = null;
 let settlementRevision = 0;
 let payablesRequest: Promise<PayablesCache> | null = null;
@@ -76,6 +81,22 @@ export function getCachedPayables() {
   if (!payablesCache || !Array.isArray(payablesCache.accountsPayable))
     return null;
   return payablesCache;
+}
+
+export function getCachedSupplierHistory<T>(supplierId: string): T | null {
+  if (supplierHistoryCache.has(supplierId)) {
+    return supplierHistoryCache.get(supplierId) as T;
+  }
+  const stored = readSessionValue<T>(supplierHistoryPrefix + supplierId);
+  if (stored) {
+    supplierHistoryCache.set(supplierId, stored);
+  }
+  return stored;
+}
+
+export function setCachedSupplierHistory(supplierId: string, history: unknown) {
+  supplierHistoryCache.set(supplierId, history);
+  writeSessionValue(supplierHistoryPrefix + supplierId, history);
 }
 
 export async function fetchSupplierRecords() {
@@ -138,7 +159,11 @@ export function invalidateSettlementCaches() {
   settlementRevision += 1;
   payablesRequest = null;
   payablesCache = null;
-  sessionStorage.removeItem(payablesKey);
-  localStorage.removeItem("medprix_procurement_invoices");
+  supplierHistoryCache.clear();
+  try {
+    sessionStorage.removeItem(payablesKey);
+    localStorage.removeItem(payablesKey);
+    localStorage.removeItem("medprix_procurement_invoices");
+  } catch {}
   window.dispatchEvent(new Event("supplier-payment-recorded"));
 }

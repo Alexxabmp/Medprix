@@ -33,7 +33,7 @@ export function validateProductInput(input: Record<string, unknown>, options: { 
       errors[key] = `${label} is required and must be at most ${limit} characters.`;
     }
   }
-  if (supplied("sku") && (typeof input.sku !== "string" || (input.sku !== options.originalSku && !PRODUCT_CODE_PATTERN.test(normalizeProductCode(input.sku))))) errors.sku = PRODUCT_CODE_HINT;
+  if (input.sku !== undefined && input.sku !== "" && (typeof input.sku !== "string" || (input.sku !== options.originalSku && !PRODUCT_CODE_PATTERN.test(normalizeProductCode(input.sku))))) errors.sku = PRODUCT_CODE_HINT;
   if (input.category !== undefined && (typeof input.category !== "string" || input.category.trim().length > 100)) errors.category = "Category must be at most 100 characters.";
   for (const key of ["price", "costPrice"]) {
     if (supplied(key) && parseProductMoney(input[key]) === null) errors[key] = "Enter a nonnegative price with at most two decimal places (maximum 9,999,999,999.99).";

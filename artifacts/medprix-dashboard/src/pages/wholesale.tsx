@@ -10,7 +10,7 @@ import { LoadingState } from "@/components/custom-ui/loading-state";
 import { WholesaleDeliveryReceipts } from "@/components/wholesale-delivery-receipts";
 import { WholesaleOrderDetails } from "@/components/wholesale-order-details";
 import { useEffect, useState } from "react";
-import { Plus, Search } from "lucide-react";
+import { Eye, Pencil, Plus, Search } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import { WholesaleDialog } from "@/components/wholesale-dialog";
 import { WholesaleOrderEditor } from "@/components/wholesale-order-editor";
@@ -18,6 +18,7 @@ import { safeError } from "@/lib/feedback";
 import {
   wholesaleGet,
   wholesaleWrite,
+  getCachedWholesale,
   wholesalePeso,
   type DeliveryReceiptSummary,
   type WholesaleClient,
@@ -48,11 +49,11 @@ export default function WholesalePage({
   const storageKey =
     "medprix-wholesale-request:" +
     (localStorage.getItem("medprix-username") ?? "");
-  const [clients, setClients] = useState<WholesaleClient[]>([]);
-  const [products, setProducts] = useState<WholesaleProduct[]>([]);
-  const [orders, setOrders] = useState<WholesaleOrder[]>([]);
-  const [receipts, setReceipts] = useState<DeliveryReceiptSummary[]>([]);
-  const [overview, setOverview] = useState<WholesaleOverview | null>(null);
+  const [clients, setClients] = useState<WholesaleClient[]>(() => getCachedWholesale<WholesaleClient[]>("/clients") ?? []);
+  const [products, setProducts] = useState<WholesaleProduct[]>(() => getCachedWholesale<WholesaleProduct[]>("/catalog") ?? []);
+  const [orders, setOrders] = useState<WholesaleOrder[]>(() => getCachedWholesale<WholesaleOrder[]>("/orders") ?? []);
+  const [receipts, setReceipts] = useState<DeliveryReceiptSummary[]>(() => getCachedWholesale<DeliveryReceiptSummary[]>("/delivery-receipts") ?? []);
+  const [overview, setOverview] = useState<WholesaleOverview | null>(() => getCachedWholesale<WholesaleOverview>("/overview"));
   const [overviewError, setOverviewError] = useState("");
   const [summary, setSummary] = useState<{
     kind: WholesaleSummaryKind;
@@ -65,13 +66,18 @@ export default function WholesalePage({
   const [openingAccount, setOpeningAccount] = useState(false);
   const [accountStatus, setAccountStatus] =
     useState<WholesaleAccountFilter>("all");
+  const [orderStatus, setOrderStatus] = useState("All statuses");
+  const [vatFilter, setVatFilter] = useState("All VAT classifications");
+  const [orderPage, setOrderPage] = useState(1);
+  const [clientPage, setClientPage] = useState(1);
+  const [pricePage, setPricePage] = useState(1);
   const [tab, setTab] = useState<
     "orders" | "clients" | "prices" | "receipts" | "accounts"
   >("orders");
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [ready, setReady] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [ready, setReady] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [formError, setFormError] = useState("");
@@ -116,7 +122,7 @@ export default function WholesalePage({
     }
   }
   useEffect(() => {
-    void load();
+    void load(true);
   }, []);
 
   async function refreshOverview() {
@@ -225,18 +231,57 @@ export default function WholesalePage({
   const locked =
     busy || pending !== null || openingAccount || openingSummary !== null;
   const query = search.toLocaleLowerCase();
-  const visibleOrders = orders.filter((order) =>
-    (order.orderNumber + " " + order.clientName)
+  const visibleOrders = orders.filter((order) => {
+    const displayStatus = order.status === "Pending" ? "Draft" : order.status;
+    const matchesStatus =
+      orderStatus === "All statuses" ||
+      order.status === orderStatus ||
+      displayStatus === orderStatus;
+    const matchesQuery = (order.orderNumber + " " + order.clientName)
       .toLocaleLowerCase()
-      .includes(query),
-  );
+      .includes(query);
+    return matchesStatus && matchesQuery;
+  });
   const visibleClients = clients.filter((client) =>
     (client.name + " " + (client.address ?? ""))
       .toLocaleLowerCase()
       .includes(query),
   );
-  const visibleProducts = products.filter((product) =>
-    (product.name + " " + product.sku).toLocaleLowerCase().includes(query),
+  const visibleProducts = products.filter((product) => {
+    const vatLabel =
+      product.isVatExempt === null
+        ? "Needs classification"
+        : product.isVatExempt
+          ? "Exempt"
+          : "VATable";
+    const matchesVat =
+      vatFilter === "All VAT classifications" || vatLabel === vatFilter;
+    const matchesQuery = (product.name + " " + product.sku)
+      .toLocaleLowerCase()
+      .includes(query);
+    return matchesVat && matchesQuery;
+  });
+
+  const WHOLESALE_PAGE_SIZE = 15;
+  const totalOrderPages = Math.max(1, Math.ceil(visibleOrders.length / WHOLESALE_PAGE_SIZE));
+  const safeOrderPage = Math.min(orderPage, totalOrderPages);
+  const paginatedOrders = visibleOrders.slice(
+    (safeOrderPage - 1) * WHOLESALE_PAGE_SIZE,
+    safeOrderPage * WHOLESALE_PAGE_SIZE,
+  );
+
+  const totalClientPages = Math.max(1, Math.ceil(visibleClients.length / WHOLESALE_PAGE_SIZE));
+  const safeClientPage = Math.min(clientPage, totalClientPages);
+  const paginatedClients = visibleClients.slice(
+    (safeClientPage - 1) * WHOLESALE_PAGE_SIZE,
+    safeClientPage * WHOLESALE_PAGE_SIZE,
+  );
+
+  const totalPricePages = Math.max(1, Math.ceil(visibleProducts.length / WHOLESALE_PAGE_SIZE));
+  const safePricePage = Math.min(pricePage, totalPricePages);
+  const paginatedProducts = visibleProducts.slice(
+    (safePricePage - 1) * WHOLESALE_PAGE_SIZE,
+    safePricePage * WHOLESALE_PAGE_SIZE,
   );
 
   const section = {
@@ -294,11 +339,11 @@ export default function WholesalePage({
         </div>
       )}
       {pending && (
-        <div className="surface-card wholesale-notice" role="status">
-          <p>
+        <div className="inline-error" role="status">
+          <span>
             A saved request needs confirmation. Retry it before starting another
             change.
-          </p>
+          </span>
           <button
             className="button dark"
             disabled={busy}
@@ -323,7 +368,7 @@ export default function WholesalePage({
               disabled={locked || !overview}
               onClick={() => void openSummary("pending")}
             >
-              {openingSummary === "pending" ? "Opening..." : "View orders"}
+              {openingSummary === "pending" ? "Opening..." : "View"}
             </button>
           }
         />
@@ -337,9 +382,7 @@ export default function WholesalePage({
               disabled={locked || !overview}
               onClick={() => void openSummary("deliveries")}
             >
-              {openingSummary === "deliveries"
-                ? "Opening..."
-                : "View deliveries"}
+              {openingSummary === "deliveries" ? "Opening..." : "View"}
             </button>
           }
         />
@@ -353,40 +396,34 @@ export default function WholesalePage({
               disabled={locked || !overview}
               onClick={() => void openSummary("outstanding")}
             >
-              {openingSummary === "outstanding"
-                ? "Opening..."
-                : "View accounts"}
+              {openingSummary === "outstanding" ? "Opening..." : "View"}
             </button>
           }
         />
-        <div className="wholesale-summary-alert" role="status">
-          <Summary
-            label="Overdue Balance"
-            value={overview ? wholesalePeso(overview.overdue) : "—"}
-            caption={
-              overview
-                ? overview.overdueCount
-                  ? overview.overdueCount +
-                    (overview.overdueCount === 1
-                      ? " overdue account"
-                      : " overdue accounts")
-                  : "No overdue accounts"
-                : "Unavailable"
-            }
-            tone="warning"
-            action={
-              <button
-                className="button soft wholesale-summary-action"
-                disabled={locked || !overview}
-                onClick={() => void openSummary("overdue")}
-              >
-                {openingSummary === "overdue"
-                  ? "Opening..."
-                  : "View overdue accounts"}
-              </button>
-            }
-          />
-        </div>
+        <Summary
+          label="Overdue Balance"
+          value={overview ? wholesalePeso(overview.overdue) : "—"}
+          caption={
+            overview
+              ? overview.overdueCount
+                ? overview.overdueCount +
+                  (overview.overdueCount === 1
+                    ? " overdue account"
+                    : " overdue accounts")
+                : "No overdue accounts"
+              : "Unavailable"
+          }
+          tone="warning"
+          action={
+            <button
+              className="button soft wholesale-summary-action"
+              disabled={locked || !overview}
+              onClick={() => void openSummary("overdue")}
+            >
+              {openingSummary === "overdue" ? "Opening..." : "View"}
+            </button>
+          }
+        />
       </div>
       {overviewError && (
         <div role="alert" className="inline-error">
@@ -418,7 +455,7 @@ export default function WholesalePage({
         />
       )}
       <div
-        className="table-tools supplier-invoices wholesale-tabs"
+        className="page-tabs"
         role="group"
         aria-label="Wholesale sections"
       >
@@ -426,12 +463,17 @@ export default function WholesalePage({
           (item) => (
             <button
               key={item}
-              className={"button " + (tab === item ? "primary-action" : "soft")}
+              className={"button " + (tab === item ? "dark" : "soft")}
               aria-pressed={tab === item}
               onClick={() => {
                 setTab(item);
                 setSearch("");
                 setAccountStatus("all");
+                setOrderStatus("All statuses");
+                setVatFilter("All VAT classifications");
+                setOrderPage(1);
+                setClientPage(1);
+                setPricePage(1);
               }}
             >
               {item === "orders"
@@ -448,31 +490,68 @@ export default function WholesalePage({
         )}
       </div>
       <section className="surface-card table-card">
-        <div className="table-tools wholesale-table-tools">
-          <div>
-            <h2 className="card-title">{section.title}</h2>
-            <p className="card-subtitle">{section.description}</p>
+        <div className="table-tools">
+          <div className="search-wrap">
+            <Search size={15} aria-hidden="true" />
+            <input
+              type="search"
+              aria-label="Search wholesale records"
+              placeholder={section.placeholder}
+              value={search}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setOrderPage(1);
+                setClientPage(1);
+                setPricePage(1);
+              }}
+            />
           </div>
-          <div className="wholesale-table-controls">
-            <div className="wholesale-search">
-              <Search size={15} aria-hidden="true" />
-              <input
-                type="search"
-                aria-label="Search wholesale records"
-                placeholder={section.placeholder}
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-              />
-            </div>
+          <div className="table-tools-right">
+            {tab === "orders" && (
+              <select
+                className="select"
+                aria-label="Filter wholesale orders by status"
+                value={orderStatus}
+                onChange={(event) => {
+                  setOrderStatus(event.target.value);
+                  setOrderPage(1);
+                }}
+                data-testid="select-wholesale-order-status"
+              >
+                <option value="All statuses">All statuses</option>
+                <option value="Draft">Draft</option>
+                <option value="Confirmed">Confirmed</option>
+                <option value="Delivered">Delivered</option>
+                <option value="Cancelled">Cancelled</option>
+              </select>
+            )}
+            {tab === "prices" && (
+              <select
+                className="select"
+                aria-label="Filter wholesale prices by VAT classification"
+                value={vatFilter}
+                onChange={(event) => {
+                  setVatFilter(event.target.value);
+                  setPricePage(1);
+                }}
+                data-testid="select-wholesale-vat-filter"
+              >
+                <option value="All VAT classifications">All VAT classifications</option>
+                <option value="VATable">VATable</option>
+                <option value="Exempt">Exempt</option>
+                <option value="Needs classification">Needs classification</option>
+              </select>
+            )}
             {tab === "accounts" && (
               <select
+                className="select"
                 aria-label="Payment status"
                 value={accountStatus}
                 onChange={(event) =>
                   setAccountStatus(event.target.value as WholesaleAccountFilter)
                 }
               >
-                <option value="all">All accounts</option>
+                <option value="all">All statuses</option>
                 <option value="outstanding">Outstanding</option>
                 <option value="overdue">Overdue</option>
                 <option value="paid">Paid</option>
@@ -518,11 +597,11 @@ export default function WholesalePage({
                         <th>Client</th>
                         <th>Total including VAT</th>
                         <th>Status</th>
-                        <th>Action</th>
+                        <th className="table-action-head">Action</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {visibleOrders.map((order) => (
+                      {paginatedOrders.map((order) => (
                         <tr key={order.id}>
                           <td>{order.orderNumber}</td>
                           <td>{order.clientName}</td>
@@ -532,21 +611,27 @@ export default function WholesalePage({
                               ? "Draft"
                               : order.status}
                           </td>
-                          <td>
-                            <button
-                              className="button soft"
-                              disabled={locked}
-                              onClick={() => open({ kind: "order", order })}
-                            >
-                              Edit draft
-                            </button>
-                            <button
-                              className="button soft"
-                              disabled={locked}
-                              onClick={() => open({ kind: "details", order })}
-                            >
-                              Review order
-                            </button>
+                          <td className="table-action-cell">
+                            <div className="table-actions">
+                              <button
+                                className="button soft table-action-btn"
+                                disabled={locked}
+                                aria-label="Edit draft"
+                                title="Edit draft"
+                                onClick={() => open({ kind: "order", order })}
+                              >
+                                <Pencil size={13} />
+                              </button>
+                              <button
+                                className="button soft table-action-btn"
+                                disabled={locked}
+                                aria-label="Review order"
+                                title="Review order"
+                                onClick={() => open({ kind: "details", order })}
+                              >
+                                <Eye size={13} />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -568,22 +653,26 @@ export default function WholesalePage({
                       <tr>
                         <th>Client</th>
                         <th>Address</th>
-                        <th>Action</th>
+                        <th className="table-action-head">Action</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {visibleClients.map((client) => (
+                      {paginatedClients.map((client) => (
                         <tr key={client.id}>
                           <td>{client.name}</td>
                           <td>{client.address || "Not provided"}</td>
-                          <td>
-                            <button
-                              className="button soft"
-                              disabled={locked}
-                              onClick={() => open({ kind: "client", client })}
-                            >
-                              Edit client
-                            </button>
+                          <td className="table-action-cell">
+                            <div className="table-actions">
+                              <button
+                                className="button soft table-action-btn"
+                                disabled={locked}
+                                aria-label="Edit client"
+                                title="Edit client"
+                                onClick={() => open({ kind: "client", client })}
+                              >
+                                <Pencil size={13} />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -609,11 +698,11 @@ export default function WholesalePage({
                         <th>Physical</th>
                         <th>Reserved</th>
                         <th>Available</th>
-                        {role === "Admin" && <th>Action</th>}
+                        {role === "Admin" && <th className="table-action-head">Action</th>}
                       </tr>
                     </thead>
                     <tbody>
-                      {visibleProducts.map((product) => (
+                      {paginatedProducts.map((product) => (
                         <tr key={product.id}>
                           <td>
                             {product.name}
@@ -631,14 +720,18 @@ export default function WholesalePage({
                           <td>{product.reservedStock}</td>
                           <td>{product.availableStock}</td>
                           {role === "Admin" && (
-                            <td>
-                              <button
-                                className="button soft"
-                                disabled={locked}
-                                onClick={() => open({ kind: "price", product })}
-                              >
-                                Set price
-                              </button>
+                            <td className="table-action-cell">
+                              <div className="table-actions">
+                                <button
+                                  className="button soft table-action-btn"
+                                  disabled={locked}
+                                  aria-label="Set price"
+                                  title="Set price"
+                                  onClick={() => open({ kind: "price", product })}
+                                >
+                                  <Pencil size={13} />
+                                </button>
+                              </div>
                             </td>
                           )}
                         </tr>
@@ -659,6 +752,75 @@ export default function WholesalePage({
                   </table>
                 )}
               </div>
+              {tab === "orders" && (
+                <div className="wholesale-pagination">
+                  <span className="muted">
+                    Page {safeOrderPage} of {totalOrderPages} ({visibleOrders.length} orders)
+                  </span>
+                  <button
+                    type="button"
+                    className="button soft"
+                    disabled={safeOrderPage <= 1}
+                    onClick={() => setOrderPage((p) => Math.max(1, p - 1))}
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    className="button soft"
+                    disabled={safeOrderPage >= totalOrderPages}
+                    onClick={() => setOrderPage((p) => Math.min(totalOrderPages, p + 1))}
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
+              {tab === "clients" && (
+                <div className="wholesale-pagination">
+                  <span className="muted">
+                    Page {safeClientPage} of {totalClientPages} ({visibleClients.length} clients)
+                  </span>
+                  <button
+                    type="button"
+                    className="button soft"
+                    disabled={safeClientPage <= 1}
+                    onClick={() => setClientPage((p) => Math.max(1, p - 1))}
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    className="button soft"
+                    disabled={safeClientPage >= totalClientPages}
+                    onClick={() => setClientPage((p) => Math.min(totalClientPages, p + 1))}
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
+              {tab === "prices" && (
+                <div className="wholesale-pagination">
+                  <span className="muted">
+                    Page {safePricePage} of {totalPricePages} ({visibleProducts.length} products)
+                  </span>
+                  <button
+                    type="button"
+                    className="button soft"
+                    disabled={safePricePage <= 1}
+                    onClick={() => setPricePage((p) => Math.max(1, p - 1))}
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    className="button soft"
+                    disabled={safePricePage >= totalPricePages}
+                    onClick={() => setPricePage((p) => Math.min(totalPricePages, p + 1))}
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
             </>
           )
         )}

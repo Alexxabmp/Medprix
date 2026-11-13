@@ -1,11 +1,12 @@
 import express, { type Express } from "express";
+import zlib from "node:zlib";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
 
-import { initPromise } from "@workspace/db";
+import { ensureDbReady } from "@workspace/db";
 
 const app: Express = express();
 const allowedOrigins =
@@ -41,14 +42,12 @@ app.use(
 );
 
 app.use(async (_req, res, next) => {
-  if (initPromise) {
-    try {
-      await initPromise;
-    } catch (e) {
-      logger.error({ err: e }, "Database readiness failed; no schema repair was attempted");
-      res.status(503).json({ error: "Database storage is not ready. An administrator must run the explicit setup checks." });
-      return;
-    }
+  try {
+    await ensureDbReady();
+  } catch (e) {
+    logger.error({ err: e }, "Database readiness failed; no schema repair was attempted");
+    res.status(503).json({ error: "Database storage is not ready. An administrator must run the explicit setup checks." });
+    return;
   }
   next();
 });
@@ -56,6 +55,28 @@ app.use(async (_req, res, next) => {
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+app.use((req, res, next) => {
+  const acceptEncoding = String(req.headers["accept-encoding"] || "");
+  if (!acceptEncoding.includes("gzip")) {
+    next();
+    return;
+  }
+  const origJson = res.json.bind(res);
+  res.json = ((body: any) => {
+    const jsonStr = JSON.stringify(body);
+    if (jsonStr && jsonStr.length > 4096) {
+      const compressed = zlib.gzipSync(Buffer.from(jsonStr, "utf8"));
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.setHeader("Content-Encoding", "gzip");
+      res.setHeader("Vary", "Accept-Encoding");
+      res.setHeader("Content-Length", String(compressed.length));
+      return res.end(compressed);
+    }
+    return origJson(body);
+  }) as any;
+  next();
+});
 
 app.get("/", (_req, res) => {
   res.json({

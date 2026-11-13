@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Eye } from "lucide-react";
 import { DeliveryReceiptView } from "./delivery-receipt-view";
 import {
   wholesaleGet,
@@ -6,6 +7,8 @@ import {
   type DeliveryReceiptSummary,
 } from "@/lib/wholesale-api";
 import { safeError } from "@/lib/feedback";
+
+const PAGE_SIZE = 15;
 
 export function WholesaleDeliveryReceipts({
   receipts,
@@ -19,10 +22,22 @@ export function WholesaleDeliveryReceipts({
   const [receipt, setReceipt] = useState<DeliveryReceipt | null>(null);
   const [opening, setOpening] = useState(false);
   const [error, setError] = useState("");
+  const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
+
   const visible = receipts.filter((row) =>
     (row.receiptNumber + " " + row.orderNumber + " " + row.clientName)
       .toLocaleLowerCase()
       .includes(search.toLocaleLowerCase()),
+  );
+  const totalPages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const paginated = visible.slice(
+    (safePage - 1) * PAGE_SIZE,
+    safePage * PAGE_SIZE,
   );
   return (
     <>
@@ -37,39 +52,42 @@ export function WholesaleDeliveryReceipts({
             <th>Receipt</th>
             <th>Order</th>
             <th>Client</th>
-            <th>Action</th>
+            <th className="table-action-head">Action</th>
           </tr>
         </thead>
         <tbody>
-          {visible.map((row) => (
+          {paginated.map((row) => (
             <tr key={row.id}>
               <td>{row.receiptNumber}</td>
               <td>{row.orderNumber}</td>
               <td>{row.clientName}</td>
-              <td>
-                <button
-                  className="button soft wholesale-receipt-open"
-                  aria-busy={opening}
-                  aria-label="View receipt"
-                  disabled={disabled || opening}
-                  onClick={async () => {
-                    setOpening(true);
-                    setError("");
-                    try {
-                      setReceipt(
-                        await wholesaleGet<DeliveryReceipt>(
-                          "/delivery-receipts/" + row.id,
-                        ),
-                      );
-                    } catch (failure) {
-                      setError(safeError(failure));
-                    } finally {
-                      setOpening(false);
-                    }
-                  }}
-                >
-                  {opening ? "Opening..." : "View receipt"}
-                </button>
+              <td className="table-action-cell">
+                <div className="table-actions">
+                  <button
+                    className="button soft table-action-btn"
+                    aria-busy={opening}
+                    aria-label="View receipt"
+                    title="View receipt"
+                    disabled={disabled || opening}
+                    onClick={async () => {
+                      setOpening(true);
+                      setError("");
+                      try {
+                        setReceipt(
+                          await wholesaleGet<DeliveryReceipt>(
+                            "/delivery-receipts/" + row.id,
+                          ),
+                        );
+                      } catch (failure) {
+                        setError(safeError(failure));
+                      } finally {
+                        setOpening(false);
+                      }
+                    }}
+                  >
+                    <Eye size={13} />
+                  </button>
+                </div>
               </td>
             </tr>
           ))}
@@ -84,6 +102,27 @@ export function WholesaleDeliveryReceipts({
           )}
         </tbody>
       </table>
+      <div className="wholesale-pagination">
+        <span className="muted">
+          Page {safePage} of {totalPages} ({visible.length} receipts)
+        </span>
+        <button
+          type="button"
+          className="button soft"
+          disabled={safePage <= 1}
+          onClick={() => setPage((p) => Math.max(1, p - 1))}
+        >
+          Previous
+        </button>
+        <button
+          type="button"
+          className="button soft"
+          disabled={safePage >= totalPages}
+          onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+        >
+          Next
+        </button>
+      </div>
       {receipt && (
         <DeliveryReceiptView receipt={receipt} close={() => setReceipt(null)} />
       )}

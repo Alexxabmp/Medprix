@@ -1,6 +1,6 @@
 import { safeError, readResponse } from "./feedback";
 import { useState, useEffect, useCallback } from "react";
-import type { ProductItem, ShiftReceipt } from "./types";
+import type { ProductItem, ShiftReceipt, SystemLog, UserActivity } from "./types";
 import { products as initialFallbackProducts } from "./data";
 
 const formatPeso = (amount: number) =>
@@ -85,7 +85,7 @@ function saveLocalInventory(items: ProductItem[]) {
 
 function getLocalTransactions(): any[] | null {
   try {
-    const raw = sessionStorage.getItem("medprix_cached_transactions");
+    const raw = sessionStorage.getItem("medprix_cached_transactions") || localStorage.getItem("medprix_cached_transactions");
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) return parsed;
@@ -96,7 +96,28 @@ function getLocalTransactions(): any[] | null {
 
 function saveLocalTransactions(transactions: any[]) {
   try {
-    sessionStorage.setItem("medprix_cached_transactions", JSON.stringify(transactions));
+    const json = JSON.stringify(transactions);
+    sessionStorage.setItem("medprix_cached_transactions", json);
+    localStorage.setItem("medprix_cached_transactions", json);
+  } catch {}
+}
+
+function getCachedAuditList<T>(key: string): T[] | null {
+  try {
+    const raw = sessionStorage.getItem(key) || localStorage.getItem(key);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  return null;
+}
+
+function saveCachedAuditList<T>(key: string, items: T[]) {
+  try {
+    const json = JSON.stringify(items);
+    sessionStorage.setItem(key, json);
+    localStorage.setItem(key, json);
   } catch {}
 }
 
@@ -106,19 +127,23 @@ let globalTransactions: any[] | null = getLocalTransactions();
 let globalReceipts: ShiftReceipt[] | null = globalTransactions
   ? mapTransactionsToReceipts(globalTransactions)
   : null;
+let globalSystemLogs: SystemLog[] | null = getCachedAuditList<SystemLog>("medprix_system_logs");
+let globalUserActivities: UserActivity[] | null = getCachedAuditList<UserActivity>("medprix_user_activities");
 
 let inventoryLoadError = "";
 let isInventoryLoading = false;
 let isTransactionsLoading = false;
 let inventoryInFlight: Promise<ProductItem[]> | null = null;
 let transactionsInFlight: Promise<any[]> | null = null;
+let auditInFlight: Promise<{ logs: SystemLog[]; activities: UserActivity[] }> | null = null;
 let lastInventoryFetchedAt = 0;
 let lastTransactionsFetchedAt = 0;
+let lastAuditFetchedAt = 0;
 let transactionRevision = 0;
 let transactionRequest = 0;
 let isBackendConnected = false;
 
-const CACHE_TTL_MS = 30_000;
+const CACHE_TTL_MS = 60_000;
 
 const inventoryListeners = new Set<() => void>();
 const transactionListeners = new Set<() => void>();
@@ -137,6 +162,48 @@ function notifyTransactions() {
       fn();
     } catch {}
   });
+}
+
+export function getCachedSystemLogs(): SystemLog[] | null {
+  return globalSystemLogs;
+}
+
+export function getCachedUserActivities(): UserActivity[] | null {
+  return globalUserActivities;
+}
+
+export async function fetchAuditRecords(force = false): Promise<{ logs: SystemLog[]; activities: UserActivity[] }> {
+  if (!force && globalSystemLogs && globalUserActivities && Date.now() - lastAuditFetchedAt < CACHE_TTL_MS) {
+    return { logs: globalSystemLogs, activities: globalUserActivities };
+  }
+  if (!force && auditInFlight) {
+    return auditInFlight;
+  }
+  const requestPromise = (async () => {
+    try {
+      const [logs, activities] = await Promise.all([
+        fetch("/api/admin/system-logs", { credentials: "include" }).then((res) =>
+          readResponse(res, "Audit records are unavailable. Refresh to retry.")
+        ),
+        fetch("/api/admin/user-activities", { credentials: "include" }).then((res) =>
+          readResponse(res, "Audit records are unavailable. Refresh to retry.")
+        ),
+      ]);
+      if (!Array.isArray(logs) || !Array.isArray(activities)) {
+        throw new Error("Invalid audit response");
+      }
+      globalSystemLogs = logs;
+      globalUserActivities = activities;
+      lastAuditFetchedAt = Date.now();
+      saveCachedAuditList("medprix_system_logs", logs);
+      saveCachedAuditList("medprix_user_activities", activities);
+      return { logs, activities };
+    } finally {
+      auditInFlight = null;
+    }
+  })();
+  auditInFlight = requestPromise;
+  return requestPromise;
 }
 
 export async function fetchInventoryData(force = false): Promise<ProductItem[]> {
@@ -175,7 +242,7 @@ export async function fetchTransactionsData(force = false): Promise<any[]> {
   if (!force && globalTransactions && Date.now() - lastTransactionsFetchedAt < CACHE_TTL_MS) {
     return globalTransactions;
   }
-  if (!force && transactionsInFlight) {
+  if (transactionsInFlight) {
     return transactionsInFlight;
   }
   const request = ++transactionRequest;
@@ -192,7 +259,7 @@ export async function fetchTransactionsData(force = false): Promise<any[]> {
         const data = await res.json();
         if (Array.isArray(data)) {
           // A confirmed local save or newer fetch wins over an older response.
-          if (request !== transactionRequest || revision !== transactionRevision) return globalTransactions || [];
+          if (revision !== transactionRevision) return globalTransactions || [];
           globalTransactions = [...data].sort((a, b) => new Date(b.createdAt ?? b.dateTime).getTime() - new Date(a.createdAt ?? a.dateTime).getTime());
           globalReceipts = mapTransactionsToReceipts(globalTransactions);
           lastTransactionsFetchedAt = Date.now();
@@ -229,9 +296,13 @@ export function clearTransactionSession() {
   transactionRevision++;
   globalTransactions = [];
   globalReceipts = [];
+  globalSystemLogs = null;
+  globalUserActivities = null;
   lastTransactionsFetchedAt = 0;
+  lastAuditFetchedAt = 0;
   isTransactionsLoading = false;
   transactionsInFlight = null;
+  auditInFlight = null;
   try {
     for (const key of ["medprix_cached_transactions", "medprix_system_logs", "medprix_user_activities"]) {
       localStorage.removeItem(key);
@@ -301,9 +372,12 @@ export function recordTransaction(transaction: any) {
   setCachedTransactions(updatedTx);
 }
 
-export function prefetchPharmacyData() {
+export function prefetchPharmacyData(role?: string) {
   void fetchInventoryData();
   void fetchTransactionsData();
+  if (!role || role === "Admin") {
+    void fetchAuditRecords().catch(() => undefined);
+  }
 }
 
 /**
@@ -366,9 +440,9 @@ export function usePharmacyTransactions() {
       }
     };
     transactionListeners.add(handler);
-    const refreshOnFocus = () => { void fetchTransactionsData(true); };
+    const refreshOnFocus = () => { void fetchTransactionsData(false); };
     const refreshOnStorage = (event: StorageEvent) => {
-      if (event.key === "medprix_cached_transactions") refreshOnFocus();
+      if (event.key === "medprix_cached_transactions") void fetchTransactionsData(true);
     };
     window.addEventListener("focus", refreshOnFocus);
     window.addEventListener("storage", refreshOnStorage);

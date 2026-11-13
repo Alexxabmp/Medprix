@@ -18,12 +18,53 @@ const isPgUrl = dbUrl.startsWith("postgresql://") || dbUrl.startsWith("postgres:
 export let rawClient: PGlite | postgres.Sql | null = null;
 export let initPromise: Promise<void> | null = null;
 
+let readinessVerified = false;
+let currentCheck: Promise<void> | null = null;
+let checkFn: (() => Promise<void>) | null = null;
+
+export async function ensureDbReady(): Promise<void> {
+  if (readinessVerified) return;
+  if (!checkFn) {
+    if (initPromise) await initPromise;
+    return;
+  }
+  if (!currentCheck) {
+    currentCheck = (async () => {
+      let lastErr: unknown;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          await checkFn!();
+          readinessVerified = true;
+          return;
+        } catch (err: any) {
+          lastErr = err;
+          const code = String(err?.code || "");
+          const isTransient =
+            code === "ENOTFOUND" ||
+            code === "EAI_AGAIN" ||
+            code === "ETIMEDOUT" ||
+            code === "ECONNRESET" ||
+            code === "ECONNREFUSED" ||
+            code === "CONNECT_TIMEOUT";
+          if (!isTransient || attempt === 2) break;
+          await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
+        }
+      }
+      currentCheck = null;
+      throw lastErr;
+    })();
+    initPromise = currentCheck;
+    void currentCheck.catch(() => {});
+  }
+  return currentCheck;
+}
+
 function initDb() {
   if (isPgUrl) {
-    const client = postgres(dbUrl, { prepare: false });
+    const client = postgres(dbUrl, { prepare: false, connect_timeout: 15, idle_timeout: 20 });
     rawClient = client;
-    initPromise = assertSchemaReady(async (text, params = []) => ({ rows: await client.unsafe(text, params) })).then(() => {});
-    void initPromise.catch(() => {});
+    checkFn = () => assertSchemaReady(async (text, params = []) => ({ rows: await client.unsafe(text, params) })).then(() => {});
+    void ensureDbReady().catch(() => {});
     return drizzlePg(client, { schema });
   }
 
@@ -34,15 +75,13 @@ function initDb() {
     throw new Error("Configure DATABASE_URL or an existing PGLITE_DATA_DIR. Database startup never creates or seeds application schema.");
   const client = new PGlite(pgDir);
   rawClient = client;
-  initPromise = assertSchemaReady((text, params = []) => client.query(text, params)).then(() => {});
-  void initPromise.catch(() => {});
+  checkFn = () => assertSchemaReady((text, params = []) => client.query(text, params)).then(() => {});
+  void ensureDbReady().catch(() => {});
   return drizzlePglite(client, { schema });
 }
 
 export async function queryDb<T = any>(queryText: string, params: any[] = []): Promise<{ rows: T[] }> {
-  if (initPromise) {
-    await initPromise;
-  }
+  await ensureDbReady();
   if (isPgUrl && rawClient) {
     const res = await (rawClient as any).unsafe(queryText, params);
     return { rows: res };
@@ -55,9 +94,7 @@ export async function queryDb<T = any>(queryText: string, params: any[] = []): P
 }
 
 export async function execDb(sqlText: string): Promise<void> {
-  if (initPromise) {
-    await initPromise;
-  }
+  await ensureDbReady();
   if (isPgUrl && rawClient) {
     await (rawClient as any).unsafe(sqlText);
     return;
@@ -71,7 +108,7 @@ export type TransactionQuery = (text: string, params?: any[]) => Promise<{ rows:
 
 /** Run every statement on one connection; never issue pooled BEGIN/COMMIT calls. */
 export async function withTransaction<T>(work: (query: TransactionQuery) => Promise<T>): Promise<T> {
-  if (initPromise) await initPromise;
+  await ensureDbReady();
   if (isPgUrl && rawClient) {
     return (rawClient as postgres.Sql).begin(async (client) =>
       work(async (text, params = []) => ({ rows: await client.unsafe(text, params) })),

@@ -1,11 +1,11 @@
 import { safeError, readResponse } from "@/lib/feedback";
 import { ProductDialog } from "@/components/custom-ui/product-dialog";
 import { matchesProductSearch } from "@/lib/product-form";
-import { useState, useEffect, useRef, type FormEvent, type ReactNode } from "react";
+import { useState, useEffect, useRef, useMemo, type FormEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "wouter";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
-import { usePharmacyInventory } from "@/lib/pharmacy-store";
+import { usePharmacyInventory, usePharmacyTransactions } from "@/lib/pharmacy-store";
 import {
   Activity,
   AlertCircle,
@@ -242,6 +242,12 @@ export default function InventoryPage({
 
   // Inventory items state from shared pharmacy store
   const { items, setItems, loading: isLoading, refresh: fetchInventory, isBackendConnected, error: inventoryLoadError } = usePharmacyInventory();
+  const { transactions: posTransactions } = usePharmacyTransactions();
+  const [activeTab, setActiveTab] = useState<"inventory" | "movements">("inventory");
+  const [inventoryPage, setInventoryPage] = useState(1);
+  const [movementSearch, setMovementSearch] = useState("");
+  const [movementTypeFilter, setMovementTypeFilter] = useState("All movement types");
+  const [movementPage, setMovementPage] = useState(1);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All statuses");
   const [categoryFilter, setCategoryFilter] = useState("All categories");
@@ -389,6 +395,91 @@ export default function InventoryPage({
   const totalStockCount = items.reduce(
     (sum, p) => sum + getProductTotalStock(p),
     0,
+  );
+
+  const posStockMovements = useMemo(() => {
+    const fmt = new Intl.DateTimeFormat("en-PH", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: "Asia/Manila",
+    });
+    const formatDate = (value: string) => {
+      if (!value) return "—";
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime()) ? value : fmt.format(parsed);
+    };
+    const productById = new Map(items.map((p) => [p.id, p]));
+    const productByName = new Map(items.map((p) => [p.name.toLowerCase(), p]));
+
+    return posTransactions
+      .filter((trx) => trx.status !== "Voided")
+      .flatMap((trx, trxIdx) => {
+        const formattedDate = formatDate(trx.dateTime || "");
+        const reference = trx.transactionNumber || `TRX-${trx.id}`;
+        const user = trx.user || "Cashier";
+        return (Array.isArray(trx.items) ? trx.items : []).map((line: any, lineIdx: number) => {
+          const matchedProduct =
+            (line.productId && productById.get(String(line.productId))) ||
+            productByName.get(String(line.product || "").toLowerCase());
+          const productName = line.product || matchedProduct?.name || "Unknown Product";
+          const genericName = matchedProduct?.genericName || "";
+          const sku = matchedProduct?.sku || "—";
+          const movementType = "POS Sale";
+          return {
+            id: `${trx.id ?? trxIdx}-${line.productId ?? lineIdx}`,
+            dateTime: trx.dateTime || "",
+            formattedDate,
+            reference,
+            productName,
+            genericName,
+            sku,
+            movementType,
+            quantity: Number(line.quantity) || 0,
+            user,
+            unitPrice: line.unitPrice || "—",
+            subtotal: line.subtotal || "—",
+            searchText: `${productName} ${genericName} ${sku} ${reference} ${user} ${movementType}`.toLowerCase(),
+          };
+        });
+      });
+  }, [posTransactions, items]);
+
+  const filteredMovements = useMemo(() => {
+    const q = movementSearch.trim().toLowerCase();
+    return posStockMovements.filter((m) => {
+      const matchesType =
+        movementTypeFilter === "All movement types" || m.movementType === movementTypeFilter;
+      const matchesQuery = !q || m.searchText.includes(q);
+      return matchesType && matchesQuery;
+    });
+  }, [posStockMovements, movementSearch, movementTypeFilter]);
+
+  const INVENTORY_PAGE_SIZE = 15;
+  const totalInventoryPages = Math.max(1, Math.ceil(filtered.length / INVENTORY_PAGE_SIZE));
+  const safeInventoryPage = Math.min(inventoryPage, totalInventoryPages);
+  const paginatedInventory = useMemo(
+    () =>
+      filtered.slice(
+        (safeInventoryPage - 1) * INVENTORY_PAGE_SIZE,
+        safeInventoryPage * INVENTORY_PAGE_SIZE,
+      ),
+    [filtered, safeInventoryPage],
+  );
+
+  const MOVEMENT_PAGE_SIZE = 15;
+  const totalMovementPages = Math.max(1, Math.ceil(filteredMovements.length / MOVEMENT_PAGE_SIZE));
+  const safeMovementPage = Math.min(movementPage, totalMovementPages);
+  const paginatedMovements = useMemo(
+    () =>
+      filteredMovements.slice(
+        (safeMovementPage - 1) * MOVEMENT_PAGE_SIZE,
+        safeMovementPage * MOVEMENT_PAGE_SIZE,
+      ),
+    [filteredMovements, safeMovementPage],
   );
 
   // Handlers
@@ -621,21 +712,12 @@ export default function InventoryPage({
           action={
             <button
               type="button"
-              className="button soft"
-              style={{
-                fontSize: 12,
-                padding: "2px 8px",
-                height: 22,
-                cursor: "pointer",
-                borderRadius: 6,
-                fontWeight: 600,
-                lineHeight: "1",
-              }}
+              className="button soft wholesale-summary-action"
               onClick={() => {
                 setAlertSearch("");
                 setAlertModal("low-stock");
               }}>
-              See Products
+              View
             </button>
           }
         />
@@ -651,33 +733,44 @@ export default function InventoryPage({
           action={
             <button
               type="button"
-              className="button soft"
-              style={{
-                fontSize: 12,
-                padding: "2px 8px",
-                height: 22,
-                cursor: "pointer",
-                borderRadius: 6,
-                fontWeight: 600,
-                lineHeight: "1",
-              }}
+              className="button soft wholesale-summary-action"
               onClick={() => {
                 setAlertSearch("");
                 setAlertModal("expired");
               }}>
-              See Products
+              View
             </button>
           }
         />
       </div>
 
       {/* ========================================================================= */}
+      {/* MULTI-TAB LAYOUT BELOW SUMMARY BOXES */}
+      {/* ========================================================================= */}
+      <div className="page-tabs" role="tablist" aria-label="Inventory sections">
+        <button
+          type="button"
+          className={`button ${activeTab === "inventory" ? "dark" : "soft"}`}
+          onClick={() => setActiveTab("inventory")}
+          data-testid="tab-product-inventory">
+          Product Inventory
+        </button>
+        <button
+          type="button"
+          className={`button ${activeTab === "movements" ? "dark" : "soft"}`}
+          onClick={() => setActiveTab("movements")}
+          data-testid="tab-stock-movement-history">
+          Stock Movement History
+        </button>
+      </div>
+
+      {/* ========================================================================= */}
       {/* INVENTORY TABLE & TOOLS */}
       {/* ========================================================================= */}
+      {activeTab === "inventory" && (
       <section className="surface-card table-card">
-        <div
-          className="table-tools product-search-tools">
-          <div className="search-wrap product-search">
+        <div className="table-tools">
+          <div className="search-wrap">
             <Search size={15} />
             <input
               aria-label="Search products by name, generic name, code, category, or batch"
@@ -685,36 +778,47 @@ export default function InventoryPage({
               type="search"
               placeholder="Search product name, generic, SKU..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setInventoryPage(1);
+              }}
             />
           </div>
 
-          <select
-            className="select"
-            aria-label="Filter products by category"
-            data-testid="select-inventory-category"
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}>
-            {categories.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
+          <div className="table-tools-right">
+            <select
+              className="select"
+              aria-label="Filter products by category"
+              data-testid="select-inventory-category"
+              value={categoryFilter}
+              onChange={(e) => {
+                setCategoryFilter(e.target.value);
+                setInventoryPage(1);
+              }}>
+              {categories.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
 
-          <select
-            className="select"
-            aria-label="Filter products by status"
-            data-testid="select-inventory-filter"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}>
-            <option>All statuses</option>
-            <option>In Stock</option>
-            <option>Low Stock</option>
-            <option>Out of Stock</option>
-            <option>Expiring Soon</option>
-            <option>Expired</option>
-          </select>
+            <select
+              className="select"
+              aria-label="Filter products by status"
+              data-testid="select-inventory-filter"
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setInventoryPage(1);
+              }}>
+              <option>All statuses</option>
+              <option>In Stock</option>
+              <option>Low Stock</option>
+              <option>Out of Stock</option>
+              <option>Expiring Soon</option>
+              <option>Expired</option>
+            </select>
+          </div>
         </div>
 
         <div className="table-scroll">
@@ -727,7 +831,7 @@ export default function InventoryPage({
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Product</th>
+                  <th style={{ width: 210, maxWidth: 210 }}>Product</th>
                   <th>Product Code</th>
                   <th>Category</th>
                   <th style={{ textAlign: "right" }}>Price</th>
@@ -735,21 +839,28 @@ export default function InventoryPage({
                   <th>Batch Number</th>
                   <th>Expiry Date</th>
                   <th>Stock Status</th>
-                  <th style={{ textAlign: "right" }}>Actions</th>
+                  <th className="table-action-head">Action</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((product) => {
+                {paginatedInventory.map((product) => {
                   const info = getProductStatusData(product);
 
                   return (
                     <tr key={product.id} data-testid={`row-product-${product.id}`}>
-                      <td>
-                        <div className="product-cell">
-                          <span className="product-symbol">
+                      <td style={{ width: 210, maxWidth: 210 }}>
+                        <div className="product-cell" style={{ maxWidth: 195 }}>
+                          <span className="product-symbol" style={{ flexShrink: 0 }}>
                             <Package size={15} />
                           </span>
-                          <div>
+                          <div
+                            style={{
+                              maxWidth: 155,
+                              overflowX: "auto",
+                              whiteSpace: "nowrap",
+                              scrollbarWidth: "thin",
+                              paddingBottom: 2,
+                            }}>
                             <strong>{product.name}</strong>
                             {product.isDangerousDrug && (
                               <span
@@ -848,24 +959,17 @@ export default function InventoryPage({
                           ))}
                         </div>
                       </td>
-                      <td style={{ textAlign: "right" }}>
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: 6,
-                            justifyContent: "flex-end",
-                            alignItems: "center",
-                            whiteSpace: "nowrap",
-                          }}>
+                      <td className="table-action-cell">
+                        <div className="table-actions">
                           {/* View Details - ALL 3 ROLES */}
                           <button
                             type="button"
-                            className="button soft"
-                            style={{ padding: "4px 8px", fontSize: 12 }}
+                            className="button soft table-action-btn"
                             onClick={() => setViewProduct(product)}
                             title="View product & batches"
+                            aria-label={`View ${product.name}`}
                             data-testid={`button-view-${product.id}`}>
-                            <Eye size={12} />
+                            <Eye size={13} />
                           </button>
 
                           {/* More Action Dropdown - ADMIN, FRONT DESK, CASHIER */}
@@ -874,17 +978,11 @@ export default function InventoryPage({
                               <DropdownMenuPrimitive.Trigger asChild>
                                 <button
                                   type="button"
-                                  className="button soft"
-                                  style={{
-                                    padding: "4px 8px",
-                                    fontSize: 12,
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: 4,
-                                  }}
+                                  className="button soft table-action-btn"
                                   title="More actions"
+                                  aria-label={`More actions for ${product.name}`}
                                   data-testid={`button-more-action-${product.id}`}>
-                                  <Ellipsis size={12} />
+                                  <Ellipsis size={13} />
                                 </button>
                               </DropdownMenuPrimitive.Trigger>
 
@@ -964,7 +1062,160 @@ export default function InventoryPage({
             </div>
           )}
         </div>
+        <div className="wholesale-pagination">
+          <span className="muted">
+            Page {safeInventoryPage} of {totalInventoryPages}
+          </span>
+          <button
+            type="button"
+            className="button soft"
+            disabled={safeInventoryPage <= 1}
+            onClick={() => setInventoryPage((p) => Math.max(1, p - 1))}>
+            Previous
+          </button>
+          <button
+            type="button"
+            className="button soft"
+            disabled={safeInventoryPage >= totalInventoryPages}
+            onClick={() => setInventoryPage((p) => Math.min(totalInventoryPages, p + 1))}>
+            Next
+          </button>
+        </div>
       </section>
+      )}
+
+      {/* ========================================================================= */}
+      {/* STOCK MOVEMENT HISTORY TAB (POS STOCK MOVEMENTS) */}
+      {/* ========================================================================= */}
+      {activeTab === "movements" && (
+        <section className="surface-card table-card">
+          <div className="table-tools">
+            <div className="search-wrap">
+              <Search size={15} />
+              <input
+                type="search"
+                placeholder="Search product, SKU, TRX #, or cashier..."
+                value={movementSearch}
+                onChange={(e) => {
+                  setMovementSearch(e.target.value);
+                  setMovementPage(1);
+                }}
+                data-testid="input-movement-search"
+              />
+            </div>
+            <div className="table-tools-right">
+              <select
+                className="select"
+                aria-label="Filter movements by movement type"
+                value={movementTypeFilter}
+                onChange={(e) => {
+                  setMovementTypeFilter(e.target.value);
+                  setMovementPage(1);
+                }}
+                data-testid="select-movement-type">
+                <option value="All movement types">All movement types</option>
+                <option value="POS Sale">POS Sale</option>
+                <option value="Stock In">Stock In</option>
+                <option value="Stock Out">Stock Out</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="table-scroll">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Date &amp; Time</th>
+                  <th>Reference</th>
+                  <th style={{ width: 210, maxWidth: 210 }}>Product</th>
+                  <th>Product Code</th>
+                  <th>Movement Type</th>
+                  <th style={{ textAlign: "right" }}>Quantity</th>
+                  <th>Processed By</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedMovements.map((mov) => (
+                  <tr key={mov.id} data-testid={`row-movement-${mov.id}`}>
+                    <td className="muted">{mov.formattedDate}</td>
+                    <td>
+                      <strong>{mov.reference}</strong>
+                    </td>
+                    <td style={{ width: 210, maxWidth: 210 }}>
+                      <div className="product-cell" style={{ maxWidth: 195 }}>
+                        <span className="product-symbol" style={{ flexShrink: 0 }}>
+                          <Package size={15} />
+                        </span>
+                        <div
+                          style={{
+                            maxWidth: 155,
+                            overflowX: "auto",
+                            whiteSpace: "nowrap",
+                            scrollbarWidth: "thin",
+                            paddingBottom: 2,
+                          }}>
+                          <strong>{mov.productName}</strong>
+                          {mov.genericName && (
+                            <div className="muted" style={{ fontSize: 12 }}>
+                              {mov.genericName}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <span
+                        style={{
+                          fontFamily: "monospace",
+                          fontSize: 12,
+                          fontWeight: 600,
+                        }}>
+                        {mov.sku}
+                      </span>
+                    </td>
+                    <td>
+                      <span className="pill warning" style={{ fontSize: 12 }}>
+                        {mov.movementType}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <strong style={{ color: "#ef4444" }}>-{mov.quantity}</strong>{" "}
+                      <span className="muted">units</span>
+                    </td>
+                    <td>{mov.user}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {filteredMovements.length === 0 && (
+              <div className="empty-state">
+                <Activity size={25} />
+                <div>No stock movements found matching your search or filter.</div>
+              </div>
+            )}
+          </div>
+          <div className="wholesale-pagination">
+            <span className="muted">
+              Page {safeMovementPage} of {totalMovementPages}
+            </span>
+            <button
+              type="button"
+              className="button soft"
+              disabled={safeMovementPage <= 1}
+              onClick={() => setMovementPage((p) => Math.max(1, p - 1))}>
+              Previous
+            </button>
+            <button
+              type="button"
+              className="button soft"
+              disabled={safeMovementPage >= totalMovementPages}
+              onClick={() => setMovementPage((p) => Math.min(totalMovementPages, p + 1))}>
+              Next
+            </button>
+          </div>
+        </section>
+      )}
 
       {/* ========================================================================= */}
       {/* 1. VIEW PRODUCT DETAILS MODAL (ALL ROLES) */}
@@ -1168,7 +1419,7 @@ export default function InventoryPage({
             className="modal-backdrop"
             onMouseDown={(e) => e.currentTarget === e.target && setBatchProduct(null)}
             data-testid="modal-add-batch">
-            <div className="modal dialog" style={{ maxWidth: 500 }}>
+            <div className="modal">
               <div className="modal-header">
                 <div>
                   <h2>
@@ -1308,7 +1559,7 @@ export default function InventoryPage({
             className="modal-backdrop"
             onMouseDown={(e) => e.currentTarget === e.target && setStockInProduct(null)}
             data-testid="modal-stock-in">
-            <div className="modal dialog" style={{ maxWidth: 480 }}>
+            <div className="modal">
               <div className="modal-header">
                 <div>
                   <h2>Record Stock In</h2>
@@ -1411,7 +1662,7 @@ export default function InventoryPage({
             className="modal-backdrop"
             onMouseDown={(e) => e.currentTarget === e.target && setStockOutProduct(null)}
             data-testid="modal-stock-out">
-            <div className="modal dialog" style={{ maxWidth: 480 }}>
+            <div className="modal">
               <div className="modal-header">
                 <div>
                   <h2>Record Stock Out</h2>
@@ -1537,13 +1788,10 @@ export default function InventoryPage({
             className="modal-backdrop"
             onMouseDown={(e) => e.currentTarget === e.target && setAlertModal(null)}
             data-testid="modal-low-stock-products">
-            <div className="modal dialog" style={{ maxWidth: 680, width: "92%" }}>
+            <div className="modal">
               <div className="modal-header">
                 <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <AlertTriangle size={17} style={{ color: "#d97706" }} />
-                    <h2 style={{ margin: 0, fontSize: 16 }}>Low Stock Products ({lowStockItems.length})</h2>
-                  </div>
+                  <h2>Low Stock Products ({lowStockItems.length})</h2>
                   <p className="modal-sub">
                     Products currently at or below minimum reorder thresholds.
                   </p>
@@ -1664,15 +1912,12 @@ export default function InventoryPage({
             className="modal-backdrop"
             onMouseDown={(e) => e.currentTarget === e.target && setAlertModal(null)}
             data-testid="modal-expired-products">
-            <div className="modal dialog" style={{ maxWidth: 720, width: "92%" }}>
+            <div className="modal">
               <div className="modal-header">
                 <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <AlertCircle size={17} style={{ color: "#dc2626" }} />
-                    <h2 style={{ margin: 0, fontSize: 16 }}>
-                      Expired &amp; Expiring Batches ({expiredItems.length + expiringSoonItems.length})
-                    </h2>
-                  </div>
+                  <h2>
+                    Expired &amp; Expiring Batches ({expiredItems.length + expiringSoonItems.length})
+                  </h2>
                   <p className="modal-sub">
                     Batches that are already expired or approaching expiration within 60 days.
                   </p>

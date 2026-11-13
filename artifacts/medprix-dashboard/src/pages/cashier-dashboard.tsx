@@ -57,12 +57,12 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
   const { receipts, setReceipts, refresh: fetchTransactions } = usePharmacyTransactions();
   const [selectedProductId, setSelectedProductId] = useState("");
   const [productLoadError, setProductLoadError] = useState("");
-  const [stockChecking, setStockChecking] = useState(true);
+  const [stockChecking, setStockChecking] = useState(() => products.length === 0);
   const [checkoutError, setCheckoutError] = useState("");
   const stockDayTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  async function refreshStock() {
+  async function refreshStock(forceSpinner = false) {
     clearTimeout(stockDayTimer.current);
-    setStockChecking(true);
+    if (forceSpinner || products.length === 0) setStockChecking(true);
     try {
       const response = await fetch("/api/inventory", { credentials: "include", signal: AbortSignal.timeout(15000) });
       const data = await readResponse(response, "Could not verify current stock. Please refresh stock.");
@@ -452,7 +452,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
             <div className="pos-product-label">
               <label htmlFor="pos-product-select">Select Product / Medicine *</label>
               <button type="button" className="icon-button pos-stock-refresh" aria-label="Refresh stock" title="Refresh stock"
-                disabled={stockChecking || isSubmitting} onClick={() => void refreshStock()}>
+                disabled={stockChecking || isSubmitting} onClick={() => void refreshStock(true)}>
                 <RefreshCw size={14} className={stockChecking ? "spin" : undefined} />
               </button>
             </div>

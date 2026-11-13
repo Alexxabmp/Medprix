@@ -129,9 +129,14 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
   const canManagePurchasing = currentRole === "Admin" || currentRole === "FrontDesk";
   const [activeSection, setActiveSection] = useState(currentRole === "Cashier" ? "Receiving Report Management" : "Purchase Order Monitoring");
   const [status, setStatus] = useState("All orders");
+  const [receivingStatusFilter, setReceivingStatusFilter] = useState("All statuses");
+  const [invoiceStatusFilter, setInvoiceStatusFilter] = useState("All statuses");
   const [orderSearch, setOrderSearch] = useState("");
+  const [orderPage, setOrderPage] = useState(1);
   const [receivingSearch, setReceivingSearch] = useState("");
+  const [receivingPage, setReceivingPage] = useState(1);
   const [invoiceSearch, setInvoiceSearch] = useState("");
+  const [invoicePage, setInvoicePage] = useState(1);
   const [orders, setOrders] = useState<PurchaseOrder[]>(() =>
     getStored("medprix_procurement_orders", [])
   );
@@ -225,7 +230,6 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
   const [orderToCancel, setOrderToCancel] = useState<PurchaseOrder | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [supplierId, setSupplierId] = useState("");
-  const [poNumber, setPoNumber] = useState("");
   const [lineItems, setLineItems] = useState<LineItem[]>([
     { productId: "", quantityOrdered: "1", unitCost: "0" },
   ]);
@@ -409,14 +413,51 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
   }, []);
 
   const filteredOrders = orders.filter(
-    order => (status === "All orders" || order.status === status) && matchesSearch(orderSearch,
+    order => (status === "All orders" || status === "All statuses" || order.status === status) && matchesSearch(orderSearch,
       [order.poNumber, order.supplier, order.status, ...(order.items ?? []).flatMap(item => [item.product, item.sku])]),
   );
   const filteredReceivingRows = deliveries.flatMap(delivery => delivery.items.map(item => ({delivery, item})))
-    .filter(({delivery, item}) => matchesSearch(receivingSearch,
-      [delivery.poNumber, delivery.supplier, delivery.deliveryStatus, item.product, item.sku, item.batchNumber, item.expirationDate]));
-  const filteredInvoices = invoices.filter(invoice => matchesSearch(invoiceSearch,
-    [invoice.invoiceNumber, invoice.supplier, invoice.poNumber, invoice.status, invoice.dueDate, invoice.invoiceAmount]));
+    .filter(({delivery, item}) => {
+      const expiry = expiryStatus(item.expirationDate).label;
+      const matchesStatus =
+        receivingStatusFilter === "All statuses" ||
+        delivery.deliveryStatus === receivingStatusFilter ||
+        expiry === receivingStatusFilter;
+      return matchesStatus && matchesSearch(receivingSearch,
+        [delivery.poNumber, delivery.supplier, delivery.deliveryStatus, item.product, item.sku, item.batchNumber, item.expirationDate]);
+    });
+  const filteredInvoices = invoices.filter(invoice => {
+    const displayStatus = invoice.status === "Paid" ? "Settled" : invoice.status;
+    const matchesStatus =
+      invoiceStatusFilter === "All statuses" ||
+      invoice.status === invoiceStatusFilter ||
+      displayStatus === invoiceStatusFilter;
+    return matchesStatus && matchesSearch(invoiceSearch,
+      [invoice.invoiceNumber, invoice.supplier, invoice.poNumber, invoice.status, invoice.dueDate, invoice.invoiceAmount]);
+  });
+
+  const PROCUREMENT_PAGE_SIZE = 15;
+  const totalOrderPages = Math.max(1, Math.ceil(filteredOrders.length / PROCUREMENT_PAGE_SIZE));
+  const safeOrderPage = Math.min(orderPage, totalOrderPages);
+  const paginatedOrders = filteredOrders.slice(
+    (safeOrderPage - 1) * PROCUREMENT_PAGE_SIZE,
+    safeOrderPage * PROCUREMENT_PAGE_SIZE,
+  );
+
+  const totalReceivingPages = Math.max(1, Math.ceil(filteredReceivingRows.length / PROCUREMENT_PAGE_SIZE));
+  const safeReceivingPage = Math.min(receivingPage, totalReceivingPages);
+  const paginatedReceivingRows = filteredReceivingRows.slice(
+    (safeReceivingPage - 1) * PROCUREMENT_PAGE_SIZE,
+    safeReceivingPage * PROCUREMENT_PAGE_SIZE,
+  );
+
+  const totalInvoicePages = Math.max(1, Math.ceil(filteredInvoices.length / PROCUREMENT_PAGE_SIZE));
+  const safeInvoicePage = Math.min(invoicePage, totalInvoicePages);
+  const paginatedInvoices = filteredInvoices.slice(
+    (safeInvoicePage - 1) * PROCUREMENT_PAGE_SIZE,
+    safeInvoicePage * PROCUREMENT_PAGE_SIZE,
+  );
+
   const totalOpenValue = orders
     .filter((order) => !["Fulfilled", "Cancelled"].includes(order.status))
     .reduce((total, order) => total + Number(order.totalOrderAmount || 0), 0);
@@ -535,6 +576,8 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
     setPoError("");
     const duplicate = lineItems.find((item, index) => lineItems.findIndex((other) => other.productId === item.productId) !== index);
     if (duplicate) { setPoError("This product is already listed. Edit its existing quantity instead."); return; }
+    const finalPoNum =
+      `PO-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}-${String(orders.length + 1).padStart(3, "0")}`;
 
     try {
       setIsSaving(true);
@@ -544,7 +587,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           supplierId,
-          poNumber: poNumber.trim(),
+          poNumber: finalPoNum,
           status: "Draft",
           items: lineItems.map((item) => ({
             productId: item.productId,
@@ -558,7 +601,6 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
       if (!data.purchaseOrder?.id) throw new Error("Purchase order save could not be confirmed. Check the order list before retrying.");
       setIsCreateOpen(false);
       setSupplierId("");
-      setPoNumber("");
       setLineItems([{ productId: "", quantityOrdered: "1", unitCost: "0" }]);
       await Promise.all([loadData(), fetchInventoryData(true)]);
       onToast("Purchase order created with Draft status.");
@@ -610,12 +652,14 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
     event.preventDefault();
     try {
       setIsSaving(true);
+      const autoInvoiceNumber = `INV-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}-${String(invoices.length + 1).padStart(3, "0")}`;
       const response = await fetch("/api/supplier-invoices", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...invoiceForm,
+          invoiceNumber: autoInvoiceNumber,
           poId: invoiceForm.poId || null,
           invoiceAmount: Number(invoiceForm.invoiceAmount),
         }),
@@ -752,7 +796,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
           caption="Recorded supplier deliveries"
         />
       </div>
-      <div className="table-tools supplier-invoices" style={{ marginBottom: 16 }}>
+      <div className="page-tabs">
         {[
           "Purchase Order Monitoring",
           "Receiving Report Management",
@@ -760,7 +804,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
         ].filter((section) => canManagePurchasing || section === "Receiving Report Management").map((section) => (
           <button
             key={section}
-            className={`button ${activeSection === section ? "primary-action" : "soft"}`}
+            className={`button ${activeSection === section ? "dark" : "soft"}`}
             onClick={() => setActiveSection(section)}>
             {section}
           </button>
@@ -769,28 +813,31 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
 
       {activeSection === "Purchase Order Monitoring" && (
         <section className="surface-card table-card">
-          <div className="table-tools procurement-table-tools">
-            <div>
-              <h2 className="card-title">Purchase orders</h2>
-              <p className="card-subtitle">Latest orders, line items, and delivery status</p>
+          <div className="table-tools">
+            <div className="search-wrap">
+              <Search size={15} aria-hidden="true" />
+              <input
+                type="search"
+                aria-label="Search purchase orders"
+                placeholder="Search PO, supplier, product or SKU"
+                value={orderSearch}
+                onChange={event => {
+                  setOrderSearch(event.target.value);
+                  setOrderPage(1);
+                }} />
             </div>
-            <div className="procurement-table-controls purchase-order-controls">
-              <div className="procurement-search">
-                <Search size={15} aria-hidden="true" />
-                <input
-                  type="search"
-                  aria-label="Search purchase orders" placeholder="Search PO, supplier, product or SKU"
-                  value={orderSearch}
-                  onChange={event => setOrderSearch(event.target.value)} />
-              </div>
+            <div className="table-tools-right">
               <select
                 className="select"
                 data-testid="select-procurement-status"
                 value={status}
-                onChange={(event) => setStatus(event.target.value)}>
-                <option>All orders</option>
+                onChange={(event) => {
+                  setStatus(event.target.value);
+                  setOrderPage(1);
+                }}>
+                <option value="All orders">All statuses</option>
                 {poStatuses.map((item) => (
-                  <option key={item}>{item}</option>
+                  <option key={item} value={item}>{item}</option>
                 ))}
               </select>
             </div>
@@ -805,7 +852,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                   <th>Items</th>
                   <th>Value</th>
                   <th>Status</th>
-                  <th>Actions</th>
+                  <th className="table-action-head">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -817,7 +864,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                       </td>
                     </tr>
                   ) : (
-                    filteredOrders.map((order) => (
+                    paginatedOrders.map((order) => (
                       <tr key={order.id}>
                         <td>
                           <strong>{order.poNumber}</strong>
@@ -853,24 +900,26 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                             ))}
                           </select> : <span className="pill neutral">{order.status}</span>}
                         </td>
-                        <td className="flex flex-row gap-3">
-                          {canManagePurchasing && !["Fulfilled", "Cancelled"].includes(order.status) && order.items?.some(item => item.quantityRemaining > 0) &&
+                        <td className="table-action-cell">
+                          <div className="table-actions">
+                            {canManagePurchasing && !["Fulfilled", "Cancelled"].includes(order.status) && order.items?.some(item => item.quantityRemaining > 0) &&
+                              <button
+                                type="button"
+                                className="button soft table-action-btn"
+                                disabled={isSaving}
+                                onClick={() => void openReceiving(order.id)}>
+                                <PackagePlus size={12} />
+                                Receive
+                              </button>}
                             <button
                               type="button"
-                              className="button soft"
-                              style={{ fontSize: 12, padding: "4px 8px"}}
-                              disabled={isSaving}
-                              onClick={() => void openReceiving(order.id)}>
-                              <PackagePlus size={12} />
-                              Receive
-                            </button>}
-                          <button
-                            type="button"
-                            className="button soft"
-                            style={{ fontSize: 12, padding: "4px 8px" }}
-                            onClick={() => void openItemsModal(order)}>
-                            <Eye size={12} /> View items
-                          </button>
+                              className="button soft table-action-btn"
+                              title="View items"
+                              aria-label="View items"
+                              onClick={() => void openItemsModal(order)}>
+                              <Eye size={13} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -878,26 +927,69 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               </tbody>
             </table>
           </div>
+          <div className="wholesale-pagination">
+            <span className="muted">
+              Page {safeOrderPage} of {totalOrderPages}
+            </span>
+            <button
+              type="button"
+              className="button soft"
+              disabled={safeOrderPage <= 1}
+              onClick={() => setOrderPage((p) => Math.max(1, p - 1))}>
+              Previous
+            </button>
+            <button
+              type="button"
+              className="button soft"
+              disabled={safeOrderPage >= totalOrderPages}
+              onClick={() => setOrderPage((p) => Math.min(totalOrderPages, p + 1))}>
+              Next
+            </button>
+          </div>
         </section>
       )}
 
       {activeSection === "Receiving Report Management" && (
         <section className="surface-card table-card">
-          <div className="table-tools procurement-table-tools">
-            <div>
-              <h2 className="card-title">Receiving reports</h2>
-              <p className="card-subtitle">Stock-in records with batch and expiry monitoring</p>
+          <div className="table-tools">
+            <div className="search-wrap">
+              <Search size={15} aria-hidden="true" />
+              <input
+                type="search"
+                aria-label="Search receiving reports"
+                placeholder="Search PO, supplier, product or batch"
+                value={receivingSearch}
+                onChange={event => {
+                  setReceivingSearch(event.target.value);
+                  setReceivingPage(1);
+                }} />
             </div>
-            <div className="procurement-table-controls">
-              <div className="procurement-search"><Search size={15} aria-hidden="true" /><input type="search" aria-label="Search receiving reports" placeholder="Search PO, supplier, product or batch" value={receivingSearch} onChange={event => setReceivingSearch(event.target.value)} /></div>
-            {canManagePurchasing && (
-              <button
-                className="button primary-action"
-                disabled={isSaving}
-                onClick={() => void openReceiving()}>
-                <Plus size={14} /> Add receiving report
-              </button>
-            )}
+            <div className="table-tools-right">
+              <select
+                className="select"
+                aria-label="Filter receiving reports by status"
+                value={receivingStatusFilter}
+                onChange={(event) => {
+                  setReceivingStatusFilter(event.target.value);
+                  setReceivingPage(1);
+                }}
+                data-testid="select-receiving-status">
+                <option value="All statuses">All statuses</option>
+                <option value="Valid">Valid</option>
+                <option value="Expiring Soon">Expiring Soon</option>
+                <option value="Expired">Expired</option>
+                <option value="Received">Received</option>
+                <option value="Inspected">Inspected</option>
+                <option value="Partial">Partial</option>
+              </select>
+              {canManagePurchasing && (
+                <button
+                  className="button primary-action"
+                  disabled={isSaving}
+                  onClick={() => void openReceiving()}>
+                  <Plus size={14} /> Add receiving report
+                </button>
+              )}
             </div>
           </div>
           <div className="table-scroll">
@@ -917,16 +1009,16 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               </thead>
               <tbody>
                 {tableMessage(canManagePurchasing ? 9 : 8, loadingSections.deliveries, deliveries.length) ||
-                  (filteredReceivingRows.length === 0 ? (
+                  (paginatedReceivingRows.length === 0 ? (
                     <tr><td colSpan={canManagePurchasing ? 9 : 8} className="muted">{receivingSearch ? "No receiving reports match this search." : "No receiving reports found."}</td></tr>
-                  ) : filteredReceivingRows.map(({delivery, item}, index) => {
+                  ) : paginatedReceivingRows.map(({delivery, item}, index) => {
                     const expiry = expiryStatus(item.expirationDate);
                     return <tr key={item.id}>
                       <td>{delivery.poNumber}<div className="muted" style={{fontSize: 12}}>{formatDeliveryDate(delivery.deliveryDate)}</div></td>
                       <td>{delivery.supplier}</td><td>{item.product}</td><td>{item.batchNumber}</td>
                       <td>{item.expirationDate}</td><td>{item.quantityDelivered}</td><td>{delivery.deliveryStatus}</td>
                       <td><span className={`pill ${expiry.tone}`}>{expiry.label}</span></td>
-                      {canManagePurchasing && <td>{delivery.deliveryStatus === "Pending" && filteredReceivingRows.findIndex(row => row.delivery.id === delivery.id) === index &&
+                      {canManagePurchasing && <td>{delivery.deliveryStatus === "Pending" && paginatedReceivingRows.findIndex(row => row.delivery.id === delivery.id) === index &&
                         <div className="receiving-report-actions">
                           <button type="button" className="button soft" disabled={isSaving} onClick={() => setReportDecision({report: delivery, decision: "Received"})}>Receive report</button>
                           <button type="button" className="button soft" disabled={isSaving} onClick={() => setReportDecision({report: delivery, decision: "Rejected"})}>Reject report</button>
@@ -936,18 +1028,60 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               </tbody>
             </table>
           </div>
+          <div className="wholesale-pagination">
+            <span className="muted">
+              Page {safeReceivingPage} of {totalReceivingPages}
+            </span>
+            <button
+              type="button"
+              className="button soft"
+              disabled={safeReceivingPage <= 1}
+              onClick={() => setReceivingPage((p) => Math.max(1, p - 1))}>
+              Previous
+            </button>
+            <button
+              type="button"
+              className="button soft"
+              disabled={safeReceivingPage >= totalReceivingPages}
+              onClick={() => setReceivingPage((p) => Math.min(totalReceivingPages, p + 1))}>
+              Next
+            </button>
+          </div>
         </section>
       )}
 
       {activeSection === "Purchase Invoice Monitoring" && (
         <section className="surface-card table-card">
-          <div className="table-tools procurement-table-tools">
-            <div>
-              <h2 className="card-title">Supplier invoices</h2>
-              <p className="card-subtitle">Outstanding and settled purchase invoices</p>
+          <div className="table-tools">
+            <div className="search-wrap">
+              <Search size={15} aria-hidden="true" />
+              <input
+                type="search"
+                aria-label="Search purchase invoices"
+                placeholder="Search invoice, supplier or PO"
+                value={invoiceSearch}
+                onChange={event => {
+                  setInvoiceSearch(event.target.value);
+                  setInvoicePage(1);
+                }} />
             </div>
-            <div className="procurement-table-controls">
-              <div className="procurement-search"><Search size={15} aria-hidden="true" /><input type="search" aria-label="Search purchase invoices" placeholder="Search invoice, supplier or PO" value={invoiceSearch} onChange={event => setInvoiceSearch(event.target.value)} /></div>
+            <div className="table-tools-right">
+              <select
+                className="select"
+                aria-label="Filter supplier invoices by status"
+                value={invoiceStatusFilter}
+                onChange={(event) => {
+                  setInvoiceStatusFilter(event.target.value);
+                  setInvoicePage(1);
+                }}
+                data-testid="select-invoice-status">
+                <option value="All statuses">All statuses</option>
+                <option value="Pending">Pending</option>
+                <option value="Open">Open</option>
+                <option value="Overdue">Overdue</option>
+                <option value="Settled">Settled</option>
+                <option value="Needs Review">Needs Review</option>
+              </select>
               {isInvoiceRefreshing && (
                 <span className="muted" role="status">Refreshing…</span>
               )}
@@ -977,19 +1111,20 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                   <th>Purchase order</th>
                   <th>Due date</th>
                   <th>Amount</th>
-                  <th className="invoice-payment-heading">Status</th>
+                  <th>Status</th>
+                  <th className="table-action-head">Action</th>
                 </tr>
               </thead>
               <tbody>
-                {tableMessage(6, loadingSections.invoices, invoices.length) ||
+                {tableMessage(7, loadingSections.invoices, invoices.length) ||
                   (filteredInvoices.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="muted">
+                      <td colSpan={7} className="muted">
                         {invoiceSearch ? "No supplier invoices match this search." : "No supplier invoices found."}
                       </td>
                     </tr>
                   ) : (
-                    filteredInvoices.map((invoice) => (
+                    paginatedInvoices.map((invoice) => (
                       <tr key={invoice.id}>
                         <td>
                           <strong>{invoice.invoiceNumber}</strong>
@@ -1000,13 +1135,46 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                         <td>
                           <strong>{money(invoice.invoiceAmount)}</strong>
                         </td>
-                        <td className="invoice-payment-cell"><div className="invoice-payment-actions"><span className={`pill ${invoice.status === "Paid" ? "success" : "warning"}`}>{invoice.status === "Paid" ? "Settled" : invoice.status}</span>
-                          {canManagePurchasing && invoice.status !== "Paid" && invoice.status !== "Needs Review" && <button className="button soft" onClick={() => setPaymentInvoiceId(invoice.id)}>Record payment</button>}</div></td>
+                        <td>
+                          <span className={`pill ${invoice.status === "Paid" ? "success" : "warning"}`}>
+                            {invoice.status === "Paid" ? "Settled" : invoice.status}
+                          </span>
+                        </td>
+                        <td className="table-action-cell">
+                          <div className="table-actions">
+                            {canManagePurchasing && invoice.status !== "Paid" && invoice.status !== "Needs Review" ? (
+                              <button className="button soft table-action-btn" onClick={() => setPaymentInvoiceId(invoice.id)}>
+                                Record payment
+                              </button>
+                            ) : (
+                              <span className="muted">—</span>
+                            )}
+                          </div>
+                        </td>
                       </tr>
                     ))
                   ))}
               </tbody>
             </table>
+          </div>
+          <div className="wholesale-pagination">
+            <span className="muted">
+              Page {safeInvoicePage} of {totalInvoicePages}
+            </span>
+            <button
+              type="button"
+              className="button soft"
+              disabled={safeInvoicePage <= 1}
+              onClick={() => setInvoicePage((p) => Math.max(1, p - 1))}>
+              Previous
+            </button>
+            <button
+              type="button"
+              className="button soft"
+              disabled={safeInvoicePage >= totalInvoicePages}
+              onClick={() => setInvoicePage((p) => Math.min(totalInvoicePages, p + 1))}>
+              Next
+            </button>
           </div>
         </section>
       )}
@@ -1038,25 +1206,42 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               <div style={{ margin: "12px 0 20px 0" }}>
                 <div
                   style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    padding: "10px 14px",
-                    background: "rgba(0,0,0,0.03)",
-                    borderRadius: 8,
-                    marginBottom: 14,
-                    fontSize: 13,
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+                    gap: 10,
+                    marginBottom: 16,
                   }}>
-                  <div>
-                    <strong>Status:</strong>{" "}
-                    <span className="pill neutral">{selectedOrderForItems.status}</span>
+                  <div
+                    style={{
+                      background: "hsl(var(--surface-soft))",
+                      border: "1px solid hsl(var(--border))",
+                      padding: "10px 14px",
+                      borderRadius: 11,
+                    }}>
+                    <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>Status</div>
+                    <strong style={{ fontSize: 13 }}>{selectedOrderForItems.status}</strong>
                   </div>
-                  <div>
-                    <strong>Placed:</strong>{" "}
-                    {new Date(selectedOrderForItems.orderDate).toLocaleDateString()}
+                  <div
+                    style={{
+                      background: "hsl(var(--surface-soft))",
+                      border: "1px solid hsl(var(--border))",
+                      padding: "10px 14px",
+                      borderRadius: 11,
+                    }}>
+                    <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>Placed</div>
+                    <strong style={{ fontSize: 13 }}>
+                      {new Date(selectedOrderForItems.orderDate).toLocaleDateString()}
+                    </strong>
                   </div>
-                  <div>
-                    <strong>Total:</strong>{" "}
-                    <strong>{money(selectedOrderForItems.totalOrderAmount)}</strong>
+                  <div
+                    style={{
+                      background: "hsl(var(--surface-soft))",
+                      border: "1px solid hsl(var(--border))",
+                      padding: "10px 14px",
+                      borderRadius: 11,
+                    }}>
+                    <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>Total</div>
+                    <strong style={{ fontSize: 13 }}>{money(selectedOrderForItems.totalOrderAmount)}</strong>
                   </div>
                 </div>
 
@@ -1101,13 +1286,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               {(receivingError || receivingProblem) && <div className="inline-error" role="alert">{receivingError || receivingProblem}</div>}
               <div
                 className="modal-actions"
-                style={{ display: "flex", justifyContent: "space-between" }}>
-                <button
-                  type="button"
-                  className="button soft"
-                  onClick={() => setSelectedOrderForItems(null)}>
-                  Close
-                </button>
+                style={{ display: "flex", justifyContent: "flex-end" }}>
                 <button
                   type="button"
                   className="button primary-action"
@@ -1159,17 +1338,6 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                       </option>
                     ))}
                   </select>
-                </div>
-                <div className="field">
-                  <label>PO number</label>
-                  <input
-                    placeholder="Auto-generated if blank"
-                    maxLength={100}
-                    pattern="[A-Za-z0-9-]+"
-                    title="Use letters, numbers, or hyphens, or leave blank to generate a PO number."
-                    value={poNumber}
-                    onChange={(event) => setPoNumber(event.target.value)}
-                  />
                 </div>
               </div>
               <div className="modal-section">
@@ -1561,19 +1729,6 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                         </option>
                       ))}
                   </select>
-                </div>
-                <div className="field">
-                  <label>Invoice number *</label>
-                  <input
-                    required
-                    value={invoiceForm.invoiceNumber}
-                    onChange={(event) =>
-                      setInvoiceForm({
-                        ...invoiceForm,
-                        invoiceNumber: event.target.value,
-                      })
-                    }
-                  />
                 </div>
                 <div className="field">
                   <label>Due date *</label>

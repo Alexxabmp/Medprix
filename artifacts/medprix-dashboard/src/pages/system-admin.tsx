@@ -1,5 +1,5 @@
 import { LoadingState } from "@/components/custom-ui/loading-state";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import {
   Activity,
@@ -21,10 +21,32 @@ import {
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import { Summary } from "@/components/custom-ui/summary-card";
 import { readResponse, safeError } from "@/lib/feedback";
-import { usePharmacyTransactions } from "@/lib/pharmacy-store";
+import {
+  usePharmacyTransactions,
+  fetchAuditRecords,
+  getCachedSystemLogs,
+  getCachedUserActivities,
+} from "@/lib/pharmacy-store";
 import type { SystemLog, UserActivity, UserTransaction, ToastFn } from "@/lib/types";
 
-const eventTime = (value: string) => new Date(value).toLocaleString();
+const dateTimeFormatter = new Intl.DateTimeFormat("en-PH", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  hour12: true,
+  timeZone: "Asia/Manila",
+});
+
+const normalizeModuleName = (mod: string) =>
+  String(mod || "").replace(/^[^\p{L}\p{N}]+/u, "").trim() || String(mod || "");
+
+const eventTime = (value: string) => {
+  if (!value) return "—";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : dateTimeFormatter.format(parsed);
+};
 
 export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
   const [activeTab, setActiveTab] = useState<"transactions" | "systemLogs" | "userActivity">(
@@ -39,31 +61,30 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
   const [transactions, setTransactions] = useState<UserTransaction[]>(() => {
     return liveTransactions;
   });
+  const [trxFilterUser, setTrxFilterUser] = useState<string>("All users");
   const [trxFilterType, setTrxFilterType] = useState<"All" | "Retail" | "Wholesale">("All");
-  const [trxFilterStatus, setTrxFilterStatus] = useState<string>("All");
   const [trxSearch, setTrxSearch] = useState("");
+  const [trxPage, setTrxPage] = useState(1);
   const [selectedTrx, setSelectedTrx] = useState<UserTransaction | null>(null);
 
   // System Logs state
-  const [systemLogs, setSystemLogs] = useState<SystemLog[]>(() => {
-    try { const raw = sessionStorage.getItem("medprix_system_logs"); if (raw) { const p = JSON.parse(raw); if (Array.isArray(p)) return p; } } catch {}
-    return [];
-  });
+  const [systemLogs, setSystemLogs] = useState<SystemLog[]>(() => getCachedSystemLogs() ?? []);
   const [logSearch, setLogSearch] = useState("");
-  const [logFilterStatus, setLogFilterStatus] = useState<string>("All");
+  const [logFilterUser, setLogFilterUser] = useState<string>("All users");
+  const [logFilterAction, setLogFilterAction] = useState<string>("All actions");
+  const [logPage, setLogPage] = useState(1);
   const [selectedLog, setSelectedLog] = useState<SystemLog | null>(null);
 
   // User Activity state
-  const [userActivities, setUserActivities] = useState<UserActivity[]>(() => {
-    try { const raw = sessionStorage.getItem("medprix_user_activities"); if (raw) { const p = JSON.parse(raw); if (Array.isArray(p)) return p; } } catch {}
-    return [];
-  });
+  const [userActivities, setUserActivities] = useState<UserActivity[]>(() => getCachedUserActivities() ?? []);
   const [activitySearch, setActivitySearch] = useState("");
-  const [activityModuleFilter, setActivityModuleFilter] = useState<string>("All");
+  const [activityFilterUser, setActivityFilterUser] = useState<string>("All users");
+  const [activityFilterAction, setActivityFilterAction] = useState<string>("All activities");
+  const [activityPage, setActivityPage] = useState(1);
 
   const [auditError, setAuditError] = useState("");
-  const [hasLoaded, setHasLoaded] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [isBackingUp, setIsBackingUp] = useState(false);
 
   // Keep transactions in sync with pharmacy-store
@@ -81,24 +102,18 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
   }, [selectedTrx, selectedLog]);
 
   const loadBackendData = async (force = false) => {
-    setIsRefreshing(true);
+    if (force) setIsRefreshing(true);
     setAuditError("");
+    void (force || liveTransactions.length === 0 ? refreshLiveTransactions() : Promise.resolve(liveTransactions));
     try {
-      const [, logs, activities] = await Promise.all([
-        force || liveTransactions.length === 0 ? refreshLiveTransactions() : Promise.resolve(liveTransactions),
-        fetch("/api/admin/system-logs", { credentials: "include" }).then(res => readResponse(res, "Audit records are unavailable. Refresh to retry.")),
-        fetch("/api/admin/user-activities", { credentials: "include" }).then(res => readResponse(res, "Audit records are unavailable. Refresh to retry.")),
-      ]);
-      if (!Array.isArray(logs) || !Array.isArray(activities)) throw new Error("Invalid audit response");
-      setSystemLogs(logs);
-      setUserActivities(activities);
-      try {
-        sessionStorage.setItem("medprix_system_logs", JSON.stringify(logs));
-        sessionStorage.setItem("medprix_user_activities", JSON.stringify(activities));
-      } catch {}
+      const audit = await fetchAuditRecords(force);
+      setSystemLogs(audit.logs);
+      setUserActivities(audit.activities);
     } catch (error) {
-      setSystemLogs([]);
-      setUserActivities([]);
+      if (force) {
+        setSystemLogs([]);
+        setUserActivities([]);
+      }
       setAuditError(safeError(error, "Audit records are unavailable. Refresh to retry."));
     } finally {
       setIsRefreshing(false);
@@ -121,174 +136,243 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
     } finally { setIsBackingUp(false); }
   };
 
-  const exportTransactionsCsv = () => {
-    const headers = [
-      "Transaction ID",
-      "Date & Time",
-      "Cashier / User",
-      "Business Type",
-      "Customer",
-      "Subtotal",
-      "Discount",
-      "VAT",
-      "Total",
-      "Payment Method",
-      "Status",
-    ];
-    const rows = filteredTransactions.map((t) => [
-      `"${t.transactionNumber}"`,
-      `"${t.dateTime}"`,
-      `"${t.user}"`,
-      `"${t.businessType}"`,
-      `"${t.customer}"`,
-      `"${t.subtotal}"`,
-      `"${t.discount}"`,
-      `"${t.vat}"`,
-      `"${t.total}"`,
-      `"${t.payment}"`,
-      `"${t.status}"`,
-    ]);
-    const csvContent =
-      "data:text/csv;charset=utf-8," +
-      [headers.join(","), ...rows.map((e) => e.join(","))].join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `medprix_transactions_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    onToast("Transactions exported to CSV.");
-  };
+  const trxUsers = useMemo(
+    () =>
+      Array.from(new Set(transactions.map((t) => t.user?.trim()).filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b),
+      ),
+    [transactions],
+  );
 
-  const exportLogsCsv = () => {
-    const headers = ["ID", "Date & Time", "User", "Current role", "Action", "Module", "Description", "Status", "IP"];
-    const rows = filteredLogs.map((l) => [
-      `"${l.id}"`,
-      `"${l.dateTime}"`,
-      `"${l.user}"`,
-      `"${l.role}"`,
-      `"${l.action}"`,
-      `"${l.module}"`,
-      `"${l.description.replace(/"/g, '""')}"`,
-      `"${l.status}"`,
-      `"${l.deviceIp}"`,
-    ]);
-    const csvContent =
-      "data:text/csv;charset=utf-8," +
-      [headers.join(","), ...rows.map((e) => e.join(","))].join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `medprix_system_logs_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    onToast("System audit logs exported to CSV.");
-  };
+  const logUsers = useMemo(
+    () =>
+      Array.from(new Set(systemLogs.map((l) => l.user?.trim()).filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b),
+      ),
+    [systemLogs],
+  );
+
+  const logActions = useMemo(
+    () =>
+      Array.from(new Set(systemLogs.map((l) => l.action?.trim()).filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b),
+      ),
+    [systemLogs],
+  );
+
+  const activityUsers = useMemo(
+    () =>
+      Array.from(new Set(userActivities.map((a) => a.user?.trim()).filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b),
+      ),
+    [userActivities],
+  );
+
+  const activityActions = useMemo(
+    () =>
+      Array.from(new Set(userActivities.map((a) => a.activity?.trim()).filter(Boolean))).sort(
+        (a, b) => a.localeCompare(b),
+      ),
+    [userActivities],
+  );
 
   // Filtered transactions
-  const filteredTransactions = transactions.filter((trx) => {
-    const matchesType = trxFilterType === "All" || trx.businessType === trxFilterType;
-    const matchesStatus = trxFilterStatus === "All" || trx.status === trxFilterStatus;
-    const q = trxSearch.toLowerCase();
-    const matchesSearch =
-      !q ||
-      trx.transactionNumber.toLowerCase().includes(q) ||
-      trx.user.toLowerCase().includes(q) ||
-      trx.customer.toLowerCase().includes(q) ||
-      trx.payment.toLowerCase().includes(q);
-    return matchesType && matchesStatus && matchesSearch;
-  });
+  const filteredTransactions = useMemo(() => {
+    const q = trxSearch.trim().toLowerCase();
+    return transactions.filter((trx) => {
+      const matchesUser = trxFilterUser === "All users" || trx.user === trxFilterUser;
+      const matchesType = trxFilterType === "All" || trx.businessType === trxFilterType;
+      const matchesSearch =
+        !q ||
+        trx.transactionNumber.toLowerCase().includes(q) ||
+        trx.user.toLowerCase().includes(q) ||
+        trx.customer.toLowerCase().includes(q) ||
+        trx.payment.toLowerCase().includes(q);
+      return matchesUser && matchesType && matchesSearch;
+    });
+  }, [transactions, trxFilterUser, trxFilterType, trxSearch]);
+
+  const TRX_PAGE_SIZE = 15;
+  const totalTrxPages = Math.max(1, Math.ceil(filteredTransactions.length / TRX_PAGE_SIZE));
+  const safeTrxPage = Math.min(trxPage, totalTrxPages);
+  const paginatedTransactions = useMemo(
+    () =>
+      filteredTransactions.slice(
+        (safeTrxPage - 1) * TRX_PAGE_SIZE,
+        safeTrxPage * TRX_PAGE_SIZE,
+      ),
+    [filteredTransactions, safeTrxPage],
+  );
 
   // Filtered logs
-  const filteredLogs = systemLogs.filter((log) => {
-    const matchesStatus = logFilterStatus === "All" || log.status === logFilterStatus;
-    const q = logSearch.toLowerCase();
-    const matchesSearch =
-      !q ||
-      log.user.toLowerCase().includes(q) ||
-      log.action.toLowerCase().includes(q) ||
-      log.module.toLowerCase().includes(q) ||
-      log.description.toLowerCase().includes(q) ||
-      log.deviceIp.toLowerCase().includes(q);
-    return matchesStatus && matchesSearch;
-  });
+  const filteredLogs = useMemo(() => {
+    const q = logSearch.trim().toLowerCase();
+    return systemLogs.filter((log) => {
+      const matchesUser = logFilterUser === "All users" || log.user === logFilterUser;
+      const matchesAction = logFilterAction === "All actions" || log.action === logFilterAction;
+      const matchesSearch =
+        !q ||
+        log.user.toLowerCase().includes(q) ||
+        log.action.toLowerCase().includes(q) ||
+        log.module.toLowerCase().includes(q) ||
+        log.description.toLowerCase().includes(q) ||
+        log.deviceIp.toLowerCase().includes(q);
+      return matchesUser && matchesAction && matchesSearch;
+    });
+  }, [systemLogs, logFilterUser, logFilterAction, logSearch]);
+
+  const totalLogPages = Math.max(1, Math.ceil(filteredLogs.length / TRX_PAGE_SIZE));
+  const safeLogPage = Math.min(logPage, totalLogPages);
+  const paginatedLogs = useMemo(
+    () =>
+      filteredLogs.slice(
+        (safeLogPage - 1) * TRX_PAGE_SIZE,
+        safeLogPage * TRX_PAGE_SIZE,
+      ),
+    [filteredLogs, safeLogPage],
+  );
 
   // Filtered activities
-  const filteredActivities = userActivities.filter((act) => {
-    const matchesModule =
-      activityModuleFilter === "All" ||
-      act.module === activityModuleFilter;
-    const q = activitySearch.toLowerCase();
-    const matchesSearch =
-      !q ||
-      act.user.toLowerCase().includes(q) ||
-      act.activity.toLowerCase().includes(q) ||
-      act.module.toLowerCase().includes(q) ||
-      act.description.toLowerCase().includes(q);
-    return matchesModule && matchesSearch;
-  });
+  const filteredActivities = useMemo(() => {
+    const q = activitySearch.trim().toLowerCase();
+    return userActivities.filter((act) => {
+      const cleanMod = normalizeModuleName(act.module);
+      const matchesUser = activityFilterUser === "All users" || act.user === activityFilterUser;
+      const matchesActivity =
+        activityFilterAction === "All activities" || act.activity === activityFilterAction;
+      const matchesSearch =
+        !q ||
+        act.user.toLowerCase().includes(q) ||
+        act.activity.toLowerCase().includes(q) ||
+        cleanMod.toLowerCase().includes(q) ||
+        act.description.toLowerCase().includes(q);
+      return matchesUser && matchesActivity && matchesSearch;
+    });
+  }, [userActivities, activityFilterUser, activityFilterAction, activitySearch]);
+
+  const totalActivityPages = Math.max(1, Math.ceil(filteredActivities.length / TRX_PAGE_SIZE));
+  const safeActivityPage = Math.min(activityPage, totalActivityPages);
+  const paginatedActivities = useMemo(
+    () =>
+      filteredActivities.slice(
+        (safeActivityPage - 1) * TRX_PAGE_SIZE,
+        safeActivityPage * TRX_PAGE_SIZE,
+      ),
+    [filteredActivities, safeActivityPage],
+  );
 
   return (
     <div>
       <PageHeading
         title="System Administration"
         description="Monitor user sales transactions, audit system logs, and track user activities."
-        action={
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              type="button"
-              className="button soft"
-              onClick={() => void loadBackendData(true)}
-              disabled={isRefreshing}
-              title="Refresh system administration data">
-              <RefreshCw size={14} className={isRefreshing ? "spin" : ""} />{" "}
-              {isRefreshing ? "Refreshing..." : "Refresh"}
-            </button>
-            <button
-              type="button"
-              className="button dark"
-              onClick={() => void handleCreateBackup()}
-              disabled={isBackingUp}
-              data-testid="button-create-backup">
-              <HardDrive size={14} /> {isBackingUp ? "Backing up..." : "Create system backup"}
-            </button>
-          </div>
-        }
       />
 
-      {isRefreshing && (
-        <LoadingState
-          label={hasLoaded
-            ? "Refreshing System Administration records…"
-            : "Loading System Administration records…"}
-        />
+      {false && (
+        <LoadingState label="Loading System Administration records…" />
       )}
-      {auditError && <div role="alert" className="surface-card" style={{ padding: 12, marginBottom: 12 }}>{auditError}</div>}
+      {auditError && (
+        <div role="alert" className="inline-error">
+          <span>{auditError}</span>
+          <button
+            type="button"
+            className="button soft"
+            disabled={isRefreshing}
+            onClick={() => void loadBackendData(true)}>
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* Summary strip on top of tab locations */}
+      {hasLoaded && activeTab === "transactions" && (
+        <div className="summary-strip">
+          <Summary
+            label="Total transactions"
+            value={String(transactions.length)}
+            caption="Recorded across channels"
+          />
+          <Summary
+            label="Wholesale (Front desk)"
+            value={String(transactions.filter((t) => t.businessType === "Wholesale").length)}
+            caption="Bulk clinic & pharmacy orders"
+          />
+          <Summary
+            label="Retail (Cashier)"
+            value={String(transactions.filter((t) => t.businessType === "Retail").length)}
+            caption="Walk-in POS transactions"
+          />
+        </div>
+      )}
+      {hasLoaded && activeTab === "systemLogs" && (
+        <div className="summary-strip">
+          <Summary
+            label="Total audit logs"
+            value={auditError ? "Unavailable" : String(systemLogs.length)}
+            caption="System & security events"
+          />
+          <Summary
+            label="Successful events"
+            value={auditError ? "Unavailable" : String(systemLogs.filter((l) => l.status === "Success").length)}
+            caption="Executed normally"
+          />
+          <Summary
+            label="Failed / Alerts"
+            value={auditError ? "Unavailable" : String(systemLogs.filter((l) => l.status !== "Success").length)}
+            caption="Requires attention"
+            tone={
+              systemLogs.filter((l) => l.status === "Failed").length > 0 ? "warning" : "neutral"
+            }
+          />
+        </div>
+      )}
+      {hasLoaded && activeTab === "userActivity" && (
+        <div className="summary-strip">
+          <Summary
+            label="Tracked activities"
+            value={auditError ? "Unavailable" : String(userActivities.length)}
+            caption="Recorded across workspace"
+          />
+          <Summary
+            label="Normal operations"
+            value={auditError ? "Unavailable" : String(userActivities.filter((a) => a.flag === "Normal").length)}
+            caption="Standard user usage"
+          />
+          <Summary
+            label="Suspicious / Flagged"
+            value={auditError ? "Unavailable" : String(userActivities.filter((a) => a.flag !== "Normal").length)}
+            caption="Detected security alerts"
+            tone={
+              userActivities.filter((a) => a.flag !== "Normal").length > 0
+                ? "warning"
+                : "neutral"
+            }
+          />
+        </div>
+      )}
 
       {/* Feature selection tabs */}
-      <div style={{ display: "flex", gap: 6, marginBottom: 20, flexWrap: "wrap" }}>
+      <div className="page-tabs">
         <button
           type="button"
           className={`button ${activeTab === "transactions" ? "dark" : "soft"}`}
           onClick={() => setActiveTab("transactions")}
           data-testid="tab-user-transactions">
-          <Receipt size={14} /> View user transactions
+          View user transactions
         </button>
         <button
           type="button"
           className={`button ${activeTab === "systemLogs" ? "dark" : "soft"}`}
           onClick={() => setActiveTab("systemLogs")}
           data-testid="tab-system-logs">
-          <FileText size={14} /> View system logs
+          View system logs
         </button>
         <button
           type="button"
           className={`button ${activeTab === "userActivity" ? "dark" : "soft"}`}
           onClick={() => setActiveTab("userActivity")}
           data-testid="tab-user-activity">
-          <Activity size={14} /> View user activity
+          View user activity
         </button>
       </div>
 
@@ -297,76 +381,53 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
       {/* ========================================================================= */}
       {hasLoaded && activeTab === "transactions" && (
         <div>
-          <div className="summary-strip">
-            <Summary
-              label="Total transactions"
-              value={String(transactions.length)}
-              caption="Recorded across channels"
-            />
-            <Summary
-              label="Wholesale (Front desk)"
-              value={String(transactions.filter((t) => t.businessType === "Wholesale").length)}
-              caption="Bulk clinic & pharmacy orders"
-            />
-            <Summary
-              label="Retail (Cashier)"
-              value={String(transactions.filter((t) => t.businessType === "Retail").length)}
-              caption="Walk-in POS transactions"
-            />
-          </div>
-
           <section className="surface-card table-card">
             <div className="table-tools">
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <div className="search-wrap" style={{ minWidth: 260 }}>
-                  <Search size={15} />
-                  <input
-                    type="search"
-                    placeholder="Search TRX #, customer, user..."
-                    value={trxSearch}
-                    onChange={(e) => setTrxSearch(e.target.value)}
-                    data-testid="input-trx-search"
-                  />
-                </div>
-
-                <div style={{ display: "flex", gap: 4 }}>
-                  {(["All", "Retail", "Wholesale"] as const).map((type) => (
-                    <button
-                      key={type}
-                      type="button"
-                      className={`button ${trxFilterType === type ? "dark" : "soft"}`}
-                      style={{ padding: "6px 12px", fontSize: 12 }}
-                      onClick={() => setTrxFilterType(type)}
-                      data-testid={`filter-trx-type-${type.toLowerCase()}`}>
-                      {type === "All"
-                        ? "All channels"
-                        : type === "Retail"
-                        ? "Retail (Cashier)"
-                        : "Wholesale (Front desk)"}
-                    </button>
-                  ))}
-                </div>
+              <div className="search-wrap">
+                <Search size={15} />
+                <input
+                  type="search"
+                  placeholder="Search TRX #, customer, user..."
+                  value={trxSearch}
+                  onChange={(e) => {
+                    setTrxSearch(e.target.value);
+                    setTrxPage(1);
+                  }}
+                  data-testid="input-trx-search"
+                />
               </div>
 
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div className="table-tools-right">
                 <select
                   className="select"
-                  value={trxFilterStatus}
-                  onChange={(e) => setTrxFilterStatus(e.target.value)}
-                  data-testid="select-trx-status">
-                  <option value="All">All statuses</option>
-                  <option value="Completed">Completed</option>
-                  <option value="Voided">Voided</option>
-                  <option value="Refunded">Refunded</option>
-                  <option value="Pending">Pending</option>
+                  aria-label="Filter transactions by user"
+                  value={trxFilterUser}
+                  onChange={(e) => {
+                    setTrxFilterUser(e.target.value);
+                    setTrxPage(1);
+                  }}
+                  data-testid="select-trx-user">
+                  <option value="All users">All users</option>
+                  {trxUsers.map((user) => (
+                    <option key={user} value={user}>
+                      {user}
+                    </option>
+                  ))}
                 </select>
-                <button
-                  type="button"
-                  className="button soft"
-                  style={{ fontSize: 12, flexShrink: 0, whiteSpace: "nowrap" }}
-                  onClick={exportTransactionsCsv}>
-                  <Download size={13} /> Export CSV
-                </button>
+
+                <select
+                  className="select"
+                  aria-label="Filter transactions by business type"
+                  value={trxFilterType}
+                  onChange={(e) => {
+                    setTrxFilterType(e.target.value as "All" | "Retail" | "Wholesale");
+                    setTrxPage(1);
+                  }}
+                  data-testid="select-trx-type">
+                  <option value="All">All business types</option>
+                  <option value="Retail">Retail (Cashier)</option>
+                  <option value="Wholesale">Wholesale (Front desk)</option>
+                </select>
               </div>
             </div>
 
@@ -382,16 +443,16 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                     <th style={{ textAlign: "right" }}>Total</th>
                     <th>Payment</th>
                     <th>Status</th>
-                    <th>Action</th>
+                    <th className="table-action-head">Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredTransactions.map((trx) => (
+                  {paginatedTransactions.map((trx) => (
                     <tr key={trx.id} data-testid={`row-trx-${trx.id}`}>
                       <td>
                         <strong>{trx.transactionNumber}</strong>
                       </td>
-                      <td className="muted">{trx.dateTime}</td>
+                      <td className="muted">{eventTime(trx.dateTime)}</td>
                       <td>{trx.user}</td>
                       <td>
                         <span
@@ -418,15 +479,18 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                           {trx.status}
                         </span>
                       </td>
-                      <td>
-                        <button
-                          type="button"
-                          className="button soft"
-                          style={{ padding: "5px 12px", fontSize: 12 }}
-                          onClick={() => setSelectedTrx(trx)}
-                          data-testid={`button-view-trx-${trx.id}`}>
-                          <Eye size={12} /> View
-                        </button>
+                      <td className="table-action-cell">
+                        <div className="table-actions">
+                          <button
+                            type="button"
+                            className="button soft table-action-btn"
+                            aria-label="View transaction"
+                            title="View transaction"
+                            onClick={() => setSelectedTrx(trx)}
+                            data-testid={`button-view-trx-${trx.id}`}>
+                            <Eye size={13} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -440,6 +504,25 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                 </div>
               )}
             </div>
+            <div className="wholesale-pagination">
+              <span className="muted">
+                Page {safeTrxPage} of {totalTrxPages} ({filteredTransactions.length} transactions)
+              </span>
+              <button
+                type="button"
+                className="button soft"
+                disabled={safeTrxPage <= 1}
+                onClick={() => setTrxPage((p) => Math.max(1, p - 1))}>
+                Previous
+              </button>
+              <button
+                type="button"
+                className="button soft"
+                disabled={safeTrxPage >= totalTrxPages}
+                onClick={() => setTrxPage((p) => Math.min(totalTrxPages, p + 1))}>
+                Next
+              </button>
+            </div>
           </section>
         </div>
       )}
@@ -449,58 +532,56 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
       {/* ========================================================================= */}
       {hasLoaded && activeTab === "systemLogs" && (
         <div>
-          <div className="summary-strip">
-            <Summary
-              label="Total audit logs"
-              value={auditError ? "Unavailable" : String(systemLogs.length)}
-              caption="System & security events"
-            />
-            <Summary
-              label="Successful events"
-              value={auditError ? "Unavailable" : String(systemLogs.filter((l) => l.status === "Success").length)}
-              caption="Executed normally"
-            />
-            <Summary
-              label="Failed / Alerts"
-              value={auditError ? "Unavailable" : String(systemLogs.filter((l) => l.status !== "Success").length)}
-              caption="Requires attention"
-              tone={
-                systemLogs.filter((l) => l.status === "Failed").length > 0 ? "warning" : "neutral"
-              }
-            />
-          </div>
-
           <section className="surface-card table-card">
             <div className="table-tools">
-              <div className="search-wrap" style={{ minWidth: 320 }}>
+              <div className="search-wrap">
                 <Search size={15} />
                 <input
                   type="search"
                   placeholder="Search user, action, module, or IP..."
                   value={logSearch}
-                  onChange={(e) => setLogSearch(e.target.value)}
+                  onChange={(e) => {
+                    setLogSearch(e.target.value);
+                    setLogPage(1);
+                  }}
                   data-testid="input-log-search"
                 />
               </div>
 
-              <div style={{ display: "flex", gap: 8 }}>
+              <div className="table-tools-right">
                 <select
                   className="select"
-                  value={logFilterStatus}
-                  onChange={(e) => setLogFilterStatus(e.target.value)}
-                  data-testid="select-log-status">
-                  <option value="All">All statuses</option>
-                  <option value="Success">Success</option>
-                  <option value="Failed">Failed</option>
-                  <option value="Warning">Warning</option>
+                  aria-label="Filter system logs by user"
+                  value={logFilterUser}
+                  onChange={(e) => {
+                    setLogFilterUser(e.target.value);
+                    setLogPage(1);
+                  }}
+                  data-testid="select-log-user">
+                  <option value="All users">All users</option>
+                  {logUsers.map((user) => (
+                    <option key={user} value={user}>
+                      {user}
+                    </option>
+                  ))}
                 </select>
-                <button
-                  type="button"
-                  className="button soft"
-                  style={{ fontSize: 12 }}
-                  onClick={exportLogsCsv}>
-                  <Download size={13} /> Export CSV
-                </button>
+
+                <select
+                  className="select"
+                  aria-label="Filter system logs by action"
+                  value={logFilterAction}
+                  onChange={(e) => {
+                    setLogFilterAction(e.target.value);
+                    setLogPage(1);
+                  }}
+                  data-testid="select-log-action">
+                  <option value="All actions">All actions</option>
+                  {logActions.map((action) => (
+                    <option key={action} value={action}>
+                      {action}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 
@@ -512,11 +593,11 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                     <th>User / current role</th>
                     <th>Action</th>
                     <th>Module</th>
-                    <th>Details</th>
+                    <th className="table-action-head">Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredLogs.map((log) => (
+                  {paginatedLogs.map((log) => (
                     <tr key={log.id} data-testid={`row-log-${log.id}`}>
                       <td className="muted">{eventTime(log.dateTime)}</td>
                       <td>
@@ -542,15 +623,18 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                           {log.module}
                         </span>
                       </td>
-                      <td>
-                        <button
-                          type="button"
-                          className="button soft"
-                          style={{ padding: "5px 12px", fontSize: 12 }}
-                          onClick={() => setSelectedLog(log)}
-                          data-testid={`button-see-details-${log.id}`}>
-                          See details <ArrowUpRight size={11} />
-                        </button>
+                      <td className="table-action-cell">
+                        <div className="table-actions">
+                          <button
+                            type="button"
+                            className="button soft table-action-btn"
+                            aria-label="View log details"
+                            title="View log details"
+                            onClick={() => setSelectedLog(log)}
+                            data-testid={`button-see-details-${log.id}`}>
+                            <Eye size={13} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -564,6 +648,25 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                 </div>
               )}
             </div>
+            <div className="wholesale-pagination">
+              <span className="muted">
+                Page {safeLogPage} of {totalLogPages} ({filteredLogs.length} logs)
+              </span>
+              <button
+                type="button"
+                className="button soft"
+                disabled={safeLogPage <= 1}
+                onClick={() => setLogPage((p) => Math.max(1, p - 1))}>
+                Previous
+              </button>
+              <button
+                type="button"
+                className="button soft"
+                disabled={safeLogPage >= totalLogPages}
+                onClick={() => setLogPage((p) => Math.min(totalLogPages, p + 1))}>
+                Next
+              </button>
+            </div>
           </section>
         </div>
       )}
@@ -573,54 +676,56 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
       {/* ========================================================================= */}
       {hasLoaded && activeTab === "userActivity" && (
         <div>
-          <div className="summary-strip">
-            <Summary
-              label="Tracked activities"
-              value={auditError ? "Unavailable" : String(userActivities.length)}
-              caption="Recorded across workspace"
-            />
-            <Summary
-              label="Normal operations"
-              value={auditError ? "Unavailable" : String(userActivities.filter((a) => a.flag === "Normal").length)}
-              caption="Standard user usage"
-            />
-            <Summary
-              label="Suspicious / Flagged"
-              value={auditError ? "Unavailable" : String(userActivities.filter((a) => a.flag !== "Normal").length)}
-              caption="Detected security alerts"
-              tone={
-                userActivities.filter((a) => a.flag !== "Normal").length > 0
-                  ? "warning"
-                  : "neutral"
-              }
-            />
-          </div>
-
           <section className="surface-card table-card">
             <div className="table-tools">
-              <div className="search-wrap" style={{ minWidth: 280 }}>
+              <div className="search-wrap">
                 <Search size={15} />
                 <input
                   type="search"
                   placeholder="Search user, activity, or description..."
                   value={activitySearch}
-                  onChange={(e) => setActivitySearch(e.target.value)}
+                  onChange={(e) => {
+                    setActivitySearch(e.target.value);
+                    setActivityPage(1);
+                  }}
                   data-testid="input-activity-search"
                 />
               </div>
 
-              <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
-                {["All", ...Array.from(new Set(userActivities.map(activity => activity.module))).sort()].map((mod) => (
-                  <button
-                    key={mod}
-                    type="button"
-                    className={`button ${activityModuleFilter === mod ? "dark" : "soft"}`}
-                    style={{ padding: "6px 10px", fontSize: 12, whiteSpace: "nowrap" }}
-                    onClick={() => setActivityModuleFilter(mod)}
-                    data-testid={`filter-mod-${mod.slice(0, 5)}`}>
-                    {mod === "All" ? "All modules" : mod}
-                  </button>
-                ))}
+              <div className="table-tools-right">
+                <select
+                  className="select"
+                  aria-label="Filter user activity by user"
+                  value={activityFilterUser}
+                  onChange={(e) => {
+                    setActivityFilterUser(e.target.value);
+                    setActivityPage(1);
+                  }}
+                  data-testid="select-activity-user">
+                  <option value="All users">All users</option>
+                  {activityUsers.map((user) => (
+                    <option key={user} value={user}>
+                      {user}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  className="select"
+                  aria-label="Filter user activity by activity"
+                  value={activityFilterAction}
+                  onChange={(e) => {
+                    setActivityFilterAction(e.target.value);
+                    setActivityPage(1);
+                  }}
+                  data-testid="select-activity-action">
+                  <option value="All activities">All activities</option>
+                  {activityActions.map((act) => (
+                    <option key={act} value={act}>
+                      {act}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 
@@ -637,7 +742,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredActivities.map((act) => (
+                  {paginatedActivities.map((act) => (
                     <tr key={act.id} data-testid={`row-activity-${act.id}`}>
                       <td className="muted">{eventTime(act.dateTime)}</td>
                       <td>
@@ -662,7 +767,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                       </td>
                       <td>
                         <span className="muted" style={{ fontSize: 12 }}>
-                          {act.module}
+                          {normalizeModuleName(act.module)}
                         </span>
                       </td>
                       <td style={{ maxWidth: 360, whiteSpace: "normal", fontSize: 12 }}>
@@ -680,6 +785,25 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                 </div>
               )}
             </div>
+            <div className="wholesale-pagination">
+              <span className="muted">
+                Page {safeActivityPage} of {totalActivityPages} ({filteredActivities.length} activities)
+              </span>
+              <button
+                type="button"
+                className="button soft"
+                disabled={safeActivityPage <= 1}
+                onClick={() => setActivityPage((p) => Math.max(1, p - 1))}>
+                Previous
+              </button>
+              <button
+                type="button"
+                className="button soft"
+                disabled={safeActivityPage >= totalActivityPages}
+                onClick={() => setActivityPage((p) => Math.min(totalActivityPages, p + 1))}>
+                Next
+              </button>
+            </div>
           </section>
         </div>
       )}
@@ -692,7 +816,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
           <div
             className="modal-backdrop"
             onMouseDown={(event) => event.currentTarget === event.target && setSelectedTrx(null)}>
-            <div className="modal" style={{ width: "min(680px, 100%)" }}>
+            <div className="modal">
               <div className="modal-header">
                 <div>
                   <h2>Transaction details</h2>
@@ -761,7 +885,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                       Date &amp; time:
                     </span>{" "}
                     <strong style={{ color: "hsl(var(--foreground))" }}>
-                      {selectedTrx.dateTime}
+                      {eventTime(selectedTrx.dateTime)}
                     </strong>
                   </div>
                   <div>
@@ -945,7 +1069,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
           <div
             className="modal-backdrop"
             onMouseDown={(event) => event.currentTarget === event.target && setSelectedLog(null)}>
-            <div className="modal" style={{ width: "min(620px, 100%)" }}>
+            <div className="modal">
               <div className="modal-header">
                 <div>
                   <h2>System log details</h2>
