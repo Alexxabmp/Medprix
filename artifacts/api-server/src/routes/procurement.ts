@@ -482,10 +482,10 @@ router.post(
     let resolvedPoNumber: string | null = null;
     if (poId) {
       const order = await findOrder(poId);
-      if (order) {
-        resolvedPoId = order.id;
-        resolvedPoNumber = order.poNumber;
-      }
+      if (!order) return res.status(400).json({ error: "The selected purchase order no longer exists. Choose another purchase order." });
+      if (order.supplierId !== supplier.id) return res.status(400).json({ error: "The selected purchase order belongs to a different supplier. Choose a purchase order for this supplier." });
+      resolvedPoId = order.id;
+      resolvedPoNumber = order.poNumber;
     }
 
     const amount = Number(invoiceAmount);

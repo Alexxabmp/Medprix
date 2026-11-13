@@ -1542,11 +1542,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                       .filter(
                         (order) =>
                           !invoiceForm.supplierId ||
-                          suppliers.some(
-                            (supplier) =>
-                              supplier.id === invoiceForm.supplierId &&
-                              supplier.name === order.supplier
-                          )
+                          order.supplierId === invoiceForm.supplierId
                       )
                       .map((order) => (
                         <option key={order.id} value={order.id}>
