@@ -1,4 +1,6 @@
 import { deliveryKey, deliveryPayload, readDelivery, submitDelivery, DeliveryInputError, DeliveryReferenceConflict } from "../lib/supplier-delivery-submissions";
+import { randomUUID } from "node:crypto";
+import { pharmacyDate } from "@workspace/api-zod";
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { asc, desc, eq, ilike, or } from "drizzle-orm";
 import {
@@ -567,10 +569,14 @@ router.post(
         .status(400)
         .json({ success: false, error: "Supplier not found." });
     }
-    if (poNumber?.trim() && !/^[A-Za-z0-9-]+$/.test(poNumber.trim())) {
+    if (poNumber !== undefined && typeof poNumber !== "string") {
+      return res.status(400).json({ error: "Enter a valid PO number or leave it blank to generate one." });
+    }
+    const manualPoNumber = poNumber?.trim() || "";
+    if (manualPoNumber && !/^[A-Za-z0-9-]{1,100}$/.test(manualPoNumber)) {
       return res.status(400).json({
         success: false,
-        error: "PO numbers may contain only letters, numbers, and hyphens.",
+        error: "PO numbers must be at most 100 letters, numbers, or hyphens.",
       });
     }
 
@@ -606,14 +612,12 @@ router.post(
       (total, item) => total + item.quantityOrdered * item.unitCost,
       0,
     );
-    const generatedPoNumber = `PO-${new Date().toISOString().replace(/\D/g, "").slice(0, 14)}-${Math.floor(100 + Math.random() * 900)}`;
-
-    const result = await db.transaction(async (tx) => {
+    const saveOrder = (number: string) => db.transaction(async (tx) => {
       const [order] = await tx
         .insert(purchaseOrdersTable)
         .values({
           supplierId: supplier.id,
-          poNumber: poNumber?.trim() || generatedPoNumber,
+          poNumber: number,
           status: (status && poStatuses.includes(status as any)
             ? status
             : "Draft") as any,
@@ -636,6 +640,23 @@ router.post(
 
       return { order, items: createdItems };
     });
+
+    let result: Awaited<ReturnType<typeof saveOrder>> | undefined;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const number = manualPoNumber || `PO-${pharmacyDate().replaceAll("-", "")}-${randomUUID()}`;
+      try {
+        result = await saveOrder(number);
+        break;
+      } catch (error) {
+        if (!identifierConflict(error, ["purchase_orders_po_number_key"])) throw error;
+        if (manualPoNumber) return res.status(409).json({
+          success: false,
+          error: "This PO number already exists. Enter a different PO number or leave it blank to generate one.",
+          errors: { poNumber: "Use a different PO number." },
+        });
+      }
+    }
+    if (!result) return res.status(503).json({ error: "Could not generate a unique PO number. Please try again." });
 
     return res.status(201).json({
       success: true,

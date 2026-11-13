@@ -533,9 +533,6 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
     setPoError("");
     const duplicate = lineItems.find((item, index) => lineItems.findIndex((other) => other.productId === item.productId) !== index);
     if (duplicate) { setPoError("This product is already listed. Edit its existing quantity instead."); return; }
-    const finalPoNum =
-      poNumber.trim() ||
-      `PO-${new Date().getFullYear()}-${String(orders.length + 1).padStart(4, "0")}`;
 
     try {
       setIsSaving(true);
@@ -545,7 +542,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           supplierId,
-          poNumber: finalPoNum,
+          poNumber: poNumber.trim(),
           status: "Draft",
           items: lineItems.map((item) => ({
             productId: item.productId,
@@ -1156,6 +1153,9 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                   <label>PO number</label>
                   <input
                     placeholder="Auto-generated if blank"
+                    maxLength={100}
+                    pattern="[A-Za-z0-9-]+"
+                    title="Use letters, numbers, or hyphens, or leave blank to generate a PO number."
                     value={poNumber}
                     onChange={(event) => setPoNumber(event.target.value)}
                   />
