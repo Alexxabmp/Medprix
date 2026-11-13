@@ -1,10 +1,11 @@
-import { asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import {
   db,
   productsTable,
   purchaseOrdersTable,
   supplierDeliveriesTable,
   deliveryItemsTable,
+  stockMovementsTable,
 } from "@workspace/db";
 import { isCalendarDate, pharmacyDate } from "@workspace/api-zod";
 import {
@@ -124,6 +125,21 @@ export function deliveryPayload(body: any) {
   };
 }
 type Payload = ReturnType<typeof deliveryPayload>;
+type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+type Order = typeof purchaseOrdersTable.$inferSelect;
+export type DeliveryDecision = "Received" | "Rejected";
+
+export class DeliveryNotFoundError extends Error {
+  readonly status = 404;
+}
+
+export function deliveryDecision(body: unknown): DeliveryDecision {
+  if (!body || typeof body !== "object" || Array.isArray(body) ||
+      Object.keys(body).some(key => key !== "status") ||
+      (!("status" in body) || (body.status !== "Received" && body.status !== "Rejected")))
+    throw new DeliveryInputError("Choose Receive or Reject for this pending report.");
+  return body.status;
+}
 const tuples = (items: Payload["items"]) =>
   items
     .map((item) =>
@@ -150,6 +166,78 @@ export async function readDelivery(reader: Reader, id: string) {
   return { delivery, items };
 }
 
+async function prepareReceipt(tx: Transaction, order: Order, payload: Payload) {
+  const receiving = await readOrderReceivingState(tx, order.id);
+  const requested = new Map<string, number>();
+  const lots = new Map<string, string>();
+  const today = pharmacyDate();
+  for (const item of payload.items) {
+    if (item.expirationDate < today)
+      throw new DeliveryInputError(
+        "Enter an expiration date today or later in the pharmacy's Philippine calendar.",
+      );
+    const lot = `${item.productId}:${item.batchNumber}`;
+    if (lots.has(lot) && lots.get(lot) !== item.expirationDate)
+      throw new DeliveryInputError(
+        "The same product and batch cannot have different expiration dates in one report.",
+      );
+    lots.set(lot, item.expirationDate);
+    requested.set(
+      item.productId,
+      (requested.get(item.productId) || 0) + item.quantityDelivered,
+    );
+  }
+  const products = await tx
+    .select({ id: productsTable.id })
+    .from(productsTable)
+    .where(inArray(productsTable.id, [...requested.keys()]))
+    .orderBy(asc(productsTable.id))
+    .for("update");
+  if (products.length !== requested.size)
+    throw new DeliveryInputError(
+      "Selected product no longer exists. Refresh inventory.",
+    );
+  for (const [productId, quantity] of requested) {
+    const item = receiving.find((item) => item.productId === productId);
+    if (!item)
+      throw new ReceivingError(
+        "This product is not on the selected purchase order.",
+      );
+    if (quantity > item.quantityRemaining)
+      throw new ReceivingError(
+        `This product has ${item.quantityRemaining} unit(s) left to receive on this purchase order. Refresh and review the quantity.`,
+      );
+  }
+
+  for (const item of payload.items) await inspectSupplierBatch(tx, item);
+  return { receiving, requested };
+}
+
+async function postReceipt(
+  tx: Transaction, order: Order, payload: Payload, id: string,
+  { receiving, requested }: Awaited<ReturnType<typeof prepareReceipt>>,
+) {
+  for (const item of payload.items)
+    await receiveSupplierStock(tx, {
+      ...item,
+      quantity: item.quantityDelivered,
+      dateReceived: payload.deliveryDate,
+      deliveryId: id,
+      notes: `Supplier delivery ${id.slice(0, 8)} (${order.poNumber})`,
+    });
+  if (
+    receiving.length &&
+    receiving.every(
+      (item) =>
+        item.quantityRemaining === (requested.get(item.productId) || 0),
+    )
+  )
+    await tx
+      .update(purchaseOrdersTable)
+      .set({ status: "Fulfilled", updatedAt: new Date() })
+      .where(eq(purchaseOrdersTable.id, order.id));
+}
+
 export async function submitDelivery(id: string, payload: Payload) {
   return db.transaction(async (tx) => {
     // Serialize this UUID across all POs; collisions serialize only, never identify a report.
@@ -158,10 +246,10 @@ export async function submitDelivery(id: string, payload: Payload) {
     );
     const saved = await readDelivery(tx, id);
     if (saved) {
+      // Replay returns the existing report; only the completion action changes its status.
       if (
         saved.delivery.poId !== payload.poId ||
         saved.delivery.deliveryDate !== payload.deliveryDate ||
-        saved.delivery.deliveryStatus !== payload.deliveryStatus ||
         JSON.stringify(tuples(saved.items)) !==
           JSON.stringify(tuples(payload.items))
       )
@@ -180,49 +268,7 @@ export async function submitDelivery(id: string, payload: Payload) {
       throw new ReceivingError(
         "This purchase order is closed. Refresh the order list before receiving.",
       );
-    const receiving = await readOrderReceivingState(tx, order.id);
-    const requested = new Map<string, number>();
-    const lots = new Map<string, string>();
-    const today = pharmacyDate();
-    for (const item of payload.items) {
-      if (item.expirationDate < today)
-        throw new DeliveryInputError(
-          "Enter an expiration date today or later in the pharmacy's Philippine calendar.",
-        );
-      const lot = `${item.productId}:${item.batchNumber}`;
-      if (lots.has(lot) && lots.get(lot) !== item.expirationDate)
-        throw new DeliveryInputError(
-          "The same product and batch cannot have different expiration dates in one report.",
-        );
-      lots.set(lot, item.expirationDate);
-      requested.set(
-        item.productId,
-        (requested.get(item.productId) || 0) + item.quantityDelivered,
-      );
-    }
-    const products = await tx
-      .select({ id: productsTable.id })
-      .from(productsTable)
-      .where(inArray(productsTable.id, [...requested.keys()]))
-      .orderBy(asc(productsTable.id))
-      .for("update");
-    if (products.length !== requested.size)
-      throw new DeliveryInputError(
-        "Selected product no longer exists. Refresh inventory.",
-      );
-    for (const [productId, quantity] of requested) {
-      const item = receiving.find((item) => item.productId === productId);
-      if (!item)
-        throw new ReceivingError(
-          "This product is not on the selected purchase order.",
-        );
-      if (quantity > item.quantityRemaining)
-        throw new ReceivingError(
-          `This product has ${item.quantityRemaining} unit(s) left to receive on this purchase order. Refresh and review the quantity.`,
-        );
-    }
-
-    for (const item of payload.items) await inspectSupplierBatch(tx, item);
+    const receipt = await prepareReceipt(tx, order, payload);
     const [delivery] = await tx
       .insert(supplierDeliveriesTable)
       .values({
@@ -236,30 +282,45 @@ export async function submitDelivery(id: string, payload: Payload) {
       .insert(deliveryItemsTable)
       .values(payload.items.map((item) => ({ ...item, deliveryId: id })))
       .returning();
-    const postsStock = ["Received", "Inspected", "Partial"].includes(
-      delivery.deliveryStatus,
-    );
-    if (postsStock) {
-      for (const item of payload.items)
-        await receiveSupplierStock(tx, {
-          ...item,
-          quantity: item.quantityDelivered,
-          dateReceived: payload.deliveryDate,
-          deliveryId: id,
-          notes: `Supplier delivery ${id.slice(0, 8)} (${order.poNumber})`,
-        });
-      if (
-        receiving.length &&
-        receiving.every(
-          (item) =>
-            item.quantityRemaining === (requested.get(item.productId) || 0),
-        )
-      )
-        await tx
-          .update(purchaseOrdersTable)
-          .set({ status: "Fulfilled", updatedAt: new Date() })
-          .where(eq(purchaseOrdersTable.id, order.id));
-    }
+    if (["Received", "Inspected", "Partial"].includes(delivery.deliveryStatus))
+      await postReceipt(tx, order, payload, id, receipt);
     return { delivery, items, replayed: false };
+  });
+}
+
+/** The existing report ID and target status make repeated completion safe. */
+export async function completeDelivery(id: string, status: DeliveryDecision) {
+  if (status !== "Received" && status !== "Rejected")
+    throw new DeliveryInputError("Choose Receive or Reject for this pending report.");
+  return db.transaction(async tx => {
+    // Same lock order as creation: delivery reference, PO, then products.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${id}, 0))`);
+    const saved = await readDelivery(tx, id);
+    if (!saved) throw new DeliveryNotFoundError("Receiving report not found. Refresh the report list.");
+    if (saved.delivery.deliveryStatus === status) return { ...saved, replayed: true };
+    if (saved.delivery.deliveryStatus !== "Pending")
+      throw new ReceivingError(`This report is already ${saved.delivery.deliveryStatus}. Only Pending reports can be received or rejected.`);
+    const [postedStock] = await tx.select({ id: stockMovementsTable.id }).from(stockMovementsTable)
+      .where(and(eq(stockMovementsTable.referenceId, id), eq(stockMovementsTable.movementType, "StockIn"))).limit(1);
+    if (postedStock)
+      throw new ReceivingError("This Pending report already has recorded stock movements. Review the report and inventory before receiving or rejecting it.");
+
+    if (status === "Received") {
+      const [order] = await tx.select().from(purchaseOrdersTable)
+        .where(eq(purchaseOrdersTable.id, saved.delivery.poId)).for("update");
+      if (!order || ["Cancelled", "Fulfilled"].includes(order.status))
+        throw new ReceivingError("This purchase order is closed or unavailable. The pending report cannot add stock; review it or reject it.");
+      const payload = deliveryPayload({
+        poId: order.id, deliveryDate: saved.delivery.deliveryDate, deliveryStatus: status,
+        items: saved.items.map(item => ({ productId: item.productId, batchNumber: item.batchNumber,
+          expirationDate: item.expirationDate, quantityDelivered: item.quantityDelivered })),
+      });
+      const receipt = await prepareReceipt(tx, order, payload);
+      await postReceipt(tx, order, payload, id, receipt);
+    }
+    // Rejection is allowed for expired lots or closed POs and never posts stock.
+    const [delivery] = await tx.update(supplierDeliveriesTable).set({ deliveryStatus: status })
+      .where(eq(supplierDeliveriesTable.id, id)).returning();
+    return { delivery, items: saved.items, replayed: false };
   });
 }

@@ -2500,6 +2500,25 @@ a {
 .receiving-empty .button, .receiving-access-notice .button { margin-top: 8px; }
 .receiving-load-error { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .receiving-load-error > span { flex: 1 1 200px; min-width: 0; }
+.receiving-report-actions { display: flex; flex-wrap: wrap; gap: 6px; min-width: 150px; }
+.receiving-report-actions .button { font-size: var(--text-xs); padding: 6px 9px; }
+.receiving-decision-dialog { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.receiving-decision-dialog .modal-header { flex-shrink: 0; padding: 20px; margin: 0; }
+.receiving-decision-dialog .modal-header > div { min-width: 0; overflow-wrap: anywhere; }
+.receiving-decision-body { padding: 0 20px 20px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.receiving-decision-items { list-style: none; padding: 0; margin: 16px 0; border: 1px solid hsl(var(--border)); border-radius: 12px; }
+.receiving-decision-items li { display: flex; flex-wrap: wrap; gap: 10px; align-items: start; padding: 12px; }
+.receiving-decision-items li + li { border-top: 1px solid hsl(var(--border)); }
+.receiving-decision-items li > div { display: flex; flex-direction: column; gap: 4px; flex: 1 1 220px; min-width: 0; overflow-wrap: anywhere; }
+.receiving-decision-items .muted { font-size: var(--text-xs); }
+.receiving-decision-quantity { white-space: nowrap; font-size: var(--text-sm); }
+.receiving-decision-dialog .modal-actions { flex-shrink: 0; flex-wrap: wrap; padding: 14px 20px; margin: 0; border-top: 1px solid hsl(var(--border)); }
+@media (max-width: 640px) {
+  .receiving-decision-dialog .modal-header { padding: 16px; }
+  .receiving-decision-body { padding: 0 16px 16px; }
+  .receiving-decision-dialog .modal-actions { padding: 12px 16px; }
+  .receiving-decision-dialog .modal-actions .button { flex: 1 1 auto; }
+}
 
 /* Keep receiving scroll and floating batch choices independent. */
 .receiving-backdrop { overflow: hidden; }

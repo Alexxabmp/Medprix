@@ -1,4 +1,4 @@
-import { deliveryKey, deliveryPayload, readDelivery, submitDelivery, DeliveryInputError, DeliveryReferenceConflict } from "../lib/supplier-delivery-submissions";
+import { deliveryKey, deliveryPayload, deliveryDecision, readDelivery, submitDelivery, completeDelivery, DeliveryInputError, DeliveryNotFoundError, DeliveryReferenceConflict } from "../lib/supplier-delivery-submissions";
 import { randomUUID } from "node:crypto";
 import { pharmacyDate } from "@workspace/api-zod";
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
@@ -444,6 +444,14 @@ router.post("/supplier-deliveries", async (req, res) => {
   return res.status(result.replayed ? 200 : 201).json({ success: true, ...result });
 });
 
+router.patch("/supplier-deliveries/:id/status", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  const id = asId(req.params.id);
+  if (!uuidPattern.test(id)) throw new DeliveryInputError("Invalid receiving report ID.");
+  const result = await completeDelivery(id.toLowerCase(), deliveryDecision(req.body));
+  return res.json({ success: true, ...result });
+});
+
 router.post(
   "/supplier-invoices",
   requireRoles("Admin", "FrontDesk"),
@@ -728,7 +736,7 @@ router.patch("/supplier-invoices/:id/status", async (req: Request, res: Response
 });
 
 router.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
-  if (error instanceof ReceivingError || error instanceof DeliveryInputError)
+  if (error instanceof ReceivingError || error instanceof DeliveryInputError || error instanceof DeliveryNotFoundError)
     return res.status(error.status).json({success: false, error: error.message, ...(error instanceof DeliveryReferenceConflict ? {code: error.code} : {})});
   return next(error);
 });

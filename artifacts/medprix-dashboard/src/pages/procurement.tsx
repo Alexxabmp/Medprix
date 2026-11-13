@@ -5,6 +5,7 @@ import { useDialogAccessibility } from "@/lib/use-dialog-accessibility";
 import { SupplierPaymentDialog } from "@/components/supplier-payment-dialog";
 import { ReceivingBatchPicker } from "@/components/custom-ui/receiving-batch-picker";
 import { ReceivingChoicePicker } from "@/components/custom-ui/receiving-choice-picker";
+import { ReceivingReportDecisionDialog, type ReceivingDecision } from "@/components/receiving-report-decision-dialog";
 import { safeError, readResponse } from "@/lib/feedback";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
@@ -174,6 +175,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
   const [deliveries, setDeliveries] = useState<Delivery[]>(() =>
     getStored("medprix_procurement_deliveries", [])
   );
+  const [reportDecision, setReportDecision] = useState<{ report: Delivery; decision: ReceivingDecision } | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>(() =>
     getStored("medprix_procurement_invoices", [])
   );
@@ -709,6 +711,9 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
 
   return (
     <div>
+      {reportDecision && <ReceivingReportDecisionDialog report={reportDecision.report} decision={reportDecision.decision}
+        onClose={() => setReportDecision(null)} onToast={onToast}
+        onSaved={async () => { await Promise.all([loadData(), fetchInventoryData(true)]); }} />}
       {paymentInvoiceId && <SupplierPaymentDialog invoiceId={paymentInvoiceId} onClose={() => setPaymentInvoiceId(null)} onToast={onToast} onSaved={refreshInvoicesAndPayables} />}
       <PageHeading
         title="Procurement"
@@ -907,19 +912,25 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                   <th>Quantity</th>
                   <th>Delivery status</th>
                   <th>Expiry status</th>
+                  {canManagePurchasing && <th>Actions</th>}
                 </tr>
               </thead>
               <tbody>
-                {tableMessage(8, loadingSections.deliveries, deliveries.length) ||
+                {tableMessage(canManagePurchasing ? 9 : 8, loadingSections.deliveries, deliveries.length) ||
                   (filteredReceivingRows.length === 0 ? (
-                    <tr><td colSpan={8} className="muted">{receivingSearch ? "No receiving reports match this search." : "No receiving reports found."}</td></tr>
-                  ) : filteredReceivingRows.map(({delivery, item}) => {
+                    <tr><td colSpan={canManagePurchasing ? 9 : 8} className="muted">{receivingSearch ? "No receiving reports match this search." : "No receiving reports found."}</td></tr>
+                  ) : filteredReceivingRows.map(({delivery, item}, index) => {
                     const expiry = expiryStatus(item.expirationDate);
                     return <tr key={item.id}>
                       <td>{delivery.poNumber}<div className="muted" style={{fontSize: 12}}>{formatDeliveryDate(delivery.deliveryDate)}</div></td>
                       <td>{delivery.supplier}</td><td>{item.product}</td><td>{item.batchNumber}</td>
                       <td>{item.expirationDate}</td><td>{item.quantityDelivered}</td><td>{delivery.deliveryStatus}</td>
                       <td><span className={`pill ${expiry.tone}`}>{expiry.label}</span></td>
+                      {canManagePurchasing && <td>{delivery.deliveryStatus === "Pending" && filteredReceivingRows.findIndex(row => row.delivery.id === delivery.id) === index &&
+                        <div className="receiving-report-actions">
+                          <button type="button" className="button soft" disabled={isSaving} onClick={() => setReportDecision({report: delivery, decision: "Received"})}>Receive report</button>
+                          <button type="button" className="button soft" disabled={isSaving} onClick={() => setReportDecision({report: delivery, decision: "Rejected"})}>Reject report</button>
+                        </div>}</td>}
                     </tr>;
                   }))}
               </tbody>
