@@ -15,10 +15,12 @@ import {
   Check,
   CircleDollarSign,
   ClipboardList,
+  Eye,
   Mail,
   MapPin,
   Phone,
   Plus,
+  Search,
   UserRound,
   X,
 } from "lucide-react";
@@ -29,6 +31,8 @@ import {
   fetchSupplierRecords,
   getCachedPayables,
   getCachedSuppliers,
+  getCachedSupplierHistory,
+  setCachedSupplierHistory,
   type AccountsPayableRecord,
   type SupplierRecord,
 } from "@/lib/supplier-store";
@@ -184,6 +188,10 @@ export default function SupplierPage({
   currentRole: string;
 }) {
   const [filter, setFilter] = useState("All statuses");
+  const [supplierSearch, setSupplierSearch] = useState("");
+  const [directoryPage, setDirectoryPage] = useState(1);
+  const [payableSearch, setPayableSearch] = useState("");
+  const [payablePage, setPayablePage] = useState(1);
   const [activeSection, setActiveSection] = useState<"directory" | "payables">(
     "directory",
   );
@@ -191,7 +199,7 @@ export default function SupplierPage({
     () => getCachedSuppliers() || [],
   );
   const [isLoading, setIsLoading] = useState(
-    () => getCachedSuppliers() === null,
+    () => false,
   );
   const [error, setError] = useState("");
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -219,7 +227,7 @@ export default function SupplierPage({
       },
   );
   const [payablesLoading, setPayablesLoading] = useState(
-    () => getCachedPayables() === null,
+    () => false,
   );
   const [payablesError, setPayablesError] = useState("");
   const [payableFilter, setPayableFilter] = useState("All");
@@ -234,7 +242,7 @@ export default function SupplierPage({
   const fetchSuppliers = useCallback(async () => {
     const hasCachedData = getCachedSuppliers() !== null;
     try {
-      if (!hasCachedData) setIsLoading(true);
+      if (false && !hasCachedData) setIsLoading(true);
       setError("");
       setSuppliers(await fetchSupplierRecords());
     } catch (requestError) {
@@ -255,7 +263,7 @@ export default function SupplierPage({
   const loadPayables = useCallback(async () => {
     const hasCachedData = getCachedPayables() !== null;
     try {
-      if (!hasCachedData) setPayablesLoading(true);
+      if (false && !hasCachedData) setPayablesLoading(true);
       setPayablesError("");
       const data = await fetchAccountsPayable();
       setAccountsPayable(data.accountsPayable);
@@ -284,9 +292,15 @@ export default function SupplierPage({
   }, [isAddOpen, selectedSupplier, paymentPayable]);
 
   const loadHistory = async (supplier: Supplier) => {
-    setHistory(emptyHistory);
+    const cached = getCachedSupplierHistory<SupplierHistory>(supplier.id);
+    if (cached) {
+      setHistory(cached);
+      setHistoryLoading(false);
+    } else {
+      setHistory(emptyHistory);
+      setHistoryLoading(true);
+    }
     setHistoryError("");
-    setHistoryLoading(true);
     try {
       const response = await fetch(`/api/suppliers/${supplier.id}/history`, {
         credentials: "include",
@@ -295,7 +309,9 @@ export default function SupplierPage({
       if (!response.ok)
         throw new Error(data.error || "Failed to load supplier history.");
       if (![data.orders, data.invoices, data.payables, data.payments].every(Array.isArray) || !data.summary) throw new Error("Invalid supplier history response. Please refresh.");
-      setHistory(normalizeHistory(data));
+      const normalized = normalizeHistory(data);
+      setHistory(normalized);
+      setCachedSupplierHistory(supplier.id, normalized);
     } catch (requestError) {
       const message =
         requestError instanceof Error
@@ -367,20 +383,57 @@ export default function SupplierPage({
 
   const filtered = useMemo(
     () =>
-      suppliers.filter(
-        (supplier) => filter === "All statuses" || supplier.status === filter,
-      ),
-    [filter, suppliers],
+      suppliers.filter((supplier) => {
+        const matchesStatus = filter === "All statuses" || supplier.status === filter;
+        const q = supplierSearch.trim().toLowerCase();
+        const matchesQuery =
+          !q ||
+          supplier.name.toLowerCase().includes(q) ||
+          supplier.code.toLowerCase().includes(q) ||
+          supplier.contact.toLowerCase().includes(q);
+        return matchesStatus && matchesQuery;
+      }),
+    [filter, supplierSearch, suppliers],
   );
   const filteredPayables = useMemo(
     () =>
       accountsPayable.filter((payable) => {
         if (Number(payable.totalOwed) <= 0) return false;
-        if (payableFilter === "All") return true;
-        return payable.status === payableFilter;
+        const matchesStatus =
+          payableFilter === "All" || payableFilter === "All statuses" || payable.status === payableFilter;
+        const q = payableSearch.trim().toLowerCase();
+        const matchesQuery =
+          !q ||
+          payable.supplier.toLowerCase().includes(q) ||
+          payable.invoiceNumber.toLowerCase().includes(q) ||
+          payable.status.toLowerCase().includes(q);
+        return matchesStatus && matchesQuery;
       }),
-    [accountsPayable, payableFilter],
+    [accountsPayable, payableFilter, payableSearch],
   );
+  const SUPPLIER_PAGE_SIZE = 15;
+  const totalDirectoryPages = Math.max(1, Math.ceil(filtered.length / SUPPLIER_PAGE_SIZE));
+  const safeDirectoryPage = Math.min(directoryPage, totalDirectoryPages);
+  const paginatedSuppliers = useMemo(
+    () =>
+      filtered.slice(
+        (safeDirectoryPage - 1) * SUPPLIER_PAGE_SIZE,
+        safeDirectoryPage * SUPPLIER_PAGE_SIZE,
+      ),
+    [filtered, safeDirectoryPage],
+  );
+
+  const totalPayablePages = Math.max(1, Math.ceil(filteredPayables.length / SUPPLIER_PAGE_SIZE));
+  const safePayablePage = Math.min(payablePage, totalPayablePages);
+  const paginatedPayables = useMemo(
+    () =>
+      filteredPayables.slice(
+        (safePayablePage - 1) * SUPPLIER_PAGE_SIZE,
+        safePayablePage * SUPPLIER_PAGE_SIZE,
+      ),
+    [filteredPayables, safePayablePage],
+  );
+
   const activeSuppliers = suppliers.filter(
     (supplier) => supplier.status === "Active",
   ).length;
@@ -406,8 +459,49 @@ export default function SupplierPage({
           ) : undefined
         }
       />
+      {error && <div className="inline-error" role="alert"><span>{error} Previously loaded supplier data may be out of date.</span><button className="button soft" onClick={() => void fetchSuppliers()}>Retry</button></div>}
+      {payablesError && <div className="inline-error" role="alert"><span>{payablesError} Previously loaded balances may be out of date.</span><button className="button soft" onClick={() => void loadPayables()}>Retry</button></div>}
+
+      {activeSection === "directory" ? (
+        <div className="summary-strip">
+          <Summary
+            label="Active suppliers"
+            value={isLoading ? "—" : String(activeSuppliers)}
+            caption="Current supplier accounts"
+          />
+          <Summary
+            label="Purchase value"
+            value={isLoading ? "—" : peso(openPurchaseValue)}
+            caption="Across recorded orders"
+          />
+          <Summary
+            label="Supplier records"
+            value={isLoading ? "—" : String(suppliers.length)}
+            caption="Available vendor profiles"
+          />
+        </div>
+      ) : (
+        <div className="summary-strip">
+          <Summary
+            label="Open balance"
+            value={payablesLoading ? "—" : peso(payableSummary.totalOpen)}
+            caption="Outstanding supplier invoices"
+          />
+          <Summary
+            label="Overdue"
+            value={payablesLoading ? "—" : peso(payableSummary.overdue)}
+            caption="Past their payment due date"
+          />
+          <Summary
+            label="Due within 7 days"
+            value={payablesLoading ? "—" : peso(payableSummary.dueThisWeek)}
+            caption="Upcoming supplier obligations"
+          />
+        </div>
+      )}
+
       <div
-        className="modal-tabs supplier-page-tabs"
+        className="page-tabs"
         role="tablist"
         aria-label="Supplier management sections"
       >
@@ -415,7 +509,7 @@ export default function SupplierPage({
           type="button"
           role="tab"
           aria-selected={activeSection === "directory"}
-          className={`modal-tab ${activeSection === "directory" ? "active" : ""}`}
+          className={`button ${activeSection === "directory" ? "dark" : "soft"}`}
           onClick={() => setActiveSection("directory")}
         >
           Supplier directory
@@ -425,7 +519,7 @@ export default function SupplierPage({
             type="button"
             role="tab"
             aria-selected={activeSection === "payables"}
-            className={`button modal-tab ${activeSection === "payables" ? "active" : ""}`}
+            className={`button ${activeSection === "payables" ? "dark" : "soft"}`}
             onClick={() => setActiveSection("payables")}
           >
             Accounts payable
@@ -433,44 +527,38 @@ export default function SupplierPage({
         )}
       </div>
 
-      {error && <div className="inline-error" role="alert"><span>{error} Previously loaded supplier data may be out of date.</span><button className="button soft" onClick={() => void fetchSuppliers()}>Retry</button></div>}
-      {payablesError && <div className="inline-error" role="alert"><span>{payablesError} Previously loaded balances may be out of date.</span><button className="button soft" onClick={() => void loadPayables()}>Retry</button></div>}
       {activeSection === "directory" ? (
         <>
-          <div className="summary-strip">
-            <Summary
-              label="Active suppliers"
-              value={isLoading ? "—" : String(activeSuppliers)}
-              caption="Current supplier accounts"
-            />
-            <Summary
-              label="Purchase value"
-              value={isLoading ? "—" : peso(openPurchaseValue)}
-              caption="Across recorded orders"
-            />
-            <Summary
-              label="Supplier records"
-              value={isLoading ? "—" : String(suppliers.length)}
-              caption="Available vendor profiles"
-            />
-          </div>
           <section className="surface-card table-card supplier-directory">
             <div className="table-tools">
-              <div>
-                <h2 className="card-title">Supplier directory</h2>
-                <p className="card-subtitle">
-                  Commercial partners and current standing
-                </p>
+              <div className="search-wrap">
+                <Search size={15} />
+                <input
+                  type="search"
+                  placeholder="Search supplier, code, or contact..."
+                  value={supplierSearch}
+                  onChange={(event) => {
+                    setSupplierSearch(event.target.value);
+                    setDirectoryPage(1);
+                  }}
+                  data-testid="input-supplier-search"
+                />
               </div>
-              <select
-                className="select"
-                data-testid="select-supplier-filter"
-                value={filter}
-                onChange={(event) => setFilter(event.target.value)}
-              >
-                <option>All statuses</option>
-                <option>Active</option>
-              </select>
+              <div className="table-tools-right">
+                <select
+                  className="select"
+                  data-testid="select-supplier-filter"
+                  value={filter}
+                  onChange={(event) => {
+                    setFilter(event.target.value);
+                    setDirectoryPage(1);
+                  }}
+                >
+                  <option>All statuses</option>
+                  <option>Active</option>
+                  <option>Inactive</option>
+                </select>
+              </div>
             </div>
             <div className="table-scroll">
               <table className="data-table">
@@ -481,7 +569,7 @@ export default function SupplierPage({
                     <th>Orders</th>
                     <th>Order value</th>
                     <th>Status</th>
-                    <th />
+                    <th className="table-action-head">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -512,7 +600,7 @@ export default function SupplierPage({
                       </td>
                     </tr>
                   ) : (
-                    filtered.map((supplier) => (
+                    paginatedSuppliers.map((supplier) => (
                       <tr key={supplier.id}>
                         <td>
                           <div className="product-cell">
@@ -537,15 +625,19 @@ export default function SupplierPage({
                             {supplier.status}
                           </span>
                         </td>
-                        <td>
-                          <button
-                            className="icon-button"
-                            aria-label={`View ${supplier.name}`}
-                            data-testid={`button-view-supplier-${supplier.code}`}
-                            onClick={() => openHistory(supplier)}
-                          >
-                            <ArrowUpRight size={14} />
-                          </button>
+                        <td className="table-action-cell">
+                          <div className="table-actions">
+                            <button
+                              type="button"
+                              className="button soft table-action-btn"
+                              aria-label={`View ${supplier.name}`}
+                              title={`View ${supplier.name}`}
+                              data-testid={`button-view-supplier-${supplier.code}`}
+                              onClick={() => openHistory(supplier)}
+                            >
+                              <Eye size={13} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -553,48 +645,64 @@ export default function SupplierPage({
                 </tbody>
               </table>
             </div>
+            <div className="wholesale-pagination">
+              <span className="muted">
+                Page {safeDirectoryPage} of {totalDirectoryPages}
+              </span>
+              <button
+                type="button"
+                className="button soft"
+                disabled={safeDirectoryPage <= 1}
+                onClick={() => setDirectoryPage((p) => Math.max(1, p - 1))}
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                className="button soft"
+                disabled={safeDirectoryPage >= totalDirectoryPages}
+                onClick={() => setDirectoryPage((p) => Math.min(totalDirectoryPages, p + 1))}
+              >
+                Next
+              </button>
+            </div>
           </section>
         </>
       ) : (
         <>
-          <div className="summary-strip">
-            <Summary
-              label="Open balance"
-              value={payablesLoading ? "—" : peso(payableSummary.totalOpen)}
-              caption="Outstanding supplier invoices"
-            />
-            <Summary
-              label="Overdue"
-              value={payablesLoading ? "—" : peso(payableSummary.overdue)}
-              caption="Past their payment due date"
-            />
-            <Summary
-              label="Due within 7 days"
-              value={payablesLoading ? "—" : peso(payableSummary.dueThisWeek)}
-              caption="Upcoming supplier obligations"
-            />
-          </div>
           {payableSummary.needsReview && <div className="inline-error" role="alert">Some invoice or payment records disagree. Balances marked “Needs review” are unavailable until those records are reviewed.</div>}
           <section className="surface-card table-card supplier-directory">
             <div className="table-tools">
-              <div>
-                <h2 className="card-title">Accounts payable</h2>
-                <p className="card-subtitle">
-                  Supplier invoices, balances, and payment status
-                </p>
+              <div className="search-wrap">
+                <Search size={15} />
+                <input
+                  type="search"
+                  placeholder="Search supplier or invoice..."
+                  value={payableSearch}
+                  onChange={(event) => {
+                    setPayableSearch(event.target.value);
+                    setPayablePage(1);
+                  }}
+                  data-testid="input-payable-search"
+                />
               </div>
-              <select
-                className="select"
-                aria-label="Filter accounts payable"
-                value={payableFilter}
-                onChange={(event) => setPayableFilter(event.target.value)}
-              >
-                <option>All</option>
-                <option>Open</option>
-                <option>Overdue</option>
-                <option>Paid</option>
-                <option>Needs Review</option>
-              </select>
+              <div className="table-tools-right">
+                <select
+                  className="select"
+                  aria-label="Filter accounts payable"
+                  value={payableFilter}
+                  onChange={(event) => {
+                    setPayableFilter(event.target.value);
+                    setPayablePage(1);
+                  }}
+                >
+                  <option value="All">All statuses</option>
+                  <option value="Open">Open</option>
+                  <option value="Overdue">Overdue</option>
+                  <option value="Paid">Paid</option>
+                  <option value="Needs Review">Needs Review</option>
+                </select>
+              </div>
             </div>
             <div className="table-scroll stable-data-table">
               <table className="data-table">
@@ -607,7 +715,7 @@ export default function SupplierPage({
                     <th>Paid</th>
                     <th>Balance</th>
                     <th>Status</th>
-                    <th>Action</th>
+                    <th className="table-action-head">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -639,7 +747,7 @@ export default function SupplierPage({
                       </td>
                     </tr>
                   ) : (
-                    filteredPayables.map((payable) => (
+                    paginatedPayables.map((payable) => (
                       <tr key={payable.id}>
                         <td>
                           <div className="product-cell">
@@ -673,32 +781,55 @@ export default function SupplierPage({
                             {payable.status}
                           </span>
                         </td>
-                        <td>
-                          {payable.needsReview ? <span className="muted">Review required</span> : Number(payable.balance) > 0 ? (
-                            <button
-                              className="button soft"
-                              type="button"
-                              onClick={() => {
-                                setPaymentPayable({
-                                  id: payable.id,
-                                  invoiceId: payable.invoiceId,
-                                  balance: payable.balance,
-                                  supplier: payable.supplier,
-                                  invoiceNumber: payable.invoiceNumber,
-                                });
-                              }}
-                            >
-                              Record payment
-                            </button>
-                          ) : (
-                            <span className="muted">Settled</span>
-                          )}
+                        <td className="table-action-cell">
+                          <div className="table-actions">
+                            {payable.needsReview ? <span className="muted">Review required</span> : Number(payable.balance) > 0 ? (
+                              <button
+                                className="button soft table-action-btn"
+                                type="button"
+                                onClick={() => {
+                                  setPaymentPayable({
+                                    id: payable.id,
+                                    invoiceId: payable.invoiceId,
+                                    balance: payable.balance,
+                                    supplier: payable.supplier,
+                                    invoiceNumber: payable.invoiceNumber,
+                                  });
+                                }}
+                              >
+                                Record payment
+                              </button>
+                            ) : (
+                              <span className="muted">Settled</span>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))
                   )}
                 </tbody>
               </table>
+            </div>
+            <div className="wholesale-pagination">
+              <span className="muted">
+                Page {safePayablePage} of {totalPayablePages}
+              </span>
+              <button
+                type="button"
+                className="button soft"
+                disabled={safePayablePage <= 1}
+                onClick={() => setPayablePage((p) => Math.max(1, p - 1))}
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                className="button soft"
+                disabled={safePayablePage >= totalPayablePages}
+                onClick={() => setPayablePage((p) => Math.min(totalPayablePages, p + 1))}
+              >
+                Next
+              </button>
             </div>
           </section>
         </>
@@ -839,9 +970,9 @@ export default function SupplierPage({
                 </div>
               </div>
               {supplierFormError && (
-                <p className="form-error" role="alert">
+                <div className="inline-error" role="alert">
                   {supplierFormError}
-                </p>
+                </div>
               )}
               <div className="modal-actions">
                 <button
@@ -933,7 +1064,7 @@ export default function SupplierPage({
                   Loading supplier history...
                 </div>
               ) : historyError ? (
-                <div className="supplier-history-state">
+                <div className="inline-error" role="alert">
                   <span>{historyError}</span>
                   <button
                     className="button soft"

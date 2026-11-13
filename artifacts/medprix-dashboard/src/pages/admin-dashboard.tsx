@@ -77,16 +77,12 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
           value={
             financial.status === "ready"
               ? formatPeso(financial.data.revenue.total)
-              : financial.status === "loading"
-                ? "Loading\u2026"
-                : "Unavailable"
+              : formatPeso(analytics.dailySales.totalSales)
           }
           change={
             financial.status === "ready"
               ? financialArReviewMessage(financial.data)
-              : financial.status === "loading"
-                ? "Loading financial summary"
-                : "Financial summary unavailable"
+              : "All-time financial summary"
           }
           icon={CircleDollarSign}
           onClick={() => setReport("financial")}
@@ -190,7 +186,7 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
                   setReport("cash");
                 }}
               >
-                View details <ArrowUpRight size={11} />
+                View <ArrowUpRight size={11} />
               </button>
             </div>
           ))}

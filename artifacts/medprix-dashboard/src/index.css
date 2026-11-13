@@ -3242,3 +3242,350 @@ a {
     font-weight: 600;
   }
 }
+
+/* ============================================================================
+   UNIFORM PAGE HIERARCHY: SUMMARY STRIPS, SECTION TABS, TABLE TOOLBARS & TEXT
+   ============================================================================ */
+.page-heading {
+  margin-top: 5px;
+  margin-bottom: 16px;
+  align-items: center;
+}
+
+.page-heading h1 {
+  font-size: 32px;
+  line-height: 1.15;
+  letter-spacing: -0.05em;
+}
+
+.page-heading p {
+  font-size: 13px;
+  line-height: 1.45;
+  margin-top: 4px;
+}
+
+/* Uniform notifications & error banners (red vertical line on the left) */
+.inline-error,
+.form-error,
+.wholesale-notice,
+.receiving-recovery {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: hsl(var(--surface-soft));
+  border: 1px solid hsl(var(--border));
+  border-inline-start: 4px solid #ef4444;
+  color: hsl(var(--foreground));
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 500;
+  box-shadow: none;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  min-width: 0;
+}
+
+.modal .inline-error,
+.modal .form-error,
+.wholesale-dialog form > .inline-error,
+.product-form-layout > .inline-error {
+  margin: 12px 0 0;
+}
+
+.wholesale-workspace > .inline-error,
+.wholesale-workspace > .wholesale-notice {
+  margin: 0 0 16px;
+}
+
+.wholesale-workspace .table-card .inline-error {
+  margin: 12px 18px;
+}
+
+.summary-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+  align-items: stretch;
+}
+
+.summary-strip.wholesale-summary-strip {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.summary-strip > *,
+.summary-strip .summary-box {
+  height: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.summary-box {
+  padding: 18px 20px;
+  min-height: 112px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.summary-box > div {
+  flex-wrap: nowrap !important;
+}
+
+.summary-box span {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.summary-box strong,
+.wholesale-summary-strip .summary-box strong {
+  font-size: 24px;
+  line-height: 1.15;
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+
+.summary-box small {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.page-tabs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.page-tabs .button {
+  height: 36px;
+  padding: 0 14px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 11px;
+  gap: 6px;
+}
+
+.table-card {
+  border-radius: 20px;
+}
+
+.table-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.table-tools > .search-wrap,
+.table-tools-right .search-wrap {
+  width: 280px;
+  min-width: 240px;
+  max-width: 100%;
+  height: 36px;
+  flex: 0 0 280px;
+  border-radius: 11px;
+  padding: 0 11px;
+}
+
+.table-tools > .search-wrap input,
+.table-tools-right .search-wrap input {
+  font-size: 12px;
+}
+
+.table-tools-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-left: auto;
+  width: auto;
+}
+
+.table-tools-right .select {
+  width: auto;
+  min-width: 155px;
+  max-width: 220px;
+  height: 36px;
+  padding: 0 11px;
+  font-size: 12px;
+  border-radius: 11px;
+  flex: 0 0 auto;
+}
+
+.table-tools-right .button {
+  height: 36px;
+  padding: 0 14px;
+  font-size: 12px;
+  border-radius: 11px;
+  flex: 0 0 auto;
+}
+
+.data-table th {
+  font-size: 11px;
+  padding: 12px 18px;
+}
+
+.data-table td {
+  font-size: 12px;
+  padding: 14px 18px;
+}
+
+/* Uniform Table Action Column & Icon Buttons */
+.data-table th.table-action-head,
+.data-table td.table-action-cell {
+  text-align: right;
+  width: 1%;
+  white-space: nowrap;
+}
+
+.table-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.button.table-action-btn {
+  height: 30px;
+  min-width: 32px;
+  padding: 0 9px;
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  margin: 0 !important;
+}
+
+/* Uniform Opened Modal Boxes (matching Alaxan FR Capsule modal in Inventory) */
+.modal,
+.modal.dialog,
+.modal.product-form-modal,
+.modal.supplier-form-modal,
+.modal.supplier-history-modal,
+.modal.settlement-dialog,
+.modal.wholesale-dialog,
+.modal.wholesale-summary-dialog,
+.modal.delivery-receipt-dialog,
+.receiving-dialog-frame {
+  width: min(640px, 100%);
+  max-height: min(760px, calc(100dvh - 36px));
+  border-radius: 23px;
+}
+
+.modal,
+.modal.dialog,
+.modal.product-form-modal,
+.modal.supplier-form-modal,
+.modal.supplier-history-modal,
+.modal.settlement-dialog {
+  padding: 25px;
+}
+
+.modal.wholesale-dialog,
+.modal.wholesale-summary-dialog,
+.modal.delivery-receipt-dialog,
+.receiving-dialog {
+  padding: 0;
+}
+
+.modal.wholesale-dialog .modal-header,
+.modal.wholesale-summary-dialog .modal-header,
+.modal.delivery-receipt-dialog .modal-header,
+.receiving-dialog .modal-header {
+  padding: 25px 25px 18px;
+  margin-bottom: 0;
+}
+
+.modal.wholesale-dialog .wholesale-dialog-body,
+.modal.wholesale-summary-dialog .wholesale-dialog-body,
+.modal.delivery-receipt-dialog .wholesale-dialog-body,
+.receiving-dialog .receiving-dialog-body {
+  margin: 0;
+  padding: 0 25px 25px;
+}
+
+.modal .modal-header h2,
+.wholesale-summary-dialog .modal-header h2 {
+  font-family: var(--app-font-display);
+  font-size: 22px;
+  letter-spacing: -0.05em;
+  margin: 0;
+  color: hsl(var(--foreground));
+}
+
+.wholesale-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 14px 18px;
+  border-top: 1px solid hsl(var(--border));
+  font-size: 12px;
+}
+
+.wholesale-pagination .button {
+  height: 32px;
+  padding: 0 12px;
+  font-size: 12px;
+  border-radius: 9px;
+}
+
+@media (max-width: 960px) {
+  .summary-strip.wholesale-summary-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .summary-strip,
+  .summary-strip.wholesale-summary-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .table-tools {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .table-tools > .search-wrap {
+    flex: 1 1 100%;
+    width: 100%;
+    max-width: none;
+  }
+
+  .table-tools-right {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .table-tools-right .search-wrap,
+  .table-tools-right .select,
+  .table-tools-right .button {
+    flex: 1 1 100%;
+    width: 100%;
+    max-width: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .summary-strip,
+  .summary-strip.wholesale-summary-strip {
+    grid-template-columns: 1fr;
+  }
+}

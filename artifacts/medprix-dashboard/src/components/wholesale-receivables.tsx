@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Eye } from "lucide-react";
 import { LoadingState } from "./custom-ui/loading-state";
 import { WholesaleDialog } from "./wholesale-dialog";
 import { WholesaleRequestFeedback } from "./wholesale-request-feedback";
@@ -6,6 +7,7 @@ import { useWholesaleRequest } from "@/lib/use-wholesale-request";
 import { safeError } from "@/lib/feedback";
 import {
   wholesaleGet,
+  getCachedWholesale,
   wholesalePeso,
   wholesaleDateTime,
   wholesaleManilaInput,
@@ -32,8 +34,9 @@ export function WholesaleReceivables({
   onClose?: () => void;
 }) {
   const [page, setPage] = useState(1);
-  const [data, setData] = useState<WholesaleReceivablePage | null>(null);
-  const [loading, setLoading] = useState(true);
+  const initialCacheKey = "/accounts-receivable?search=" + encodeURIComponent(search) + "&page=1&status=" + status;
+  const [data, setData] = useState<WholesaleReceivablePage | null>(() => getCachedWholesale<WholesaleReceivablePage>(initialCacheKey));
+  const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(
     initialDetail?.id ?? null,
@@ -45,7 +48,16 @@ export function WholesaleReceivables({
   const [mode, setMode] = useState("view");
   const [method, setMethod] = useState("Cash");
   const [validation, setValidation] = useState("");
+  const [subPage, setSubPage] = useState(1);
   const contentRef = useRef<HTMLDivElement>(null);
+  const RECEIVABLE_PAGE_SIZE = 15;
+  const items = data?.items ?? [];
+  const totalPages = Math.max(1, Math.ceil(items.length / RECEIVABLE_PAGE_SIZE));
+  const safeSubPage = Math.min(subPage, totalPages);
+  const paginatedItems = items.slice(
+    (safeSubPage - 1) * RECEIVABLE_PAGE_SIZE,
+    safeSubPage * RECEIVABLE_PAGE_SIZE,
+  );
   useLayoutEffect(() => {
     const content = contentRef.current;
     const body = content?.closest(".wholesale-dialog-body");
@@ -78,11 +90,17 @@ export function WholesaleReceivables({
   });
   useEffect(() => {
     setPage(1);
+    setSubPage(1);
   }, [search, status]);
   useEffect(() => {
     if (detailsOnly) return;
     let active = true;
-    setLoading(true);
+    const reqPath = "/accounts-receivable?search=" + encodeURIComponent(search) + "&page=" + page + "&status=" + status;
+    const cached = getCachedWholesale<WholesaleReceivablePage>(reqPath);
+    if (cached) {
+      setData(cached);
+    }
+    setLoading(false);
     setLoadError("");
     const timer = setTimeout(() => {
       wholesaleGet<WholesaleReceivablePage>(
@@ -165,13 +183,13 @@ export function WholesaleReceivables({
                 <th>Balance</th>
                 <th>Due date</th>
                 <th>Status</th>
-                <th>Action</th>
+                <th className="table-action-head">Action</th>
               </tr>
             </thead>
             <tbody>
               {!loading &&
                 !loadError &&
-                data?.items.map((item) => (
+                paginatedItems.map((item) => (
                   <tr key={item.id}>
                     <td>
                       <strong>{item.orderNumber}</strong>
@@ -197,14 +215,18 @@ export function WholesaleReceivables({
                         {item.status}
                       </span>
                     </td>
-                    <td>
-                      <button
-                        className="button soft"
-                        disabled={request.locked || opening}
-                        onClick={() => void open(item.id)}
-                      >
-                        View account
-                      </button>
+                    <td className="table-action-cell">
+                      <div className="table-actions">
+                        <button
+                          className="button soft table-action-btn"
+                          disabled={request.locked || opening}
+                          aria-label="View account"
+                          title="View account"
+                          onClick={() => void open(item.id)}
+                        >
+                          <Eye size={13} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -216,7 +238,7 @@ export function WholesaleReceivables({
                 </tr>
               ) : (
                 !loadError &&
-                !data?.items.length && (
+                !items.length && (
                   <tr>
                     <td colSpan={7} className="muted">
                       {search
@@ -228,27 +250,27 @@ export function WholesaleReceivables({
               )}
             </tbody>
           </table>
-          {data && data.total > data.pageSize && (
-            <div className="wholesale-pagination">
-              <button
-                className="button soft"
-                disabled={loading || page === 1}
-                onClick={() => setPage((value) => value - 1)}
-              >
-                Previous
-              </button>
-              <span>
-                Page {page} of {Math.ceil(data.total / data.pageSize)}
-              </span>
-              <button
-                className="button soft"
-                disabled={loading || page * data.pageSize >= data.total}
-                onClick={() => setPage((value) => value + 1)}
-              >
-                Next
-              </button>
-            </div>
-          )}
+          <div className="wholesale-pagination">
+            <span className="muted">
+              Page {safeSubPage} of {totalPages} ({items.length} accounts)
+            </span>
+            <button
+              type="button"
+              className="button soft"
+              disabled={loading || safeSubPage <= 1}
+              onClick={() => setSubPage((value) => Math.max(1, value - 1))}
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              className="button soft"
+              disabled={loading || safeSubPage >= totalPages}
+              onClick={() => setSubPage((value) => Math.min(totalPages, value + 1))}
+            >
+              Next
+            </button>
+          </div>
         </>
       )}
       {selectedId && (

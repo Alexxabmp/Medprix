@@ -27,6 +27,8 @@ export default function UserManagementPage({
   refreshUsers?: () => void;
 }) {
   const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("All roles");
+  const [userPage, setUserPage] = useState(1);
   const [dialog, setDialog] = useState<"create" | "edit" | "reset" | null>(
     null,
   );
@@ -265,10 +267,20 @@ export default function UserManagementPage({
       setResetError("Could not reach the server.");
     }
   };
-  const shown = users.filter((user) =>
-    `${user.name} ${user.username} ${user.role}`
+  const shown = users.filter((user) => {
+    const matchesSearch = `${user.name} ${user.username} ${user.role}`
       .toLowerCase()
-      .includes(search.toLowerCase()),
+      .includes(search.toLowerCase());
+    const matchesRole = roleFilter === "All roles" || user.role === roleFilter;
+    return matchesSearch && matchesRole;
+  });
+
+  const USER_PAGE_SIZE = 15;
+  const totalUserPages = Math.max(1, Math.ceil(shown.length / USER_PAGE_SIZE));
+  const safeUserPage = Math.min(userPage, totalUserPages);
+  const paginatedUsers = shown.slice(
+    (safeUserPage - 1) * USER_PAGE_SIZE,
+    safeUserPage * USER_PAGE_SIZE,
   );
 
   return (
@@ -310,14 +322,30 @@ export default function UserManagementPage({
             <input
               data-testid="input-user-search"
               type="search"
-              placeholder="Search name or role..."
+              placeholder="Search name, username, or role..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setUserPage(1);
+              }}
             />
           </div>
-          <span className="muted" style={{ fontSize: 12 }}>
-            {shown.length} accounts
-          </span>
+          <div className="table-tools-right">
+            <select
+              className="select"
+              aria-label="Filter users by role"
+              value={roleFilter}
+              onChange={(e) => {
+                setRoleFilter(e.target.value);
+                setUserPage(1);
+              }}
+              data-testid="select-user-role">
+              <option value="All roles">All roles</option>
+              <option value="Administrator">Administrator</option>
+              <option value="Front Desk">Front Desk</option>
+              <option value="Cashier">Cashier</option>
+            </select>
+          </div>
         </div>
         <div className="table-scroll">
           <table className="data-table">
@@ -328,11 +356,11 @@ export default function UserManagementPage({
                 <th>Phone number</th>
                 <th>Status</th>
                 <th>Last active</th>
-                <th />
+                <th className="table-action-head">Action</th>
               </tr>
             </thead>
             <tbody>
-              {shown.map((user) => {
+              {paginatedUsers.map((user) => {
                 const isCurrentUser = user.username === currentUsername;
 
                 return (
@@ -448,19 +476,21 @@ export default function UserManagementPage({
                     )}
                   </td>
                   <td className="muted">{user.lastActive}</td>
-                  <td>
-                    <div style={{ display: "flex", gap: 5 }}>
+                  <td className="table-action-cell">
+                    <div className="table-actions">
                       <button
-                        className="icon-button"
+                        className="button soft table-action-btn"
                         data-testid={`button-edit-user-${user.id}`}
                         aria-label={`Edit ${user.name}`}
+                        title={`Edit ${user.name}`}
                         onClick={() => openEdit(user)}>
                         <Pencil size={13} />
                       </button>
                       <button
-                        className="icon-button"
+                        className="button soft table-action-btn"
                         data-testid={`button-reset-user-${user.id}`}
                         aria-label={`Reset password for ${user.name}`}
+                        title={`Reset password for ${user.name}`}
                         onClick={() => {
                           setSelected(user);
                           setPassword("");
@@ -472,7 +502,6 @@ export default function UserManagementPage({
                         }}>
                         <KeyRound size={13} />
                       </button>
-
                     </div>
                   </td>
                 </tr>
@@ -486,6 +515,25 @@ export default function UserManagementPage({
               <div>No user accounts match your search.</div>
             </div>
           )}
+        </div>
+        <div className="wholesale-pagination">
+          <span className="muted">
+            Page {safeUserPage} of {totalUserPages} ({shown.length} users)
+          </span>
+          <button
+            type="button"
+            className="button soft"
+            disabled={safeUserPage <= 1}
+            onClick={() => setUserPage((p) => Math.max(1, p - 1))}>
+            Previous
+          </button>
+          <button
+            type="button"
+            className="button soft"
+            disabled={safeUserPage >= totalUserPages}
+            onClick={() => setUserPage((p) => Math.min(totalUserPages, p + 1))}>
+            Next
+          </button>
         </div>
       </section>
       {(dialog === "create" || dialog === "edit") && (
@@ -591,12 +639,7 @@ export default function UserManagementPage({
                 </div>
               </div>
               {resetError && (
-                <p
-                  style={{
-                    color: "#FF453A",
-                    fontSize: 12,
-                    margin: "10px 0 0",
-                  }}>
+                <p className="inline-error" role="alert">
                   {resetError}
                 </p>
               )}
@@ -825,7 +868,7 @@ function UserDialog({
           )}
         </div>
         {formError && (
-          <p style={{ color: "#FF453A", fontSize: 12, margin: "10px 0 0" }}>
+          <p className="inline-error" role="alert">
             {formError}
           </p>
         )}

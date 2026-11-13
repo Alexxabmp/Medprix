@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   ClipboardList,
+  Eye,
   Search,
   Truck,
   Wallet,
@@ -13,6 +14,7 @@ import { LoadingState } from "./custom-ui/loading-state";
 import { safeError } from "@/lib/feedback";
 import {
   wholesaleGet,
+  getCachedWholesale,
   wholesalePeso,
   type WholesalePageResult,
   type WholesaleOrder,
@@ -27,10 +29,11 @@ function useWorkspaceList<T>(
   initialData?: WholesalePageResult<T>,
 ) {
   const [page, setPage] = useState(1);
+  const initialQueryPath = path + "?search=" + encodeURIComponent(search) + "&page=1&status=" + encodeURIComponent(status);
   const [data, setData] = useState<WholesalePageResult<T> | null>(
-    initialData ?? null,
+    () => initialData ?? getCachedWholesale<WholesalePageResult<T>>(initialQueryPath),
   );
-  const [loading, setLoading] = useState(!initialData);
+  const [loading, setLoading] = useState(() => !initialData && getCachedWholesale(initialQueryPath) === null);
   const firstLoad = useRef(true);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -57,10 +60,13 @@ function useWorkspaceList<T>(
         if (active) setLoading(false);
       }
     };
-    const seeded = firstLoad.current && initialData;
+    const reqPath = path + "?search=" + encodeURIComponent(search) + "&page=" + page + "&status=" + encodeURIComponent(status);
+    const cached = getCachedWholesale<WholesalePageResult<T>>(reqPath);
+    if (cached) setData(cached);
+    const seeded = (firstLoad.current && initialData) || cached !== null;
     firstLoad.current = false;
     if (!seeded) setLoading(true);
-    const timer = seeded ? undefined : window.setTimeout(load, 200);
+    const timer = window.setTimeout(load, search ? 150 : 0);
     const refresh = () => {
       if (document.visibilityState === "visible") void load();
     };
@@ -416,21 +422,25 @@ export function WholesaleSummaryModal({
                         {deliveries && (
                           <td data-label="Notes">{row.notes || "—"}</td>
                         )}
-                        <td data-label="Action">
-                          <button
-                            className="button soft"
-                            disabled={busy || opening}
-                            data-order-id={
-                              accounts ? undefined : (row.orderId ?? row.id)
-                            }
-                            onClick={() =>
-                              accounts
-                                ? viewAccount(row.id)
-                                : reviewOrder(row.orderId ?? row.id)
-                            }
-                          >
-                            {accounts ? "View account" : "Review order"}
-                          </button>
+                        <td data-label="Action" className="table-action-cell">
+                          <div className="table-actions">
+                            <button
+                              className="button soft table-action-btn"
+                              disabled={busy || opening}
+                              aria-label={accounts ? "View account" : "Review order"}
+                              title={accounts ? "View account" : "Review order"}
+                              data-order-id={
+                                accounts ? undefined : (row.orderId ?? row.id)
+                              }
+                              onClick={() =>
+                                accounts
+                                  ? viewAccount(row.id)
+                                  : reviewOrder(row.orderId ?? row.id)
+                              }
+                            >
+                              <Eye size={13} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))

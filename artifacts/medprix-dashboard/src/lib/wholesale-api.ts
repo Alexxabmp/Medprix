@@ -41,17 +41,81 @@ export type WholesaleRequest = {
   body: unknown;
 };
 
-export async function wholesaleGet<T>(path: string): Promise<T> {
-  const response = await fetch("/api/wholesale" + path, {
-    credentials: "include",
-  });
-  if (!response.ok)
-    throw new Error("Wholesale records are unavailable. Refresh to retry.");
-  return response.json();
+const wholesaleMemoryCache = new Map<string, { data: unknown; fetchedAt: number }>();
+const wholesaleInFlight = new Map<string, Promise<unknown>>();
+const WHOLESALE_STORAGE_PREFIX = "medprix_wholesale_cache:";
+
+export function getCachedWholesale<T>(path: string): T | null {
+  const mem = wholesaleMemoryCache.get(path);
+  if (mem) return mem.data as T;
+  try {
+    const raw =
+      sessionStorage.getItem(WHOLESALE_STORAGE_PREFIX + path) ||
+      localStorage.getItem(WHOLESALE_STORAGE_PREFIX + path);
+    if (raw) {
+      const parsed = JSON.parse(raw) as T;
+      wholesaleMemoryCache.set(path, { data: parsed, fetchedAt: 0 });
+      return parsed;
+    }
+  } catch {}
+  return null;
+}
+
+function setCachedWholesale(path: string, data: unknown) {
+  wholesaleMemoryCache.set(path, { data, fetchedAt: Date.now() });
+  try {
+    const json = JSON.stringify(data);
+    sessionStorage.setItem(WHOLESALE_STORAGE_PREFIX + path, json);
+    localStorage.setItem(WHOLESALE_STORAGE_PREFIX + path, json);
+  } catch {}
+}
+
+export function clearWholesaleCache() {
+  wholesaleMemoryCache.clear();
+}
+
+export async function wholesaleGet<T>(path: string, force = false): Promise<T> {
+  const mem = wholesaleMemoryCache.get(path);
+  if (!force && mem && Date.now() - mem.fetchedAt < 30_000) {
+    return mem.data as T;
+  }
+  const existing = wholesaleInFlight.get(path);
+  if (!force && existing) {
+    return existing as Promise<T>;
+  }
+  const requestPromise = (async () => {
+    try {
+      const response = await fetch("/api/wholesale" + path, {
+        credentials: "include",
+      });
+      if (!response.ok)
+        throw new Error("Wholesale records are unavailable. Refresh to retry.");
+      const data = await response.json();
+      setCachedWholesale(path, data);
+      return data as T;
+    } finally {
+      wholesaleInFlight.delete(path);
+    }
+  })();
+  wholesaleInFlight.set(path, requestPromise);
+  return requestPromise;
+}
+
+export function prefetchWholesaleData() {
+  void Promise.allSettled([
+    wholesaleGet("/clients"),
+    wholesaleGet("/catalog"),
+    wholesaleGet("/orders"),
+    wholesaleGet("/delivery-receipts"),
+    wholesaleGet("/overview"),
+    wholesaleGet("/accounts-receivable?search=&page=1&status=all"),
+  ]);
 }
 
 export async function wholesaleWrite(request: WholesaleRequest) {
-  return writeWholesaleRequest("/api/wholesale", request);
+  const result = await writeWholesaleRequest("/api/wholesale", request);
+  clearWholesaleCache();
+  return result;
 }
 
 async function writeWholesaleRequest(base: string, request: WholesaleRequest) {

@@ -13,7 +13,8 @@ export type ProductFormValues = ReturnType<typeof emptyProductForm>;
 export function productFormPayload(values: ProductFormValues, original?: ProductItem) {
   const payload = {
     name: original ? values.name.trim() : composeProductName(values.name, values.strength, values.medicineForm),
-    genericName: values.genericName.trim(), sku: normalizeProductCode(values.sku, original?.sku),
+    genericName: values.genericName.trim(),
+    ...(original ? { sku: original.sku } : {}),
     category: values.category.trim(), price: values.price, costPrice: values.costPrice,
     reorder: values.reorder, isVatExempt: values.vatClassification === "" ? undefined : values.vatClassification === "VAT-exempt", isDangerousDrug: values.isDangerousDrug,
     ...(!original && values.includeStock ? {
@@ -21,7 +22,8 @@ export function productFormPayload(values: ProductFormValues, original?: Product
       mfgDate: values.mfgDate, dateReceived: values.dateReceived, supplier: values.supplier.trim(),
     } : {}),
   };
-  const errors = validateProductInput(payload, { originalSku: original?.sku, batch: !original && values.includeStock });
+  const errors = validateProductInput(payload, { partial: true, originalSku: original?.sku, batch: !original && values.includeStock });
+  delete errors.sku;
   // An explicitly enabled but entirely empty batch still needs validation.
   if (!original && values.includeStock && !values.batchNumber.trim()) errors.batchNumber = "Enter a batch number of at most 100 characters.";
   if (!original && values.includeStock && !values.quantity.trim()) errors.quantity = "Enter a whole-number quantity from 1 to 1,000,000.";

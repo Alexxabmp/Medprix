@@ -6,7 +6,6 @@ import {
   computeDashboardAnalytics,
   financialPeriodLabel,
   financialReportRows,
-  financialReportNotes,
   formatPeso,
   parseMoney,
   type DashboardAnalytics,
@@ -360,11 +359,6 @@ export function ReportModal({
               <ModalSection title="Summary">
                 {financialReportRows(financial.data).map(([label, value]) => (
                   <ModalRow key={label} label={label} value={value} />
-                ))}
-              </ModalSection>
-              <ModalSection title="Financial notes and warnings">
-                {financialReportNotes(financial.data).map((note, index) => (
-                  <p key={index}>{note}</p>
                 ))}
               </ModalSection>
             </>

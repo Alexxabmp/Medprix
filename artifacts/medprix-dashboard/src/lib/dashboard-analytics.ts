@@ -688,8 +688,6 @@ export function buildReportText(type: ReportType, analytics: DashboardAnalytics)
       "Generated   : " + generatedAt,
       subDivider,
       ...financialReportRows(fin).map(([label, value]) => label + ": " + value),
-      subDivider,
-      ...financialReportNotes(fin),
       ...(analytics.financial.status === "ready" &&
       analytics.financial.refreshError
         ? [
@@ -927,16 +925,6 @@ function buildPdfReportSpec(type: ReportType, analytics: DashboardAnalytics): Pd
             { header: "Value", width: 200 },
           ],
           rows: financialReportRows(fin),
-        },
-        {
-          title: "Financial Notes & Warnings",
-          columns: [{ header: "Details", width: 515 }],
-          // The PDF table clips long cells; wrap notes into complete continuation rows.
-          rows: notes.flatMap((note) =>
-            (note.match(/.{1,105}(?:\s|$)|\S{1,105}/g) ?? [note]).map(
-              (line) => [line.trim()],
-            ),
-          ),
         },
       ],
     };

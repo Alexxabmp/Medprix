@@ -3,6 +3,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { AlertTriangle, Check, X } from "lucide-react";
 import {
   fetchAccountsPayable,
+  getCachedPayables,
   invalidateSettlementCaches,
   type AccountsPayableRecord,
 } from "@/lib/supplier-store";
@@ -38,11 +39,18 @@ export function SupplierPaymentDialog({
   onSaved: () => Promise<void>;
   onToast: ToastFn;
 }) {
-  const [payable, setPayable] = useState<AccountsPayableRecord | null>(null);
-  const [draft, setDraft] = useState<Draft | null>(() => pending(invoiceId));
+  const initialTarget = getCachedPayables()?.accountsPayable.find((item) => item.invoiceId === invoiceId) ?? null;
+  const [payable, setPayable] = useState<AccountsPayableRecord | null>(initialTarget);
+  const [draft, setDraft] = useState<Draft | null>(() => pending(invoiceId) || (initialTarget ? {
+    apId: initialTarget.id,
+    amountPaid: initialTarget.balance ?? "",
+    paymentDate: localDate(),
+    notes: "",
+    key: crypto.randomUUID(),
+  } : null));
   const [uncertain, setUncertain] = useState(() => !!pending(invoiceId));
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !initialTarget);
   const [recorded, setRecorded] = useState(false);
   const [saving, setSaving] = useState(false);
   const busy = useRef(false);
@@ -50,7 +58,7 @@ export function SupplierPaymentDialog({
   const opener = useRef(document.activeElement as HTMLElement | null);
   const returnSection = useRef(opener.current?.closest("section"));
   async function load() {
-    setLoading(true);
+    if (!payable) setLoading(true);
     setError("");
     try {
       const data = await fetchAccountsPayable();
@@ -216,8 +224,10 @@ export function SupplierPaymentDialog({
         >
           <div className="modal-header">
             <div>
-              <Dialog.Title>Record payment</Dialog.Title>
-              <Dialog.Description>
+              <Dialog.Title asChild>
+                <h2>Record payment</h2>
+              </Dialog.Title>
+              <Dialog.Description className="modal-sub">
                 Paying the full outstanding balance marks the invoice Paid.
               </Dialog.Description>
             </div>
@@ -231,16 +241,68 @@ export function SupplierPaymentDialog({
             </button>
           </div>
           {loading ? (
-            <p role="status">Loading current payable…</p>
+            <p className="modal-sub" role="status" style={{ marginBottom: 16 }}>
+              Loading current payable…
+            </p>
           ) : (
             payable && (
-              <p className="settlement-summary">
-                {payable.supplier} · {payable.invoiceNumber}
-                <br />
-                Already paid: {peso(payable.totalPaid)}
-                <br />
-                Outstanding balance: <strong>{peso(payable.balance)}</strong>
-              </p>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+                  gap: 10,
+                  marginBottom: 18,
+                }}
+              >
+                <div
+                  style={{
+                    background: "hsl(var(--surface-soft))",
+                    border: "1px solid hsl(var(--border))",
+                    padding: "10px 14px",
+                    borderRadius: 11,
+                  }}
+                >
+                  <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
+                    Supplier &amp; Invoice
+                  </div>
+                  <strong style={{ fontSize: 13, display: "block", marginTop: 2 }}>
+                    {payable.supplier}
+                  </strong>
+                  <span className="muted" style={{ fontSize: 12 }}>
+                    {payable.invoiceNumber}
+                  </span>
+                </div>
+                <div
+                  style={{
+                    background: "hsl(var(--surface-soft))",
+                    border: "1px solid hsl(var(--border))",
+                    padding: "10px 14px",
+                    borderRadius: 11,
+                  }}
+                >
+                  <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
+                    Already Paid
+                  </div>
+                  <strong style={{ fontSize: 13, display: "block", marginTop: 2 }}>
+                    {peso(payable.totalPaid)}
+                  </strong>
+                </div>
+                <div
+                  style={{
+                    background: "hsl(var(--surface-soft))",
+                    border: "1px solid hsl(var(--border))",
+                    padding: "10px 14px",
+                    borderRadius: 11,
+                  }}
+                >
+                  <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
+                    Outstanding Balance
+                  </div>
+                  <strong style={{ fontSize: 13, display: "block", marginTop: 2 }}>
+                    {peso(payable.balance)}
+                  </strong>
+                </div>
+              </div>
             )
           )}
           <form ref={form} onSubmit={submit}>
