@@ -1,3 +1,4 @@
+import { AppTooltip } from "@/components/ui/tooltip";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import {
   WholesaleSummaryModal,
@@ -614,24 +615,24 @@ export default function WholesalePage({
                           </td>
                           <td className="table-action-cell">
                             <div className="table-actions">
-                              <button
+                              <AppTooltip content={"Edit draft"}><button
                                 className="button soft table-action-btn"
                                 disabled={locked}
                                 aria-label="Edit draft"
-                                title="Edit draft"
+
                                 onClick={() => open({ kind: "order", order })}
                               >
                                 <Pencil size={13} />
-                              </button>
-                              <button
+                              </button></AppTooltip>
+                              <AppTooltip content={"Review order"}><button
                                 className="button soft table-action-btn"
                                 disabled={locked}
                                 aria-label="Review order"
-                                title="Review order"
+
                                 onClick={() => open({ kind: "details", order })}
                               >
                                 <Eye size={13} />
-                              </button>
+                              </button></AppTooltip>
                             </div>
                           </td>
                         </tr>
@@ -664,15 +665,15 @@ export default function WholesalePage({
                           <td>{client.address || "Not provided"}</td>
                           <td className="table-action-cell">
                             <div className="table-actions">
-                              <button
+                              <AppTooltip content={"Edit client"}><button
                                 className="button soft table-action-btn"
                                 disabled={locked}
                                 aria-label="Edit client"
-                                title="Edit client"
+
                                 onClick={() => open({ kind: "client", client })}
                               >
                                 <Pencil size={13} />
-                              </button>
+                              </button></AppTooltip>
                             </div>
                           </td>
                         </tr>
@@ -723,15 +724,15 @@ export default function WholesalePage({
                           {role === "Admin" && (
                             <td className="table-action-cell">
                               <div className="table-actions">
-                                <button
+                                <AppTooltip content={"Set price"}><button
                                   className="button soft table-action-btn"
                                   disabled={locked}
                                   aria-label="Set price"
-                                  title="Set price"
+
                                   onClick={() => open({ kind: "price", product })}
                                 >
                                   <Pencil size={13} />
-                                </button>
+                                </button></AppTooltip>
                               </div>
                             </td>
                           )}

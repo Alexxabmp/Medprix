@@ -4,6 +4,7 @@ import { EmptyState } from "./custom-ui/empty-state";
 import { pharmacyDate } from "@workspace/api-zod";
 import type { WholesaleOrder, WholesaleOrderDetail } from "@/lib/wholesale-api";
 import { wholesalePeso } from "@/lib/wholesale-api";
+import { ModalTableValue, useModalTableStandard, ModalTableFrame, ModalTablePager, useModalTableRows } from "./modal-table-layout";
 
 export function WholesaleDeliveryPanel({
   order,
@@ -18,7 +19,9 @@ export function WholesaleDeliveryPanel({
   busy: boolean;
   mutate: (path: string, method: string, body: unknown) => void;
 }) {
+  const preview = useModalTableStandard();
   const [action, setAction] = useState("");
+  const pages = useModalTableRows(detail.attempts, order.id);
   const active = detail.attempts.find((item) =>
     ["Scheduled", "InTransit"].includes(item.status),
   );
@@ -31,8 +34,10 @@ export function WholesaleDeliveryPanel({
         <EmptyState icon={Truck}>No delivery attempts scheduled.</EmptyState>
       )}
       {detail.attempts.length > 0 && (
-        <div className="table-scroll">
-          <table className="data-table">
+        <>
+        <ModalTableFrame>
+        <div className="table-scroll" role={preview ? "region" : undefined} aria-label={preview ? "Delivery attempts, scroll horizontally for more columns" : undefined} tabIndex={preview ? 0 : undefined}>
+          <table className="data-table" data-modal-table={preview ? "attempts" : undefined}>
             <thead>
               <tr>
                 <th>Scheduled date</th>
@@ -41,20 +46,23 @@ export function WholesaleDeliveryPanel({
               </tr>
             </thead>
             <tbody>
-              {detail.attempts.map((item) => (
+              {pages.rows.map((item) => (
                 <tr key={item.id}>
-                  <td>{item.date}</td>
-                  <td>
+                  <td data-label={preview ? "Scheduled date" : undefined}>{item.date}</td>
+                  <td data-label={preview ? "Status" : undefined}>
                     <span className="pill neutral">
                       {item.status === "InTransit" ? "In transit" : item.status}
                     </span>
                   </td>
-                  <td>{item.notes || "—"}</td>
+                  <td data-label={preview ? "Notes" : undefined}><ModalTableValue value={item.notes || "—"} /></td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        </ModalTableFrame>
+        <ModalTablePager {...pages} label="Delivery attempts" />
+        </>
       )}
       {detail.receipt && (
         <>

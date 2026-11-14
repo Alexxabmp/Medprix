@@ -1,3 +1,5 @@
+import { AppTooltip } from "@/components/ui/tooltip";
+import { ModalTableDialog, ModalDataTable } from "@/components/modal-data-table";
 import { LoadingState } from "@/components/custom-ui/loading-state";
 import { useState, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
@@ -481,15 +483,15 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                       </td>
                       <td className="table-action-cell">
                         <div className="table-actions">
-                          <button
+                          <AppTooltip content={"View transaction"}><button
                             type="button"
                             className="button soft table-action-btn"
                             aria-label="View transaction"
-                            title="View transaction"
+
                             onClick={() => setSelectedTrx(trx)}
                             data-testid={`button-view-trx-${trx.id}`}>
                             <Eye size={13} />
-                          </button>
+                          </button></AppTooltip>
                         </div>
                       </td>
                     </tr>
@@ -625,15 +627,15 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                       </td>
                       <td className="table-action-cell">
                         <div className="table-actions">
-                          <button
+                          <AppTooltip content={"View log details"}><button
                             type="button"
                             className="button soft table-action-btn"
                             aria-label="View log details"
-                            title="View log details"
+
                             onClick={() => setSelectedLog(log)}
                             data-testid={`button-see-details-${log.id}`}>
                             <Eye size={13} />
-                          </button>
+                          </button></AppTooltip>
                         </div>
                       </td>
                     </tr>
@@ -816,7 +818,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
           <div
             className="modal-backdrop"
             onMouseDown={(event) => event.currentTarget === event.target && setSelectedTrx(null)}>
-            <div className="modal">
+            <ModalTableDialog className="modal" close={() => setSelectedTrx(null)}>
               <div className="modal-header">
                 <div>
                   <h2>Transaction details</h2>
@@ -862,7 +864,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                   </h4>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ fontSize: 12, fontWeight: 600 }}>Status:</span>
-                    <span title="Recorded status; changes require an audited reversal workflow">{selectedTrx.status}</span>
+                    <AppTooltip content={"Recorded status; changes require an audited reversal workflow"}><span >{selectedTrx.status}</span></AppTooltip>
                   </div>
                 </div>
                 <div
@@ -934,12 +936,8 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                 </h4>
                 <div
                   className="table-scroll"
-                  style={{
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: 12,
-                    overflowX: "auto",
-                  }}>
-                  <table className="data-table">
+                  >
+                  <ModalDataTable className="data-table">
                     <thead>
                       <tr>
                         <th>Product</th>
@@ -972,7 +970,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                         </tr>
                       )}
                     </tbody>
-                  </table>
+                  </ModalDataTable>
                 </div>
               </div>
 
@@ -1056,7 +1054,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                   </div>
                 </div>
               </div>
-            </div>
+            </ModalTableDialog>
           </div>,
           document.body
         )}
@@ -1069,7 +1067,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
           <div
             className="modal-backdrop"
             onMouseDown={(event) => event.currentTarget === event.target && setSelectedLog(null)}>
-            <div className="modal">
+            <ModalTableDialog className="modal" close={() => setSelectedLog(null)}>
               <div className="modal-header">
                 <div>
                   <h2>System log details</h2>
@@ -1085,13 +1083,8 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
               </div>
 
               <div
-                style={{
-                  border: "1px solid hsl(var(--border))",
-                  borderRadius: 14,
-                  overflowX: "auto",
-                  background: "hsl(var(--surface))",
-                }}>
-                <table className="data-table" style={{ width: "100%", minWidth: 480 }}>
+                >
+                <ModalDataTable className="data-table" style={{ width: "100%", minWidth: 480 }}>
                   <tbody>
                     <tr>
                       <td
@@ -1219,9 +1212,9 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                       <td className="muted">{selectedLog.deviceIp}</td>
                     </tr>
                   </tbody>
-                </table>
+                </ModalDataTable>
               </div>
-            </div>
+            </ModalTableDialog>
           </div>,
           document.body
         )}

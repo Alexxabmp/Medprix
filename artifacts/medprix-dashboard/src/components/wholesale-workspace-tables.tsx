@@ -11,6 +11,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { WholesaleDialog } from "./wholesale-dialog";
+import { ModalTableValue, useModalTableStandard, ModalTableFrame, ModalTableFooter, ModalTablePager, ModalTableHint } from "./modal-table-layout";
 import { LoadingState } from "./custom-ui/loading-state";
 import { safeError } from "@/lib/feedback";
 import {
@@ -188,6 +189,7 @@ export function WholesaleSummaryModal({
   retry?: () => void;
   viewAccount: (id: string) => void;
 }) {
+  const preview = useModalTableStandard();
   const [selectedOrder, setSelectedOrder] = useState<
     (WholesaleOrderDetail & { order: WholesaleOrder }) | null
   >(null);
@@ -240,6 +242,7 @@ export function WholesaleSummaryModal({
   const summary = summaries[kind];
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState(summary.status);
+  const [previewPage, setPreviewPage] = useState(1);
   const list = useWorkspaceList<WholesaleSummaryRow>(
     summary.path,
     search,
@@ -250,6 +253,12 @@ export function WholesaleSummaryModal({
   const deliveries = kind === "deliveries";
   const accounts = kind === "outstanding" || kind === "overdue";
   const columns = deliveries || accounts ? 5 : 4;
+  useEffect(() => { if (preview) setPreviewPage(1); }, [search, status, preview]);
+  useEffect(() => {
+    if (preview) list.setPage(Math.ceil(previewPage / 5));
+  }, [previewPage, preview]);
+  const previewBlockPending = Boolean(preview && list.data?.page !== Math.ceil(previewPage / 5));
+  const visibleRows = preview ? list.data?.items.slice(((previewPage - 1) % 5) * 10, ((previewPage - 1) % 5 + 1) * 10) : list.data?.items;
   return (
     <WholesaleDialog
       title={
@@ -343,8 +352,9 @@ export function WholesaleSummaryModal({
                 {list.error}
               </div>
             )}
-            <div className="wholesale-summary-table">
-              <table className="data-table">
+            <ModalTableFrame>
+            <div className="wholesale-summary-table" role={preview ? "region" : undefined} aria-label={preview ? "Summary records, scroll horizontally for more columns" : undefined} tabIndex={preview ? 0 : undefined}>
+              <table className="data-table" data-modal-table={preview ? "summary" : undefined}>
                 <thead>
                   <tr>
                     <th>Order / client</th>
@@ -362,7 +372,7 @@ export function WholesaleSummaryModal({
                   </tr>
                 </thead>
                 <tbody>
-                  {list.loading ? (
+                  {list.loading || previewBlockPending ? (
                     <tr>
                       <td colSpan={columns}>
                         <LoadingState label="Loading records..." />
@@ -370,12 +380,12 @@ export function WholesaleSummaryModal({
                     </tr>
                   ) : (
                     !list.error &&
-                    list.data?.items.map((row) => (
+                    visibleRows?.map((row) => (
                       <tr key={row.id}>
                         <td data-label="Order / client">
                           <strong>{row.orderNumber}</strong>
                           <span className="muted wholesale-summary-client">
-                            {row.clientName}
+                            <ModalTableValue value={row.clientName} />
                           </span>
                         </td>
                         <td
@@ -421,15 +431,16 @@ export function WholesaleSummaryModal({
                           </span>
                         </td>
                         {deliveries && (
-                          <td data-label="Notes">{row.notes || "—"}</td>
+                          <td data-label="Notes"><ModalTableValue value={row.notes || "—"} /></td>
                         )}
                         <td data-label="Action" className="table-action-cell">
                           <div className="table-actions">
+                            <ModalTableHint value={accounts ? "View account" : "Review order"}>
                             <button
                               className="button soft table-action-btn"
                               disabled={busy || opening}
                               aria-label={accounts ? "View account" : "Review order"}
-                              title={accounts ? "View account" : "Review order"}
+
                               data-order-id={
                                 accounts ? undefined : (row.orderId ?? row.id)
                               }
@@ -441,6 +452,7 @@ export function WholesaleSummaryModal({
                             >
                               <Eye size={13} />
                             </button>
+                            </ModalTableHint>
                           </div>
                         </td>
                       </tr>
@@ -462,12 +474,13 @@ export function WholesaleSummaryModal({
                 </tbody>
               </table>
             </div>
-            <Pagination
+            </ModalTableFrame>
+            {preview ? <ModalTableFooter><ModalTablePager page={previewPage} total={list.data?.total ?? 0} loading={list.loading || previewBlockPending} change={setPreviewPage} label="Deliveries" /></ModalTableFooter> : <Pagination
               page={list.page}
               total={list.data?.total ?? 0}
               loading={list.loading}
               change={list.setPage}
-            />
+            />}
           </>
         )}
       </div>
