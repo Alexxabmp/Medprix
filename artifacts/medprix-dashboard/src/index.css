@@ -1542,10 +1542,29 @@ a {
   padding: 48px 20px;
   text-align: center;
   color: hsl(var(--muted));
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .empty-state svg {
+  display: block;
   margin: 0 auto 10px;
+}
+
+td.empty-state-cell {
+  padding: 0;
+}
+
+table:has(> tbody > tr:only-child > .empty-state-cell) {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+}
+
+@media (max-width: 700px) {
+  table:has(> tbody > tr:only-child > .empty-state-cell) > thead {
+    display: none;
+  }
 }
 
 @media (max-width: 1050px) {
@@ -2318,7 +2337,7 @@ a {
   padding: 3px 12px;
 }
 
-.supplier-payment-list>div {
+.supplier-payment-list>div:not(.empty-state) {
   display: flex;
   justify-content: space-between;
   gap: 12px;

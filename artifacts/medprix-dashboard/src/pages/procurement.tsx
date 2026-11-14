@@ -1,3 +1,4 @@
+import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { parseCalendarDate, formatCalendarDate } from "@/lib/business-date";
 import { pharmacyDate } from "@workspace/api-zod";
 import { createReceivingSubmitter, type PendingReceiving } from "@/lib/receiving-submission";
@@ -15,7 +16,6 @@ import { Summary } from "@/components/custom-ui/summary-card";
 import type { ToastFn } from "@/lib/types";
 import { fetchInventoryData, usePharmacyInventory } from "@/lib/pharmacy-store";
 import { fetchAccountsPayable } from "@/lib/supplier-store";
-import { products as initialFallbackProducts } from "@/lib/data";
 
 type Supplier = { id: string; name: string };
 type Product = {
@@ -144,28 +144,10 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
     getStored("medprix_procurement_suppliers", [])
   );
   const { items: inventoryItems, refresh: refreshInventory } = usePharmacyInventory();
-  const [products, setProducts] = useState<Product[]>(() => {
-    const cached = getStored<any[]>("medprix_cached_inventory", []);
-    if (cached.length > 0) {
-      return cached.map((p) => ({
-        id: p.id,
-        name: p.name,
-        sku: p.sku,
-        price: p.price,
-        cost: p.cost || p.price,
-      }));
-    }
-    return initialFallbackProducts.map((p) => ({
-      id: p.id,
-      name: p.name,
-      sku: p.sku,
-      price: p.price,
-      cost: (p as any).cost || p.price,
-    }));
-  });
+  const [products, setProducts] = useState<Product[]>([]);
 
   useEffect(() => {
-    if (inventoryItems && inventoryItems.length > 0) {
+    if (inventoryItems) {
       setProducts(
         inventoryItems.map((p) => ({
           id: p.id,
@@ -859,9 +841,9 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 {tableMessage(7, loadingSections.orders, orders.length) ||
                   (filteredOrders.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="muted">
+                      <TableEmptyState colSpan={7} icon={Package}>
                         {orderSearch || status !== "All orders" ? "No purchase orders match these filters." : "No purchase orders found."}
-                      </td>
+                      </TableEmptyState>
                     </tr>
                   ) : (
                     paginatedOrders.map((order) => (
@@ -1010,7 +992,13 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               <tbody>
                 {tableMessage(canManagePurchasing ? 9 : 8, loadingSections.deliveries, deliveries.length) ||
                   (paginatedReceivingRows.length === 0 ? (
-                    <tr><td colSpan={canManagePurchasing ? 9 : 8} className="muted">{receivingSearch ? "No receiving reports match this search." : "No receiving reports found."}</td></tr>
+                    <tr>
+                      <TableEmptyState colSpan={canManagePurchasing ? 9 : 8} icon={Package}>
+                        {receivingSearch
+                          ? "No receiving reports match this search."
+                          : "No receiving reports found."}
+                      </TableEmptyState>
+                    </tr>
                   ) : paginatedReceivingRows.map(({delivery, item}, index) => {
                     const expiry = expiryStatus(item.expirationDate);
                     return <tr key={item.id}>
@@ -1119,9 +1107,9 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 {tableMessage(7, loadingSections.invoices, invoices.length) ||
                   (filteredInvoices.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="muted">
+                      <TableEmptyState colSpan={7} icon={Package}>
                         {invoiceSearch ? "No supplier invoices match this search." : "No supplier invoices found."}
-                      </td>
+                      </TableEmptyState>
                     </tr>
                   ) : (
                     paginatedInvoices.map((invoice) => (

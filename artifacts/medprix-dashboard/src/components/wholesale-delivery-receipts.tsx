@@ -1,3 +1,4 @@
+import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { useEffect, useState } from "react";
 import { Eye } from "lucide-react";
 import { DeliveryReceiptView } from "./delivery-receipt-view";
@@ -93,11 +94,11 @@ export function WholesaleDeliveryReceipts({
           ))}
           {!visible.length && (
             <tr>
-              <td colSpan={4} className="muted">
+              <TableEmptyState colSpan={4}>
                 {search
                   ? "No matching receipts."
                   : "No delivery receipts found."}
-              </td>
+              </TableEmptyState>
             </tr>
           )}
         </tbody>

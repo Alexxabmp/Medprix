@@ -466,80 +466,6 @@ function buildData(passwordHash: string) {
   const sellable = (p: Product, off: number) =>
     sum(p.batches.filter((b) => b.receivedOff <= off && b.expOff > off && b.disposedOff === null).map((b) => b.remaining));
 
-  // ── Wholesale deliveries (processed inside the daily loop so stock stays consistent) ──
-  const DELIVERY_OFFS = [-55, -50, -46, -41, -37, -33, -28, -24, -19, -14, -9, -5];
-  const wholesalePlans = DELIVERY_OFFS.map((deliveryOff, i) => ({ i, deliveryOff, clientIdx: i % clients.length, lead: randInt(2, 4) }));
-  let drSeq = 0;
-  const RECEIVERS = ["R. Dizon", "M. Alvarez", "J. Lopez", "C. Bernardo", "S. Padilla"];
-
-  function recordAR(orderId: string, clientId: string, terms: string, total: number, deliveryOff: number, patternIdx: number) {
-    const arId = randomUUID();
-    const t = termsDays(terms);
-    const patterns: number[][] = [[1], [0.5], [], [0.5, 0.5]];
-    const parts = patterns[patternIdx % 4]!;
-    const fullSum = sum(parts);
-    let paid = 0;
-    parts.forEach((frac, i) => {
-      const payOff = deliveryOff + Math.max(3, t - 2) + i * 10;
-      if (payOff > 0) return;
-      let amt = r2(total * frac);
-      if (i === parts.length - 1 && fullSum >= 0.999) amt = r2(total - paid);
-      if (amt <= 0) return;
-      paid = r2(paid + amt);
-      const when = past(payOff, 11, 0);
-      T.ar_payments.push({
-        id: randomUUID(), ar_id: arId, payment_date: when, amount_paid: amt,
-        notes: pick(["Bank transfer", "Check payment", "Cash on pickup", "GCash"]), created_at: when,
-      });
-    });
-    T.accounts_receivable.push({
-      id: arId, client_id: clientId, order_id: orderId, total_owed: total, total_paid: paid, balance: r2(total - paid),
-      due_date: dateStr(deliveryOff + t), created_at: past(deliveryOff, 14), updated_at: past(deliveryOff, 14),
-    });
-  }
-
-  function processWholesaleDelivery(plan: (typeof wholesalePlans)[number]) {
-    const client = clients[plan.clientIdx]!;
-    const when = past(plan.deliveryOff, 14, 0);
-    const lines: { prod: Product; price: number; allocs: { batch: Batch; qty: number }[]; qty: number }[] = [];
-    for (const it of shuffle(client.items).slice(0, randInt(3, 5))) {
-      const allocs = allocate(it.prod, round10(randInt(20, 80)), when, plan.deliveryOff, true);
-      const qty = sum(allocs.map((a) => a.qty));
-      if (qty > 0) lines.push({ prod: it.prod, price: it.price, allocs, qty });
-    }
-    if (lines.length === 0) return;
-    const orderId = randomUUID();
-    const receiptId = randomUUID();
-    const orderedAt = past(plan.deliveryOff - plan.lead, 10, 0);
-    const total = r2(sum(lines.map((l) => l.qty * l.price)));
-    T.wholesale_orders.push({
-      id: orderId, client_id: client.id, contract_id: client.contractId, order_date: orderedAt, status: "Delivered",
-      total_order_amount: total, created_at: orderedAt, updated_at: when,
-    });
-    for (const l of lines)
-      T.wholesale_order_items.push({ id: randomUUID(), order_id: orderId, product_id: l.prod.id, quantity: l.qty, unit_price: l.price, line_total: r2(l.qty * l.price) });
-
-    if (plan.i % 5 === 2)
-      T.delivery_schedules.push({
-        id: randomUUID(), order_id: orderId, scheduled_date: dateStr(plan.deliveryOff - 1), status: "Failed",
-        notes: "Recipient unavailable — rescheduled", created_at: orderedAt,
-      });
-    T.delivery_schedules.push({ id: randomUUID(), order_id: orderId, scheduled_date: dateStr(plan.deliveryOff), status: "Completed", notes: null, created_at: orderedAt });
-
-    const receiptNo = `DR-${ymd(plan.deliveryOff)}-${pad(++drSeq, 3)}`;
-    T.delivery_receipts.push({ id: receiptId, order_id: orderId, delivery_date: when, receipt_number: receiptNo, received_by: pick(RECEIVERS), created_at: when });
-    for (const l of lines)
-      for (const a of l.allocs) {
-        T.delivery_receipt_items.push({
-          id: randomUUID(), receipt_id: receiptId, product_id: l.prod.id, batch_number: a.batch.batchNumber,
-          expiration_date: a.batch.expiration, quantity_delivered: a.qty,
-        });
-        movement(l.prod.id, a.batch.id, "StockOut", -a.qty, when, receiptId, `Wholesale delivery ${receiptNo} → ${client.name}`);
-      }
-    addLog(admin.id, "DELIVER", "Wholesale", `Delivered ${receiptNo} to ${client.name}`, when, "Success", admin.ip);
-    recordAR(orderId, client.id, client.terms, total, plan.deliveryOff, plan.i);
-  }
-
   // ── Retail simulation (day by day, oldest → newest) ──────────────────────
   interface TxSummary { off: number; gross: number; discount: number; vat: number; net: number; cogs: number; discountType: string }
   const txSummaries: TxSummary[] = [];
@@ -566,7 +492,6 @@ function buildData(passwordHash: string) {
           }
         }
 
-    for (const plan of wholesalePlans) if (plan.deliveryOff === off) processWholesaleDelivery(plan);
 
     const times = Array.from({ length: randInt(TX_PER_DAY[0], TX_PER_DAY[1]) }, () => at(off, randInt(8, 20), randInt(0, 59)))
       .filter((t) => t.getTime() <= NOW.getTime())
@@ -700,25 +625,23 @@ function buildData(passwordHash: string) {
     }
   }
 
-  // ── Wholesale orders that are still open / cancelled (no stock impact yet) ──
-  const openOrders = [
-    { c: 0, status: "Pending", orderOff: -1, sched: { off: 5, status: "Scheduled", note: null as string | null } },
-    { c: 1, status: "Confirmed", orderOff: -2, sched: { off: 3, status: "Scheduled", note: null } },
-    { c: 2, status: "Processing", orderOff: -3, sched: { off: 0, status: "InTransit", note: "Out for delivery" } },
-    { c: 3, status: "Cancelled", orderOff: -12, sched: { off: -8, status: "Cancelled", note: "Cancelled by client" } },
-  ];
-  for (const o of openOrders) {
-    const client = clients[o.c]!;
+  const frontDesk = users.find((user) => user.role === "FrontDesk")!;
+  for (const [index, client] of clients.entries()) {
     const id = randomUUID();
-    const orderedAt = past(o.orderOff, 10, 0);
-    const lines = shuffle(client.items).slice(0, randInt(3, 4)).map((it) => ({ ...it, qty: round10(randInt(20, 80)) }));
+    const orderedAt = past(-1, 10, 0);
+    const lines = client.items.slice(0, 3).map((item) => ({ ...item, qty: 10 }));
     T.wholesale_orders.push({
-      id, client_id: client.id, contract_id: client.contractId, order_date: orderedAt, status: o.status,
-      total_order_amount: r2(sum(lines.map((l) => l.qty * l.price))), created_at: orderedAt, updated_at: orderedAt,
+      id, client_id: client.id, order_number: "WS-" + (index + 1), draft_revision: 1,
+      created_by: frontDesk.id, order_date: orderedAt, status: "Pending",
+      total_order_amount: r2(sum(lines.map((line) => line.qty * line.price))),
+      created_at: orderedAt, updated_at: orderedAt,
     });
-    for (const l of lines)
-      T.wholesale_order_items.push({ id: randomUUID(), order_id: id, product_id: l.prod.id, quantity: l.qty, unit_price: l.price, line_total: r2(l.qty * l.price) });
-    T.delivery_schedules.push({ id: randomUUID(), order_id: id, scheduled_date: dateStr(o.sched.off), status: o.sched.status, notes: o.sched.note, created_at: orderedAt });
+    for (const line of lines) {
+      T.wholesale_order_items.push({
+        id: randomUUID(), order_id: id, product_id: line.prod.id, quantity: line.qty,
+        unit_price: line.price, line_total: r2(line.qty * line.price),
+      });
+    }
   }
 
   // ── Inventory alerts from the final state (expiry) ───────────────────────
@@ -745,7 +668,9 @@ function buildData(passwordHash: string) {
     T.products.push({
       id: p.id, sku: p.sku, product_name: p.def.name, generic_name: p.def.generic, category: p.def.cat, is_dangerous_drug: !!p.def.dd,
       is_vat_exempt: false,
-      selling_price: p.def.price, cost_price: p.def.cost, minimum_stock_level: p.minStock,
+      selling_price: p.def.price,
+      wholesale_price: r2(Math.max(p.def.cost * 1.08, p.def.price * 0.88)),
+      cost_price: p.def.cost, minimum_stock_level: p.minStock,
       current_stock: sum(p.batches.map((b) => b.remaining)), created_at: day0, updated_at: NOW,
     });
   for (const b of allBatches)
@@ -908,6 +833,7 @@ async function main() {
     console.log("Inserting sample fixtures…");
     await sql.begin(async (tx) => {
       for (const t of TABLE_ORDER) await insertMany(tx, t, T[t]);
+      await tx`SELECT setval('wholesale_order_number_seq', ${T.wholesale_orders.length}, true)`;
     });
 
     console.log("\nRows inserted:");

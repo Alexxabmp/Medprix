@@ -1,3 +1,4 @@
+import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { WholesaleOrderDetails } from "./wholesale-order-details";
 import { DeliveryReceiptView } from "./delivery-receipt-view";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -447,7 +448,7 @@ export function WholesaleSummaryModal({
                   )}
                   {!list.loading && !list.error && !list.data?.items.length && (
                     <tr>
-                      <td colSpan={columns} className="muted">
+                      <TableEmptyState colSpan={columns}>
                         {search
                           ? "No matching records."
                           : deliveries
@@ -455,7 +456,7 @@ export function WholesaleSummaryModal({
                             : accounts
                               ? "No accounts found."
                               : "No orders awaiting delivery."}
-                      </td>
+                      </TableEmptyState>
                     </tr>
                   )}
                 </tbody>

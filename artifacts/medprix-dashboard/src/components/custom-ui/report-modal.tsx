@@ -1,3 +1,4 @@
+import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ArrowUpRight, Download, X } from "lucide-react";
@@ -121,9 +122,9 @@ export function ModalTable({
           ))}
           {rows.length === 0 && (
             <tr>
-              <td colSpan={headers.length} className="muted">
+              <TableEmptyState colSpan={headers.length}>
                 No records found.
-              </td>
+              </TableEmptyState>
             </tr>
           )}
         </tbody>
@@ -502,9 +503,9 @@ export function ReportModal({
                     ))}
                     {cashMismatches.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="muted">
+                        <TableEmptyState colSpan={6}>
                           No cash discrepancies detected across recorded shifts.
-                        </td>
+                        </TableEmptyState>
                       </tr>
                     )}
                   </tbody>

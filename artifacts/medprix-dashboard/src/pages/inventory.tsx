@@ -1,3 +1,4 @@
+import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { safeError, readResponse } from "@/lib/feedback";
 import { ProductDialog } from "@/components/custom-ui/product-dialog";
 import { matchesProductSearch } from "@/lib/product-form";
@@ -40,7 +41,7 @@ import {
 } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import { Summary } from "@/components/custom-ui/summary-card";
-import { suppliers } from "@/lib/data";
+import { fetchSupplierRecords, type SupplierRecord } from "@/lib/supplier-store";
 import type { ProductItem, ProductBatch, ToastFn } from "@/lib/types";
 
 const MAX_STOCK_MOVEMENT_QUANTITY = 1_000_000;
@@ -239,6 +240,22 @@ export default function InventoryPage({
   const canAddFullBatchInfo = isAdmin;
   const canRecordStockIn = isAdmin || isCashier;
   const canRecordStockOut = isAdmin || isCashier;
+
+  const [suppliers, setSuppliers] = useState<SupplierRecord[]>([]);
+  useEffect(() => {
+    if (isCashier) return;
+    let active = true;
+    fetchSupplierRecords()
+      .then((records) => {
+        if (active) setSuppliers(records);
+      })
+      .catch((failure) => {
+        if (active) onToast({ message: safeError(failure), variant: "error" });
+      });
+    return () => {
+      active = false;
+    };
+  }, [isCashier, onToast]);
 
   // Inventory items state from shared pharmacy store
   const { items, setItems, loading: isLoading, refresh: fetchInventory, isBackendConnected, error: inventoryLoadError } = usePharmacyInventory();
@@ -1387,6 +1404,13 @@ export default function InventoryPage({
                           </tr>
                         );
                       })}
+                      {viewProduct.batches.length === 0 && (
+                        <tr>
+                          <TableEmptyState colSpan={6} icon={Package}>
+                            No batches recorded for this product.
+                          </TableEmptyState>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -1889,9 +1913,9 @@ export default function InventoryPage({
                         })}
                       {lowStockItems.length === 0 && (
                         <tr>
-                          <td colSpan={6} style={{ textAlign: "center", padding: 24 }} className="muted">
+                          <TableEmptyState colSpan={6} icon={Package}>
                             All products have optimal stock levels.
-                          </td>
+                          </TableEmptyState>
                         </tr>
                       )}
                     </tbody>
@@ -2020,9 +2044,9 @@ export default function InventoryPage({
                         ))}
                       {expiredItems.length === 0 && expiringSoonItems.length === 0 && (
                         <tr>
-                          <td colSpan={6} style={{ textAlign: "center", padding: 24 }} className="muted">
+                          <TableEmptyState colSpan={6} icon={Package}>
                             No expired or expiring products found in inventory.
-                          </td>
+                          </TableEmptyState>
                         </tr>
                       )}
                     </tbody>

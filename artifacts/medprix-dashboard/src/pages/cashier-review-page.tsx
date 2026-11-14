@@ -1,3 +1,4 @@
+import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -61,29 +62,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
   const gcashPct = totalSales > 0 ? ((gcashSalesTotal / totalSales) * 100).toFixed(1) : "0.0";
   const cardPct = totalSales > 0 ? ((cardSalesTotal / totalSales) * 100).toFixed(1) : "0.0";
 
-  // Cash in Drawer calculations
-  const openingFloat = 5000.0;
-  const cashDrop = 2000.0;
-  // Historical receipt browsing must not turn the active drawer into a past shift.
   const currentCashSales = summarizeShiftSales(recordsOnDate(receipts, new Date())).cash;
-  const currentExpectedCash = openingFloat + currentCashSales - cashDrop;
-
-  const calculateBills = (amount: number) => {
-    let rem = Math.max(0, Math.floor(amount));
-    const k1000 = Math.floor(rem / 1000);
-    rem %= 1000;
-    const k500 = Math.floor(rem / 500);
-    rem %= 500;
-    const k100 = Math.floor(rem / 100);
-    rem %= 100;
-    const k50 = Math.floor(rem / 50);
-    rem %= 50;
-    const k20 = Math.floor(rem / 20);
-    rem %= 20;
-    const coins = (amount - Math.floor(amount)) + rem;
-    return { k1000, k500, k100, k50, k20, coins };
-  };
-  const bills = calculateBills(currentExpectedCash);
 
   const filteredShiftReceipts = shiftReceipts.filter(
     (r) =>
@@ -99,9 +78,6 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
         description="Select any of the 4 register features to view shift sales, drawer balance, handled transactions, or till status."
         action={
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <span className="pill success" style={{ padding: "6px 12px", fontSize: 12 }}>
-              <ShieldCheck size={13} style={{ marginRight: 4 }} /> Terminal #01 · Active
-            </span>
             <DateControl date={shiftDate} onDateChange={selectDate} />
           </div>
         }
@@ -160,8 +136,8 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
 
           <div style={{ marginTop: 20, paddingTop: 14, borderTop: "1px solid hsl(var(--border))", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div>
-              <div style={{ fontSize: 20, fontWeight: 700 }}>{formatPeso(currentExpectedCash)}</div>
-              <span className="muted" style={{ fontSize: 12 }}>Float: ₱5,000.00 · Cash sales: {formatPeso(cashSalesTotal)}</span>
+              <div style={{ fontSize: 20, fontWeight: 700 }}>Not recorded</div>
+              <span className="muted" style={{ fontSize: 12 }}>Cash sales today: {formatPeso(currentCashSales)}</span>
             </div>
             <button className="button dark" style={{ padding: "6px 14px", fontSize: 12 }}>
               Open feature <ArrowUpRight size={12} />
@@ -221,10 +197,9 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
           <div style={{ marginTop: 20, paddingTop: 14, borderTop: "1px solid hsl(var(--border))", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span className="pill success" style={{ fontSize: 12 }}>Balanced</span>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>₱0.00 variance</span>
+                <span className="pill neutral" style={{ fontSize: 12 }}>Not recorded</span>
               </div>
-              <span className="muted" style={{ fontSize: 12 }}>Verified today</span>
+              <span className="muted" style={{ fontSize: 12 }}>No verification loaded</span>
             </div>
             <button className="button dark" style={{ padding: "6px 14px", fontSize: 12 }}>
               Open feature <ArrowUpRight size={12} />
@@ -344,7 +319,11 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                       </tr>
                     ))}
                     {completedReceipts.length === 0 && (
-                      <tr><td colSpan={6} className="muted">No completed sales recorded on {dateLabel}.</td></tr>
+                      <tr>
+                        <TableEmptyState colSpan={6} icon={Receipt}>
+                          No completed sales recorded on {dateLabel}.
+                        </TableEmptyState>
+                      </tr>
                     )}
                   </tbody>
                 </table>
@@ -367,7 +346,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
             <div className="modal-header">
               <div>
                 <h2>Cash in Drawer</h2>
-                <p className="modal-sub">Live cash drawer audit and denominations count · Terminal #01</p>
+                <p className="modal-sub">Recorded cash sales and drawer information</p>
               </div>
               <button
                 type="button"
@@ -379,61 +358,14 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
               </button>
             </div>
 
-            {/* Expected Cash Card */}
-            <div style={{ background: "hsl(var(--surface-soft))", border: "1px solid hsl(var(--border))", padding: "16px 18px", borderRadius: 14, marginBottom: 18 }}>
-              <h4 style={{ margin: "0 0 12px", fontSize: 12, textTransform: "uppercase", letterSpacing: ".08em", color: "hsl(var(--muted))", fontWeight: 700 }}>
-                Drawer Reconciliation Breakdown
-              </h4>
-              <div style={{ display: "grid", gap: 8, fontSize: 12 }}>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span className="muted">Opening cash / float (08:00 AM):</span>
-                  <strong style={{ color: "hsl(var(--foreground))" }}>₱5,000.00</strong>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span className="muted">Cash received from transactions:</span>
-                  <strong style={{ color: "#34C759" }}>+{formatPeso(cashSalesTotal)}</strong>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span className="muted">Mid-day cash drop (Transferred to main safe):</span>
-                  <strong style={{ color: "#FF3B30" }}>-₱2,000.00</strong>
-                </div>
-                <div style={{ height: 1, background: "hsl(var(--border))", margin: "4px 0" }} />
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15 }}>
-                  <strong style={{ color: "hsl(var(--foreground))" }}>Current Expected Cash:</strong>
-                  <strong style={{ color: "hsl(var(--foreground))" }}>{formatPeso(currentExpectedCash)}</strong>
-                </div>
+            <div className="surface-card" style={{ padding: 18 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                <span className="muted">Cash sales today</span>
+                <strong>{formatPeso(currentCashSales)}</strong>
               </div>
-            </div>
-
-            {/* Physical Cash Denominations Table */}
-            <div>
-              <h4 style={{ margin: "0 0 10px", fontSize: 12, textTransform: "uppercase", letterSpacing: ".08em", color: "hsl(var(--muted))", fontWeight: 700 }}>
-                Drawer Count Reference (Denominations)
-              </h4>
-              <div className="table-scroll" style={{ border: "1px solid hsl(var(--border))", borderRadius: 12, overflowX: "auto" }}>
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Denomination</th>
-                      <th style={{ textAlign: "center" }}>Count</th>
-                      <th style={{ textAlign: "right" }}>Subtotal</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr><td>₱1,000 Bill</td><td style={{ textAlign: "center" }}>{bills.k1000}</td><td style={{ textAlign: "right" }}>{formatPeso(bills.k1000 * 1000)}</td></tr>
-                    <tr><td>₱500 Bill</td><td style={{ textAlign: "center" }}>{bills.k500}</td><td style={{ textAlign: "right" }}>{formatPeso(bills.k500 * 500)}</td></tr>
-                    <tr><td>₱100 Bill</td><td style={{ textAlign: "center" }}>{bills.k100}</td><td style={{ textAlign: "right" }}>{formatPeso(bills.k100 * 100)}</td></tr>
-                    <tr><td>₱50 Bill</td><td style={{ textAlign: "center" }}>{bills.k50}</td><td style={{ textAlign: "right" }}>{formatPeso(bills.k50 * 50)}</td></tr>
-                    <tr><td>₱20 Bill</td><td style={{ textAlign: "center" }}>{bills.k20}</td><td style={{ textAlign: "right" }}>{formatPeso(bills.k20 * 20)}</td></tr>
-                    <tr><td>Coins &amp; Loose Change</td><td style={{ textAlign: "center" }}>-</td><td style={{ textAlign: "right" }}>{formatPeso(bills.coins)}</td></tr>
-                    <tr style={{ background: "hsl(var(--surface-soft))" }}>
-                      <td><strong>Total Physical Count</strong></td>
-                      <td style={{ textAlign: "center" }}><strong>{bills.k1000 + bills.k500 + bills.k100 + bills.k50 + bills.k20} bills</strong></td>
-                      <td style={{ textAlign: "right" }}><strong>{formatPeso(currentExpectedCash)}</strong></td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+              <p className="muted" style={{ margin: "14px 0 0", fontSize: 12, lineHeight: 1.5 }}>
+                No opening float, cash drop, or physical cash count is available. Drawer balance and denominations are not recorded.
+              </p>
             </div>
           </div>
         </div>,
@@ -530,9 +462,9 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                   ))}
                   {filteredShiftReceipts.length === 0 && (
                     <tr>
-                      <td colSpan={6} style={{ textAlign: "center", padding: 24 }} className="muted">
+                      <TableEmptyState colSpan={6} icon={Receipt}>
                         No receipts match {dateLabel} and the current search.
-                      </td>
+                      </TableEmptyState>
                     </tr>
                   )}
                 </tbody>
@@ -555,7 +487,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
             <div className="modal-header">
               <div>
                 <h2>Till Status &amp; Cash Reconciliation</h2>
-                <p className="modal-sub">Register Terminal #01 cash audit and status</p>
+                <p className="modal-sub">Recorded cash audit and verification information</p>
               </div>
               <button
                 type="button"
@@ -567,73 +499,11 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
               </button>
             </div>
 
-            {/* Current Till Status Card */}
-            <div style={{ background: "hsl(var(--surface-soft))", border: "1px solid hsl(var(--border))", padding: "16px 18px", borderRadius: 14, marginBottom: 18 }}>
-              <h4 style={{ margin: "0 0 12px", fontSize: 12, textTransform: "uppercase", letterSpacing: ".08em", color: "hsl(var(--muted))", fontWeight: 700 }}>
-                Till Status Summary
-              </h4>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, fontSize: 12 }}>
-                <div>
-                  <span className="muted" style={{ display: "block", fontSize: 12, marginBottom: 2 }}>Till Status:</span>
-                  <span className="pill success" style={{ fontSize: 12 }}>Balanced</span>
-                </div>
-                <div>
-                  <span className="muted" style={{ display: "block", fontSize: 12, marginBottom: 2 }}>Discrepancy (Over / Short):</span>
-                  <strong style={{ color: "#34C759" }}>₱0.00 (Balanced)</strong>
-                </div>
-                <div>
-                  <span className="muted" style={{ display: "block", fontSize: 12, marginBottom: 2 }}>Expected Cash:</span>
-                  <strong style={{ color: "hsl(var(--foreground))" }}>{formatPeso(currentExpectedCash)}</strong>
-                </div>
-                <div>
-                  <span className="muted" style={{ display: "block", fontSize: 12, marginBottom: 2 }}>Physical Count:</span>
-                  <strong style={{ color: "hsl(var(--foreground))" }}>{formatPeso(currentExpectedCash)}</strong>
-                </div>
-                <div>
-                  <span className="muted" style={{ display: "block", fontSize: 12, marginBottom: 2 }}>Last Verification Time:</span>
-                  <strong style={{ color: "hsl(var(--foreground))" }}>Active Shift</strong>
-                </div>
-                <div>
-                  <span className="muted" style={{ display: "block", fontSize: 12, marginBottom: 2 }}>Verified by Supervisor:</span>
-                  <strong style={{ color: "hsl(var(--foreground))" }}>Admin Verified</strong>
-                </div>
-              </div>
-            </div>
-
-            {/* Verification History Log */}
-            <div>
-              <h4 style={{ margin: "0 0 10px", fontSize: 12, textTransform: "uppercase", letterSpacing: ".08em", color: "hsl(var(--muted))", fontWeight: 700 }}>
-                Till Reconciliation History (Today)
-              </h4>
-              <div className="table-scroll" style={{ border: "1px solid hsl(var(--border))", borderRadius: 12, overflowX: "auto" }}>
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Time</th>
-                      <th>Expected</th>
-                      <th>Counted</th>
-                      <th>Variance</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td>08:00 AM (Opening)</td>
-                      <td>₱5,000.00</td>
-                      <td>₱5,000.00</td>
-                      <td>₱0.00</td>
-                      <td><span className="pill success">Balanced</span></td>
-                    </tr>
-                    <tr>
-                      <td>Active Audit (Current)</td>
-                      <td>{formatPeso(currentExpectedCash)}</td>
-                      <td>{formatPeso(currentExpectedCash)}</td>
-                      <td>₱0.00</td>
-                      <td><span className="pill success">Balanced</span></td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+            <div className="surface-card" style={{ padding: 18 }}>
+              <span className="pill neutral">Not recorded</span>
+              <p className="muted" style={{ margin: "14px 0 0", fontSize: 12, lineHeight: 1.5 }}>
+                No till reconciliation or supervisor verification is available. A balance or variance cannot be shown without recorded counts.
+              </p>
             </div>
           </div>
         </div>,

@@ -1,7 +1,6 @@
 import { safeError, readResponse } from "./feedback";
 import { useState, useEffect, useCallback } from "react";
 import type { ProductItem, ShiftReceipt, SystemLog, UserActivity } from "./types";
-import { products as initialFallbackProducts } from "./data";
 
 const formatPeso = (amount: number) =>
   `₱${amount.toLocaleString("en-PH", {
@@ -65,24 +64,6 @@ export function mapTransactionsToReceipts(data: any[]): ShiftReceipt[] {
   });
 }
 
-// Read localStorage initial values safely
-function getLocalInventory(): ProductItem[] | null {
-  try {
-    const raw = localStorage.getItem("medprix_cached_inventory");
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-    }
-  } catch {}
-  return null;
-}
-
-function saveLocalInventory(items: ProductItem[]) {
-  try {
-    localStorage.setItem("medprix_cached_inventory", JSON.stringify(items));
-  } catch {}
-}
-
 function getLocalTransactions(): any[] | null {
   try {
     const raw = sessionStorage.getItem("medprix_cached_transactions") || localStorage.getItem("medprix_cached_transactions");
@@ -122,7 +103,7 @@ function saveCachedAuditList<T>(key: string, items: T[]) {
 }
 
 // Global in-memory cache shared across the single-page application
-let globalInventory: ProductItem[] | null = getLocalInventory();
+let globalInventory: ProductItem[] | null = null;
 let globalTransactions: any[] | null = getLocalTransactions();
 let globalReceipts: ShiftReceipt[] | null = globalTransactions
   ? mapTransactionsToReceipts(globalTransactions)
@@ -222,7 +203,6 @@ export async function fetchInventoryData(force = false): Promise<ProductItem[]> 
       globalInventory = data.products;
       inventoryLoadError = "";
       lastInventoryFetchedAt = Date.now();
-      saveLocalInventory(data.products);
       isBackendConnected = true;
       return data.products;
     } catch (failure) {
@@ -232,7 +212,7 @@ export async function fetchInventoryData(force = false): Promise<ProductItem[]> 
       inventoryInFlight = null;
       notifyInventory();
     }
-    return globalInventory || initialFallbackProducts;
+    return globalInventory ?? [];
   })();
   inventoryInFlight = requestPromise;
   return requestPromise;
@@ -285,7 +265,6 @@ export async function fetchTransactionsData(force = false): Promise<any[]> {
 export function setCachedInventory(products: ProductItem[]) {
   globalInventory = products;
   lastInventoryFetchedAt = Date.now();
-  saveLocalInventory(products);
   notifyInventory();
 }
 
@@ -324,7 +303,7 @@ export function setCachedTransactions(transactions: any[]) {
 export function deductProductStock(
   allocations: Array<{ productId: string; batchNumber?: string; quantity: number }>
 ) {
-  const current = globalInventory ?? initialFallbackProducts;
+  const current = globalInventory ?? [];
   const updated = current.map((p) => {
     const matchingAllocations = allocations.filter(
       (a) => a.productId === p.id || a.productId === p.sku
@@ -385,7 +364,7 @@ export function prefetchPharmacyData(role?: string) {
  */
 export function usePharmacyInventory() {
   const [error, setError] = useState(inventoryLoadError);
-  const [items, setItemsState] = useState<ProductItem[]>(() => globalInventory ?? initialFallbackProducts);
+  const [items, setItemsState] = useState<ProductItem[]>(() => globalInventory ?? []);
   const [loading, setLoading] = useState<boolean>(() => globalInventory === null);
 
   useEffect(() => {
@@ -411,7 +390,7 @@ export function usePharmacyInventory() {
 
   const setItems = useCallback((newItems: ProductItem[] | ((prev: ProductItem[]) => ProductItem[])) => {
     if (typeof newItems === "function") {
-      const updated = newItems(globalInventory ?? initialFallbackProducts);
+      const updated = newItems(globalInventory ?? []);
       setCachedInventory(updated);
     } else {
       setCachedInventory(newItems);

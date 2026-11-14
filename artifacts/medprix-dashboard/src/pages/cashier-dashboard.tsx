@@ -1,3 +1,4 @@
+import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { calculateRetailLine } from "@workspace/api-zod";
 import { productStock as getProductStock, batchAllocations as getBatchAllocations, productAvailability } from "@/lib/stock-guidance";
 import { safeError, readResponse } from "@/lib/feedback";
@@ -1002,12 +1003,9 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
               ))}
               {filteredReceipts.length === 0 && (
                 <tr>
-                  <td
-                    colSpan={7}
-                    style={{ textAlign: "center", padding: 28 }}
-                    className="muted">
+                  <TableEmptyState colSpan={7} icon={Receipt}>
                     No receipts match {formatCalendarDate(shiftDate)} and the current search.
-                  </td>
+                  </TableEmptyState>
                 </tr>
               )}
             </tbody>
