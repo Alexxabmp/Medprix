@@ -1,4 +1,5 @@
 import { clearTransactionSession } from "@/lib/pharmacy-store";
+import { formatDisplayDateTime } from "@/lib/business-date";
 import { createFeedbackNotifier, type Feedback } from "@/lib/feedback";
 import { useEffect, useMemo, useState } from "react";
 import { Check, AlertTriangle, CircleAlert, X } from "lucide-react";
@@ -83,12 +84,7 @@ function AppContent() {
                   : "Cashier",
             status: user.isActive === false ? "Inactive" : "Active",
             lastActive: user.lastLogin
-              ? new Date(user.lastLogin).toLocaleString([], {
-                month: "short",
-                day: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-              })
+              ? formatDisplayDateTime(user.lastLogin)
               : "Never",
             phone: user.contactNumber || "",
           };

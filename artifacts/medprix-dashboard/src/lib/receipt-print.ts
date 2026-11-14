@@ -1,4 +1,5 @@
 import type { ShiftReceipt } from "./types";
+import { formatDisplayDateTime } from "./business-date";
 
 const escapeHtml = (value: unknown) => String(value ?? "").replace(/[&<>"']/g,
   (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]!);
@@ -12,10 +13,7 @@ export function receiptDocument(receipt: ShiftReceipt): string {
   const source = receipt.printSource;
   const number = source ? source.transactionNumber : receipt.id;
   const sourceDate = source ? source.dateTime : receipt.dateTime;
-  const parsed = sourceDate && /(?:Z|[+-]\d{2}:?\d{2})$/i.test(sourceDate) ? new Date(sourceDate) : null;
-  const date = parsed && Number.isFinite(parsed.getTime())
-    ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(parsed)
-    : sourceDate;
+  const date = formatDisplayDateTime(sourceDate);
   const items = receipt.itemsList?.length
     ? receipt.itemsList.map((item) => `<section class="item">
         <strong>${escapeHtml(item.product)}</strong>

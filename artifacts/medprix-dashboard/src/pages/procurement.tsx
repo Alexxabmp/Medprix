@@ -1,7 +1,7 @@
 import { AppTooltip } from "@/components/ui/tooltip";
 import { ModalTableDialog, ModalDataTable } from "@/components/modal-data-table";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
-import { parseCalendarDate, formatCalendarDate } from "@/lib/business-date";
+import { parseCalendarDate, formatCalendarDate, formatDisplayDate } from "@/lib/business-date";
 import { pharmacyDate } from "@workspace/api-zod";
 import { createReceivingSubmitter, type PendingReceiving } from "@/lib/receiving-submission";
 import { useDialogAccessibility } from "@/lib/use-dialog-accessibility";
@@ -855,7 +855,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                         </td>
                         <td>{order.supplier}</td>
                         <td className="muted">
-                          {new Date(order.orderDate).toLocaleDateString()}
+                          {formatDisplayDate(order.orderDate)}
                         </td>
                         <td>
                           <button
@@ -1006,7 +1006,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                     return <tr key={item.id}>
                       <td>{delivery.poNumber}<div className="muted" style={{fontSize: 12}}>{formatDeliveryDate(delivery.deliveryDate)}</div></td>
                       <td>{delivery.supplier}</td><td>{item.product}</td><td>{item.batchNumber}</td>
-                      <td>{item.expirationDate}</td><td>{item.quantityDelivered}</td><td>{delivery.deliveryStatus}</td>
+                      <td>{formatDisplayDate(item.expirationDate)}</td><td>{item.quantityDelivered}</td><td>{delivery.deliveryStatus}</td>
                       <td><span className={`pill ${expiry.tone}`}>{expiry.label}</span></td>
                       {canManagePurchasing && <td>{delivery.deliveryStatus === "Pending" && paginatedReceivingRows.findIndex(row => row.delivery.id === delivery.id) === index &&
                         <div className="receiving-report-actions">
@@ -1121,7 +1121,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                         </td>
                         <td>{invoice.supplier}</td>
                         <td>{invoice.poNumber || "N/A"}</td>
-                        <td>{invoice.dueDate}</td>
+                        <td>{formatDisplayDate(invoice.dueDate)}</td>
                         <td>
                           <strong>{money(invoice.invoiceAmount)}</strong>
                         </td>
@@ -1220,7 +1220,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                     }}>
                     <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>Placed</div>
                     <strong style={{ fontSize: 13 }}>
-                      {new Date(selectedOrderForItems.orderDate).toLocaleDateString()}
+                      {formatDisplayDate(selectedOrderForItems.orderDate)}
                     </strong>
                   </div>
                   <div

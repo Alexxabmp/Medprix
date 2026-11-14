@@ -1,3 +1,4 @@
+import { formatDisplayDate } from "@/lib/business-date";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { ModalDataTable } from "./modal-data-table";
 import { ModalTableFooter } from "./modal-table-layout";
@@ -204,7 +205,7 @@ export function WholesaleReceivables({
                     <td>
                       <strong>{wholesalePeso(item.balance)}</strong>
                     </td>
-                    <td>{item.dueDate}</td>
+                    <td>{formatDisplayDate(item.dueDate)}</td>
                     <td>
                       <span
                         className={
@@ -316,7 +317,7 @@ export function WholesaleReceivables({
                 </div>
               </dl>
               <p className="field-hint">
-                Payment due {detail.dueDate} · Delivered{" "}
+                Payment due {formatDisplayDate(detail.dueDate)} · Delivered{" "}
                 {wholesaleDateTime(detail.deliveredAt)}
               </p>
               {detail.reviewRequired && (

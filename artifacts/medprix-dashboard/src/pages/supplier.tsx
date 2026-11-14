@@ -1,3 +1,4 @@
+import { formatDisplayDate } from "@/lib/business-date";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { ModalTableDialog, ModalDataTable } from "@/components/modal-data-table";
 import { EmptyState, TableEmptyState } from "@/components/custom-ui/empty-state";
@@ -763,7 +764,7 @@ export default function SupplierPage({
                         <td>{payable.invoiceNumber}</td>
                         <td>
                           {payable.dueDate
-                            ? new Date(payable.dueDate).toLocaleDateString()
+                            ? formatDisplayDate(payable.dueDate)
                             : "Not set"}
                         </td>
                         <td>{peso(payable.totalOwed)}</td>
@@ -1160,9 +1161,7 @@ export default function SupplierPage({
                                   <strong>{order.poNumber}</strong>
                                 </td>
                                 <td>
-                                  {new Date(
-                                    order.orderDate,
-                                  ).toLocaleDateString()}
+                                  {formatDisplayDate(order.orderDate)}
                                 </td>
                                 <td>
                                   <span className="pill neutral">
@@ -1211,7 +1210,7 @@ export default function SupplierPage({
                                           {peso(invoice.invoiceAmount)}
                                         </span>
                                       </td>
-                                      <td>{invoice.dueDate}</td>
+                                      <td>{formatDisplayDate(invoice.dueDate)}</td>
                                       <td>{peso(invoice.needsReview || payable?.needsReview ? null : payable?.balance ?? null)}</td>
                                       <td>
                                         {invoice.needsReview || payable?.needsReview ? <span className="muted">Review required</span> : !payable ? (
@@ -1260,9 +1259,7 @@ export default function SupplierPage({
                             history.payments.map((payment) => (
                               <div key={payment.id}>
                                 <span>
-                                  {new Date(
-                                    payment.paymentDate,
-                                  ).toLocaleDateString()}
+                                  {formatDisplayDate(payment.paymentDate)}
                                   <small>
                                     {payment.notes || "Supplier payment"}
                                   </small>

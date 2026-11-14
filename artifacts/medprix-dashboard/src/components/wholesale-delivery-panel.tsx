@@ -1,3 +1,4 @@
+import { formatDisplayDate } from "@/lib/business-date";
 import { useState } from "react";
 import { Truck } from "lucide-react";
 import { EmptyState } from "./custom-ui/empty-state";
@@ -48,7 +49,7 @@ export function WholesaleDeliveryPanel({
             <tbody>
               {pages.rows.map((item) => (
                 <tr key={item.id}>
-                  <td data-label={preview ? "Scheduled date" : undefined}>{item.date}</td>
+                  <td data-label={preview ? "Scheduled date" : undefined}>{formatDisplayDate(item.date)}</td>
                   <td data-label={preview ? "Status" : undefined}>
                     <span className="pill neutral">
                       {item.status === "InTransit" ? "In transit" : item.status}

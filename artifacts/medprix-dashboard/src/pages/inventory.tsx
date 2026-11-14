@@ -1,3 +1,4 @@
+import { formatDisplayDate, formatDisplayDateTime } from "@/lib/business-date";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { ModalTableDialog, ModalDataTable } from "@/components/modal-data-table";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
@@ -417,20 +418,7 @@ export default function InventoryPage({
   );
 
   const posStockMovements = useMemo(() => {
-    const fmt = new Intl.DateTimeFormat("en-PH", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-      timeZone: "Asia/Manila",
-    });
-    const formatDate = (value: string) => {
-      if (!value) return "—";
-      const parsed = new Date(value);
-      return Number.isNaN(parsed.getTime()) ? value : fmt.format(parsed);
-    };
+    const formatDate = (value: string) => formatDisplayDateTime(value, "Asia/Manila");
     const productById = new Map(items.map((p) => [p.id, p]));
     const productByName = new Map(items.map((p) => [p.name.toLowerCase(), p]));
 
@@ -956,7 +944,7 @@ export default function InventoryPage({
                                   ? 600
                                   : 400,
                             }}>
-                            {info.primaryExpiry}
+                            {formatDisplayDate(info.primaryExpiry)}
                           </span>
                         </div>
                       </td>
@@ -1378,7 +1366,7 @@ export default function InventoryPage({
                             <td style={{ textAlign: "right" }}>
                               <strong>{b.quantity}</strong> units
                             </td>
-                            <td>{b.expiryDate}</td>
+                            <td>{formatDisplayDate(b.expiryDate)}</td>
                             <td>
                               <div
                                 style={{
@@ -1397,7 +1385,7 @@ export default function InventoryPage({
                                 ))}
                               </div>
                             </td>
-                            <td className="muted">{b.mfgDate || "—"}</td>
+                            <td className="muted">{formatDisplayDate(b.mfgDate)}</td>
                             <td className="muted">{b.supplier || "—"}</td>
                           </tr>
                         );
@@ -1614,7 +1602,7 @@ export default function InventoryPage({
                       {stockInProduct.batches.map((b) => (
                         <option key={b.batchNumber} value={b.batchNumber}>
                           {b.batchNumber} (Current: {b.quantity} units, Exp:{" "}
-                          {b.expiryDate})
+                          {formatDisplayDate(b.expiryDate)})
                         </option>
                       ))}
                     </select>
@@ -1716,7 +1704,7 @@ export default function InventoryPage({
                       {stockOutProduct.batches.map((b) => (
                         <option key={b.batchNumber} value={b.batchNumber}>
                           {b.batchNumber} (Available: {b.quantity} units, Exp:{" "}
-                          {b.expiryDate})
+                          {formatDisplayDate(b.expiryDate)})
                         </option>
                       ))}
                     </select>
@@ -2007,7 +1995,7 @@ export default function InventoryPage({
                               <strong>{b.quantity} units</strong>
                             </td>
                             <td style={{ color: isExpired ? "#dc2626" : "#b45309", fontWeight: 600 }}>
-                              {b.expiryDate}
+                              {formatDisplayDate(b.expiryDate)}
                             </td>
                             <td>
                               <span

@@ -1,3 +1,4 @@
+import { formatDisplayDate } from "@/lib/business-date";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, X } from "lucide-react";
@@ -122,7 +123,7 @@ export function ReceivingReportDecisionDialog({ report, decision, onClose, onSav
           <p>{receivesStock ? "Receive all items in this report and add the quantities below to inventory." : "Reject this entire report. None of its items will be added to inventory."}</p>
           <ul className="receiving-decision-items">
             {report.items.map(item => <li key={item.id}>
-              <div><strong>{item.product}</strong><span className="muted">{item.sku} · Batch {item.batchNumber}</span><span className="muted">Expiry {item.expirationDate}</span></div>
+              <div><strong>{item.product}</strong><span className="muted">{item.sku} · Batch {item.batchNumber}</span><span className="muted">Expiry {formatDisplayDate(item.expirationDate)}</span></div>
               <strong className="receiving-decision-quantity">{item.quantityDelivered} units</strong>
             </li>)}
           </ul>

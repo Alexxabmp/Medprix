@@ -1,3 +1,4 @@
+import { formatDisplayDateTime } from "@/lib/business-date";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { ModalTableDialog, ModalDataTable } from "@/components/modal-data-table";
 import { LoadingState } from "@/components/custom-ui/loading-state";
@@ -31,24 +32,10 @@ import {
 } from "@/lib/pharmacy-store";
 import type { SystemLog, UserActivity, UserTransaction, ToastFn } from "@/lib/types";
 
-const dateTimeFormatter = new Intl.DateTimeFormat("en-PH", {
-  month: "short",
-  day: "numeric",
-  year: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-  hour12: true,
-  timeZone: "Asia/Manila",
-});
-
 const normalizeModuleName = (mod: string) =>
   String(mod || "").replace(/^[^\p{L}\p{N}]+/u, "").trim() || String(mod || "");
 
-const eventTime = (value: string) => {
-  if (!value) return "—";
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? value : dateTimeFormatter.format(parsed);
-};
+const eventTime = (value: string) => formatDisplayDateTime(value, "Asia/Manila");
 
 export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
   const [activeTab, setActiveTab] = useState<"transactions" | "systemLogs" | "userActivity">(
