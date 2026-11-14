@@ -26,6 +26,7 @@ export function WholesaleOrderDetails({
   embedded = false,
   initialDetail,
   viewReceipt,
+  initialAction,
 }: {
   order: WholesaleOrder;
   role: string;
@@ -37,6 +38,7 @@ export function WholesaleOrderDetails({
   embedded?: boolean;
   initialDetail?: WholesaleOrderDetail;
   viewReceipt?: (receipt: DeliveryReceipt) => void;
+  initialAction?: "confirm";
 }) {
   const tablePreview = useModalTableStandard();
   const [showReceipt, setShowReceipt] = useState(false);
@@ -45,7 +47,7 @@ export function WholesaleOrderDetails({
   );
   const [loadError, setLoadError] = useState("");
   const [selected, setSelected] = useState<Record<string, string>>({});
-  const [action, setAction] = useState<"confirm" | "cancel" | null>(null);
+  const [action, setAction] = useState<"confirm" | "cancel" | null>(() => order.status === "Pending" ? initialAction ?? null : null);
   async function load() {
     setLoadError("");
     try {

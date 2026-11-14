@@ -13,7 +13,7 @@ import { LoadingState } from "@/components/custom-ui/loading-state";
 import { WholesaleDeliveryReceipts } from "@/components/wholesale-delivery-receipts";
 import { WholesaleOrderDetails } from "@/components/wholesale-order-details";
 import { useEffect, useState } from "react";
-import { Eye, Pencil, Plus, Search } from "lucide-react";
+import { Check, Eye, Pencil, Plus, Search } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import { WholesaleDialog } from "@/components/wholesale-dialog";
 import { WholesaleOrderEditor } from "@/components/wholesale-order-editor";
@@ -40,7 +40,7 @@ type Dialog =
   | { kind: "client"; client?: WholesaleClient }
   | { kind: "price"; product: WholesaleProduct }
   | { kind: "order"; order: WholesaleOrder | null }
-  | { kind: "details"; order: WholesaleOrder };
+  | { kind: "details"; order: WholesaleOrder; confirm?: boolean };
 
 export default function WholesalePage({
   onToast,
@@ -618,6 +618,19 @@ export default function WholesalePage({
                           </td>
                           <td className="table-action-cell">
                             <div className="table-actions">
+                              {pageTableStandard && order.status === "Pending" && (
+                                <AppTooltip content="Confirm draft">
+                                  <button
+                                    type="button"
+                                    className="button soft table-action-btn"
+                                    disabled={locked}
+                                    aria-label="Confirm draft"
+                                    onClick={() => open({ kind: "details", order, confirm: true })}
+                                  >
+                                    <Check size={13} aria-hidden="true" />
+                                  </button>
+                                </AppTooltip>
+                              )}
                               <AppTooltip content={"Edit draft"}><button
                                 className="button soft table-action-btn"
                                 disabled={locked}
@@ -872,6 +885,7 @@ export default function WholesalePage({
       )}
       {dialog?.kind === "details" && (
         <WholesaleOrderDetails
+          initialAction={pageTableStandard && dialog.confirm ? "confirm" : undefined}
           order={dialog.order}
           role={role}
           busy={locked}
