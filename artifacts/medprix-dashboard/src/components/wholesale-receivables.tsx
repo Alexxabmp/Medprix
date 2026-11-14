@@ -1,5 +1,6 @@
 import { formatDisplayDate } from "@/lib/business-date";
 import { PageTableValue, PageTableScroll, usePageTableStandard } from "./page-table-context";
+import { useReceivablePages } from "./use-receivable-pages";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { ModalDataTable } from "./modal-data-table";
 import { ModalTableFooter } from "./modal-table-layout";
@@ -39,6 +40,8 @@ export function WholesaleReceivables({
   detailsOnly?: boolean;
   onClose?: () => void;
 }) {
+  const standard = !!usePageTableStandard() && !detailsOnly;
+  const paging = useReceivablePages(standard, search, status);
   const [page, setPage] = useState(1);
   const initialCacheKey = "/accounts-receivable?search=" + encodeURIComponent(search) + "&page=1&status=" + status;
   const [data, setData] = useState<WholesaleReceivablePage | null>(() => getCachedWholesale<WholesaleReceivablePage>(initialCacheKey));
@@ -70,6 +73,7 @@ export function WholesaleReceivables({
     if (body) body.scrollTop = 0;
   }, [mode, selectedId]);
   async function load() {
+    if (standard) return paging.refresh();
     if (detailsOnly) return;
     const result = await wholesaleGet<WholesaleReceivablePage>(
       "/accounts-receivable?search=" +
@@ -99,7 +103,7 @@ export function WholesaleReceivables({
     setSubPage(1);
   }, [search, status]);
   useEffect(() => {
-    if (detailsOnly) return;
+    if (detailsOnly || standard) return;
     let active = true;
     const reqPath = "/accounts-receivable?search=" + encodeURIComponent(search) + "&page=" + page + "&status=" + status;
     const cached = getCachedWholesale<WholesaleReceivablePage>(reqPath);
@@ -131,7 +135,7 @@ export function WholesaleReceivables({
       active = false;
       clearTimeout(timer);
     };
-  }, [search, page, status, detailsOnly]);
+  }, [search, page, status, detailsOnly, standard]);
   useEffect(() => {
     if (request.locked) return;
     const refresh = async () => {
@@ -167,6 +171,12 @@ export function WholesaleReceivables({
       setOpening(false);
     }
   }
+  const listLoading = standard ? paging.loading : loading;
+  const listError = standard ? paging.error || loadError : loadError;
+  const listItems = standard ? paging.items : paginatedItems;
+  const listTotal = standard ? paging.total : items.length;
+  const listPage = standard ? paging.page : safeSubPage;
+  const listPages = standard ? paging.pages : totalPages;
   return (
     <>
       {!detailsOnly && (
@@ -175,9 +185,10 @@ export function WholesaleReceivables({
           {opening && !selectedId && (
             <LoadingState label="Opening account..." />
           )}
-          {loadError && (
+          {listError && (
             <div role="alert" className="inline-error">
-              {loadError}
+              {listError}
+              {standard && paging.error && <button type="button" className="button soft" onClick={() => void paging.refresh()}>Retry</button>}
             </div>
           )}
           <PageTableScroll><table data-page-table="wholesale-receivables" className="data-table">
@@ -193,9 +204,9 @@ export function WholesaleReceivables({
               </tr>
             </thead>
             <tbody>
-              {!loading &&
-                !loadError &&
-                paginatedItems.map((item) => (
+              {!listLoading &&
+                !listError &&
+                listItems.map((item) => (
                   <tr key={item.id}>
                     <td>
                       <strong>{item.orderNumber}</strong>
@@ -236,15 +247,15 @@ export function WholesaleReceivables({
                     </td>
                   </tr>
                 ))}
-              {loading ? (
+              {listLoading ? (
                 <tr>
                   <td colSpan={7}>
                     <LoadingState label="Loading receivables…" />
                   </td>
                 </tr>
               ) : (
-                !loadError &&
-                !items.length && (
+                !listError &&
+                !listTotal && (
                   <tr>
                     <TableEmptyState colSpan={7}>
                       {search
@@ -258,21 +269,21 @@ export function WholesaleReceivables({
           </table></PageTableScroll>
           <div className="wholesale-pagination" role="navigation" aria-label="Accounts receivable pagination">
             <span className="muted">
-              Page {safeSubPage} of {totalPages} ({items.length} accounts)
+              {standard && listLoading ? "Loading accounts…" : <>Page {listPage} of {listPages} ({listTotal} accounts)</>}
             </span>
             <button
               type="button"
               className="button soft"
-              disabled={loading || safeSubPage <= 1}
-              onClick={() => setSubPage((value) => Math.max(1, value - 1))}
+              disabled={listLoading || listPage <= 1}
+              onClick={() => standard ? paging.go(Math.max(1, listPage - 1)) : setSubPage(value => Math.max(1, value - 1))}
             >
               Previous
             </button>
             <button
               type="button"
               className="button soft"
-              disabled={loading || safeSubPage >= totalPages}
-              onClick={() => setSubPage((value) => Math.min(totalPages, value + 1))}
+              disabled={listLoading || listPage >= listPages}
+              onClick={() => standard ? paging.go(Math.min(listPages, listPage + 1)) : setSubPage(value => Math.min(totalPages, value + 1))}
             >
               Next
             </button>
