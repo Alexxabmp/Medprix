@@ -1,0 +1,66 @@
+/* Explicit page-table opt-ins only. Dialog tables are excluded by the boundary. */
+.page-tables [data-page-section] { overflow: visible; }
+.page-tables .table-card[data-page-section] { position: relative; background-clip: padding-box; }
+.page-tables [data-page-scroll-host] { overflow: visible; }
+.page-tables [data-page-toolbar] { background: hsl(var(--surface)); border-radius: 19px 19px 0 0; background-clip: padding-box; }
+.page-tables [data-page-toolbar][data-page-pin] { position: sticky; top: 0; z-index: 22; }
+.page-tables [data-page-scroll] {
+  max-width: 100%; min-width: 0; overflow: auto;
+  scrollbar-width: thin; scrollbar-color: hsl(var(--muted)) hsl(var(--surface-soft));
+  color-scheme: light;
+}
+.dark .page-tables [data-page-scroll] { color-scheme: dark; }
+.page-tables [data-page-scroll][data-page-fit] { overflow: clip !important; }
+.page-tables [data-page-scroll][data-page-with-toolbar] { border-radius: 0 !important; }
+.page-tables [data-page-table] {
+  table-layout: fixed; min-width: var(--page-table-min, 0); width: 100%; border-collapse: separate; border-spacing: 0;
+}
+.page-tables [data-page-table] th { width: 1% !important; padding: 12px 14px; font-size: 11px; letter-spacing: .04em; white-space: nowrap; vertical-align: middle; }
+/* Content measurements establish widths by heading, not column position. */
+.page-tables [data-page-table] th { width: var(--page-column-width) !important; }
+.page-tables [data-page-kind="receiving"] .receiving-report-actions { min-width: 0; }
+.page-tables [data-page-table] td select { width: auto !important; min-width: calc(11ch + 2.5rem); max-width: none; }
+.page-tables [data-page-table] td[data-page-flex] { max-width: 0 !important; }
+.page-tables [data-page-table] td { width: auto !important; max-width: none !important; padding: 12px 14px; vertical-align: middle; }
+.page-tables [data-page-table] [data-page-number] { text-align: right !important; font-variant-numeric: tabular-nums; }
+.page-tables [data-page-table] [data-page-align="left"] { text-align: left !important; }
+.page-tables [data-page-table] [data-page-align="right"] { text-align: right !important; }
+.page-tables [data-page-table] [data-page-align="center"] { text-align: center !important; }
+.page-tables [data-page-table] td[data-page-align="right"] .receiving-report-actions { justify-content: flex-end; }
+.page-tables [data-page-table] [data-page-wrap] { white-space: normal; overflow-wrap: anywhere; }
+.page-tables [data-page-table] td:has(.modal-table-value) { overflow: visible !important; }
+.page-tables [data-page-table] .modal-table-value {
+  display: block; width: 100%; max-width: 100%; min-width: 0; padding: 0; margin: 0; border: 0;
+  background: transparent; color: inherit; font: inherit; text-align: inherit; cursor: pointer;
+  text-decoration: underline dotted hsl(var(--muted) / .5); text-underline-offset: 4px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.page-tables .modal-table-value:focus-visible { outline: 2px solid hsl(var(--foreground)); outline-offset: -3px; border-radius: 4px; }
+.page-tables [data-page-table] .product-cell { width: 100%; min-width: 0; max-width: none !important; }
+.page-tables [data-page-table] .product-symbol { flex-shrink: 0; }
+.page-tables [data-page-table] .product-cell > div { flex: 1; min-width: 0; max-width: none !important; overflow: visible !important; padding-bottom: 0 !important; }
+.page-tables [data-page-table] strong:has(> .modal-table-value) { display: block; min-width: 0; }
+.page-tables [data-page-table] .page-table-event .modal-table-value { flex: 1; min-width: 0; }
+.page-tables [data-page-table] .page-table-event .pill { flex-shrink: 0; }
+.page-tables .inventory-product-description:has(> .pill.danger) { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 6px; }
+.page-tables .inventory-product-description > strong { grid-column: 1; grid-row: 1; }
+.page-tables .inventory-product-description > .muted { grid-column: 1; grid-row: 2; min-width: 0; }
+.page-tables .inventory-product-description > .pill.danger { grid-column: 2; grid-row: 1 / span 2; align-self: center; margin-left: 0 !important; }
+.page-tables .search-wrap { min-height: 36px; flex-shrink: 0; }
+.page-tables [data-page-table] .button.table-action-btn { font-family: inherit; font-size: 12px; letter-spacing: normal; }
+.page-tables [data-page-table] .page-table-icon-action { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 32px; width: 32px; min-width: 32px; height: 30px; padding: 0; border-radius: 9px; }
+.page-tables [data-page-kind="receiving"] .receiving-report-actions { display: inline-flex; flex-wrap: nowrap; }
+.page-tables [data-page-native][data-page-sticky] th { position: sticky; top: var(--page-toolbar-height, 0px); z-index: 21; background: hsl(var(--surface-soft)); }
+.page-tables [data-page-cart] th { top: 0; }
+.page-tables [data-page-table] :is(th, td) { border-radius: 0; }
+.page-tables [data-page-scroll]:focus-visible { outline: 2px solid hsl(var(--foreground)); outline-offset: 3px; }
+.page-table-sticky { position: fixed; overflow: hidden; pointer-events: none; z-index: 21; background: hsl(var(--surface-soft)); }
+.page-table-sticky[hidden] { display: none; }
+.page-table-sticky[data-page-with-toolbar] { border-radius: 0; }
+.page-table-sticky table { margin: 0; min-width: 0 !important; table-layout: fixed !important; }
+.page-table-sticky th { position: static !important; }
+@media (max-width: 760px) {
+  .page-tables .table-tools .search-wrap { flex: 0 0 auto; height: 36px; }
+  .page-tables [data-page-toolbar] { position: static; }
+  .page-tables [data-page-toolbar] .search-wrap { min-width: 0; }
+}

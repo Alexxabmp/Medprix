@@ -1,4 +1,5 @@
 import { AppTooltip } from "@/components/ui/tooltip";
+import { PageTableValue, PageTableScroll } from "@/components/page-table-context";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { useEffect, useState } from "react";
 import { Eye } from "lucide-react";
@@ -48,7 +49,7 @@ export function WholesaleDeliveryReceipts({
           {error}
         </div>
       )}
-      <table className="data-table">
+      <PageTableScroll><table data-page-table="wholesale-receipts" className="data-table">
         <thead>
           <tr>
             <th>Receipt</th>
@@ -62,7 +63,7 @@ export function WholesaleDeliveryReceipts({
             <tr key={row.id}>
               <td>{row.receiptNumber}</td>
               <td>{row.orderNumber}</td>
-              <td>{row.clientName}</td>
+              <td><PageTableValue value={row.clientName} /></td>
               <td className="table-action-cell">
                 <div className="table-actions">
                   <AppTooltip content={"View receipt"}><button
@@ -103,8 +104,8 @@ export function WholesaleDeliveryReceipts({
             </tr>
           )}
         </tbody>
-      </table>
-      <div className="wholesale-pagination">
+      </table></PageTableScroll>
+      <div className="wholesale-pagination" role="navigation" aria-label="Delivery receipts pagination">
         <span className="muted">
           Page {safePage} of {totalPages} ({visible.length} receipts)
         </span>

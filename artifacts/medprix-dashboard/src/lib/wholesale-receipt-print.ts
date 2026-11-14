@@ -1,4 +1,5 @@
 import type { DeliveryReceipt } from "./wholesale-api";
+import { formatDisplayDate } from "./business-date";
 import { printDocument } from "./receipt-print";
 
 const escapeHtml = (value: unknown) =>
@@ -175,13 +176,7 @@ export const deliveryReceiptStyles = `
 
 export function deliveryReceiptMarkup(receipt: DeliveryReceipt): string {
   const e = escapeHtml;
-  const date = (value: string) =>
-    new Intl.DateTimeFormat("en-PH", {
-      timeZone: "Asia/Manila",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    }).format(new Date(value));
+  const date = (value: string) => formatDisplayDate(value, "Asia/Manila");
   const rows = receipt.lines.flatMap((line) =>
     receipt.batches
       .filter((batch) => batch.productId === line.productId)
@@ -214,7 +209,7 @@ export function deliveryReceiptMarkup(receipt: DeliveryReceipt): string {
         .map(
           ({ line, batch }, index) => `<tr>
         <td>${index + 1}</td><td><strong>${e(line.name)}</strong><span class="dr-tax">${line.isVatExempt ? "VAT-exempt" : "VAT included"}</span></td>
-        <td>${e(batch.batchNumber)}</td><td>${e(batch.expiry)}</td><td class="dr-number">${e(batch.quantity)}</td>
+        <td>${e(batch.batchNumber)}</td><td>${e(date(batch.expiry))}</td><td class="dr-number">${e(batch.quantity)}</td>
         <td class="dr-number">${decimal(amount(line.unitPrice))}</td><td class="dr-number">${decimal(amount(line.unitPrice) * BigInt(batch.quantity))}</td>
       </tr>`,
         )

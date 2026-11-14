@@ -1,4 +1,6 @@
 import type { ShiftReceipt } from "./types";
+import { formatDisplayDateTime } from "./business-date";
+import { displayPeso } from "./currency";
 
 const escapeHtml = (value: unknown) => String(value ?? "").replace(/[&<>"']/g,
   (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]!);
@@ -12,14 +14,11 @@ export function receiptDocument(receipt: ShiftReceipt): string {
   const source = receipt.printSource;
   const number = source ? source.transactionNumber : receipt.id;
   const sourceDate = source ? source.dateTime : receipt.dateTime;
-  const parsed = sourceDate && /(?:Z|[+-]\d{2}:?\d{2})$/i.test(sourceDate) ? new Date(sourceDate) : null;
-  const date = parsed && Number.isFinite(parsed.getTime())
-    ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(parsed)
-    : sourceDate;
+  const date = formatDisplayDateTime(sourceDate);
   const items = receipt.itemsList?.length
     ? receipt.itemsList.map((item) => `<section class="item">
         <strong>${escapeHtml(item.product)}</strong>
-        ${row(`${item.quantity}${item.unitPrice ? ` × ${item.unitPrice}` : ""}`, item.subtotal ?? " ")}
+        ${row(`${item.quantity}${item.unitPrice ? ` × ${displayPeso(item.unitPrice)}` : ""}`, item.subtotal ? displayPeso(item.subtotal) : " ")}
       </section>`).join("")
     : `<p>${escapeHtml(source ? source.itemsSummary : receipt.itemsSummary)}</p>`;
   return `<!doctype html><html lang="${escapeHtml(typeof navigator === "undefined" ? "en" : navigator.language)}"><head>
@@ -49,10 +48,10 @@ export function receiptDocument(receipt: ShiftReceipt): string {
       ${row("Cashier", source ? source.user : receipt.cashier)}${row("Payment", source ? source.payment : receipt.method)}
       ${row("Status", source ? source.status : receipt.status)}</div>
     <div class="items"><div class="row"><strong>ITEM</strong><strong>AMOUNT</strong></div>${items}</div>
-    <div class="totals">${row("Subtotal", receipt.subtotal)}${row(source?.calculationVersion ? "VAT (included)" : "VAT", receipt.vat)}${row("VAT exemption", receipt.vatRelief)}
-      ${row("Discount", receipt.discount)}
-      ${row("TOTAL", source ? source.total : (receipt.totalFormatted || new Intl.NumberFormat(undefined, { style: "currency", currency: "PHP" }).format(receipt.total)), "total")}
-      ${row("Amount received", receipt.amountReceived)}${row("Change", receipt.change)}</div>
+    <div class="totals">${row("Subtotal", receipt.subtotal && displayPeso(receipt.subtotal))}${row(source?.calculationVersion ? "VAT (included)" : "VAT", receipt.vat && displayPeso(receipt.vat))}${row("VAT exemption", receipt.vatRelief && displayPeso(receipt.vatRelief))}
+      ${row("Discount", receipt.discount && displayPeso(receipt.discount))}
+      ${row("TOTAL", displayPeso(source ? source.total : (receipt.totalFormatted || receipt.total)), "total")}
+      ${row("Amount received", receipt.amountReceived && displayPeso(receipt.amountReceived))}${row("Change", receipt.change && displayPeso(receipt.change))}</div>
     <p class="thanks">THANK YOU!</p></article></body></html>`;
 }
 

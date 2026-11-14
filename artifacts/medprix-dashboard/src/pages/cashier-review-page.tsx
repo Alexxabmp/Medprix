@@ -1,4 +1,5 @@
 import { AppTooltip } from "@/components/ui/tooltip";
+import { displayPeso } from "@/lib/currency";
 import { ModalTableDialog, ModalDataTable } from "@/components/modal-data-table";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { useState, useEffect } from "react";
@@ -316,7 +317,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                           </div>
                         </td>
                         <td><span className="pill neutral">{trx.method}</span></td>
-                        <td style={{ textAlign: "right" }}><strong>{trx.totalFormatted}</strong></td>
+                        <td style={{ textAlign: "right" }}><strong>{displayPeso(trx.totalFormatted)}</strong></td>
                         <td><span className="pill success">{trx.status}</span></td>
                       </tr>
                     ))}
@@ -560,7 +561,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                   <div style={{ fontSize: 12, textAlign: "right", maxWidth: 240 }}>
                     {selectedReceipt.itemsList && selectedReceipt.itemsList.length > 0
                       ? selectedReceipt.itemsList.map((item, i) => (
-                          <div key={i}>{item.product} ×{item.quantity}{item.unitPrice ? ` @ ${item.unitPrice}` : ""}</div>
+                          <div key={i}>{item.product} ×{item.quantity}{item.unitPrice ? ` @ ${displayPeso(item.unitPrice)}` : ""}</div>
                         ))
                       : selectedReceipt.itemsSummary.split(", ").map((s, i) => (
                           <div key={i}>{s}</div>
@@ -571,13 +572,13 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                 {selectedReceipt.amountReceived && (
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
                     <span className="muted">Amount Received</span>
-                    <span>{selectedReceipt.amountReceived}</span>
+                    <span>{displayPeso(selectedReceipt.amountReceived)}</span>
                   </div>
                 )}
                 {selectedReceipt.change && (
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
                     <span className="muted">Change</span>
-                    <span>{selectedReceipt.change}</span>
+                    <span>{displayPeso(selectedReceipt.change)}</span>
                   </div>
                 )}
                 <div
@@ -591,7 +592,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                     borderTop: "1px solid hsl(var(--border))",
                   }}>
                   <span>Total Paid</span>
-                  <span>{selectedReceipt.totalFormatted}</span>
+                  <span>{displayPeso(selectedReceipt.totalFormatted)}</span>
                 </div>
               </div>
               <div className="modal-actions" style={{ marginTop: 16, display: "flex", gap: 8, justifyContent: "flex-end" }}>

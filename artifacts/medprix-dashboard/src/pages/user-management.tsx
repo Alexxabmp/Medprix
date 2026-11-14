@@ -1,4 +1,5 @@
 import { AppTooltip } from "@/components/ui/tooltip";
+import { PageTableValue } from "@/components/page-table-context";
 import { useState, useEffect, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -324,6 +325,7 @@ export default function UserManagementPage({
               data-testid="input-user-search"
               type="search"
               placeholder="Search name, username, or role..."
+              aria-label="Search user accounts"
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
@@ -349,7 +351,7 @@ export default function UserManagementPage({
           </div>
         </div>
         <div className="table-scroll">
-          <table className="data-table">
+          <table data-page-table="users" className="data-table">
             <thead>
               <tr>
                 <th>User</th>
@@ -381,9 +383,9 @@ export default function UserManagementPage({
                         {user.initials}
                       </span>
                       <div>
-                        <strong>{user.name}</strong>
+                        <strong><PageTableValue value={user.name} /></strong>
                         <div className="muted" style={{ fontSize: 12 }}>
-                          {user.username}
+                          <PageTableValue value={user.username} />
                         </div>
                       </div>
                     </div>
@@ -393,6 +395,7 @@ export default function UserManagementPage({
                       className="select"
                       style={{ height: 30, padding: "0 8px" }}
                       data-testid={`select-role-${user.id}`}
+                      aria-label={`Role for ${user.name}`}
                       value={user.role}
                       disabled={isCurrentUser}
                       onChange={async (e) => {
@@ -451,7 +454,8 @@ export default function UserManagementPage({
                   <td className="muted">{user.phone || "\u2014"}</td>
                   <td>
                     <div
-                      style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      className="page-inline-controls"
+                      style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                       <span
                         className={`pill ${user.status === "Active" ? "success" : "neutral"}`}>
                         {user.status}
@@ -464,6 +468,7 @@ export default function UserManagementPage({
                         className={`toggle ${user.status === "Active" ? "on" : ""}`}
                         data-testid={`toggle-status-${user.id}`}
                         aria-pressed={user.status === "Active"}
+                        aria-label={`Set ${user.name} ${user.status === "Active" ? "inactive" : "active"}`}
                         onClick={() => toggleStatus(user)}
                         disabled={isCurrentUser}
                         >
@@ -517,7 +522,7 @@ export default function UserManagementPage({
             </div>
           )}
         </div>
-        <div className="wholesale-pagination">
+        <div className="wholesale-pagination" role="navigation" aria-label="User accounts pagination">
           <span className="muted">
             Page {safeUserPage} of {totalUserPages} ({shown.length} users)
           </span>

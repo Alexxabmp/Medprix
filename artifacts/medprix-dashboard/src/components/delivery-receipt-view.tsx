@@ -4,6 +4,7 @@ import { WholesaleDialog } from "./wholesale-dialog";
 import { wholesalePeso, type DeliveryReceipt } from "@/lib/wholesale-api";
 import { printDeliveryReceipt } from "@/lib/wholesale-receipt-print";
 import { safeError } from "@/lib/feedback";
+import { formatDisplayDate, formatDisplayDateTime } from "@/lib/business-date";
 
 export function DeliveryReceiptView({
   receipt,
@@ -18,15 +19,8 @@ export function DeliveryReceiptView({
 }) {
   const [error, setError] = useState("");
   const [printing, setPrinting] = useState(false);
-  const deliveredAt = new Intl.DateTimeFormat("en-PH", {
-    timeZone: "Asia/Manila",
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(receipt.deliveredAt));
-  const dueDate = new Intl.DateTimeFormat("en-PH", {
-    timeZone: "Asia/Manila",
-    dateStyle: "medium",
-  }).format(new Date(receipt.dueDate + "T00:00:00+08:00"));
+  const deliveredAt = formatDisplayDateTime(receipt.deliveredAt, "Asia/Manila");
+  const dueDate = formatDisplayDate(receipt.dueDate);
   const quantity = receipt.lines.reduce((sum, line) => sum + line.quantity, 0);
   const content = (
     <div className="delivery-receipt-details">

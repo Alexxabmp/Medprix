@@ -1,3 +1,4 @@
+import { PageTableValue, usePageTableStandard } from "@/components/page-table-context";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import {
@@ -12,7 +13,7 @@ import { LoadingState } from "@/components/custom-ui/loading-state";
 import { WholesaleDeliveryReceipts } from "@/components/wholesale-delivery-receipts";
 import { WholesaleOrderDetails } from "@/components/wholesale-order-details";
 import { useEffect, useState } from "react";
-import { Eye, Pencil, Plus, Search } from "lucide-react";
+import { Check, Eye, Pencil, Plus, Search } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import { WholesaleDialog } from "@/components/wholesale-dialog";
 import { WholesaleOrderEditor } from "@/components/wholesale-order-editor";
@@ -39,7 +40,7 @@ type Dialog =
   | { kind: "client"; client?: WholesaleClient }
   | { kind: "price"; product: WholesaleProduct }
   | { kind: "order"; order: WholesaleOrder | null }
-  | { kind: "details"; order: WholesaleOrder };
+  | { kind: "details"; order: WholesaleOrder; confirm?: boolean };
 
 export default function WholesalePage({
   onToast,
@@ -48,6 +49,8 @@ export default function WholesalePage({
   onToast: ToastFn;
   role: string;
 }) {
+  const pageTableStandard = usePageTableStandard();
+  const [viewClient, setViewClient] = useState<WholesaleClient | null>(null);
   const storageKey =
     "medprix-wholesale-request:" +
     (localStorage.getItem("medprix-username") ?? "");
@@ -592,7 +595,7 @@ export default function WholesalePage({
                   />
                 )}
                 {tab === "orders" && (
-                  <table className="data-table">
+                  <table data-page-table="wholesale-orders" className="data-table">
                     <thead>
                       <tr>
                         <th>Order</th>
@@ -606,7 +609,7 @@ export default function WholesalePage({
                       {paginatedOrders.map((order) => (
                         <tr key={order.id}>
                           <td>{order.orderNumber}</td>
-                          <td>{order.clientName}</td>
+                          <td><PageTableValue value={order.clientName} /></td>
                           <td>{wholesalePeso(order.total)}</td>
                           <td>
                             {order.status === "Pending"
@@ -615,6 +618,19 @@ export default function WholesalePage({
                           </td>
                           <td className="table-action-cell">
                             <div className="table-actions">
+                              {pageTableStandard && order.status === "Pending" && (
+                                <AppTooltip content="Confirm draft">
+                                  <button
+                                    type="button"
+                                    className="button soft table-action-btn"
+                                    disabled={locked}
+                                    aria-label="Confirm draft"
+                                    onClick={() => open({ kind: "details", order, confirm: true })}
+                                  >
+                                    <Check size={13} aria-hidden="true" />
+                                  </button>
+                                </AppTooltip>
+                              )}
                               <AppTooltip content={"Edit draft"}><button
                                 className="button soft table-action-btn"
                                 disabled={locked}
@@ -650,7 +666,7 @@ export default function WholesalePage({
                   </table>
                 )}
                 {tab === "clients" && (
-                  <table className="data-table">
+                  <table data-page-table="wholesale-clients" className="data-table">
                     <thead>
                       <tr>
                         <th>Client</th>
@@ -661,7 +677,7 @@ export default function WholesalePage({
                     <tbody>
                       {paginatedClients.map((client) => (
                         <tr key={client.id}>
-                          <td>{client.name}</td>
+                          <td><PageTableValue value={client.name} /></td>
                           <td>{client.address || "Not provided"}</td>
                           <td className="table-action-cell">
                             <div className="table-actions">
@@ -674,6 +690,18 @@ export default function WholesalePage({
                               >
                                 <Pencil size={13} />
                               </button></AppTooltip>
+                              {pageTableStandard && (
+                                <AppTooltip content="View client">
+                                  <button
+                                    type="button"
+                                    className="button soft table-action-btn"
+                                    aria-label="View client"
+                                    onClick={() => setViewClient(client)}
+                                  >
+                                    <Eye size={13} aria-hidden="true" />
+                                  </button>
+                                </AppTooltip>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -691,7 +719,7 @@ export default function WholesalePage({
                   </table>
                 )}
                 {tab === "prices" && (
-                  <table className="data-table">
+                  <table data-page-table="wholesale-prices" className="data-table">
                     <thead>
                       <tr>
                         <th>Product / SKU</th>
@@ -707,7 +735,7 @@ export default function WholesalePage({
                       {paginatedProducts.map((product) => (
                         <tr key={product.id}>
                           <td>
-                            {product.name}
+                            <PageTableValue value={product.name} />
                             <div className="muted">{product.sku}</div>
                           </td>
                           <td>{wholesalePeso(product.wholesalePrice)}</td>
@@ -752,7 +780,7 @@ export default function WholesalePage({
                 )}
               </div>
               {tab === "orders" && (
-                <div className="wholesale-pagination">
+                <div className="wholesale-pagination" role="navigation" aria-label="Wholesale orders pagination">
                   <span className="muted">
                     Page {safeOrderPage} of {totalOrderPages} ({visibleOrders.length} orders)
                   </span>
@@ -775,7 +803,7 @@ export default function WholesalePage({
                 </div>
               )}
               {tab === "clients" && (
-                <div className="wholesale-pagination">
+                <div className="wholesale-pagination" role="navigation" aria-label="Wholesale clients pagination">
                   <span className="muted">
                     Page {safeClientPage} of {totalClientPages} ({visibleClients.length} clients)
                   </span>
@@ -798,7 +826,7 @@ export default function WholesalePage({
                 </div>
               )}
               {tab === "prices" && (
-                <div className="wholesale-pagination">
+                <div className="wholesale-pagination" role="navigation" aria-label="Wholesale prices pagination">
                   <span className="muted">
                     Page {safePricePage} of {totalPricePages} ({visibleProducts.length} products)
                   </span>
@@ -824,6 +852,25 @@ export default function WholesalePage({
           )
         )}
       </section>
+      {pageTableStandard && viewClient && (
+        <WholesaleDialog title="Client information" busy={false} close={() => setViewClient(null)}>
+          <dl style={{ display: "grid", gap: 16 }}>
+            <div>
+              <dt className="field-label">Client name</dt>
+              <dd style={{ margin: 0, overflowWrap: "anywhere" }}>{viewClient.name}</dd>
+            </div>
+            <div>
+              <dt className="field-label">Delivery address</dt>
+              <dd style={{ margin: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+                {viewClient.address || "Not provided"}
+              </dd>
+            </div>
+          </dl>
+          <div className="wholesale-actions">
+            <button type="button" className="button soft" onClick={() => setViewClient(null)}>Close</button>
+          </div>
+        </WholesaleDialog>
+      )}
       {dialog?.kind === "order" && (
         <WholesaleOrderEditor
           order={dialog.order}
@@ -838,6 +885,7 @@ export default function WholesalePage({
       )}
       {dialog?.kind === "details" && (
         <WholesaleOrderDetails
+          initialAction={pageTableStandard && dialog.confirm ? "confirm" : undefined}
           order={dialog.order}
           role={role}
           busy={locked}

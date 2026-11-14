@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { PageTables } from "@/components/page-tables";
 import { Link, Route, Switch, useLocation } from "wouter";
 import { Moon, Pill, Sun, X } from "lucide-react";
 import { getDefaultRoute, navGroups } from "@/lib/data";
@@ -61,6 +62,8 @@ export function AppShell({
     return undefined;
   }, [role]);
   const roleKey = role.toLowerCase();
+  const tablePage = ["/supplier", "/wholesale", "/system-ad", "/inventory", "/procurement", "/user-management", "/pos"].includes(location)
+    || ((location === "/" || location === "/dashboard") && roleKey === "cashier");
   const homeHref = getDefaultRoute(role);
 
   const storedFullName = localStorage.getItem("medprix-fullname");
@@ -180,6 +183,7 @@ export function AppShell({
           </div>
         </header>
         <main className="content">
+          <PageTables enabled={tablePage}>
           <Switch>
             <Route path="/">
               {roleKey === "admin" ? (
@@ -230,6 +234,7 @@ export function AppShell({
             </Route>
             <Route component={NotFound} />
           </Switch>
+          </PageTables>
         </main>
       </div>
     </div>

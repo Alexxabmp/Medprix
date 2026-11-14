@@ -1,3 +1,4 @@
+import { formatDisplayDate } from "@/lib/business-date";
 import { useEffect, useRef, useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { Check, ChevronDown, Plus } from "lucide-react";
@@ -123,7 +124,7 @@ export function ReceivingBatchPicker({
                       />
                       <span>
                         <strong>{batch.batchNumber}</strong>
-                        <small>Expiry {batch.expiryDate}</small>
+                        <small>Expiry {formatDisplayDate(batch.expiryDate)}</small>
                       </span>
                     </CommandItem>
                   ))}

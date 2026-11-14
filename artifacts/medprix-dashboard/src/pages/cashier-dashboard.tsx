@@ -1,3 +1,5 @@
+import { displayPeso } from "@/lib/currency";
+import { PageTableValue, PageTableAction, usePageTableStandard } from "@/components/page-table-context";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { calculateRetailLine } from "@workspace/api-zod";
@@ -54,6 +56,8 @@ function formatPeso(value: number): string {
 }
 
 export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
+  const standard = usePageTableStandard();
+  const [receiptPage, setReceiptPage] = useState(1);
   const { date: shiftDate, selectDate } = useBusinessDate();
   const { items: products, setItems: setProducts } = usePharmacyInventory();
   const { receipts, setReceipts, refresh: fetchTransactions } = usePharmacyTransactions();
@@ -89,6 +93,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
   );
   const [cashTendered, setCashTendered] = useState<string>("200");
   const [searchReceipt, setSearchReceipt] = useState("");
+  useEffect(() => setReceiptPage(1), [searchReceipt, shiftDate.toDateString()]);
   const [showShiftModal, setShowShiftModal] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<ShiftReceipt | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -375,6 +380,10 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
       (r.itemsSummary && r.itemsSummary.toLowerCase().includes(searchReceipt.toLowerCase())),
   );
 
+  const receiptPages = Math.max(1, Math.ceil(filteredReceipts.length / 15));
+  const safeReceiptPage = Math.min(receiptPage, receiptPages);
+  const visibleReceipts = standard ? filteredReceipts.slice((safeReceiptPage - 1) * 15, safeReceiptPage * 15) : filteredReceipts;
+
   return (
     <div className="cashier-page" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       <PageHeading
@@ -445,6 +454,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                 data-testid="input-pos-product-search"
                 type="search"
                 placeholder="Search product, SKU, category..."
+                aria-label="Search products to add to cart"
                 value={productSearch}
                 onChange={(e) => setProductSearch(e.target.value)}
               />
@@ -476,7 +486,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
               {filteredProducts.map((product) => {
                 const availability = productAvailability(product, cart.find((item) => item.id === product.id)?.qty || 0);
                 return <option key={product.id} value={product.id} disabled={!!availability}>
-                  {product.name} ({product.sku}) - {product.price}{availability ? ` — ${availability}` : ""}
+                  {product.name} ({product.sku}) - {displayPeso(product.price)}{availability ? ` — ${availability}` : ""}
                 </option>;
               })}
             </select>
@@ -553,14 +563,14 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                 overflowX: "auto",
                 background: "hsl(var(--surface))",
               }}>
-              <table className="data-table">
+              <table data-page-table="pos-cart" className="data-table">
                 <thead>
                   <tr>
                     <th>Item Description</th>
                     <th style={{ textAlign: "center" }}>Qty</th>
                     <th style={{ textAlign: "right" }}>Unit Price</th>
                     <th style={{ textAlign: "right" }}>Total</th>
-                    <th style={{ width: 40 }} />
+                    <th style={{ width: 40 }}>{standard ? "Action" : null}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -586,7 +596,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                     cart.map((item) => (
                       <tr key={item.id}>
                         <td>
-                          <strong>{item.name}</strong>
+                          <strong><PageTableValue value={item.name} /></strong>
                           <div className="muted" style={{ fontSize: 12 }}>
                             {item.sku}
                           </div>
@@ -933,6 +943,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
             <input
               type="search"
               placeholder="Search receipt #, method, item..."
+              aria-label="Search shift receipts"
               value={searchReceipt}
               onChange={(e) => setSearchReceipt(e.target.value)}
               style={{ height: 34, fontSize: 12 }}
@@ -947,7 +958,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
             borderRadius: 12,
             overflowX: "auto",
           }}>
-          <table className="data-table" style={{ width: "100%" }}>
+          <table data-page-table="pos-receipts" className="data-table" style={{ width: "100%" }}>
             <thead>
               <tr>
                 <th>Receipt #</th>
@@ -960,7 +971,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
               </tr>
             </thead>
             <tbody>
-              {filteredReceipts.map((r) => (
+              {visibleReceipts.map((r) => (
                 <tr key={r.id}>
                   <td>
                     <strong>{r.id}</strong>
@@ -974,7 +985,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                       textOverflow: "ellipsis",
                       fontSize: 12,
                     }}>
-                    {r.itemsSummary || `${r.items} item(s)`}
+                    <PageTableValue value={r.itemsSummary || `${r.items} item(s)`} />
                   </td>
                   <td>
                     <span
@@ -984,7 +995,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                     </span>
                   </td>
                   <td style={{ textAlign: "right" }}>
-                    <strong>{r.totalFormatted || formatPeso(r.total)}</strong>
+                    <strong>{displayPeso(r.totalFormatted || r.total)}</strong>
                   </td>
                   <td>
                     <span className="pill success" style={{ fontSize: 12 }}>
@@ -992,13 +1003,13 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                     </span>
                   </td>
                   <td style={{ textAlign: "center" }}>
-                    <button
+                    <PageTableAction label="View receipt" icon={<Eye size={13} aria-hidden="true" />}
                       type="button"
                       className="button soft"
                       style={{ padding: "4px 10px", fontSize: 12 }}
                       onClick={() => setSelectedReceipt(r)}>
                       <Eye size={12} style={{ marginRight: 4 }} /> View
-                    </button>
+                    </PageTableAction>
                   </td>
                 </tr>
               ))}
@@ -1012,6 +1023,11 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
             </tbody>
           </table>
         </div>
+        {standard && <nav className="wholesale-pagination" aria-label="Shift receipts pagination">
+          <span className="muted">Page {safeReceiptPage} of {receiptPages} ({filteredReceipts.length} receipts)</span>
+          <button type="button" className="button soft" disabled={safeReceiptPage <= 1} onClick={() => setReceiptPage(p => Math.max(1, p - 1))}>Previous</button>
+          <button type="button" className="button soft" disabled={safeReceiptPage >= receiptPages} onClick={() => setReceiptPage(p => Math.min(receiptPages, p + 1))}>Next</button>
+        </nav>}
       </section>
 
       </fieldset>
@@ -1071,20 +1087,20 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
               {selectedReceipt.subtotal && (
                 <div style={{ display: "flex", justifyContent: "space-between", color: "hsl(var(--muted))" }}>
                   <span>Subtotal</span>
-                  <span>{selectedReceipt.subtotal}</span>
+                  <span>{displayPeso(selectedReceipt.subtotal)}</span>
                 </div>
               )}
               {selectedReceipt.vat && (
                 <div style={{ display: "flex", justifyContent: "space-between", color: "hsl(var(--muted))" }}>
                   <span>{selectedReceipt.printSource?.calculationVersion ? "VAT (included)" : "VAT"}</span>
-                  <span>{selectedReceipt.vat}</span>
+                  <span>{displayPeso(selectedReceipt.vat)}</span>
                 </div>
               )}
               {selectedReceipt.vatRelief && <div style={{ display: "flex", justifyContent: "space-between", color: "hsl(var(--muted))" }}><span>VAT exemption</span><span>{selectedReceipt.vatRelief}</span></div>}
               {selectedReceipt.discount && selectedReceipt.discount !== "₱0.00" && (
                 <div style={{ display: "flex", justifyContent: "space-between", color: "#34C759", fontWeight: 600 }}>
                   <span>Privilege Discount</span>
-                  <span>-{selectedReceipt.discount}</span>
+                  <span>-{displayPeso(selectedReceipt.discount)}</span>
                 </div>
               )}
               <div
@@ -1097,18 +1113,18 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                   borderTop: "1px solid hsl(var(--border))",
                 }}>
                 <span>Total Amount</span>
-                <span>{selectedReceipt.totalFormatted || formatPeso(selectedReceipt.total)}</span>
+                <span>{displayPeso(selectedReceipt.totalFormatted || selectedReceipt.total)}</span>
               </div>
               {selectedReceipt.amountReceived && (
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <span className="muted">Amount Tendered</span>
-                  <span>{selectedReceipt.amountReceived}</span>
+                  <span>{displayPeso(selectedReceipt.amountReceived)}</span>
                 </div>
               )}
               {selectedReceipt.change && (
                 <div style={{ display: "flex", justifyContent: "space-between", color: "#34C759", fontWeight: 700 }}>
                   <span>Change Due</span>
-                  <span>{selectedReceipt.change}</span>
+                  <span>{displayPeso(selectedReceipt.change)}</span>
                 </div>
               )}
             </div>

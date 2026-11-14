@@ -1,3 +1,6 @@
+import { displayPeso } from "@/lib/currency";
+import { formatDisplayDateTime } from "@/lib/business-date";
+import { PageTableValue } from "@/components/page-table-context";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { ModalTableDialog, ModalDataTable } from "@/components/modal-data-table";
 import { LoadingState } from "@/components/custom-ui/loading-state";
@@ -31,24 +34,10 @@ import {
 } from "@/lib/pharmacy-store";
 import type { SystemLog, UserActivity, UserTransaction, ToastFn } from "@/lib/types";
 
-const dateTimeFormatter = new Intl.DateTimeFormat("en-PH", {
-  month: "short",
-  day: "numeric",
-  year: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-  hour12: true,
-  timeZone: "Asia/Manila",
-});
-
 const normalizeModuleName = (mod: string) =>
   String(mod || "").replace(/^[^\p{L}\p{N}]+/u, "").trim() || String(mod || "");
 
-const eventTime = (value: string) => {
-  if (!value) return "—";
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? value : dateTimeFormatter.format(parsed);
-};
+const eventTime = (value: string) => formatDisplayDateTime(value, "Asia/Manila");
 
 export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
   const [activeTab, setActiveTab] = useState<"transactions" | "systemLogs" | "userActivity">(
@@ -390,6 +379,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                 <input
                   type="search"
                   placeholder="Search TRX #, customer, user..."
+                  aria-label="Search transactions"
                   value={trxSearch}
                   onChange={(e) => {
                     setTrxSearch(e.target.value);
@@ -434,7 +424,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
             </div>
 
             <div className="table-scroll">
-              <table className="data-table">
+              <table data-page-table="transactions" className="data-table">
                 <thead>
                   <tr>
                     <th>Transaction ID</th>
@@ -455,7 +445,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                         <strong>{trx.transactionNumber}</strong>
                       </td>
                       <td className="muted">{eventTime(trx.dateTime)}</td>
-                      <td>{trx.user}</td>
+                      <td><PageTableValue value={trx.user} /></td>
                       <td>
                         <span
                           className={`pill ${
@@ -464,9 +454,9 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                           {trx.businessType}
                         </span>
                       </td>
-                      <td>{trx.customer}</td>
+                      <td><PageTableValue value={trx.customer} /></td>
                       <td style={{ textAlign: "right" }}>
-                        <strong>{trx.total}</strong>
+                        <strong>{displayPeso(trx.total)}</strong>
                       </td>
                       <td className="muted">{trx.payment}</td>
                       <td>
@@ -506,7 +496,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                 </div>
               )}
             </div>
-            <div className="wholesale-pagination">
+            <div className="wholesale-pagination" role="navigation" aria-label="Transactions pagination">
               <span className="muted">
                 Page {safeTrxPage} of {totalTrxPages} ({filteredTransactions.length} transactions)
               </span>
@@ -541,6 +531,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                 <input
                   type="search"
                   placeholder="Search user, action, module, or IP..."
+                  aria-label="Search audit logs"
                   value={logSearch}
                   onChange={(e) => {
                     setLogSearch(e.target.value);
@@ -588,12 +579,12 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
             </div>
 
             <div className="table-scroll">
-              <table className="data-table">
+              <table data-page-table="audit-logs" className="data-table">
                 <thead>
                   <tr>
                     <th>Date &amp; Time</th>
                     <th>User / current role</th>
-                    <th>Action</th>
+                    <th>Event</th>
                     <th>Module</th>
                     <th className="table-action-head">Action</th>
                   </tr>
@@ -603,14 +594,14 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                     <tr key={log.id} data-testid={`row-log-${log.id}`}>
                       <td className="muted">{eventTime(log.dateTime)}</td>
                       <td>
-                        <strong>{log.user}</strong>{" "}
+                        <strong><PageTableValue value={log.user} /></strong>{" "}
                         <span className="muted" style={{ fontSize: 12 }}>
                           ({log.role})
                         </span>
                       </td>
                       <td>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span>{log.action}</span>
+                        <div className="page-table-event" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <PageTableValue value={log.action} />
                           <span
                             className={`pill ${
                               log.status === "Success" ? "success" : log.status === "Warning" ? "warning" : "danger"
@@ -650,7 +641,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                 </div>
               )}
             </div>
-            <div className="wholesale-pagination">
+            <div className="wholesale-pagination" role="navigation" aria-label="Audit log pagination">
               <span className="muted">
                 Page {safeLogPage} of {totalLogPages} ({filteredLogs.length} logs)
               </span>
@@ -685,6 +676,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                 <input
                   type="search"
                   placeholder="Search user, activity, or description..."
+                  aria-label="Search user activity"
                   value={activitySearch}
                   onChange={(e) => {
                     setActivitySearch(e.target.value);
@@ -732,7 +724,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
             </div>
 
             <div className="table-scroll">
-              <table className="data-table">
+              <table data-page-table="user-activity" className="data-table">
                 <thead>
                   <tr>
                     <th>Date &amp; Time</th>
@@ -748,7 +740,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                     <tr key={act.id} data-testid={`row-activity-${act.id}`}>
                       <td className="muted">{eventTime(act.dateTime)}</td>
                       <td>
-                        <strong>{act.user}</strong>
+                        <strong><PageTableValue value={act.user} /></strong>
                       </td>
                       <td>
                         <span className="pill neutral">{act.role}</span>
@@ -787,7 +779,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                 </div>
               )}
             </div>
-            <div className="wholesale-pagination">
+            <div className="wholesale-pagination" role="navigation" aria-label="User activity pagination">
               <span className="muted">
                 Page {safeActivityPage} of {totalActivityPages} ({filteredActivities.length} activities)
               </span>
@@ -955,17 +947,17 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                             </td>
                             <td style={{ textAlign: "center" }}>{item.quantity}</td>
                             <td style={{ textAlign: "right" }} className="muted">
-                              {item.unitPrice}
+                              {displayPeso(item.unitPrice)}
                             </td>
                             <td style={{ textAlign: "right" }}>
-                              <strong>{item.subtotal}</strong>
+                              <strong>{displayPeso(item.subtotal)}</strong>
                             </td>
                           </tr>
                         ))
                       ) : (
                         <tr>
                           <td colSpan={4} className="muted">
-                            1 item ({selectedTrx.total})
+                            1 item ({displayPeso(selectedTrx.total)})
                           </td>
                         </tr>
                       )}
@@ -997,19 +989,19 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
                     <span className="muted">Subtotal:</span>
                     <span style={{ color: "hsl(var(--foreground))" }}>
-                      {selectedTrx.subtotal || selectedTrx.total}
+                      {displayPeso(selectedTrx.subtotal || selectedTrx.total)}
                     </span>
                   </div>
                   {selectedTrx.discount && selectedTrx.discount !== "₱0.00" && (
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
                       <span className="muted">Discount:</span>
-                      <span style={{ color: "#FF3B30" }}>-{selectedTrx.discount}</span>
+                      <span style={{ color: "#FF3B30" }}>-{displayPeso(selectedTrx.discount)}</span>
                     </div>
                   )}
                   {selectedTrx.vat && selectedTrx.vat !== "₱0.00" && (
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
                       <span className="muted">VAT (12%):</span>
-                      <span style={{ color: "hsl(var(--foreground))" }}>{selectedTrx.vat}</span>
+                      <span style={{ color: "hsl(var(--foreground))" }}>{displayPeso(selectedTrx.vat)}</span>
                     </div>
                   )}
                   <div
@@ -1027,14 +1019,14 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                     }}>
                     <strong>Total Amount:</strong>
                     <strong style={{ color: "hsl(var(--foreground))" }}>
-                      {selectedTrx.total}
+                      {displayPeso(selectedTrx.total)}
                     </strong>
                   </div>
                   {selectedTrx.amountReceived && (
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
                       <span className="muted">Amount Received:</span>
                       <span style={{ color: "hsl(var(--foreground))" }}>
-                        {selectedTrx.amountReceived}
+                        {displayPeso(selectedTrx.amountReceived)}
                       </span>
                     </div>
                   )}
@@ -1042,7 +1034,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
                       <span className="muted">Change:</span>
                       <span style={{ color: "hsl(var(--foreground))" }}>
-                        {selectedTrx.change}
+                        {displayPeso(selectedTrx.change)}
                       </span>
                     </div>
                   )}

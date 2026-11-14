@@ -1,3 +1,6 @@
+import { displayPeso } from "@/lib/currency";
+import { formatDisplayDate, formatDisplayDateTime } from "@/lib/business-date";
+import { PageTableValue } from "@/components/page-table-context";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { ModalTableDialog, ModalDataTable } from "@/components/modal-data-table";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
@@ -417,20 +420,7 @@ export default function InventoryPage({
   );
 
   const posStockMovements = useMemo(() => {
-    const fmt = new Intl.DateTimeFormat("en-PH", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-      timeZone: "Asia/Manila",
-    });
-    const formatDate = (value: string) => {
-      if (!value) return "—";
-      const parsed = new Date(value);
-      return Number.isNaN(parsed.getTime()) ? value : fmt.format(parsed);
-    };
+    const formatDate = (value: string) => formatDisplayDateTime(value, "Asia/Manila");
     const productById = new Map(items.map((p) => [p.id, p]));
     const productByName = new Map(items.map((p) => [p.name.toLowerCase(), p]));
 
@@ -847,7 +837,7 @@ export default function InventoryPage({
               <div>Loading inventory…</div>
             </div>
           ) : (
-            <table className="data-table">
+            <table data-page-table="inventory" className="data-table">
               <thead>
                 <tr>
                   <th style={{ width: 210, maxWidth: 210 }}>Product</th>
@@ -873,6 +863,7 @@ export default function InventoryPage({
                             <Package size={15} />
                           </span>
                           <div
+                            className="inventory-product-description"
                             style={{
                               maxWidth: 155,
                               overflowX: "auto",
@@ -880,7 +871,7 @@ export default function InventoryPage({
                               scrollbarWidth: "thin",
                               paddingBottom: 2,
                             }}>
-                            <strong>{product.name}</strong>
+                            <strong><PageTableValue value={product.name} /></strong>
                             {product.isDangerousDrug && (
                               <span
                                 className="pill danger"
@@ -889,7 +880,7 @@ export default function InventoryPage({
                               </span>
                             )}
                             <div className="muted" style={{ fontSize: 12 }}>
-                              {product.genericName}
+                              <PageTableValue value={product.genericName || ""} />
                             </div>
                           </div>
                         </div>
@@ -906,7 +897,7 @@ export default function InventoryPage({
                       </td>
                       <td className="muted">{product.category?.trim() || "None"}</td>
                       <td style={{ textAlign: "right" }}>
-                        <strong>{product.price}</strong>
+                        <strong>{displayPeso(product.price)}</strong>
                       </td>
                       <td style={{ textAlign: "right" }}>
                         <strong
@@ -956,7 +947,7 @@ export default function InventoryPage({
                                   ? 600
                                   : 400,
                             }}>
-                            {info.primaryExpiry}
+                            {formatDisplayDate(info.primaryExpiry)}
                           </span>
                         </div>
                       </td>
@@ -1081,9 +1072,9 @@ export default function InventoryPage({
             </div>
           )}
         </div>
-        <div className="wholesale-pagination">
+        <div className="wholesale-pagination" role="navigation" aria-label="Inventory pagination">
           <span className="muted">
-            Page {safeInventoryPage} of {totalInventoryPages}
+            Page {safeInventoryPage} of {totalInventoryPages} ({filtered.length} products)
           </span>
           <button
             type="button"
@@ -1114,6 +1105,7 @@ export default function InventoryPage({
               <input
                 type="search"
                 placeholder="Search product, SKU, TRX #, or cashier..."
+                aria-label="Search stock movements"
                 value={movementSearch}
                 onChange={(e) => {
                   setMovementSearch(e.target.value);
@@ -1141,7 +1133,7 @@ export default function InventoryPage({
           </div>
 
           <div className="table-scroll">
-            <table className="data-table">
+            <table data-page-table="movements" className="data-table">
               <thead>
                 <tr>
                   <th>Date &amp; Time</th>
@@ -1173,10 +1165,10 @@ export default function InventoryPage({
                             scrollbarWidth: "thin",
                             paddingBottom: 2,
                           }}>
-                          <strong>{mov.productName}</strong>
+                          <strong><PageTableValue value={mov.productName} /></strong>
                           {mov.genericName && (
                             <div className="muted" style={{ fontSize: 12 }}>
-                              {mov.genericName}
+                              <PageTableValue value={mov.genericName} />
                             </div>
                           )}
                         </div>
@@ -1214,9 +1206,9 @@ export default function InventoryPage({
               </div>
             )}
           </div>
-          <div className="wholesale-pagination">
+          <div className="wholesale-pagination" role="navigation" aria-label="Stock movement pagination">
             <span className="muted">
-              Page {safeMovementPage} of {totalMovementPages}
+              Page {safeMovementPage} of {totalMovementPages} ({filteredMovements.length} movements)
             </span>
             <button
               type="button"
@@ -1304,13 +1296,13 @@ export default function InventoryPage({
                     <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
                       Unit Price
                     </div>
-                    <strong style={{ fontSize: 13 }}>{viewProduct.price}</strong>
+                    <strong style={{ fontSize: 13 }}>{displayPeso(viewProduct.price)}</strong>
                   </div>
                   <div>
                     <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
                       Cost Price
                     </div>
-                    <strong style={{ fontSize: 13 }}>{viewProduct.cost}</strong>
+                    <strong style={{ fontSize: 13 }}>{displayPeso(viewProduct.cost)}</strong>
                   </div>
                   <div>
                     <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
@@ -1378,7 +1370,7 @@ export default function InventoryPage({
                             <td style={{ textAlign: "right" }}>
                               <strong>{b.quantity}</strong> units
                             </td>
-                            <td>{b.expiryDate}</td>
+                            <td>{formatDisplayDate(b.expiryDate)}</td>
                             <td>
                               <div
                                 style={{
@@ -1397,7 +1389,7 @@ export default function InventoryPage({
                                 ))}
                               </div>
                             </td>
-                            <td className="muted">{b.mfgDate || "—"}</td>
+                            <td className="muted">{formatDisplayDate(b.mfgDate)}</td>
                             <td className="muted">{b.supplier || "—"}</td>
                           </tr>
                         );
@@ -1614,7 +1606,7 @@ export default function InventoryPage({
                       {stockInProduct.batches.map((b) => (
                         <option key={b.batchNumber} value={b.batchNumber}>
                           {b.batchNumber} (Current: {b.quantity} units, Exp:{" "}
-                          {b.expiryDate})
+                          {formatDisplayDate(b.expiryDate)})
                         </option>
                       ))}
                     </select>
@@ -1716,7 +1708,7 @@ export default function InventoryPage({
                       {stockOutProduct.batches.map((b) => (
                         <option key={b.batchNumber} value={b.batchNumber}>
                           {b.batchNumber} (Available: {b.quantity} units, Exp:{" "}
-                          {b.expiryDate})
+                          {formatDisplayDate(b.expiryDate)})
                         </option>
                       ))}
                     </select>
@@ -2007,7 +1999,7 @@ export default function InventoryPage({
                               <strong>{b.quantity} units</strong>
                             </td>
                             <td style={{ color: isExpired ? "#dc2626" : "#b45309", fontWeight: 600 }}>
-                              {b.expiryDate}
+                              {formatDisplayDate(b.expiryDate)}
                             </td>
                             <td>
                               <span

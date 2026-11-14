@@ -3,9 +3,23 @@ export function localDateKey(date = new Date()): string {
 }
 
 export function formatCalendarDate(date: Date): string {
-  return new Intl.DateTimeFormat(undefined, {
-    year: "numeric", month: "short", day: "numeric",
-  }).format(date);
+  return `${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")}/${date.getFullYear()}`;
+}
+
+/** Display only: date-only business keys must not shift through UTC parsing. */
+export function formatDisplayDate(value: string | Date | null | undefined, timeZone?: string): string {
+  if (!value) return "—";
+  const parsed = value instanceof Date ? value : parseCalendarDate(value) ?? new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return String(value);
+  if (!timeZone || (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value))) return formatCalendarDate(parsed);
+  return new Intl.DateTimeFormat("en-US", { year: "numeric", month: "2-digit", day: "2-digit", timeZone }).format(parsed);
+}
+
+export function formatDisplayDateTime(value: string | Date | null | undefined, timeZone?: string): string {
+  if (!value) return "—";
+  const parsed = value instanceof Date ? value : parseCalendarDate(value) ?? new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return String(value);
+  return new Intl.DateTimeFormat("en-US", { year: "numeric", month: "2-digit", day: "2-digit", hour: "numeric", minute: "2-digit", hour12: true, ...(timeZone ? { timeZone } : {}) }).format(parsed);
 }
 
 export function parseCalendarDate(value: string): Date | null {

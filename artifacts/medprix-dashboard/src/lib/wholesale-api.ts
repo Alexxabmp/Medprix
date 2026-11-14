@@ -1,4 +1,5 @@
 import { safeError } from "./feedback";
+import { formatDisplayDateTime } from "./business-date";
 
 export type WholesaleProduct = {
   physicalStock: number;
@@ -282,11 +283,7 @@ export type WholesaleReceivableDetail = WholesaleReceivable & {
   methods: string[];
 };
 export function wholesaleDateTime(value: string) {
-  return new Intl.DateTimeFormat("en-PH", {
-    timeZone: "Asia/Manila",
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
+  return formatDisplayDateTime(value, "Asia/Manila");
 }
 export function wholesaleManilaInput() {
   const parts = new Intl.DateTimeFormat("en-CA", {

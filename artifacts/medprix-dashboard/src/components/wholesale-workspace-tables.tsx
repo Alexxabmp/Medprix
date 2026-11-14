@@ -1,3 +1,4 @@
+import { formatDisplayDate } from "@/lib/business-date";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { WholesaleOrderDetails } from "./wholesale-order-details";
 import { DeliveryReceiptView } from "./delivery-receipt-view";
@@ -408,7 +409,7 @@ export function WholesaleSummaryModal({
                                 : "—"}
                         </td>
                         {accounts && (
-                          <td data-label="Due date">{row.dueDate}</td>
+                          <td data-label="Due date">{formatDisplayDate(row.dueDate)}</td>
                         )}
                         <td data-label="Status">
                           <span
