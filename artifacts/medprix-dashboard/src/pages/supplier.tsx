@@ -1,4 +1,5 @@
 import { AppTooltip } from "@/components/ui/tooltip";
+import { ModalTableDialog, ModalDataTable } from "@/components/modal-data-table";
 import { EmptyState, TableEmptyState } from "@/components/custom-ui/empty-state";
 import { useDialogAccessibility } from "@/lib/use-dialog-accessibility";
 import { SupplierPaymentDialog } from "@/components/supplier-payment-dialog";
@@ -1006,7 +1007,7 @@ export default function SupplierPage({
               event.currentTarget === event.target && closeHistory()
             }
           >
-            <div className="modal supplier-history-modal">
+            <ModalTableDialog className="modal supplier-history-modal" close={closeHistory}>
               <div className="modal-header">
                 <div className="supplier-profile-title">
                   <span className="product-symbol">
@@ -1142,7 +1143,7 @@ export default function SupplierPage({
                   )}
                   {historyTab === "orders" && (
                     <div className="table-auto supplier-history-table">
-                      <table>
+                      <ModalDataTable>
                         <thead>
                           <tr>
                             <th>Order</th>
@@ -1179,7 +1180,7 @@ export default function SupplierPage({
                             </tr>
                           )}
                         </tbody>
-                      </table>
+                      </ModalDataTable>
                     </div>
                   )}
                   {historyTab === "financial" && (
@@ -1187,7 +1188,7 @@ export default function SupplierPage({
                       <section>
                         <h4>Invoices and payables</h4>
                         <div className="table-scroll supplier-history-table">
-                          <table>
+                          <ModalDataTable>
                             <thead>
                               <tr>
                                 <th>Invoice</th>
@@ -1249,7 +1250,7 @@ export default function SupplierPage({
                                 </tr>
                               )}
                             </tbody>
-                          </table>
+                          </ModalDataTable>
                         </div>
                       </section>
                       <section>
@@ -1280,7 +1281,7 @@ export default function SupplierPage({
                   )}
                 </>
               )}
-            </div>
+            </ModalTableDialog>
           </div>,
           document.body,
         )}

@@ -1,0 +1,376 @@
+/* Modal-only layout. Page tables retain their existing layout and pagination. */
+.modal.modal-table-standard .supplier-history-table { border: 0; border-radius: 0; }
+@media (max-width: 760px) {
+  .modal.modal-table-standard.modal-table-standard.wholesale-account-dialog .modal-data-table { min-width: 0; }
+  .modal.modal-table-standard.modal-table-standard.wholesale-account-dialog .modal-data-table td { text-align: left; white-space: normal; }
+}
+.modal.modal-table-standard.modal-table-standard {
+  min-height: 0;
+}
+.modal.modal-table-standard .modal-table-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  min-width: 0;
+}
+.modal.modal-table-standard.supplier-history-modal .supplier-financial-grid {
+  grid-template-columns: minmax(0, 1.4fr) minmax(220px, 0.6fr);
+}
+@media (max-width: 900px) {
+  .modal.modal-table-standard.supplier-history-modal .supplier-financial-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 760px) {
+  .modal.modal-table-standard.wholesale-account-dialog .modal-data-table td {
+    width: 100%;
+    max-width: none;
+    border-top: 0;
+  }
+}
+.modal.modal-table-standard.modal-table-standard {
+  color-scheme: light;
+  display: flex;
+  flex-direction: column;
+  width: min(1280px, 100%);
+  min-width: 0;
+  height: auto;
+  max-height: min(820px, calc(100dvh - 36px));
+  overflow: hidden;
+  padding: 0;
+}
+.dark .modal.modal-table-standard.modal-table-standard {
+  color-scheme: dark;
+}
+.modal.modal-table-standard.modal-table-standard.modal-table-valuation {
+  width: min(900px, 100%);
+}
+.modal.modal-table-standard.modal-table-standard.modal-table-cash {
+  width: min(1120px, 100%);
+}
+.modal.modal-table-standard.modal-table-standard > .modal-header {
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: 24px;
+  margin: 0;
+}
+.modal.modal-table-standard.modal-table-standard
+  > .modal-header
+  > div:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.modal.modal-table-standard.modal-table-standard
+  :is(.modal-table-body, .wholesale-dialog-body) {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  margin: 0 12px 0 0;
+  padding: 0 12px 24px 24px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+}
+.modal.modal-table-standard.modal-table-standard .modal-table-footer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 24px;
+  background: hsl(var(--surface));
+}
+.modal-table-footer-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.modal.modal-table-standard.modal-table-standard
+  .modal-table-footer
+  :is(.modal-actions, .wholesale-actions) {
+  margin: 0;
+}
+.modal-table-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 0;
+  font-size: 12px;
+}
+.modal-table-footer .modal-table-pager {
+  padding: 0;
+  margin-right: auto;
+}
+.modal.modal-table-standard.modal-table-standard .modal-table-frame {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  isolation: isolate;
+}
+.modal.modal-table-standard.modal-table-standard
+  :is(.modal-table-scroll, .table-scroll, .wholesale-summary-table) {
+  min-width: 0;
+  max-width: 100%;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.modal.modal-table-standard.modal-table-standard [data-modal-table] {
+  width: 100%;
+  min-width: 0;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+}
+.modal.modal-table-standard.modal-table-standard
+  [data-modal-table]
+  :is(th, td) {
+  padding: 11px 14px;
+  min-width: 0;
+  max-width: none;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  vertical-align: middle;
+  font-size: 12px;
+}
+.modal.modal-table-standard.modal-table-standard [data-modal-table] th {
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  border-top: 0;
+}
+.modal.modal-table-standard.modal-table-standard [data-modal-table] td {
+  border-top: 1px solid hsl(var(--border));
+}
+.modal.modal-table-standard.modal-table-standard [data-modal-table="products"] {
+  min-width: 640px;
+}
+.modal-table-product-column {
+  width: 40%;
+}
+.modal-table-quantity-column {
+  width: 12%;
+}
+.modal.modal-table-standard.modal-table-standard [data-modal-table="records"] {
+  min-width: 600px;
+  table-layout: auto;
+}
+.modal.modal-table-standard.modal-table-standard [data-modal-table="cash"] {
+  min-width: 830px;
+  table-layout: auto;
+}
+.modal.modal-table-standard.modal-table-standard
+  [data-modal-table="cash"]
+  :is(th, td):nth-child(n + 3):nth-child(-n + 5),
+.modal-table-standard [data-numeric="true"],
+.modal.modal-table-standard.modal-table-standard
+  [data-modal-table="items"]
+  :is(th, td):nth-child(n + 2),
+.modal.modal-table-standard.modal-table-standard
+  [data-modal-table="draft"]
+  :is(th, td):nth-child(n + 2):nth-child(-n + 4),
+.modal.modal-table-standard.modal-table-standard
+  [data-modal-table="reservations"]
+  :is(th, td):nth-child(4) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.modal.modal-table-standard.modal-table-standard [data-modal-table="items"] {
+  min-width: 640px;
+}
+.modal.modal-table-standard.modal-table-standard [data-modal-table="draft"] {
+  min-width: 840px;
+}
+.modal-table-order-product-column {
+  width: 34%;
+}
+.modal-table-approval-column {
+  width: 26%;
+}
+.modal.modal-table-standard.modal-table-standard
+  [data-modal-table="draft"]
+  select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+.modal.modal-table-standard.modal-table-standard
+  [data-modal-table="reservations"] {
+  min-width: 720px;
+}
+.modal.modal-table-standard.modal-table-standard
+  [data-modal-table="summary"]
+  th:first-child {
+  width: 27%;
+}
+.modal.modal-table-standard.modal-table-standard
+  [data-modal-table="summary"]
+  th:nth-child(2) {
+  width: 19%;
+}
+.modal.modal-table-standard.modal-table-standard
+  [data-modal-table="summary"]
+  th:nth-child(3) {
+  width: 15%;
+}
+.modal.modal-table-standard.modal-table-standard
+  [data-modal-table="summary"]
+  th:last-child {
+  width: 9%;
+}
+.modal.modal-table-standard.modal-table-standard
+  [data-modal-table="summary"]
+  :is(.pill, .button) {
+  white-space: nowrap;
+}
+.modal.modal-table-standard.modal-table-standard
+  [data-modal-table="attempts"]
+  th:first-child {
+  width: 28%;
+}
+.modal.modal-table-standard.modal-table-standard
+  [data-modal-table="attempts"]
+  th:nth-child(2) {
+  width: 22%;
+}
+.modal-table-standard .wholesale-details .data-table .field-hint {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.modal-table-standard .modal-table-value {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline dotted hsl(var(--muted) / 0.5);
+  text-underline-offset: 4px;
+}
+.modal-table-standard :is(.modal-table-value, [role="region"]):focus-visible {
+  outline: 2px solid hsl(var(--foreground));
+  outline-offset: -3px;
+  border-radius: 4px;
+}
+
+.modal.modal-table-standard.modal-table-standard
+  :is(
+    .modal-table-body,
+    .wholesale-dialog-body,
+    .modal-table-scroll,
+    .table-scroll,
+    .wholesale-summary-table
+  ) {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted)) hsl(var(--surface-soft));
+}
+/* Existing mobile cards remain a deliberate variant; do not reapply table cell rules. */
+@media (max-width: 760px) {
+  .modal-table-standard.wholesale-summary-dialog [data-modal-table] {
+    min-width: 0;
+  }
+  .modal-table-standard.wholesale-summary-dialog colgroup {
+    display: none;
+  }
+  .modal-table-standard.wholesale-summary-dialog [data-modal-table] td {
+    width: 100%;
+    text-align: left;
+    padding: 8px 0;
+    white-space: normal;
+    border: 0;
+  }
+  .modal-table-standard.wholesale-summary-dialog [data-modal-table] tr {
+    border-bottom: 1px solid hsl(var(--border));
+  }
+  .modal-table-standard.wholesale-summary-dialog
+    [data-modal-table]
+    tr:last-child {
+    border-bottom: 0;
+  }
+  .modal-table-standard.wholesale-summary-dialog [data-modal-table] .pill {
+    white-space: nowrap;
+  }
+}
+@media (max-width: 480px) {
+  .modal.modal-table-standard.modal-table-standard > .modal-header {
+    padding: 16px;
+  }
+  .modal.modal-table-standard.modal-table-standard
+    :is(.modal-table-body, .wholesale-dialog-body) {
+    padding: 0 12px 16px 16px;
+  }
+  .modal.modal-table-standard.modal-table-standard .modal-table-footer {
+    padding: 12px 16px;
+    align-items: flex-end;
+  }
+  .modal-table-footer-content {
+    justify-content: flex-start;
+  }
+  .modal-table-footer .modal-table-pager {
+    justify-content: flex-start;
+    gap: 8px;
+  }
+  .modal-table-footer .modal-table-pager > span:first-child {
+    flex-basis: 100%;
+  }
+}
+
+/* Content-aware sizing for inline tables; keep intrinsic compact values readable. */
+.modal.modal-table-standard.modal-table-standard .modal-data-table {
+  table-layout: auto;
+}
+.modal.modal-table-standard.modal-table-standard
+  .modal-data-table
+  td.modal-table-text-cell {
+  width: 36%;
+  max-width: 0;
+}
+.modal.modal-table-standard.modal-table-standard .modal-table-key-value {
+  min-width: 0 !important;
+}
+.modal.modal-table-standard.modal-table-standard
+  .modal-table-key-value
+  td:last-child,
+.modal.modal-table-standard.modal-table-standard
+  .modal-table-key-value
+  td:last-child
+  > div {
+  white-space: normal !important;
+  overflow: visible !important;
+  overflow-wrap: anywhere;
+  max-width: none !important;
+}
+.modal.modal-table-standard.modal-table-standard
+  .modal-table-key-value
+  td:first-child {
+  width: 28%;
+}
+@media (max-width: 760px) {
+  .modal.modal-table-standard.modal-table-standard.wholesale-account-dialog
+    .modal-data-table
+    td {
+    width: 100%;
+    max-width: none;
+    border-top: 0;
+  }
+}
+.modal.modal-table-standard.modal-table-standard .modal-data-table {
+  min-width: var(--modal-table-min, 640px);
+}

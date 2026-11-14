@@ -1,4 +1,5 @@
 import { AppTooltip } from "@/components/ui/tooltip";
+import { ModalTableDialog, ModalDataTable } from "@/components/modal-data-table";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
@@ -217,7 +218,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
           className="modal-backdrop"
           onMouseDown={(event) => event.currentTarget === event.target && setActiveModal(null)}
         >
-          <div className="modal dialog" style={{ width: "min(680px, 100%)" }}>
+          <ModalTableDialog className="modal dialog"  close={() => setActiveModal(null)}>
             <div className="modal-header">
               <div>
                 <h2>Shift Sales · {dateLabel}</h2>
@@ -290,8 +291,8 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
               <h4 style={{ margin: "0 0 10px", fontSize: 12, textTransform: "uppercase", letterSpacing: ".08em", color: "hsl(var(--muted))", fontWeight: 700 }}>
                 Completed Shift Transactions
               </h4>
-              <div className="table-scroll" style={{ border: "1px solid hsl(var(--border))", borderRadius: 12, overflowX: "auto" }}>
-                <table className="data-table">
+              <div className="table-scroll" >
+                <ModalDataTable className="data-table">
                   <thead>
                     <tr>
                       <th>Receipt ID</th>
@@ -327,10 +328,10 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                       </tr>
                     )}
                   </tbody>
-                </table>
+                </ModalDataTable>
               </div>
             </div>
-          </div>
+          </ModalTableDialog>
         </div>,
         document.body
       )}
@@ -381,7 +382,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
           className="modal-backdrop"
           onMouseDown={(event) => event.currentTarget === event.target && setActiveModal(null)}
         >
-          <div className="modal dialog" style={{ width: "min(760px, 100%)" }}>
+          <ModalTableDialog className="modal dialog"  close={() => setActiveModal(null)}>
             <div className="modal-header">
               <div>
                 <h2>Shift Receipts Log</h2>
@@ -413,8 +414,8 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
               </span>
             </div>
 
-            <div className="table-scroll" style={{ border: "1px solid hsl(var(--border))", borderRadius: 12, overflowX: "auto", maxHeight: 380 }}>
-              <table className="data-table">
+            <div className="table-scroll" >
+              <ModalDataTable className="data-table">
                 <thead>
                   <tr>
                     <th>Receipt #</th>
@@ -469,9 +470,9 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                     </tr>
                   )}
                 </tbody>
-              </table>
+              </ModalDataTable>
             </div>
-          </div>
+          </ModalTableDialog>
         </div>,
         document.body
       )}

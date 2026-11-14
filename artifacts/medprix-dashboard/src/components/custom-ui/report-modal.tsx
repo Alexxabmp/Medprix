@@ -1,7 +1,7 @@
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ArrowUpRight, Download, X } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Download, X } from "lucide-react";
 import {
   buildReportPdf,
   computeDashboardAnalytics,
@@ -12,6 +12,7 @@ import {
   type DashboardAnalytics,
 } from "@/lib/dashboard-analytics";
 import type { ReportType, ToastFn } from "@/lib/types";
+import { ModalTableValue, useModalTableStandard, ModalTableLayout, ModalTableBody, ModalTableFooter, ModalTableFrame, ModalTablePager, useModalTableRows, ModalTableContext } from "@/components/modal-table-layout";
 
 // --- Utility ---
 
@@ -84,18 +85,29 @@ export function ModalTable({
   headers: string[];
   rows: string[][];
 }) {
+  const preview = useModalTableStandard();
+  const textColumn = headers[0] === "Product";
+  const pagination = useModalTableRows(rows, headers.join("|"));
   return (
-    <div style={{ maxHeight: 300, overflowY: "auto" }}>
-      <table>
+    <>
+    <ModalTableFrame>
+    <div
+      className={preview ? "modal-table-scroll" : undefined}
+      role={preview ? "region" : undefined}
+      aria-label={preview ? "Report table, scroll horizontally for more columns" : undefined}
+      tabIndex={preview ? 0 : undefined}
+      style={preview ? undefined : { maxHeight: 300, overflowY: "auto" }}>
+      <table data-modal-table={preview ? (textColumn ? "products" : "records") : undefined}>
+        {preview && textColumn && <colgroup><col className="modal-table-product-column" /><col className="modal-table-quantity-column" /><col /><col /></colgroup>}
         <thead>
           <tr>
             {headers.map((h) => (
-              <th key={h}>{h}</th>
+              <th key={h} data-numeric={preview && /^(Qty|Stock|Units sold|Revenue|Current stock|Unit price|Value|Total)$/.test(h) ? "true" : undefined}>{h}</th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, index) => (
+          {pagination.rows.map((row, index) => (
             <tr key={`${row[0]}-${index}`}>
               {row.map((cell, cellIndex) => {
                 const isLast = cellIndex === row.length - 1;
@@ -116,7 +128,7 @@ export function ModalTable({
                     </td>
                   );
                 }
-                return <td key={`${cell}-${cellIndex}`}>{cell}</td>;
+                return <td key={`${cell}-${cellIndex}`} data-numeric={preview && /^(Qty|Stock|Units sold|Revenue|Current stock|Unit price|Value|Total)$/.test(headers[cellIndex]) ? "true" : undefined}>{textColumn && cellIndex === 0 ? <ModalTableValue value={cell} /> : cell}</td>;
               })}
             </tr>
           ))}
@@ -130,6 +142,9 @@ export function ModalTable({
         </tbody>
       </table>
     </div>
+    </ModalTableFrame>
+    <ModalTableFooter><ModalTablePager {...pagination} label="Report" /></ModalTableFooter>
+    </>
   );
 }
 
@@ -156,6 +171,8 @@ export function ReportModal({
   analytics?: DashboardAnalytics;
   onRetryFinance?: () => void;
 }) {
+  const preview = useModalTableStandard();
+  const standard = type === "financial" ? null : preview;
   const [movementTab, setMovementTab] = useState<"fast" | "slow">("fast");
   const [cashDetailRow, setCashDetailRow] = useState<number | null>(
     initialCashDetailRow,
@@ -184,6 +201,7 @@ export function ReportModal({
 
   const financial = analytics.financial;
   const cashMismatches = analytics.cash.mismatches;
+  const cashPagination = useModalTableRows(cashMismatches, type);
   const activeCashRow =
     cashDetailRow !== null ? cashMismatches[cashDetailRow] ?? null : null;
 
@@ -216,15 +234,23 @@ export function ReportModal({
         if (event.currentTarget === event.target) onClose();
       }}>
       <section
-        className="modal"
+        className={"modal" + (standard ? " modal-table-standard modal-table-report modal-table-" + type : "")}
         role="dialog"
         aria-modal="true"
         data-testid={`modal-report-${type}`}>
+        <ModalTableContext.Provider value={standard}>
+        <ModalTableLayout close={onClose}>
         <div className="modal-header">
           <div>
             <h2>{titles[type]}</h2>
             <p className="modal-sub">{subtitle}</p>
           </div>
+          {preview ? (
+            <div className="wholesale-dialog-header-actions">
+              {activeCashRow && <button type="button" className="button soft wholesale-dialog-back" aria-label="Back" onClick={() => setCashDetailRow(null)}><ArrowLeft size={14} /> Back</button>}
+              <button type="button" className="modal-close" aria-label="Close dialog" data-testid="button-close-modal" onClick={onClose}><X size={16} /></button>
+            </div>
+          ) : <>
           {activeCashRow ? (
             <button
               className="button soft"
@@ -239,8 +265,10 @@ export function ReportModal({
             onClick={onClose}>
             <X size={16} />
           </button>
+          </>}
         </div>
 
+        <ModalTableBody>
         {/* Sales */}
         {type === "sales" && (
           <>
@@ -459,8 +487,9 @@ export function ReportModal({
             </div>
             <ModalSection
               title={`${cashMismatches.length} inconsistencies detected`}>
-              <div style={{ maxHeight: 300, overflowY: "auto" }}>
-                <table>
+              <ModalTableFrame>
+              <div className={preview ? "modal-table-scroll" : undefined} role={preview ? "region" : undefined} aria-label={preview ? "Cash mismatches, scroll horizontally for more columns" : undefined} tabIndex={preview ? 0 : undefined} style={preview ? undefined : { maxHeight: 300, overflowY: "auto" }}>
+                <table data-modal-table={preview ? "cash" : undefined}>
                   <thead>
                     <tr>
                       <th>Date</th>
@@ -472,7 +501,7 @@ export function ReportModal({
                     </tr>
                   </thead>
                   <tbody>
-                    {cashMismatches.map((row, index) => (
+                    {cashPagination.rows.map((row, index) => (
                       <tr key={row.dateKey + row.shift}>
                         <td>{row.date}</td>
                         <td>{row.shift}</td>
@@ -495,7 +524,7 @@ export function ReportModal({
                               height: "auto",
                             }}
                             data-testid={`button-view-cash-details-${index}`}
-                            onClick={() => setCashDetailRow(index)}>
+                            onClick={() => setCashDetailRow(cashPagination.offset + index)}>
                             View details <ArrowUpRight size={11} />
                           </button>
                         </td>
@@ -511,6 +540,8 @@ export function ReportModal({
                   </tbody>
                 </table>
               </div>
+              </ModalTableFrame>
+              <ModalTableFooter><ModalTablePager {...cashPagination} label="Cash mismatches" /></ModalTableFooter>
             </ModalSection>
           </>
         )}
@@ -561,6 +592,8 @@ export function ReportModal({
           </>
         )}
 
+        </ModalTableBody>
+        <ModalTableFooter>
         <div className="modal-actions">
           <button
             className="button dark"
@@ -570,6 +603,9 @@ export function ReportModal({
             <Download size={14} /> Export report
           </button>
         </div>
+        </ModalTableFooter>
+        </ModalTableLayout>
+        </ModalTableContext.Provider>
       </section>
     </div>,
     document.body,

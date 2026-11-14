@@ -2,6 +2,7 @@ import { useLayoutEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, X } from "lucide-react";
 import { useDialogAccessibility } from "@/lib/use-dialog-accessibility";
+import { useModalTableStandard, ModalTableLayout, ModalTableContext } from "./modal-table-layout";
 
 export function WholesaleDialog({
   title,
@@ -26,6 +27,8 @@ export function WholesaleDialog({
   animate?: boolean;
   className?: string;
 }) {
+  const preview = useModalTableStandard();
+  const tableDialog = review || /wholesale-(summary|account)-dialog/.test(className);
   useDialogAccessibility(true, ".wholesale-dialog", close, busy);
   useLayoutEffect(() => {
     const previous = document.body.style.overflow;
@@ -44,10 +47,13 @@ export function WholesaleDialog({
       <section
         className={
           "modal wholesale-dialog" +
+          (preview && tableDialog ? " modal-table-standard" : "") +
           (review ? " wholesale-review-dialog" : "") +
           (className ? " " + className : "")
         }
       >
+        <ModalTableContext.Provider value={tableDialog ? preview : null}>
+        <ModalTableLayout close={close} busy={busy}>
         <div className="modal-header">
           <div>
             <div className="wholesale-dialog-title">
@@ -80,6 +86,8 @@ export function WholesaleDialog({
           </div>
         </div>
         <div className="wholesale-dialog-body">{children}</div>
+        </ModalTableLayout>
+        </ModalTableContext.Provider>
       </section>
     </div>,
     document.body,

@@ -1,4 +1,5 @@
 import { AppTooltip } from "@/components/ui/tooltip";
+import { ModalTableDialog, ModalDataTable } from "@/components/modal-data-table";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { parseCalendarDate, formatCalendarDate } from "@/lib/business-date";
 import { pharmacyDate } from "@workspace/api-zod";
@@ -1177,7 +1178,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
             onMouseDown={(event) =>
               event.currentTarget === event.target && setSelectedOrderForItems(null)
             }>
-            <div className="modal dialog" style={{ maxWidth: 640 }}>
+            <ModalTableDialog className="modal dialog"  close={() => setSelectedOrderForItems(null)}>
               <div className="modal-header">
                 <div>
                   <h2>Purchase order items</h2>
@@ -1235,7 +1236,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 </div>
 
                 <div className="table-scroll">
-                  <table className="data-table">
+                  <ModalDataTable className="data-table">
                     <thead>
                       <tr>
                         <th>Product</th>
@@ -1269,7 +1270,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                         </tr>
                       )}
                     </tbody>
-                  </table>
+                  </ModalDataTable>
                 </div>
               </div>
               {(receivingError || receivingProblem) && <div className="inline-error" role="alert">{receivingError || receivingProblem}</div>}
@@ -1284,7 +1285,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                   <Plus size={13} /> {isSaving ? "Preparing..." : "Receive delivery for this PO"}
                 </button>
               </div>
-            </div>
+            </ModalTableDialog>
           </div>,
           document.body
         )}

@@ -1,4 +1,5 @@
 import { AppTooltip } from "@/components/ui/tooltip";
+import { ModalTableDialog, ModalDataTable } from "@/components/modal-data-table";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { safeError, readResponse } from "@/lib/feedback";
 import { ProductDialog } from "@/components/custom-ui/product-dialog";
@@ -1244,9 +1245,9 @@ export default function InventoryPage({
             className="modal-backdrop"
             onMouseDown={(e) => e.currentTarget === e.target && setViewProduct(null)}
             data-testid="modal-view-product">
-            <div
+            <ModalTableDialog
               className="modal"
-              style={{ width: "min(640px, 100%)" }}>
+               close={() => setViewProduct(null)}>
               <div className="modal-header">
                 <div>
                   <h2>{viewProduct.name}</h2>
@@ -1354,12 +1355,8 @@ export default function InventoryPage({
               <div className="modal-section">
                 <h4>Recorded Batches &amp; Expiry Dates ({viewProduct.batches.length})</h4>
                 <div
-                  style={{
-                    overflowX: "auto",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: 11,
-                  }}>
-                  <table className="data-table" style={{ fontSize: 12 }}>
+                  >
+                  <ModalDataTable className="data-table" style={{ fontSize: 12 }}>
                     <thead>
                       <tr>
                         <th>Batch #</th>
@@ -1413,12 +1410,12 @@ export default function InventoryPage({
                         </tr>
                       )}
                     </tbody>
-                  </table>
+                  </ModalDataTable>
                 </div>
               </div>
 
 
-            </div>
+            </ModalTableDialog>
           </div>,
           document.body,
         )}
@@ -1813,7 +1810,7 @@ export default function InventoryPage({
             className="modal-backdrop"
             onMouseDown={(e) => e.currentTarget === e.target && setAlertModal(null)}
             data-testid="modal-low-stock-products">
-            <div className="modal">
+            <ModalTableDialog className="modal" close={() => setAlertModal(null)}>
               <div className="modal-header">
                 <div>
                   <h2>Low Stock Products ({lowStockItems.length})</h2>
@@ -1843,13 +1840,8 @@ export default function InventoryPage({
 
                 <div
                   className="table-scroll"
-                  style={{
-                    maxHeight: 380,
-                    overflowY: "auto",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: 10,
-                  }}>
-                  <table className="data-table" style={{ width: "100%" }}>
+                  >
+                  <ModalDataTable className="data-table" style={{ width: "100%" }}>
                     <thead>
                       <tr>
                         <th>Product &amp; SKU</th>
@@ -1920,10 +1912,10 @@ export default function InventoryPage({
                         </tr>
                       )}
                     </tbody>
-                  </table>
+                  </ModalDataTable>
                 </div>
               </div>
-            </div>
+            </ModalTableDialog>
           </div>,
           document.body,
         )}
@@ -1937,7 +1929,7 @@ export default function InventoryPage({
             className="modal-backdrop"
             onMouseDown={(e) => e.currentTarget === e.target && setAlertModal(null)}
             data-testid="modal-expired-products">
-            <div className="modal">
+            <ModalTableDialog className="modal" close={() => setAlertModal(null)}>
               <div className="modal-header">
                 <div>
                   <h2>
@@ -1969,13 +1961,8 @@ export default function InventoryPage({
 
                 <div
                   className="table-scroll"
-                  style={{
-                    maxHeight: 380,
-                    overflowY: "auto",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: 10,
-                  }}>
-                  <table className="data-table" style={{ width: "100%" }}>
+                  >
+                  <ModalDataTable className="data-table" style={{ width: "100%" }}>
                     <thead>
                       <tr>
                         <th>Product &amp; SKU</th>
@@ -2051,10 +2038,10 @@ export default function InventoryPage({
                         </tr>
                       )}
                     </tbody>
-                  </table>
+                  </ModalDataTable>
                 </div>
               </div>
-            </div>
+            </ModalTableDialog>
           </div>,
           document.body,
         )}

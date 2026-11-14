@@ -1,4 +1,6 @@
 import { AppTooltip } from "@/components/ui/tooltip";
+import { ModalDataTable } from "./modal-data-table";
+import { ModalTableFooter } from "./modal-table-layout";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Eye } from "lucide-react";
@@ -328,7 +330,7 @@ export function WholesaleReceivables({
                   <section className="modal-section">
                     <h3>Payment history</h3>
                     <div className="table-scroll">
-                      <table className="data-table">
+                      <ModalDataTable className="data-table">
                         <thead>
                           <tr>
                             <th>Collected</th>
@@ -409,9 +411,10 @@ export function WholesaleReceivables({
                             </tr>
                           )}
                         </tbody>
-                      </table>
+                      </ModalDataTable>
                     </div>
                   </section>
+                  <ModalTableFooter>
                   <div className="wholesale-actions">
                     <button
                       className="button primary-action"
@@ -430,6 +433,7 @@ export function WholesaleReceivables({
                       Record payment
                     </button>
                   </div>
+                  </ModalTableFooter>
                 </>
               ) : mode === "payment" ? (
                 <form

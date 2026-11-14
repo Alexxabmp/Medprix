@@ -13,6 +13,7 @@ import {
   type DeliveryReceipt,
 } from "@/lib/wholesale-api";
 import { safeError } from "@/lib/feedback";
+import { ModalTableValue, useModalTableStandard, ModalTableFrame, ModalTablePager, ModalTableFooter, useModalTableRows } from "./modal-table-layout";
 
 export function WholesaleOrderDetails({
   order,
@@ -37,6 +38,7 @@ export function WholesaleOrderDetails({
   initialDetail?: WholesaleOrderDetail;
   viewReceipt?: (receipt: DeliveryReceipt) => void;
 }) {
+  const tablePreview = useModalTableStandard();
   const [showReceipt, setShowReceipt] = useState(false);
   const [detail, setDetail] = useState<WholesaleOrderDetail | null>(
     () => initialDetail ?? getCachedWholesale<WholesaleOrderDetail>("/orders/" + order.id),
@@ -74,6 +76,8 @@ export function WholesaleOrderDetails({
       override: null,
     }));
   const selectedIds = Object.values(selected).filter(Boolean);
+  const itemPages = useModalTableRows(displayLines, order.id);
+  const reservationPages = useModalTableRows(detail?.reservations ?? [], order.id);
   const preview = order.lines.reduce((sum, line) => {
     const override = current.find(
       (item) => item.id === selected[line.productId],
@@ -137,8 +141,10 @@ export function WholesaleOrderDetails({
           </section>
           <section className="wholesale-review-items">
             <h3>Order items</h3>
-            <div className="table-scroll">
-              <table className="data-table">
+            <ModalTableFrame>
+            <div className="table-scroll" role={tablePreview ? "region" : undefined} aria-label={tablePreview ? "Order items, scroll horizontally for more columns" : undefined} tabIndex={tablePreview ? 0 : undefined}>
+              <table className="data-table" data-modal-table={tablePreview ? (draft ? "draft" : "items") : undefined}>
+                {tablePreview && <colgroup><col className="modal-table-order-product-column" /><col /><col /><col />{draft && <col className="modal-table-approval-column" />}</colgroup>}
                 <thead>
                   <tr>
                     <th>Product</th>
@@ -149,7 +155,7 @@ export function WholesaleOrderDetails({
                   </tr>
                 </thead>
                 <tbody>
-                  {displayLines.map((line) => {
+                  {itemPages.rows.map((line) => {
                     const approvals = current.filter(
                       (item) =>
                         item.productId === line.productId && item.approvedBy,
@@ -161,7 +167,7 @@ export function WholesaleOrderDetails({
                     return (
                       <tr key={line.productId}>
                         <td data-label="Product">
-                          <strong>{line.name}</strong>
+                          <strong><ModalTableValue value={line.name} /></strong>
                           {line.override && (
                             <p className="field-hint">
                               Original: {wholesalePeso(line.originalPrice)} ·
@@ -205,6 +211,8 @@ export function WholesaleOrderDetails({
                 </tbody>
               </table>
             </div>
+            </ModalTableFrame>
+            <ModalTablePager {...itemPages} label="Order items" />
             {detail.snapshot && (
               <p className="wholesale-review-vat">
                 VAT included: {wholesalePeso(detail.snapshot.vat)}
@@ -343,8 +351,10 @@ export function WholesaleOrderDetails({
           {detail.reservations.length > 0 && (
             <section className="modal-section">
               <h3>Batch reservations</h3>
-              <div className="table-scroll">
-                <table className="data-table">
+              <ModalTableFrame>
+              <div className="table-scroll" role={tablePreview ? "region" : undefined} aria-label={tablePreview ? "Batch reservations, scroll horizontally for more columns" : undefined} tabIndex={tablePreview ? 0 : undefined}>
+                <table className="data-table" data-modal-table={tablePreview ? "reservations" : undefined}>
+                  {tablePreview && <colgroup><col className="modal-table-order-product-column" /><col /><col /><col /><col /></colgroup>}
                   <thead>
                     <tr>
                       <th>Product</th>
@@ -355,9 +365,9 @@ export function WholesaleOrderDetails({
                     </tr>
                   </thead>
                   <tbody>
-                    {detail.reservations.map((reservation) => (
+                    {reservationPages.rows.map((reservation) => (
                       <tr key={reservation.id}>
-                        <td data-label="Product">{reservation.product}</td>
+                        <td data-label="Product"><ModalTableValue value={reservation.product} /></td>
                         <td data-label="Batch">{reservation.batchNumber}</td>
                         <td data-label="Expiry">{reservation.expiry}</td>
                         <td data-label="Quantity">{reservation.quantity}</td>
@@ -375,6 +385,8 @@ export function WholesaleOrderDetails({
                   </tbody>
                 </table>
               </div>
+              </ModalTableFrame>
+              <ModalTablePager {...reservationPages} label="Batch reservations" />
             </section>
           )}
           {!draft && (
@@ -391,6 +403,7 @@ export function WholesaleOrderDetails({
             />
           )}
           {active && !action && (
+            <ModalTableFooter>
             <div className="wholesale-actions">
               <button
                 disabled={busy}
@@ -409,6 +422,7 @@ export function WholesaleOrderDetails({
                 </button>
               )}
             </div>
+            </ModalTableFooter>
           )}
           {action === "confirm" && (
             <section className="modal-section">
@@ -419,6 +433,7 @@ export function WholesaleOrderDetails({
                 units. Prices and client details will be saved. Physical stock
                 stays unchanged.
               </p>
+              <ModalTableFooter>
               <div className="wholesale-actions">
                 <button
                   disabled={busy}
@@ -440,10 +455,12 @@ export function WholesaleOrderDetails({
                   Confirm and reserve
                 </button>
               </div>
+              </ModalTableFooter>
             </section>
           )}
           {action === "cancel" && (
             <form
+              id={tablePreview ? "preview-cancel-" + order.id : undefined}
               className="modal-section"
               onSubmit={(event) => {
                 event.preventDefault();
@@ -469,18 +486,21 @@ export function WholesaleOrderDetails({
                     maxLength={500}
                   />
                 </div>
+                <ModalTableFooter>
                 <div className="wholesale-actions">
                   <button
                     type="button"
+                    disabled={busy}
                     className="button soft"
                     onClick={() => setAction(null)}
                   >
                     Back
                   </button>
-                  <button className="button dark" type="submit">
+                  <button className="button dark" type="submit" form={tablePreview ? "preview-cancel-" + order.id : undefined} disabled={busy}>
                     Confirm cancellation
                   </button>
                 </div>
+                </ModalTableFooter>
               </fieldset>
             </form>
           )}
