@@ -50,6 +50,7 @@ export default function WholesalePage({
   role: string;
 }) {
   const pageTableStandard = usePageTableStandard();
+  const [viewClient, setViewClient] = useState<WholesaleClient | null>(null);
   const storageKey =
     "medprix-wholesale-request:" +
     (localStorage.getItem("medprix-username") ?? "");
@@ -676,6 +677,18 @@ export default function WholesalePage({
                               >
                                 <Pencil size={13} />
                               </button></AppTooltip>
+                              {pageTableStandard && (
+                                <AppTooltip content="View client">
+                                  <button
+                                    type="button"
+                                    className="button soft table-action-btn"
+                                    aria-label="View client"
+                                    onClick={() => setViewClient(client)}
+                                  >
+                                    <Eye size={13} aria-hidden="true" />
+                                  </button>
+                                </AppTooltip>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -826,6 +839,25 @@ export default function WholesalePage({
           )
         )}
       </section>
+      {pageTableStandard && viewClient && (
+        <WholesaleDialog title="Client information" busy={false} close={() => setViewClient(null)}>
+          <dl style={{ display: "grid", gap: 16 }}>
+            <div>
+              <dt className="field-label">Client name</dt>
+              <dd style={{ margin: 0, overflowWrap: "anywhere" }}>{viewClient.name}</dd>
+            </div>
+            <div>
+              <dt className="field-label">Delivery address</dt>
+              <dd style={{ margin: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+                {viewClient.address || "Not provided"}
+              </dd>
+            </div>
+          </dl>
+          <div className="wholesale-actions">
+            <button type="button" className="button soft" onClick={() => setViewClient(null)}>Close</button>
+          </div>
+        </WholesaleDialog>
+      )}
       {dialog?.kind === "order" && (
         <WholesaleOrderEditor
           order={dialog.order}
