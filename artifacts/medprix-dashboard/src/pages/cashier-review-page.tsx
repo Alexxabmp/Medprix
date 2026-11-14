@@ -1,3 +1,4 @@
+import { AppTooltip } from "@/components/ui/tooltip";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
@@ -448,15 +449,15 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                         <strong>{r.totalFormatted}</strong>
                       </td>
                       <td>
-                        <button
+                        <AppTooltip content={"View Receipt Details"}><button
                           type="button"
                           className="icon-button"
                           style={{ width: 26, height: 26 }}
-                          title="View Receipt Details"
+
                           onClick={() => setSelectedReceipt(r)}
                         >
                           <Eye size={13} />
-                        </button>
+                        </button></AppTooltip>
                       </td>
                     </tr>
                   ))}

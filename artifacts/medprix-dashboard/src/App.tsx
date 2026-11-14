@@ -17,7 +17,7 @@ const queryClient = new QueryClient();
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
+      <TooltipProvider delayDuration={250}>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <AppContent />
           <Toaster />

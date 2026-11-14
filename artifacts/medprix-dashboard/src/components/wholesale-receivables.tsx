@@ -1,3 +1,4 @@
+import { AppTooltip } from "@/components/ui/tooltip";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Eye } from "lucide-react";
@@ -218,15 +219,15 @@ export function WholesaleReceivables({
                     </td>
                     <td className="table-action-cell">
                       <div className="table-actions">
-                        <button
+                        <AppTooltip content={"View account"}><button
                           className="button soft table-action-btn"
                           disabled={request.locked || opening}
                           aria-label="View account"
-                          title="View account"
+
                           onClick={() => void open(item.id)}
                         >
                           <Eye size={13} />
-                        </button>
+                        </button></AppTooltip>
                       </div>
                     </td>
                   </tr>

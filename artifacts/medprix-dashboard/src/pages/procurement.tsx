@@ -1,3 +1,4 @@
+import { AppTooltip } from "@/components/ui/tooltip";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { parseCalendarDate, formatCalendarDate } from "@/lib/business-date";
 import { pharmacyDate } from "@workspace/api-zod";
@@ -893,14 +894,14 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                                 <PackagePlus size={12} />
                                 Receive
                               </button>}
-                            <button
+                            <AppTooltip content={"View items"}><button
                               type="button"
                               className="button soft table-action-btn"
-                              title="View items"
+
                               aria-label="View items"
                               onClick={() => void openItemsModal(order)}>
                               <Eye size={13} />
-                            </button>
+                            </button></AppTooltip>
                           </div>
                         </td>
                       </tr>

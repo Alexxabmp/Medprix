@@ -1,3 +1,4 @@
+import { AppTooltip } from "@/components/ui/tooltip";
 import { EmptyState, TableEmptyState } from "@/components/custom-ui/empty-state";
 import { useDialogAccessibility } from "@/lib/use-dialog-accessibility";
 import { SupplierPaymentDialog } from "@/components/supplier-payment-dialog";
@@ -628,16 +629,16 @@ export default function SupplierPage({
                         </td>
                         <td className="table-action-cell">
                           <div className="table-actions">
-                            <button
+                            <AppTooltip content={`View ${supplier.name}`}><button
                               type="button"
                               className="button soft table-action-btn"
                               aria-label={`View ${supplier.name}`}
-                              title={`View ${supplier.name}`}
+
                               data-testid={`button-view-supplier-${supplier.code}`}
                               onClick={() => openHistory(supplier)}
                             >
                               <Eye size={13} />
-                            </button>
+                            </button></AppTooltip>
                           </div>
                         </td>
                       </tr>

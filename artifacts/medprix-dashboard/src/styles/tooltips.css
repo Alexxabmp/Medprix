@@ -1,0 +1,41 @@
+/* Shared by page and modal tooltips. Positioning is context-aware in ui/tooltip.tsx. */
+.tooltip-disabled-trigger {
+  display: inline-flex;
+}
+.tooltip-disabled-trigger > :disabled {
+  pointer-events: none;
+}
+.app-tooltip {
+  color-scheme: light;
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted)) hsl(var(--surface-soft));
+}
+.dark .app-tooltip {
+  color-scheme: dark;
+}
+.app-tooltip {
+  z-index: 1200;
+  width: max-content;
+  max-width: min(
+    360px,
+    calc(100vw - 24px),
+    var(--radix-tooltip-content-available-width, 360px)
+  );
+  max-height: min(
+    280px,
+    calc(100dvh - 24px),
+    var(--radix-tooltip-content-available-height, 280px)
+  );
+  overflow-y: auto;
+  padding: 8px 12px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+  box-shadow: var(--shadow-soft);
+  font-size: var(--text-xs);
+  font-family: var(--app-font-sans);
+  line-height: 1.5;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

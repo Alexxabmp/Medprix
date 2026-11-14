@@ -1,3 +1,4 @@
+import { AppTooltip } from "@/components/ui/tooltip";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { safeError, readResponse } from "@/lib/feedback";
 import { ProductDialog } from "@/components/custom-ui/product-dialog";
@@ -930,13 +931,13 @@ export default function InventoryPage({
                               {product.batches[0].quantity}u)
                             </span>
                           ) : (
-                            <span
-                              title={product.batches
+                            <AppTooltip content={product.batches
                                 .map((b) => `${b.batchNumber}: ${b.quantity}u`)
-                                .join(", ")}>
+                                .join(", ")}><span
+                              >
                               {product.batches[0]?.batchNumber} +
                               {product.batches.length - 1} more
-                            </span>
+                            </span></AppTooltip>
                           )}
                         </div>
                       </td>
@@ -979,28 +980,28 @@ export default function InventoryPage({
                       <td className="table-action-cell">
                         <div className="table-actions">
                           {/* View Details - ALL 3 ROLES */}
-                          <button
+                          <AppTooltip content={"View product & batches"}><button
                             type="button"
                             className="button soft table-action-btn"
                             onClick={() => setViewProduct(product)}
-                            title="View product & batches"
+
                             aria-label={`View ${product.name}`}
                             data-testid={`button-view-${product.id}`}>
                             <Eye size={13} />
-                          </button>
+                          </button></AppTooltip>
 
                           {/* More Action Dropdown - ADMIN, FRONT DESK, CASHIER */}
                           {(canEditProduct || canAddBatch || canRecordStockIn || canRecordStockOut) && (
                             <DropdownMenuPrimitive.Root>
                               <DropdownMenuPrimitive.Trigger asChild>
-                                <button
+                                <AppTooltip content={"More actions"}><button
                                   type="button"
                                   className="button soft table-action-btn"
-                                  title="More actions"
+
                                   aria-label={`More actions for ${product.name}`}
                                   data-testid={`button-more-action-${product.id}`}>
                                   <Ellipsis size={13} />
-                                </button>
+                                </button></AppTooltip>
                               </DropdownMenuPrimitive.Trigger>
 
                               <DropdownMenuPrimitive.Portal>
@@ -1013,7 +1014,7 @@ export default function InventoryPage({
                                     <DropdownMenuPrimitive.Item
                                       className="action-dropdown-item"
                                       onSelect={() => handleOpenEditProduct(product)}
-                                      title="Edit product information"
+                                      aria-label="Edit product information"
                                       data-testid={`button-edit-${product.id}`}>
                                       <Pencil size={12} /> Edit
                                     </DropdownMenuPrimitive.Item>
@@ -1024,7 +1025,7 @@ export default function InventoryPage({
                                     <DropdownMenuPrimitive.Item
                                       className="action-dropdown-item"
                                       onSelect={() => handleOpenAddBatch(product)}
-                                      title={
+                                      aria-label={
                                         canAddFullBatchInfo
                                           ? "Add product batch information"
                                           : "Add batch expiry date"
@@ -1040,7 +1041,7 @@ export default function InventoryPage({
                                     <DropdownMenuPrimitive.Item
                                       className="action-dropdown-item"
                                       onSelect={() => handleOpenStockIn(product)}
-                                      title="Record Stock In"
+                                      aria-label="Record Stock In"
                                       data-testid={`button-stock-in-${product.id}`}>
                                       <ArrowDownLeft size={12} /> In
                                     </DropdownMenuPrimitive.Item>
@@ -1054,7 +1055,7 @@ export default function InventoryPage({
                                       onSelect={() => {
                                         if (info.stock > 0) handleOpenStockOut(product);
                                       }}
-                                      title={info.stock <= 0 ? "Cannot Stock Out (0 stock)" : "Record Stock Out"}
+                                      aria-label={info.stock <= 0 ? "Cannot Stock Out (0 stock)" : "Record Stock Out"}
                                       data-testid={`button-stock-out-${product.id}`}>
                                       <ArrowUpRight size={12} /> Out
                                     </DropdownMenuPrimitive.Item>

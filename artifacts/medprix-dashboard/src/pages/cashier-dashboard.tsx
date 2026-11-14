@@ -1,3 +1,4 @@
+import { AppTooltip } from "@/components/ui/tooltip";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { calculateRetailLine } from "@workspace/api-zod";
 import { productStock as getProductStock, batchAllocations as getBatchAllocations, productAvailability } from "@/lib/stock-guidance";
@@ -452,10 +453,10 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
           <div>
             <div className="pos-product-label">
               <label htmlFor="pos-product-select">Select Product / Medicine *</label>
-              <button type="button" className="icon-button pos-stock-refresh" aria-label="Refresh stock" title="Refresh stock"
+              <AppTooltip content={"Refresh stock"}><button type="button" className="icon-button pos-stock-refresh" aria-label="Refresh stock"
                 disabled={stockChecking || isSubmitting} onClick={() => void refreshStock(true)}>
                 <RefreshCw size={14} className={stockChecking ? "spin" : undefined} />
-              </button>
+              </button></AppTooltip>
             </div>
             <select
               id="pos-product-select"
@@ -655,7 +656,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                           ₱{(item.price * item.qty).toFixed(2)}
                         </td>
                         <td style={{ textAlign: "center" }}>
-                          <button
+                          <AppTooltip content={"Remove item"}><button
                             type="button"
                             className="icon-button"
                             style={{
@@ -664,10 +665,10 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                               border: 0,
                               color: "hsl(var(--danger))",
                             }}
-                            title="Remove item"
+
                             onClick={() => handleRemoveFromCart(item.id)}>
                             <Trash2 size={13} />
-                          </button>
+                          </button></AppTooltip>
                         </td>
                       </tr>
                     ))
@@ -767,10 +768,10 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                     key={type}
                     type="button"
                     className={`button ${discountType === type ? "primary-action" : "soft"}`}
-                    style={{ 
+                    style={{
                       height: 35,
                       fontSize: 12,
-                      
+
                       padding: 12, }}
                     onClick={() => setDiscountType(type)}>
                     {type === "None" ? "Standard (None)" : `${type} (-20%)`}
@@ -791,7 +792,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                 }}>
                 Payment Method
               </label>
-              <div style={{ 
+              <div style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
                 {(["Cash", "GCash", "Card"] as const).map((method) => (

@@ -1,3 +1,4 @@
+import { AppTooltip } from "@/components/ui/tooltip";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { useEffect, useState } from "react";
 import { Eye } from "lucide-react";
@@ -64,11 +65,11 @@ export function WholesaleDeliveryReceipts({
               <td>{row.clientName}</td>
               <td className="table-action-cell">
                 <div className="table-actions">
-                  <button
+                  <AppTooltip content={"View receipt"}><button
                     className="button soft table-action-btn"
                     aria-busy={opening}
                     aria-label="View receipt"
-                    title="View receipt"
+
                     disabled={disabled || opening}
                     onClick={async () => {
                       setOpening(true);
@@ -87,7 +88,7 @@ export function WholesaleDeliveryReceipts({
                     }}
                   >
                     <Eye size={13} />
-                  </button>
+                  </button></AppTooltip>
                 </div>
               </td>
             </tr>

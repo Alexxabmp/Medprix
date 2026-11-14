@@ -1,3 +1,4 @@
+import { AppTooltip } from "@/components/ui/tooltip";
 import { LoadingState } from "@/components/custom-ui/loading-state";
 import { useState, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
@@ -481,15 +482,15 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                       </td>
                       <td className="table-action-cell">
                         <div className="table-actions">
-                          <button
+                          <AppTooltip content={"View transaction"}><button
                             type="button"
                             className="button soft table-action-btn"
                             aria-label="View transaction"
-                            title="View transaction"
+
                             onClick={() => setSelectedTrx(trx)}
                             data-testid={`button-view-trx-${trx.id}`}>
                             <Eye size={13} />
-                          </button>
+                          </button></AppTooltip>
                         </div>
                       </td>
                     </tr>
@@ -625,15 +626,15 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                       </td>
                       <td className="table-action-cell">
                         <div className="table-actions">
-                          <button
+                          <AppTooltip content={"View log details"}><button
                             type="button"
                             className="button soft table-action-btn"
                             aria-label="View log details"
-                            title="View log details"
+
                             onClick={() => setSelectedLog(log)}
                             data-testid={`button-see-details-${log.id}`}>
                             <Eye size={13} />
-                          </button>
+                          </button></AppTooltip>
                         </div>
                       </td>
                     </tr>
@@ -862,7 +863,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                   </h4>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ fontSize: 12, fontWeight: 600 }}>Status:</span>
-                    <span title="Recorded status; changes require an audited reversal workflow">{selectedTrx.status}</span>
+                    <AppTooltip content={"Recorded status; changes require an audited reversal workflow"}><span >{selectedTrx.status}</span></AppTooltip>
                   </div>
                 </div>
                 <div

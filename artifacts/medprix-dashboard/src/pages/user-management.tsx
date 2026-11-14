@@ -1,3 +1,4 @@
+import { AppTooltip } from "@/components/ui/tooltip";
 import { useState, useEffect, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -455,19 +456,19 @@ export default function UserManagementPage({
                         className={`pill ${user.status === "Active" ? "success" : "neutral"}`}>
                         {user.status}
                       </span>
-                      <button
+                      <AppTooltip content={
+                          isCurrentUser
+                            ? "You cannot deactivate your own account"
+                            : `Set ${user.status === "Active" ? "inactive" : "active"}`
+                        }><button
                         className={`toggle ${user.status === "Active" ? "on" : ""}`}
                         data-testid={`toggle-status-${user.id}`}
                         aria-pressed={user.status === "Active"}
                         onClick={() => toggleStatus(user)}
                         disabled={isCurrentUser}
-                        title={
-                          isCurrentUser
-                            ? "You cannot deactivate your own account"
-                            : `Set ${user.status === "Active" ? "inactive" : "active"}`
-                        }>
+                        >
                         <span />
-                      </button>
+                      </button></AppTooltip>
                     </div>
                     {isCurrentUser && (
                       <div className="muted" style={{ fontSize: 12, marginTop: 5 }}>
@@ -478,19 +479,19 @@ export default function UserManagementPage({
                   <td className="muted">{user.lastActive}</td>
                   <td className="table-action-cell">
                     <div className="table-actions">
-                      <button
+                      <AppTooltip content={`Edit ${user.name}`}><button
                         className="button soft table-action-btn"
                         data-testid={`button-edit-user-${user.id}`}
                         aria-label={`Edit ${user.name}`}
-                        title={`Edit ${user.name}`}
+
                         onClick={() => openEdit(user)}>
                         <Pencil size={13} />
-                      </button>
-                      <button
+                      </button></AppTooltip>
+                      <AppTooltip content={`Reset password for ${user.name}`}><button
                         className="button soft table-action-btn"
                         data-testid={`button-reset-user-${user.id}`}
                         aria-label={`Reset password for ${user.name}`}
-                        title={`Reset password for ${user.name}`}
+
                         onClick={() => {
                           setSelected(user);
                           setPassword("");
@@ -501,7 +502,7 @@ export default function UserManagementPage({
                           setDialog("reset");
                         }}>
                         <KeyRound size={13} />
-                      </button>
+                      </button></AppTooltip>
                     </div>
                   </td>
                 </tr>
