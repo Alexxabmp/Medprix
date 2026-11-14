@@ -1,3 +1,4 @@
+import { displayPeso } from "@/lib/currency";
 import { formatDisplayDate, formatDisplayDateTime } from "@/lib/business-date";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { ModalTableDialog, ModalDataTable } from "@/components/modal-data-table";
@@ -894,7 +895,7 @@ export default function InventoryPage({
                       </td>
                       <td className="muted">{product.category?.trim() || "None"}</td>
                       <td style={{ textAlign: "right" }}>
-                        <strong>{product.price}</strong>
+                        <strong>{displayPeso(product.price)}</strong>
                       </td>
                       <td style={{ textAlign: "right" }}>
                         <strong
@@ -1292,13 +1293,13 @@ export default function InventoryPage({
                     <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
                       Unit Price
                     </div>
-                    <strong style={{ fontSize: 13 }}>{viewProduct.price}</strong>
+                    <strong style={{ fontSize: 13 }}>{displayPeso(viewProduct.price)}</strong>
                   </div>
                   <div>
                     <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
                       Cost Price
                     </div>
-                    <strong style={{ fontSize: 13 }}>{viewProduct.cost}</strong>
+                    <strong style={{ fontSize: 13 }}>{displayPeso(viewProduct.cost)}</strong>
                   </div>
                   <div>
                     <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>

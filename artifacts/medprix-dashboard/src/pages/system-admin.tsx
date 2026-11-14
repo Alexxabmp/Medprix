@@ -1,3 +1,4 @@
+import { displayPeso } from "@/lib/currency";
 import { formatDisplayDateTime } from "@/lib/business-date";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { ModalTableDialog, ModalDataTable } from "@/components/modal-data-table";
@@ -453,7 +454,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                       </td>
                       <td>{trx.customer}</td>
                       <td style={{ textAlign: "right" }}>
-                        <strong>{trx.total}</strong>
+                        <strong>{displayPeso(trx.total)}</strong>
                       </td>
                       <td className="muted">{trx.payment}</td>
                       <td>
@@ -942,17 +943,17 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                             </td>
                             <td style={{ textAlign: "center" }}>{item.quantity}</td>
                             <td style={{ textAlign: "right" }} className="muted">
-                              {item.unitPrice}
+                              {displayPeso(item.unitPrice)}
                             </td>
                             <td style={{ textAlign: "right" }}>
-                              <strong>{item.subtotal}</strong>
+                              <strong>{displayPeso(item.subtotal)}</strong>
                             </td>
                           </tr>
                         ))
                       ) : (
                         <tr>
                           <td colSpan={4} className="muted">
-                            1 item ({selectedTrx.total})
+                            1 item ({displayPeso(selectedTrx.total)})
                           </td>
                         </tr>
                       )}
@@ -984,19 +985,19 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
                     <span className="muted">Subtotal:</span>
                     <span style={{ color: "hsl(var(--foreground))" }}>
-                      {selectedTrx.subtotal || selectedTrx.total}
+                      {displayPeso(selectedTrx.subtotal || selectedTrx.total)}
                     </span>
                   </div>
                   {selectedTrx.discount && selectedTrx.discount !== "₱0.00" && (
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
                       <span className="muted">Discount:</span>
-                      <span style={{ color: "#FF3B30" }}>-{selectedTrx.discount}</span>
+                      <span style={{ color: "#FF3B30" }}>-{displayPeso(selectedTrx.discount)}</span>
                     </div>
                   )}
                   {selectedTrx.vat && selectedTrx.vat !== "₱0.00" && (
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
                       <span className="muted">VAT (12%):</span>
-                      <span style={{ color: "hsl(var(--foreground))" }}>{selectedTrx.vat}</span>
+                      <span style={{ color: "hsl(var(--foreground))" }}>{displayPeso(selectedTrx.vat)}</span>
                     </div>
                   )}
                   <div
@@ -1014,14 +1015,14 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                     }}>
                     <strong>Total Amount:</strong>
                     <strong style={{ color: "hsl(var(--foreground))" }}>
-                      {selectedTrx.total}
+                      {displayPeso(selectedTrx.total)}
                     </strong>
                   </div>
                   {selectedTrx.amountReceived && (
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
                       <span className="muted">Amount Received:</span>
                       <span style={{ color: "hsl(var(--foreground))" }}>
-                        {selectedTrx.amountReceived}
+                        {displayPeso(selectedTrx.amountReceived)}
                       </span>
                     </div>
                   )}
@@ -1029,7 +1030,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
                       <span className="muted">Change:</span>
                       <span style={{ color: "hsl(var(--foreground))" }}>
-                        {selectedTrx.change}
+                        {displayPeso(selectedTrx.change)}
                       </span>
                     </div>
                   )}

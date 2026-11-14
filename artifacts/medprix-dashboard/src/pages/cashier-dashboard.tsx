@@ -1,3 +1,4 @@
+import { displayPeso } from "@/lib/currency";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { calculateRetailLine } from "@workspace/api-zod";
@@ -476,7 +477,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
               {filteredProducts.map((product) => {
                 const availability = productAvailability(product, cart.find((item) => item.id === product.id)?.qty || 0);
                 return <option key={product.id} value={product.id} disabled={!!availability}>
-                  {product.name} ({product.sku}) - {product.price}{availability ? ` — ${availability}` : ""}
+                  {product.name} ({product.sku}) - {displayPeso(product.price)}{availability ? ` — ${availability}` : ""}
                 </option>;
               })}
             </select>
@@ -984,7 +985,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                     </span>
                   </td>
                   <td style={{ textAlign: "right" }}>
-                    <strong>{r.totalFormatted || formatPeso(r.total)}</strong>
+                    <strong>{displayPeso(r.totalFormatted || r.total)}</strong>
                   </td>
                   <td>
                     <span className="pill success" style={{ fontSize: 12 }}>
@@ -1071,20 +1072,20 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
               {selectedReceipt.subtotal && (
                 <div style={{ display: "flex", justifyContent: "space-between", color: "hsl(var(--muted))" }}>
                   <span>Subtotal</span>
-                  <span>{selectedReceipt.subtotal}</span>
+                  <span>{displayPeso(selectedReceipt.subtotal)}</span>
                 </div>
               )}
               {selectedReceipt.vat && (
                 <div style={{ display: "flex", justifyContent: "space-between", color: "hsl(var(--muted))" }}>
                   <span>{selectedReceipt.printSource?.calculationVersion ? "VAT (included)" : "VAT"}</span>
-                  <span>{selectedReceipt.vat}</span>
+                  <span>{displayPeso(selectedReceipt.vat)}</span>
                 </div>
               )}
               {selectedReceipt.vatRelief && <div style={{ display: "flex", justifyContent: "space-between", color: "hsl(var(--muted))" }}><span>VAT exemption</span><span>{selectedReceipt.vatRelief}</span></div>}
               {selectedReceipt.discount && selectedReceipt.discount !== "₱0.00" && (
                 <div style={{ display: "flex", justifyContent: "space-between", color: "#34C759", fontWeight: 600 }}>
                   <span>Privilege Discount</span>
-                  <span>-{selectedReceipt.discount}</span>
+                  <span>-{displayPeso(selectedReceipt.discount)}</span>
                 </div>
               )}
               <div
@@ -1097,18 +1098,18 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                   borderTop: "1px solid hsl(var(--border))",
                 }}>
                 <span>Total Amount</span>
-                <span>{selectedReceipt.totalFormatted || formatPeso(selectedReceipt.total)}</span>
+                <span>{displayPeso(selectedReceipt.totalFormatted || selectedReceipt.total)}</span>
               </div>
               {selectedReceipt.amountReceived && (
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <span className="muted">Amount Tendered</span>
-                  <span>{selectedReceipt.amountReceived}</span>
+                  <span>{displayPeso(selectedReceipt.amountReceived)}</span>
                 </div>
               )}
               {selectedReceipt.change && (
                 <div style={{ display: "flex", justifyContent: "space-between", color: "#34C759", fontWeight: 700 }}>
                   <span>Change Due</span>
-                  <span>{selectedReceipt.change}</span>
+                  <span>{displayPeso(selectedReceipt.change)}</span>
                 </div>
               )}
             </div>
