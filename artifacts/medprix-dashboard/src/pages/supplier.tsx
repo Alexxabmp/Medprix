@@ -1,4 +1,6 @@
 import { formatDisplayDate } from "@/lib/business-date";
+import { PageTableValue, PageTableAction } from "@/components/page-table-context";
+import { Banknote } from "lucide-react";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { ModalTableDialog, ModalDataTable } from "@/components/modal-data-table";
 import { EmptyState, TableEmptyState } from "@/components/custom-ui/empty-state";
@@ -540,6 +542,7 @@ export default function SupplierPage({
                 <input
                   type="search"
                   placeholder="Search supplier, code, or contact..."
+                  aria-label="Search suppliers"
                   value={supplierSearch}
                   onChange={(event) => {
                     setSupplierSearch(event.target.value);
@@ -552,6 +555,7 @@ export default function SupplierPage({
                 <select
                   className="select"
                   data-testid="select-supplier-filter"
+                  aria-label="Filter suppliers by status"
                   value={filter}
                   onChange={(event) => {
                     setFilter(event.target.value);
@@ -565,7 +569,7 @@ export default function SupplierPage({
               </div>
             </div>
             <div className="table-scroll">
-              <table className="data-table">
+              <table data-page-table="supplier-directory" className="data-table">
                 <thead>
                   <tr>
                     <th>Supplier</th>
@@ -612,14 +616,14 @@ export default function SupplierPage({
                               <Building2 size={15} />
                             </span>
                             <div>
-                              <strong>{supplier.name}</strong>
+                              <strong><PageTableValue value={supplier.name} /></strong>
                               <div className="muted supplier-code">
                                 {supplier.code}
                               </div>
                             </div>
                           </div>
                         </td>
-                        <td>{supplier.contact}</td>
+                        <td><PageTableValue value={supplier.contact || "Not provided"} /></td>
                         <td>{supplier.orders}</td>
                         <td>
                           <strong>{peso(supplier.orderValue)}</strong>
@@ -649,9 +653,9 @@ export default function SupplierPage({
                 </tbody>
               </table>
             </div>
-            <div className="wholesale-pagination">
+            <div className="wholesale-pagination" role="navigation" aria-label="Supplier directory pagination">
               <span className="muted">
-                Page {safeDirectoryPage} of {totalDirectoryPages}
+                Page {safeDirectoryPage} of {totalDirectoryPages} ({filtered.length} suppliers)
               </span>
               <button
                 type="button"
@@ -682,6 +686,7 @@ export default function SupplierPage({
                 <input
                   type="search"
                   placeholder="Search supplier or invoice..."
+                  aria-label="Search accounts payable"
                   value={payableSearch}
                   onChange={(event) => {
                     setPayableSearch(event.target.value);
@@ -709,7 +714,7 @@ export default function SupplierPage({
               </div>
             </div>
             <div className="table-scroll stable-data-table">
-              <table className="data-table">
+              <table data-page-table="supplier-payables" className="data-table">
                 <thead>
                   <tr>
                     <th>Supplier</th>
@@ -758,7 +763,7 @@ export default function SupplierPage({
                             <span className="product-symbol">
                               <Building2 size={15} />
                             </span>
-                            <strong>{payable.supplier}</strong>
+                            <strong><PageTableValue value={payable.supplier} /></strong>
                           </div>
                         </td>
                         <td>{payable.invoiceNumber}</td>
@@ -788,7 +793,7 @@ export default function SupplierPage({
                         <td className="table-action-cell">
                           <div className="table-actions">
                             {payable.needsReview ? <span className="muted">Review required</span> : Number(payable.balance) > 0 ? (
-                              <button
+                              <PageTableAction label="Record payment" icon={<Banknote size={15} aria-hidden="true" />}
                                 className="button soft table-action-btn"
                                 type="button"
                                 onClick={() => {
@@ -802,7 +807,7 @@ export default function SupplierPage({
                                 }}
                               >
                                 Record payment
-                              </button>
+                              </PageTableAction>
                             ) : (
                               <span className="muted">Settled</span>
                             )}
@@ -814,9 +819,9 @@ export default function SupplierPage({
                 </tbody>
               </table>
             </div>
-            <div className="wholesale-pagination">
+            <div className="wholesale-pagination" role="navigation" aria-label="Accounts payable pagination">
               <span className="muted">
-                Page {safePayablePage} of {totalPayablePages}
+                Page {safePayablePage} of {totalPayablePages} ({filteredPayables.length} invoices)
               </span>
               <button
                 type="button"

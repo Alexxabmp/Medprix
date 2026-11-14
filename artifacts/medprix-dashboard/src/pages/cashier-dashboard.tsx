@@ -1,4 +1,5 @@
 import { displayPeso } from "@/lib/currency";
+import { PageTableValue, PageTableAction, usePageTableStandard } from "@/components/page-table-context";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { calculateRetailLine } from "@workspace/api-zod";
@@ -55,6 +56,7 @@ function formatPeso(value: number): string {
 }
 
 export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
+  const standard = usePageTableStandard();
   const { date: shiftDate, selectDate } = useBusinessDate();
   const { items: products, setItems: setProducts } = usePharmacyInventory();
   const { receipts, setReceipts, refresh: fetchTransactions } = usePharmacyTransactions();
@@ -446,6 +448,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                 data-testid="input-pos-product-search"
                 type="search"
                 placeholder="Search product, SKU, category..."
+                aria-label="Search products to add to cart"
                 value={productSearch}
                 onChange={(e) => setProductSearch(e.target.value)}
               />
@@ -554,14 +557,14 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                 overflowX: "auto",
                 background: "hsl(var(--surface))",
               }}>
-              <table className="data-table">
+              <table data-page-table="pos-cart" className="data-table">
                 <thead>
                   <tr>
                     <th>Item Description</th>
                     <th style={{ textAlign: "center" }}>Qty</th>
                     <th style={{ textAlign: "right" }}>Unit Price</th>
                     <th style={{ textAlign: "right" }}>Total</th>
-                    <th style={{ width: 40 }} />
+                    <th style={{ width: 40 }}>{standard ? "Action" : null}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -587,7 +590,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                     cart.map((item) => (
                       <tr key={item.id}>
                         <td>
-                          <strong>{item.name}</strong>
+                          <strong><PageTableValue value={item.name} /></strong>
                           <div className="muted" style={{ fontSize: 12 }}>
                             {item.sku}
                           </div>
@@ -934,6 +937,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
             <input
               type="search"
               placeholder="Search receipt #, method, item..."
+              aria-label="Search shift receipts"
               value={searchReceipt}
               onChange={(e) => setSearchReceipt(e.target.value)}
               style={{ height: 34, fontSize: 12 }}
@@ -948,7 +952,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
             borderRadius: 12,
             overflowX: "auto",
           }}>
-          <table className="data-table" style={{ width: "100%" }}>
+          <table data-page-table="pos-receipts" className="data-table" style={{ width: "100%" }}>
             <thead>
               <tr>
                 <th>Receipt #</th>
@@ -975,7 +979,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                       textOverflow: "ellipsis",
                       fontSize: 12,
                     }}>
-                    {r.itemsSummary || `${r.items} item(s)`}
+                    <PageTableValue value={r.itemsSummary || `${r.items} item(s)`} />
                   </td>
                   <td>
                     <span
@@ -993,13 +997,13 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                     </span>
                   </td>
                   <td style={{ textAlign: "center" }}>
-                    <button
+                    <PageTableAction label="View receipt" icon={<Eye size={13} aria-hidden="true" />}
                       type="button"
                       className="button soft"
                       style={{ padding: "4px 10px", fontSize: 12 }}
                       onClick={() => setSelectedReceipt(r)}>
                       <Eye size={12} style={{ marginRight: 4 }} /> View
-                    </button>
+                    </PageTableAction>
                   </td>
                 </tr>
               ))}

@@ -1,3 +1,4 @@
+import { PageTableValue, PageTableRow, PageTableAction, usePageTableStandard } from "@/components/page-table-context";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { ModalTableDialog, ModalDataTable } from "@/components/modal-data-table";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
@@ -12,7 +13,7 @@ import { ReceivingReportDecisionDialog, type ReceivingDecision } from "@/compone
 import { safeError, readResponse } from "@/lib/feedback";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
-import { Check, Eye, Package, Plus, Trash2, X, PackagePlus, Search, LoaderCircle } from "lucide-react";
+import { Check, Eye, Package, Plus, Trash2, X, PackagePlus, Search, LoaderCircle, Banknote } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import { Summary } from "@/components/custom-ui/summary-card";
 import type { ToastFn } from "@/lib/types";
@@ -128,6 +129,7 @@ function expiryStatus(date: string) {
 }
 
 export default function ProcurementPage({ onToast, currentRole }: { onToast: ToastFn; currentRole: string }) {
+  const pageTableStandard = usePageTableStandard();
   const canManagePurchasing = currentRole === "Admin" || currentRole === "FrontDesk";
   const [activeSection, setActiveSection] = useState(currentRole === "Cashier" ? "Receiving Report Management" : "Purchase Order Monitoring");
   const [status, setStatus] = useState("All orders");
@@ -814,6 +816,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               <select
                 className="select"
                 data-testid="select-procurement-status"
+                aria-label="Filter purchase orders by status"
                 value={status}
                 onChange={(event) => {
                   setStatus(event.target.value);
@@ -827,7 +830,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
             </div>
           </div>
           <div className="table-scroll">
-            <table className="data-table">
+            <table data-page-table="purchase-orders" className="data-table">
               <thead>
                 <tr>
                   <th>Order</th>
@@ -853,7 +856,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                         <td>
                           <strong>{order.poNumber}</strong>
                         </td>
-                        <td>{order.supplier}</td>
+                        <td><PageTableValue value={order.supplier} /></td>
                         <td className="muted">
                           {formatDisplayDate(order.orderDate)}
                         </td>
@@ -875,6 +878,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                             className="select"
                             data-testid={`select-status-${order.id}`}
                             value={order.status}
+                            aria-label={`Status for ${order.poNumber}`}
                             disabled={isSaving}
                             onChange={(event) =>
                               event.target.value === "Cancelled" ? setOrderToCancel(order) : void updateStatus(order.id, event.target.value)
@@ -887,14 +891,14 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                         <td className="table-action-cell">
                           <div className="table-actions">
                             {canManagePurchasing && !["Fulfilled", "Cancelled"].includes(order.status) && order.items?.some(item => item.quantityRemaining > 0) &&
-                              <button
+                              <PageTableAction label="Receive" icon={<PackagePlus size={15} aria-hidden="true" />}
                                 type="button"
                                 className="button soft table-action-btn"
                                 disabled={isSaving}
                                 onClick={() => void openReceiving(order.id)}>
                                 <PackagePlus size={12} />
                                 Receive
-                              </button>}
+                              </PageTableAction>}
                             <AppTooltip content={"View items"}><button
                               type="button"
                               className="button soft table-action-btn"
@@ -911,9 +915,9 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               </tbody>
             </table>
           </div>
-          <div className="wholesale-pagination">
+          <div className="wholesale-pagination" role="navigation" aria-label="Purchase orders pagination">
             <span className="muted">
-              Page {safeOrderPage} of {totalOrderPages}
+              Page {safeOrderPage} of {totalOrderPages} ({filteredOrders.length} orders)
             </span>
             <button
               type="button"
@@ -977,9 +981,9 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
             </div>
           </div>
           <div className="table-scroll">
-            <table className="data-table">
+            <table data-page-table="receiving" className="data-table">
               <thead>
-                <tr>
+                <PageTableRow order={[0, 1, 2, 3, 5, 4, 7, 6, 8]}>
                   <th>Delivery</th>
                   <th>Supplier</th>
                   <th>Product</th>
@@ -989,7 +993,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                   <th>Delivery status</th>
                   <th>Expiry status</th>
                   {canManagePurchasing && <th>Actions</th>}
-                </tr>
+                </PageTableRow>
               </thead>
               <tbody>
                 {tableMessage(canManagePurchasing ? 9 : 8, loadingSections.deliveries, deliveries.length) ||
@@ -1003,24 +1007,24 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                     </tr>
                   ) : paginatedReceivingRows.map(({delivery, item}, index) => {
                     const expiry = expiryStatus(item.expirationDate);
-                    return <tr key={item.id}>
+                    return <PageTableRow key={item.id} order={[0, 1, 2, 3, 5, 4, 7, 6, 8]}>
                       <td>{delivery.poNumber}<div className="muted" style={{fontSize: 12}}>{formatDeliveryDate(delivery.deliveryDate)}</div></td>
-                      <td>{delivery.supplier}</td><td>{item.product}</td><td>{item.batchNumber}</td>
+                      <td><PageTableValue value={delivery.supplier} /></td><td><PageTableValue value={item.product} /></td><td>{item.batchNumber}</td>
                       <td>{formatDisplayDate(item.expirationDate)}</td><td>{item.quantityDelivered}</td><td>{delivery.deliveryStatus}</td>
                       <td><span className={`pill ${expiry.tone}`}>{expiry.label}</span></td>
                       {canManagePurchasing && <td>{delivery.deliveryStatus === "Pending" && paginatedReceivingRows.findIndex(row => row.delivery.id === delivery.id) === index &&
                         <div className="receiving-report-actions">
-                          <button type="button" className="button soft" disabled={isSaving} onClick={() => setReportDecision({report: delivery, decision: "Received"})}>Receive report</button>
-                          <button type="button" className="button soft" disabled={isSaving} onClick={() => setReportDecision({report: delivery, decision: "Rejected"})}>Reject report</button>
+                          <PageTableAction label="Receive report" icon={<Check size={15} aria-hidden="true" />} type="button" className="button soft" disabled={isSaving} onClick={() => setReportDecision({report: delivery, decision: "Received"})}>Receive report</PageTableAction>
+                          <PageTableAction label="Reject report" icon={<X size={15} aria-hidden="true" />} type="button" className="button soft" disabled={isSaving} onClick={() => setReportDecision({report: delivery, decision: "Rejected"})}>Reject report</PageTableAction>
                         </div>}</td>}
-                    </tr>;
+                    </PageTableRow>;
                   }))}
               </tbody>
             </table>
           </div>
-          <div className="wholesale-pagination">
+          <div className="wholesale-pagination" role="navigation" aria-label="Receiving reports pagination">
             <span className="muted">
-              Page {safeReceivingPage} of {totalReceivingPages}
+              Page {safeReceivingPage} of {totalReceivingPages} ({filteredReceivingRows.length} receiving items)
             </span>
             <button
               type="button"
@@ -1093,9 +1097,9 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
             </div>
           )}
           <div className="table-scroll">
-            <table className="data-table purchase-invoice-table">
+            <table data-page-table="purchase-invoices" className="data-table purchase-invoice-table">
               <thead>
-                <tr>
+                <PageTableRow order={[0, 2, 1, 3, 4, 5, 6]}>
                   <th>Invoice</th>
                   <th>Supplier</th>
                   <th>Purchase order</th>
@@ -1103,7 +1107,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                   <th>Amount</th>
                   <th>Status</th>
                   <th className="table-action-head">Action</th>
-                </tr>
+                </PageTableRow>
               </thead>
               <tbody>
                 {tableMessage(7, loadingSections.invoices, invoices.length) ||
@@ -1115,11 +1119,11 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                     </tr>
                   ) : (
                     paginatedInvoices.map((invoice) => (
-                      <tr key={invoice.id}>
+                      <PageTableRow key={invoice.id} order={[0, 2, 1, 3, 4, 5, 6]}>
                         <td>
                           <strong>{invoice.invoiceNumber}</strong>
                         </td>
-                        <td>{invoice.supplier}</td>
+                        <td><PageTableValue value={invoice.supplier} /></td>
                         <td>{invoice.poNumber || "N/A"}</td>
                         <td>{formatDisplayDate(invoice.dueDate)}</td>
                         <td>
@@ -1133,23 +1137,23 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                         <td className="table-action-cell">
                           <div className="table-actions">
                             {canManagePurchasing && invoice.status !== "Paid" && invoice.status !== "Needs Review" ? (
-                              <button className="button soft table-action-btn" onClick={() => setPaymentInvoiceId(invoice.id)}>
+                              <PageTableAction label="Record payment" icon={<Banknote size={15} aria-hidden="true" />} className="button soft table-action-btn" onClick={() => setPaymentInvoiceId(invoice.id)}>
                                 Record payment
-                              </button>
+                              </PageTableAction>
                             ) : (
-                              <span className="muted">—</span>
+                              pageTableStandard ? null : <span className="muted">—</span>
                             )}
                           </div>
                         </td>
-                      </tr>
+                      </PageTableRow>
                     ))
                   ))}
               </tbody>
             </table>
           </div>
-          <div className="wholesale-pagination">
+          <div className="wholesale-pagination" role="navigation" aria-label="Purchase invoices pagination">
             <span className="muted">
-              Page {safeInvoicePage} of {totalInvoicePages}
+              Page {safeInvoicePage} of {totalInvoicePages} ({filteredInvoices.length} invoices)
             </span>
             <button
               type="button"

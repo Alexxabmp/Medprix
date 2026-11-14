@@ -1,3 +1,4 @@
+import { PageTableValue, usePageTableStandard } from "@/components/page-table-context";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import {
@@ -48,6 +49,7 @@ export default function WholesalePage({
   onToast: ToastFn;
   role: string;
 }) {
+  const pageTableStandard = usePageTableStandard();
   const storageKey =
     "medprix-wholesale-request:" +
     (localStorage.getItem("medprix-username") ?? "");
@@ -592,7 +594,7 @@ export default function WholesalePage({
                   />
                 )}
                 {tab === "orders" && (
-                  <table className="data-table">
+                  <table data-page-table="wholesale-orders" className="data-table">
                     <thead>
                       <tr>
                         <th>Order</th>
@@ -606,7 +608,7 @@ export default function WholesalePage({
                       {paginatedOrders.map((order) => (
                         <tr key={order.id}>
                           <td>{order.orderNumber}</td>
-                          <td>{order.clientName}</td>
+                          <td><PageTableValue value={order.clientName} /></td>
                           <td>{wholesalePeso(order.total)}</td>
                           <td>
                             {order.status === "Pending"
@@ -650,7 +652,7 @@ export default function WholesalePage({
                   </table>
                 )}
                 {tab === "clients" && (
-                  <table className="data-table">
+                  <table data-page-table="wholesale-clients" className="data-table">
                     <thead>
                       <tr>
                         <th>Client</th>
@@ -661,7 +663,7 @@ export default function WholesalePage({
                     <tbody>
                       {paginatedClients.map((client) => (
                         <tr key={client.id}>
-                          <td>{client.name}</td>
+                          <td><PageTableValue value={client.name} /></td>
                           <td>{client.address || "Not provided"}</td>
                           <td className="table-action-cell">
                             <div className="table-actions">
@@ -691,7 +693,7 @@ export default function WholesalePage({
                   </table>
                 )}
                 {tab === "prices" && (
-                  <table className="data-table">
+                  <table data-page-table="wholesale-prices" className="data-table">
                     <thead>
                       <tr>
                         <th>Product / SKU</th>
@@ -707,7 +709,7 @@ export default function WholesalePage({
                       {paginatedProducts.map((product) => (
                         <tr key={product.id}>
                           <td>
-                            {product.name}
+                            <PageTableValue value={product.name} />
                             <div className="muted">{product.sku}</div>
                           </td>
                           <td>{wholesalePeso(product.wholesalePrice)}</td>
@@ -752,7 +754,7 @@ export default function WholesalePage({
                 )}
               </div>
               {tab === "orders" && (
-                <div className="wholesale-pagination">
+                <div className="wholesale-pagination" role="navigation" aria-label="Wholesale orders pagination">
                   <span className="muted">
                     Page {safeOrderPage} of {totalOrderPages} ({visibleOrders.length} orders)
                   </span>
@@ -775,7 +777,7 @@ export default function WholesalePage({
                 </div>
               )}
               {tab === "clients" && (
-                <div className="wholesale-pagination">
+                <div className="wholesale-pagination" role="navigation" aria-label="Wholesale clients pagination">
                   <span className="muted">
                     Page {safeClientPage} of {totalClientPages} ({visibleClients.length} clients)
                   </span>
@@ -798,7 +800,7 @@ export default function WholesalePage({
                 </div>
               )}
               {tab === "prices" && (
-                <div className="wholesale-pagination">
+                <div className="wholesale-pagination" role="navigation" aria-label="Wholesale prices pagination">
                   <span className="muted">
                     Page {safePricePage} of {totalPricePages} ({visibleProducts.length} products)
                   </span>

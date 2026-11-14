@@ -1,5 +1,6 @@
 import { displayPeso } from "@/lib/currency";
 import { formatDisplayDate, formatDisplayDateTime } from "@/lib/business-date";
+import { PageTableValue } from "@/components/page-table-context";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { ModalTableDialog, ModalDataTable } from "@/components/modal-data-table";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
@@ -836,7 +837,7 @@ export default function InventoryPage({
               <div>Loading inventory…</div>
             </div>
           ) : (
-            <table className="data-table">
+            <table data-page-table="inventory" className="data-table">
               <thead>
                 <tr>
                   <th style={{ width: 210, maxWidth: 210 }}>Product</th>
@@ -862,6 +863,7 @@ export default function InventoryPage({
                             <Package size={15} />
                           </span>
                           <div
+                            className="inventory-product-description"
                             style={{
                               maxWidth: 155,
                               overflowX: "auto",
@@ -869,7 +871,7 @@ export default function InventoryPage({
                               scrollbarWidth: "thin",
                               paddingBottom: 2,
                             }}>
-                            <strong>{product.name}</strong>
+                            <strong><PageTableValue value={product.name} /></strong>
                             {product.isDangerousDrug && (
                               <span
                                 className="pill danger"
@@ -878,7 +880,7 @@ export default function InventoryPage({
                               </span>
                             )}
                             <div className="muted" style={{ fontSize: 12 }}>
-                              {product.genericName}
+                              <PageTableValue value={product.genericName || ""} />
                             </div>
                           </div>
                         </div>
@@ -1070,9 +1072,9 @@ export default function InventoryPage({
             </div>
           )}
         </div>
-        <div className="wholesale-pagination">
+        <div className="wholesale-pagination" role="navigation" aria-label="Inventory pagination">
           <span className="muted">
-            Page {safeInventoryPage} of {totalInventoryPages}
+            Page {safeInventoryPage} of {totalInventoryPages} ({filtered.length} products)
           </span>
           <button
             type="button"
@@ -1103,6 +1105,7 @@ export default function InventoryPage({
               <input
                 type="search"
                 placeholder="Search product, SKU, TRX #, or cashier..."
+                aria-label="Search stock movements"
                 value={movementSearch}
                 onChange={(e) => {
                   setMovementSearch(e.target.value);
@@ -1130,7 +1133,7 @@ export default function InventoryPage({
           </div>
 
           <div className="table-scroll">
-            <table className="data-table">
+            <table data-page-table="movements" className="data-table">
               <thead>
                 <tr>
                   <th>Date &amp; Time</th>
@@ -1162,10 +1165,10 @@ export default function InventoryPage({
                             scrollbarWidth: "thin",
                             paddingBottom: 2,
                           }}>
-                          <strong>{mov.productName}</strong>
+                          <strong><PageTableValue value={mov.productName} /></strong>
                           {mov.genericName && (
                             <div className="muted" style={{ fontSize: 12 }}>
-                              {mov.genericName}
+                              <PageTableValue value={mov.genericName} />
                             </div>
                           )}
                         </div>
@@ -1203,9 +1206,9 @@ export default function InventoryPage({
               </div>
             )}
           </div>
-          <div className="wholesale-pagination">
+          <div className="wholesale-pagination" role="navigation" aria-label="Stock movement pagination">
             <span className="muted">
-              Page {safeMovementPage} of {totalMovementPages}
+              Page {safeMovementPage} of {totalMovementPages} ({filteredMovements.length} movements)
             </span>
             <button
               type="button"

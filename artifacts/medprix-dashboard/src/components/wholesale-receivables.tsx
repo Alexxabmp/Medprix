@@ -1,4 +1,5 @@
 import { formatDisplayDate } from "@/lib/business-date";
+import { PageTableValue, PageTableScroll, usePageTableStandard } from "./page-table-context";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { ModalDataTable } from "./modal-data-table";
 import { ModalTableFooter } from "./modal-table-layout";
@@ -179,7 +180,7 @@ export function WholesaleReceivables({
               {loadError}
             </div>
           )}
-          <table className="data-table">
+          <PageTableScroll><table data-page-table="wholesale-receivables" className="data-table">
             <thead>
               <tr>
                 <th>Order / client</th>
@@ -198,7 +199,7 @@ export function WholesaleReceivables({
                   <tr key={item.id}>
                     <td>
                       <strong>{item.orderNumber}</strong>
-                      <div className="muted">{item.clientName}</div>
+                      <div className="muted"><PageTableValue value={item.clientName} /></div>
                     </td>
                     <td>{wholesalePeso(item.total)}</td>
                     <td>{wholesalePeso(item.paid)}</td>
@@ -254,8 +255,8 @@ export function WholesaleReceivables({
                 )
               )}
             </tbody>
-          </table>
-          <div className="wholesale-pagination">
+          </table></PageTableScroll>
+          <div className="wholesale-pagination" role="navigation" aria-label="Accounts receivable pagination">
             <span className="muted">
               Page {safeSubPage} of {totalPages} ({items.length} accounts)
             </span>
