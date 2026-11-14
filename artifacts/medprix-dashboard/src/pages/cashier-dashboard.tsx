@@ -57,6 +57,7 @@ function formatPeso(value: number): string {
 
 export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) {
   const standard = usePageTableStandard();
+  const [receiptPage, setReceiptPage] = useState(1);
   const { date: shiftDate, selectDate } = useBusinessDate();
   const { items: products, setItems: setProducts } = usePharmacyInventory();
   const { receipts, setReceipts, refresh: fetchTransactions } = usePharmacyTransactions();
@@ -92,6 +93,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
   );
   const [cashTendered, setCashTendered] = useState<string>("200");
   const [searchReceipt, setSearchReceipt] = useState("");
+  useEffect(() => setReceiptPage(1), [searchReceipt, shiftDate.toDateString()]);
   const [showShiftModal, setShowShiftModal] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<ShiftReceipt | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -377,6 +379,10 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
       r.method.toLowerCase().includes(searchReceipt.toLowerCase()) ||
       (r.itemsSummary && r.itemsSummary.toLowerCase().includes(searchReceipt.toLowerCase())),
   );
+
+  const receiptPages = Math.max(1, Math.ceil(filteredReceipts.length / 15));
+  const safeReceiptPage = Math.min(receiptPage, receiptPages);
+  const visibleReceipts = standard ? filteredReceipts.slice((safeReceiptPage - 1) * 15, safeReceiptPage * 15) : filteredReceipts;
 
   return (
     <div className="cashier-page" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
@@ -965,7 +971,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
               </tr>
             </thead>
             <tbody>
-              {filteredReceipts.map((r) => (
+              {visibleReceipts.map((r) => (
                 <tr key={r.id}>
                   <td>
                     <strong>{r.id}</strong>
@@ -1017,6 +1023,11 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
             </tbody>
           </table>
         </div>
+        {standard && <nav className="wholesale-pagination" aria-label="Shift receipts pagination">
+          <span className="muted">Page {safeReceiptPage} of {receiptPages} ({filteredReceipts.length} receipts)</span>
+          <button type="button" className="button soft" disabled={safeReceiptPage <= 1} onClick={() => setReceiptPage(p => Math.max(1, p - 1))}>Previous</button>
+          <button type="button" className="button soft" disabled={safeReceiptPage >= receiptPages} onClick={() => setReceiptPage(p => Math.min(receiptPages, p + 1))}>Next</button>
+        </nav>}
       </section>
 
       </fieldset>
