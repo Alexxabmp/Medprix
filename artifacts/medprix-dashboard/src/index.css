@@ -2162,9 +2162,16 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
 .product-form-modal .modal-header { flex: 0 0 auto; }
 .product-form-layout { display: flex; flex-direction: column; min-height: 0; }
 .product-form-body {
-  overflow-y: scroll; min-height: 0; padding: 4px; overscroll-behavior: contain;
-  scrollbar-width: thin; scrollbar-color: hsl(var(--muted)) hsl(var(--surface-soft));
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted)) hsl(var(--surface-soft));
 }
+.modal.product-form-modal .product-form-layout { flex: 1 1 auto; min-height: 0; }
+.modal.product-form-modal .product-form-body { flex: 1 1 auto; scrollbar-gutter: auto; }
+.modal.product-form-modal .modal-actions { flex: 0 0 auto; }
 .product-form-layout > .inline-error { flex-shrink: 0; margin: 12px 0 0; overflow-wrap: anywhere; }
 .dark .product-form-modal { color-scheme: dark; }
 .product-form-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
