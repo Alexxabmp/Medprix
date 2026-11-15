@@ -4150,6 +4150,11 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
   font-size: 12px;
 }
 
+/* Standalone pagers below framed tables do not need another divider. */
+.table-pagination--borderless {
+  border-top: 0;
+}
+
 .table-pagination .button {
   height: 32px;
   padding: 0 12px;
