@@ -1,8 +1,19 @@
 /* Modal-only layout. Page tables retain their existing layout and pagination. */
-.modal.modal-table-standard .supplier-history-table { border: 0; border-radius: 0; }
+.modal.modal-table-standard .supplier-history-table {
+  border: 0;
+  border-radius: 0;
+}
 @media (max-width: 760px) {
-  .modal.modal-table-standard.modal-table-standard.wholesale-account-dialog .modal-data-table { min-width: 0; }
-  .modal.modal-table-standard.modal-table-standard.wholesale-account-dialog .modal-data-table td { text-align: left; white-space: normal; }
+  .modal.modal-table-standard.modal-table-standard.wholesale-account-dialog
+    .modal-data-table {
+    min-width: 0;
+  }
+  .modal.modal-table-standard.modal-table-standard.wholesale-account-dialog
+    .modal-data-table
+    td {
+    text-align: left;
+    white-space: normal;
+  }
 }
 .modal.modal-table-standard.modal-table-standard {
   min-height: 0;

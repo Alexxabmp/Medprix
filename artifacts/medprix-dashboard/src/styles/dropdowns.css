@@ -1,0 +1,154 @@
+/* Shared receiving choice and batch picker layout. */
+
+.receiving-batch-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 10px 12px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  background: hsl(var(--surface-soft));
+  color: hsl(var(--foreground));
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.receiving-batch-trigger > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.receiving-batch-trigger > svg {
+  flex-shrink: 0;
+}
+.receiving-batch-trigger:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.receiving-batch-trigger:focus-visible,
+.receiving-new-batch:focus-visible {
+  outline: 2px solid hsl(var(--foreground) / 0.3);
+  outline-offset: 2px;
+}
+.receiving-batch-menu {
+  z-index: 1100;
+  width: var(--radix-popover-trigger-width);
+  max-width: calc(100vw - 36px);
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  overflow: hidden;
+  background: hsl(var(--surface));
+  color: hsl(var(--foreground));
+  box-shadow: 0 12px 36px rgb(0 0 0 / 0.2);
+}
+.receiving-batch-menu [cmdk-root] {
+  background: inherit;
+  color: inherit;
+}
+.receiving-batch-menu [cmdk-list] {
+  max-height: min(190px, 30dvh);
+}
+.receiving-batch-menu [cmdk-item] {
+  cursor: pointer;
+  padding: 9px 10px;
+}
+.receiving-batch-menu [cmdk-item][data-selected="true"] {
+  background: hsl(var(--surface-soft));
+  color: hsl(var(--foreground));
+}
+.receiving-batch-menu [cmdk-item] > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.receiving-batch-menu small {
+  color: hsl(var(--muted));
+  font-size: var(--text-xs);
+}
+.receiving-new-batch {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 11px 12px;
+  border: 0;
+  border-top: 1px solid hsl(var(--border));
+  background: hsl(var(--surface));
+  color: hsl(var(--foreground));
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.receiving-choice-trigger {
+  font-size: var(--text-xs);
+  border-radius: 11px;
+  min-height: 39px;
+}
+.receiving-choice-menu {
+  width: min(460px, calc(100vw - 36px));
+  min-width: min(var(--radix-popover-trigger-width), calc(100vw - 36px));
+}
+.receiving-choice-menu [cmdk-list] {
+  max-height: min(280px, 40dvh);
+}
+.receiving-choice-menu [cmdk-item] {
+  align-items: flex-start;
+}
+.receiving-choice-menu [cmdk-item] > svg {
+  margin-top: 3px;
+}
+.receiving-choice-menu [cmdk-item] strong {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.receiving-dialog[aria-busy="true"] .receiving-choice-trigger:disabled {
+  opacity: 1;
+  cursor: wait;
+}
+.receiving-batch-control {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+  gap: 6px;
+}
+.receiving-batch-control > input {
+  flex: 1 1 0;
+  width: 0;
+}
+.receiving-batch-trigger {
+  height: 40px;
+  min-width: 0;
+}
+.receiving-batch-change {
+  flex: 0 0 40px;
+  width: 40px;
+  justify-content: center;
+  padding: 8px;
+}
+.receiving-batch-menu {
+  display: flex;
+  flex-direction: column;
+  max-height: min(360px, var(--radix-popover-content-available-height));
+}
+.receiving-batch-menu [cmdk-root] {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+}
+.receiving-batch-menu [cmdk-input-wrapper],
+.receiving-new-batch {
+  flex-shrink: 0;
+}
+.receiving-batch-menu [cmdk-list] {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
