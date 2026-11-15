@@ -9,7 +9,7 @@ import { createReceivingSubmitter, type PendingReceiving } from "@/lib/receiving
 import { useDialogAccessibility } from "@/lib/use-dialog-accessibility";
 import { SupplierPaymentDialog } from "@/components/supplier-payment-dialog";
 import { ReceivingBatchPicker } from "@/components/custom-ui/receiving-batch-picker";
-import { ReceivingChoicePicker } from "@/components/custom-ui/receiving-choice-picker";
+import { ChoicePicker } from "@/components/custom-ui/choice-picker";
 import { ReceivingReportDecisionDialog, type ReceivingDecision } from "@/components/receiving-report-decision-dialog";
 import { safeError, readResponse } from "@/lib/feedback";
 import { useEffect, useRef, useState, type FormEvent } from "react";
@@ -1525,7 +1525,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               <fieldset className="form-grid receiving-fields" disabled={receivingFieldsDisabled}>
                 <div className="field">
                   <label htmlFor="receiving-order">Purchase order *</label>
-                  <ReceivingChoicePicker
+                  <ChoicePicker
                     id="receiving-order"
                     label="Purchase order"
                     placeholder="Choose a purchase order"
@@ -1586,7 +1586,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 </div>
                 <div className="field">
                   <label htmlFor="receiving-product">Product *</label>
-                  <ReceivingChoicePicker
+                  <ChoicePicker
                     id="receiving-product"
                     label="Product"
                     placeholder="Choose an outstanding product"
