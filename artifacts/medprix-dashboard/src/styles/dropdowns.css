@@ -133,7 +133,7 @@
    Scope the correction to form selects and the category editor, leaving action
    menus and their scroll-lock behavior unchanged. */
 @supports (scrollbar-gutter: stable) {
-  html:has(.app-select-menu) body[data-scroll-locked] {
+  html:has(.app-select-menu, .category-manager) body[data-scroll-locked] {
     margin-right: 0 !important;
   }
 }
@@ -360,6 +360,55 @@
   padding: 9px;
   border-radius: 0 0 7px 7px;
   font-size: var(--text-xs);
+}
+.category-manager-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgb(0 0 0 / 0.4);
+}
+.modal.category-manager {
+  animation: none;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1201;
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  overflow: hidden;
+}
+.category-manager .modal-header,
+.category-manager .modal-actions {
+  flex-shrink: 0;
+}
+.category-manager-body {
+  overflow-y: auto;
+  min-height: 0;
+}
+.category-manager-add,
+.category-manager-list li {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+}
+.category-manager .field {
+  flex: 1;
+  min-width: 0;
+}
+.category-manager-list {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0 0;
+  display: grid;
+  gap: 8px;
+}
+.category-manager .modal-actions {
+  margin-top: 16px;
+  flex-wrap: wrap;
 }
 .receiving-new-batch:hover,
 .receiving-new-batch:focus-visible {

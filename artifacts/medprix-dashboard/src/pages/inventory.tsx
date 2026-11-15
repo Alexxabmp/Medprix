@@ -1,4 +1,5 @@
 import { SelectField } from "@/components/custom-ui/select-field";
+import { CategoryManagementDialog } from "@/components/custom-ui/category-management-dialog";
 import { displayPeso } from "@/lib/currency";
 import { formatDisplayDate, formatDisplayDateTime } from "@/lib/business-date";
 import { PageTableValue } from "@/components/page-table-context";
@@ -274,6 +275,7 @@ export default function InventoryPage({
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All statuses");
   const [categoryFilter, setCategoryFilter] = useState("All categories");
+  const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
 
   // Modals state
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
@@ -685,6 +687,7 @@ export default function InventoryPage({
 
   return (
     <div>
+      {categoryManagerOpen && canEditProduct && <CategoryManagementDialog categories={availableCategories} onClose={() => setCategoryManagerOpen(false)} />}
       {inventoryLoadError && <div className="inline-error" role="alert"><span>{inventoryLoadError} Previously loaded stock may be out of date.</span><button className="button soft" onClick={() => void fetchInventory()}>Retry</button></div>}
       <PageHeading
         title="Inventory"
@@ -802,6 +805,7 @@ export default function InventoryPage({
               data-testid="select-inventory-category"
               searchable
               searchPlaceholder="Search categories"
+              footerAction={canEditProduct ? { label: "Manage categories", onClick: () => setCategoryManagerOpen(true) } : undefined}
               value={categoryFilter}
               onChange={(e) => {
                 setCategoryFilter(e.target.value);
