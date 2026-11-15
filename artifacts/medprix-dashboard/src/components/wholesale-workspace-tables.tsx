@@ -1,3 +1,4 @@
+import { SelectField } from "@/components/custom-ui/select-field";
 import { formatDisplayDate } from "@/lib/business-date";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { WholesaleOrderDetails } from "./wholesale-order-details";
@@ -98,7 +99,7 @@ function Pagination({
 }) {
   if (total <= 50) return null;
   return (
-    <div className="wholesale-pagination">
+    <div className="table-pagination">
       <button
         className="button soft"
         disabled={loading || page === 1}
@@ -333,7 +334,7 @@ export function WholesaleSummaryModal({
                 />
               </div>
               {deliveries && (
-                <select
+                <SelectField
                   aria-label="Delivery status"
                   value={status}
                   onChange={(event) => setStatus(event.target.value)}
@@ -345,7 +346,7 @@ export function WholesaleSummaryModal({
                   <option value="Completed">Completed</option>
                   <option value="Failed">Failed</option>
                   <option value="Cancelled">Cancelled</option>
-                </select>
+                </SelectField>
               )}
             </div>
             {list.error && (

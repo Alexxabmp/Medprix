@@ -1,0 +1,8 @@
+/* Application stylesheet entry. Preserve this cascade order. */
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap");
+@import "tailwindcss";
+@import "./modal-tables.css";
+@import "./tooltips.css";
+@import "../index.css";
+@import "./page-tables.css";
+@import "./dropdowns.css";

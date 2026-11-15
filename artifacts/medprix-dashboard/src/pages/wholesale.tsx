@@ -1,3 +1,4 @@
+import { SelectField } from "@/components/custom-ui/select-field";
 import { PageTableValue, usePageTableStandard } from "@/components/page-table-context";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
@@ -513,7 +514,7 @@ export default function WholesalePage({
           </div>
           <div className="table-tools-right">
             {tab === "orders" && (
-              <select
+              <SelectField
                 className="select"
                 aria-label="Filter wholesale orders by status"
                 value={orderStatus}
@@ -528,10 +529,10 @@ export default function WholesalePage({
                 <option value="Confirmed">Confirmed</option>
                 <option value="Delivered">Delivered</option>
                 <option value="Cancelled">Cancelled</option>
-              </select>
+              </SelectField>
             )}
             {tab === "prices" && (
-              <select
+              <SelectField
                 className="select"
                 aria-label="Filter wholesale prices by VAT classification"
                 value={vatFilter}
@@ -545,10 +546,10 @@ export default function WholesalePage({
                 <option value="VATable">VATable</option>
                 <option value="Exempt">Exempt</option>
                 <option value="Needs classification">Needs classification</option>
-              </select>
+              </SelectField>
             )}
             {tab === "accounts" && (
-              <select
+              <SelectField
                 className="select"
                 aria-label="Payment status"
                 value={accountStatus}
@@ -560,7 +561,7 @@ export default function WholesalePage({
                 <option value="outstanding">Outstanding</option>
                 <option value="overdue">Overdue</option>
                 <option value="paid">Paid</option>
-              </select>
+              </SelectField>
             )}
             {tab === "clients" && (
               <button
@@ -780,7 +781,7 @@ export default function WholesalePage({
                 )}
               </div>
               {tab === "orders" && (
-                <div className="wholesale-pagination" role="navigation" aria-label="Wholesale orders pagination">
+                <div className="table-pagination" role="navigation" aria-label="Wholesale orders pagination">
                   <span className="muted">
                     Page {safeOrderPage} of {totalOrderPages} ({visibleOrders.length} orders)
                   </span>
@@ -803,7 +804,7 @@ export default function WholesalePage({
                 </div>
               )}
               {tab === "clients" && (
-                <div className="wholesale-pagination" role="navigation" aria-label="Wholesale clients pagination">
+                <div className="table-pagination" role="navigation" aria-label="Wholesale clients pagination">
                   <span className="muted">
                     Page {safeClientPage} of {totalClientPages} ({visibleClients.length} clients)
                   </span>
@@ -826,7 +827,7 @@ export default function WholesalePage({
                 </div>
               )}
               {tab === "prices" && (
-                <div className="wholesale-pagination" role="navigation" aria-label="Wholesale prices pagination">
+                <div className="table-pagination" role="navigation" aria-label="Wholesale prices pagination">
                   <span className="muted">
                     Page {safePricePage} of {totalPricePages} ({visibleProducts.length} products)
                   </span>

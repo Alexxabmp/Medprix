@@ -1,3 +1,4 @@
+import { SelectField } from "@/components/custom-ui/select-field";
 import { safeError } from "@/lib/feedback";
 import { useRef, useState, type FormEvent } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
@@ -52,10 +53,10 @@ export function ProductDialog({ product, categories, suppliers, onClose, onSaved
     };
     return <div className="field" key={key}>
       <label htmlFor={id}>{label} {options.required ? "*" : "(optional)"}</label>
-      {options.choices ? <select {...props}>
+      {options.choices ? <SelectField {...props}>
         <option value="">Select {label.toLowerCase()}</option>
         {[...new Set([...options.choices, ...(values[key] ? [String(values[key])] : [])])].filter(Boolean).map((choice) => <option key={choice} value={choice}>{choice}</option>)}
-      </select> : <input {...props} type={options.type ?? "text"} placeholder={options.placeholder} />}
+      </SelectField> : <input {...props} type={options.type ?? "text"} placeholder={options.placeholder} />}
       {options.hint && <span id={`${id}-hint`} className="field-hint">{options.hint}</span>}
       {errors[errorKey] && <span id={`${id}-error`} className="product-field-error">{errors[errorKey]}</span>}
     </div>;

@@ -1,3 +1,5 @@
+import { SelectField } from "@/components/custom-ui/select-field";
+import { CategoryManagementDialog } from "@/components/custom-ui/category-management-dialog";
 import { displayPeso } from "@/lib/currency";
 import { formatDisplayDate, formatDisplayDateTime } from "@/lib/business-date";
 import { PageTableValue } from "@/components/page-table-context";
@@ -273,6 +275,7 @@ export default function InventoryPage({
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All statuses");
   const [categoryFilter, setCategoryFilter] = useState("All categories");
+  const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
 
   // Modals state
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
@@ -684,6 +687,7 @@ export default function InventoryPage({
 
   return (
     <div>
+      {categoryManagerOpen && canEditProduct && <CategoryManagementDialog categories={availableCategories} onClose={() => setCategoryManagerOpen(false)} />}
       {inventoryLoadError && <div className="inline-error" role="alert"><span>{inventoryLoadError} Previously loaded stock may be out of date.</span><button className="button soft" onClick={() => void fetchInventory()}>Retry</button></div>}
       <PageHeading
         title="Inventory"
@@ -795,10 +799,13 @@ export default function InventoryPage({
           </div>
 
           <div className="table-tools-right">
-            <select
+            <SelectField
               className="select"
               aria-label="Filter products by category"
               data-testid="select-inventory-category"
+              searchable
+              searchPlaceholder="Search categories"
+              footerAction={canEditProduct ? { label: "Manage categories", onClick: () => setCategoryManagerOpen(true) } : undefined}
               value={categoryFilter}
               onChange={(e) => {
                 setCategoryFilter(e.target.value);
@@ -809,9 +816,9 @@ export default function InventoryPage({
                   {c}
                 </option>
               ))}
-            </select>
+            </SelectField>
 
-            <select
+            <SelectField
               className="select"
               aria-label="Filter products by status"
               data-testid="select-inventory-filter"
@@ -826,7 +833,7 @@ export default function InventoryPage({
               <option>Out of Stock</option>
               <option>Expiring Soon</option>
               <option>Expired</option>
-            </select>
+            </SelectField>
           </div>
         </div>
 
@@ -1072,7 +1079,7 @@ export default function InventoryPage({
             </div>
           )}
         </div>
-        <div className="wholesale-pagination" role="navigation" aria-label="Inventory pagination">
+        <div className="table-pagination" role="navigation" aria-label="Inventory pagination">
           <span className="muted">
             Page {safeInventoryPage} of {totalInventoryPages} ({filtered.length} products)
           </span>
@@ -1115,7 +1122,7 @@ export default function InventoryPage({
               />
             </div>
             <div className="table-tools-right">
-              <select
+              <SelectField
                 className="select"
                 aria-label="Filter movements by movement type"
                 value={movementTypeFilter}
@@ -1128,7 +1135,7 @@ export default function InventoryPage({
                 <option value="POS Sale">POS Sale</option>
                 <option value="Stock In">Stock In</option>
                 <option value="Stock Out">Stock Out</option>
-              </select>
+              </SelectField>
             </div>
           </div>
 
@@ -1206,7 +1213,7 @@ export default function InventoryPage({
               </div>
             )}
           </div>
-          <div className="wholesale-pagination" role="navigation" aria-label="Stock movement pagination">
+          <div className="table-pagination" role="navigation" aria-label="Stock movement pagination">
             <span className="muted">
               Page {safeMovementPage} of {totalMovementPages} ({filteredMovements.length} movements)
             </span>
@@ -1531,7 +1538,7 @@ export default function InventoryPage({
                       </div>
                       <div className="field full-width">
                         <label>Supplier</label>
-                        <select
+                        <SelectField
                           value={newBatchData.supplier}
                           onChange={(e) =>
                             setNewBatchData({
@@ -1545,7 +1552,7 @@ export default function InventoryPage({
                               {s.name}
                             </option>
                           ))}
-                        </select>
+                        </SelectField>
                       </div>
                     </>
                   )}
@@ -1593,7 +1600,7 @@ export default function InventoryPage({
                 <div className="form-grid">
                   <div className="field full-width">
                     <label>Target Batch *</label>
-                    <select
+                    <SelectField
                       required
                       value={stockInData.batchNumber}
                       onChange={(e) =>
@@ -1609,7 +1616,7 @@ export default function InventoryPage({
                           {formatDisplayDate(b.expiryDate)})
                         </option>
                       ))}
-                    </select>
+                    </SelectField>
                   </div>
 
                   <div className="field">
@@ -1697,7 +1704,7 @@ export default function InventoryPage({
                 <div className="form-grid">
                   <div className="field full-width">
                     <label>Source Batch *</label>
-                    <select
+                    <SelectField
                       value={stockOutData.batchNumber}
                       onChange={(e) =>
                         setStockOutData({
@@ -1711,7 +1718,7 @@ export default function InventoryPage({
                           {formatDisplayDate(b.expiryDate)})
                         </option>
                       ))}
-                    </select>
+                    </SelectField>
                   </div>
 
                   <div className="field">
@@ -1754,7 +1761,7 @@ export default function InventoryPage({
 
                   <div className="field full-width">
                     <label>Reason *</label>
-                    <select
+                    <SelectField
                       value={stockOutData.reason}
                       onChange={(e) =>
                         setStockOutData({
@@ -1773,7 +1780,7 @@ export default function InventoryPage({
                       <option value="Internal Use / Clinic Transfer">
                         Internal Use / Clinic Transfer
                       </option>
-                    </select>
+                    </SelectField>
                   </div>
                 </div>
 

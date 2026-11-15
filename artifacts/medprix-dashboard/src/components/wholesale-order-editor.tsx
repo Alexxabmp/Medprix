@@ -1,3 +1,4 @@
+import { SelectField } from "./custom-ui/select-field";
 import { useRef, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { WholesaleDialog } from "./wholesale-dialog";
@@ -93,7 +94,7 @@ export function WholesaleOrderEditor({
         <fieldset disabled={busy} className="wholesale-fields">
           <div className="field">
             <label htmlFor="wholesale-draft-client">Client *</label>
-            <select
+            <SelectField searchable pickerLabel="Client"
               id="wholesale-draft-client"
               required
               value={clientId}
@@ -109,7 +110,7 @@ export function WholesaleOrderEditor({
                   {client.name}
                 </option>
               ))}
-            </select>
+            </SelectField>
           </div>
           <p className="field-hint">Saving a draft does not reserve stock.</p>
           {order && (
@@ -133,7 +134,7 @@ export function WholesaleOrderEditor({
                   <label htmlFor={"wholesale-draft-product-" + index}>
                     Product *
                   </label>
-                  <select
+                  <SelectField searchable pickerLabel={`Product line ${index + 1}`}
                     id={"wholesale-draft-product-" + index}
                     required
                     value={line.productId}
@@ -162,7 +163,7 @@ export function WholesaleOrderEditor({
                           available
                         </option>
                       ))}
-                  </select>
+                  </SelectField>
                 </div>
                 <div className="field">
                   <label htmlFor={"wholesale-draft-quantity-" + index}>

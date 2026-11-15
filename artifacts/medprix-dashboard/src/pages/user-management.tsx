@@ -1,3 +1,4 @@
+import { SelectField } from "@/components/custom-ui/select-field";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { PageTableValue } from "@/components/page-table-context";
 import { useState, useEffect, type FormEvent } from "react";
@@ -334,7 +335,7 @@ export default function UserManagementPage({
             />
           </div>
           <div className="table-tools-right">
-            <select
+            <SelectField
               className="select"
               aria-label="Filter users by role"
               value={roleFilter}
@@ -347,7 +348,7 @@ export default function UserManagementPage({
               <option value="Administrator">Administrator</option>
               <option value="Front Desk">Front Desk</option>
               <option value="Cashier">Cashier</option>
-            </select>
+            </SelectField>
           </div>
         </div>
         <div className="table-scroll">
@@ -391,7 +392,7 @@ export default function UserManagementPage({
                     </div>
                   </td>
                   <td>
-                    <select
+                    <SelectField
                       className="select"
                       style={{ height: 30, padding: "0 8px" }}
                       data-testid={`select-role-${user.id}`}
@@ -444,7 +445,7 @@ export default function UserManagementPage({
                       <option>Administrator</option>
                       <option>Front Desk</option>
                       <option>Cashier</option>
-                    </select>
+                    </SelectField>
                     {isCurrentUser && (
                       <div className="muted" style={{ fontSize: 12, marginTop: 5 }}>
                         Your own role is locked.
@@ -522,7 +523,7 @@ export default function UserManagementPage({
             </div>
           )}
         </div>
-        <div className="wholesale-pagination" role="navigation" aria-label="User accounts pagination">
+        <div className="table-pagination" role="navigation" aria-label="User accounts pagination">
           <span className="muted">
             Page {safeUserPage} of {totalUserPages} ({shown.length} users)
           </span>
@@ -794,7 +795,7 @@ function UserDialog({
           </div>
           <div className="field">
             <label htmlFor="user-role">Role</label>
-            <select
+            <SelectField
               id="user-role"
               data-testid="select-user-role"
               value={draft.role}
@@ -803,7 +804,7 @@ function UserDialog({
               <option>Administrator</option>
               <option>Front Desk</option>
               <option>Cashier</option>
-            </select>
+            </SelectField>
           </div>
           {isCurrentUser && (
             <div className="muted" style={{ fontSize: 12 }}>

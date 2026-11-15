@@ -1,3 +1,4 @@
+import { SelectField } from "@/components/custom-ui/select-field";
 import { PageTableValue, PageTableRow, PageTableAction, usePageTableStandard } from "@/components/page-table-context";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { ModalTableDialog, ModalDataTable } from "@/components/modal-data-table";
@@ -8,7 +9,7 @@ import { createReceivingSubmitter, type PendingReceiving } from "@/lib/receiving
 import { useDialogAccessibility } from "@/lib/use-dialog-accessibility";
 import { SupplierPaymentDialog } from "@/components/supplier-payment-dialog";
 import { ReceivingBatchPicker } from "@/components/custom-ui/receiving-batch-picker";
-import { ReceivingChoicePicker } from "@/components/custom-ui/receiving-choice-picker";
+import { ChoicePicker } from "@/components/custom-ui/choice-picker";
 import { ReceivingReportDecisionDialog, type ReceivingDecision } from "@/components/receiving-report-decision-dialog";
 import { safeError, readResponse } from "@/lib/feedback";
 import { useEffect, useRef, useState, type FormEvent } from "react";
@@ -813,7 +814,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 }} />
             </div>
             <div className="table-tools-right">
-              <select
+              <SelectField
                 className="select"
                 data-testid="select-procurement-status"
                 aria-label="Filter purchase orders by status"
@@ -826,7 +827,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 {poStatuses.map((item) => (
                   <option key={item} value={item}>{item}</option>
                 ))}
-              </select>
+              </SelectField>
             </div>
           </div>
           <div className="table-scroll">
@@ -874,7 +875,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                           <strong>{money(order.totalOrderAmount)}</strong>
                         </td>
                         <td>
-                          {canManagePurchasing && !["Fulfilled", "Cancelled"].includes(order.status) ? <select
+                          {canManagePurchasing && !["Fulfilled", "Cancelled"].includes(order.status) ? <SelectField
                             className="select"
                             data-testid={`select-status-${order.id}`}
                             value={order.status}
@@ -886,7 +887,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                             {poStatuses.filter(item => item !== "Fulfilled").map((item) => (
                               <option key={item} disabled={item === "Cancelled" && order.items?.some(line => line.quantityReceived > 0)}>{item}</option>
                             ))}
-                          </select> : <span className="pill neutral">{order.status}</span>}
+                          </SelectField> : <span className="pill neutral">{order.status}</span>}
                         </td>
                         <td className="table-action-cell">
                           <div className="table-actions">
@@ -915,7 +916,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               </tbody>
             </table>
           </div>
-          <div className="wholesale-pagination" role="navigation" aria-label="Purchase orders pagination">
+          <div className="table-pagination" role="navigation" aria-label="Purchase orders pagination">
             <span className="muted">
               Page {safeOrderPage} of {totalOrderPages} ({filteredOrders.length} orders)
             </span>
@@ -953,7 +954,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 }} />
             </div>
             <div className="table-tools-right">
-              <select
+              <SelectField
                 className="select"
                 aria-label="Filter receiving reports by status"
                 value={receivingStatusFilter}
@@ -969,7 +970,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 <option value="Received">Received</option>
                 <option value="Inspected">Inspected</option>
                 <option value="Partial">Partial</option>
-              </select>
+              </SelectField>
               {canManagePurchasing && (
                 <button
                   className="button primary-action"
@@ -1022,7 +1023,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               </tbody>
             </table>
           </div>
-          <div className="wholesale-pagination" role="navigation" aria-label="Receiving reports pagination">
+          <div className="table-pagination" role="navigation" aria-label="Receiving reports pagination">
             <span className="muted">
               Page {safeReceivingPage} of {totalReceivingPages} ({filteredReceivingRows.length} receiving items)
             </span>
@@ -1060,7 +1061,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 }} />
             </div>
             <div className="table-tools-right">
-              <select
+              <SelectField
                 className="select"
                 aria-label="Filter supplier invoices by status"
                 value={invoiceStatusFilter}
@@ -1075,9 +1076,9 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 <option value="Overdue">Overdue</option>
                 <option value="Settled">Settled</option>
                 <option value="Needs Review">Needs Review</option>
-              </select>
+              </SelectField>
               {isInvoiceRefreshing && (
-                <span className="muted" role="status">Refreshing…</span>
+                <span className="sr-only" role="status">Refreshing invoices…</span>
               )}
               <button className="button primary-action" onClick={() => setIsInvoiceOpen(true)}>
                 <Plus size={14} /> Add invoice
@@ -1151,7 +1152,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               </tbody>
             </table>
           </div>
-          <div className="wholesale-pagination" role="navigation" aria-label="Purchase invoices pagination">
+          <div className="table-pagination" role="navigation" aria-label="Purchase invoices pagination">
             <span className="muted">
               Page {safeInvoicePage} of {totalInvoicePages} ({filteredInvoices.length} invoices)
             </span>
@@ -1321,7 +1322,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               <div className="form-grid">
                 <div className="field">
                   <label>Supplier *</label>
-                  <select
+                  <SelectField searchable id="po-supplier" pickerLabel="Supplier"
                     required
                     value={supplierId}
                     onChange={(event) => setSupplierId(event.target.value)}>
@@ -1331,7 +1332,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                         {supplier.name}
                       </option>
                     ))}
-                  </select>
+                  </SelectField>
                 </div>
               </div>
               <div className="modal-section">
@@ -1361,7 +1362,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                     style={{ alignItems: "end", marginTop: 10 }}>
                     <div className="field">
                       <label>Product *</label>
-                      <select
+                      <SelectField searchable id={`po-product-${index}`} pickerLabel={`Product line ${index + 1}`}
                         required
                         aria-describedby={poError ? "po-form-error" : undefined}
                         value={item.productId}
@@ -1399,7 +1400,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                             {product.name} ({product.sku})
                           </option>
                         ))}
-                      </select>
+                      </SelectField>
                     </div>
                     <div className="field">
                       <label>Quantity *</label>
@@ -1524,7 +1525,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               <fieldset className="form-grid receiving-fields" disabled={receivingFieldsDisabled}>
                 <div className="field">
                   <label htmlFor="receiving-order">Purchase order *</label>
-                  <ReceivingChoicePicker
+                  <ChoicePicker
                     id="receiving-order"
                     label="Purchase order"
                     placeholder="Choose a purchase order"
@@ -1553,7 +1554,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 </div>
                 <div className="field">
                   <label>Delivery status *</label>
-                  <select
+                  <SelectField
                     required
                     value={deliveryForm.deliveryStatus}
                     onChange={(event) =>
@@ -1567,7 +1568,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                     <option>Partial</option>
                     <option>Inspected</option>
                     <option>Rejected</option>
-                  </select>
+                  </SelectField>
                 </div>
                 <div className="field">
                   <label>Delivery date *</label>
@@ -1585,7 +1586,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 </div>
                 <div className="field">
                   <label htmlFor="receiving-product">Product *</label>
-                  <ReceivingChoicePicker
+                  <ChoicePicker
                     id="receiving-product"
                     label="Product"
                     placeholder="Choose an outstanding product"
@@ -1685,7 +1686,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               <div className="form-grid">
                 <div className="field">
                   <label>Supplier *</label>
-                  <select
+                  <SelectField
                     required
                     value={invoiceForm.supplierId}
                     onChange={(event) =>
@@ -1701,11 +1702,11 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                         {supplier.name}
                       </option>
                     ))}
-                  </select>
+                  </SelectField>
                 </div>
                 <div className="field">
                   <label>Purchase order</label>
-                  <select
+                  <SelectField
                     value={invoiceForm.poId}
                     onChange={(event) =>
                       setInvoiceForm({ ...invoiceForm, poId: event.target.value })
@@ -1722,7 +1723,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                           {order.poNumber}
                         </option>
                       ))}
-                  </select>
+                  </SelectField>
                 </div>
                 <div className="field">
                   <label>Due date *</label>
@@ -1756,7 +1757,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 </div>
                 <div className="field">
                   <label>Payment status</label>
-                  <select
+                  <SelectField
                     value={invoiceForm.isPaid ? "Paid" : "Unpaid"}
                     onChange={(event) =>
                       setInvoiceForm({
@@ -1766,7 +1767,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                     }>
                     <option>Unpaid</option>
 
-                  </select>
+                  </SelectField>
                 </div>
               </div>
               {error && <div className="inline-error" role="alert">{error}</div>}

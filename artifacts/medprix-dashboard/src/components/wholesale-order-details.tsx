@@ -1,3 +1,4 @@
+import { SelectField } from "@/components/custom-ui/select-field";
 import { ChevronDown } from "lucide-react";
 import { DeliveryReceiptView } from "./delivery-receipt-view";
 import { WholesaleDeliveryPanel } from "./wholesale-delivery-panel";
@@ -186,7 +187,7 @@ export function WholesaleOrderDetails({
                         </td>
                         {draft && (
                           <td data-label="Price approval">
-                            <select
+                            <SelectField
                               aria-label={"Price approval for " + line.name}
                               disabled={busy}
                               value={selected[line.productId] ?? ""}
@@ -204,7 +205,7 @@ export function WholesaleOrderDetails({
                                   {approval.approvedByName}
                                 </option>
                               ))}
-                            </select>
+                            </SelectField>
                           </td>
                         )}
                       </tr>
@@ -250,8 +251,9 @@ export function WholesaleOrderDetails({
                         <label htmlFor={"wholesale-override-product"}>
                           Product *
                         </label>
-                        <select
+                        <SelectField
                           id={"wholesale-override-product"}
+                          searchable
                           required
                           name="productId"
                         >
@@ -260,7 +262,7 @@ export function WholesaleOrderDetails({
                               {line.name}
                             </option>
                           ))}
-                        </select>
+                        </SelectField>
                       </div>
                       <div className="field">
                         <label htmlFor={"wholesale-override-price"}>

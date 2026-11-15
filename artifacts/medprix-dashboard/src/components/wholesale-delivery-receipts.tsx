@@ -105,7 +105,7 @@ export function WholesaleDeliveryReceipts({
           )}
         </tbody>
       </table></PageTableScroll>
-      <div className="wholesale-pagination" role="navigation" aria-label="Delivery receipts pagination">
+      <div className="table-pagination" role="navigation" aria-label="Delivery receipts pagination">
         <span className="muted">
           Page {safePage} of {totalPages} ({visible.length} receipts)
         </span>

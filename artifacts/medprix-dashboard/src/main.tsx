@@ -4,8 +4,7 @@ import { createRoot } from 'react-dom/client';
 import App from './App';
 import { ErrorBoundary } from '@/components/error-boundary';
 
-import './index.css';
-import './styles/page-tables.css';
+import './styles/app.css';
 
 createRoot(document.getElementById('root')!, {
   // Keeps caught errors off reportError(), which would raise the dev overlay.

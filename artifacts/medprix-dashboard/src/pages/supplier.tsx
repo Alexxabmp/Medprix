@@ -1,3 +1,4 @@
+import { SelectField } from "@/components/custom-ui/select-field";
 import { formatDisplayDate } from "@/lib/business-date";
 import { PageTableValue, PageTableAction } from "@/components/page-table-context";
 import { Banknote } from "lucide-react";
@@ -552,7 +553,7 @@ export default function SupplierPage({
                 />
               </div>
               <div className="table-tools-right">
-                <select
+                <SelectField
                   className="select"
                   data-testid="select-supplier-filter"
                   aria-label="Filter suppliers by status"
@@ -565,7 +566,7 @@ export default function SupplierPage({
                   <option>All statuses</option>
                   <option>Active</option>
                   <option>Inactive</option>
-                </select>
+                </SelectField>
               </div>
             </div>
             <div className="table-scroll">
@@ -653,7 +654,7 @@ export default function SupplierPage({
                 </tbody>
               </table>
             </div>
-            <div className="wholesale-pagination" role="navigation" aria-label="Supplier directory pagination">
+            <div className="table-pagination" role="navigation" aria-label="Supplier directory pagination">
               <span className="muted">
                 Page {safeDirectoryPage} of {totalDirectoryPages} ({filtered.length} suppliers)
               </span>
@@ -696,7 +697,7 @@ export default function SupplierPage({
                 />
               </div>
               <div className="table-tools-right">
-                <select
+                <SelectField
                   className="select"
                   aria-label="Filter accounts payable"
                   value={payableFilter}
@@ -710,7 +711,7 @@ export default function SupplierPage({
                   <option value="Overdue">Overdue</option>
                   <option value="Paid">Paid</option>
                   <option value="Needs Review">Needs Review</option>
-                </select>
+                </SelectField>
               </div>
             </div>
             <div className="table-scroll stable-data-table">
@@ -819,7 +820,7 @@ export default function SupplierPage({
                 </tbody>
               </table>
             </div>
-            <div className="wholesale-pagination" role="navigation" aria-label="Accounts payable pagination">
+            <div className="table-pagination" role="navigation" aria-label="Accounts payable pagination">
               <span className="muted">
                 Page {safePayablePage} of {totalPayablePages} ({filteredPayables.length} invoices)
               </span>

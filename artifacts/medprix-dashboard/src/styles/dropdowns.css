@@ -1,0 +1,472 @@
+/* Shared form selects, searchable choices and the specialized receiving batch picker.
+   Page/dialog layout and general form-field foundations remain in index.css. */
+.receiving-batch-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 40px;
+  padding: 10px 12px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.receiving-batch-trigger > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.receiving-batch-trigger:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.receiving-batch-trigger:focus-visible,
+.receiving-new-batch:focus-visible {
+  outline: 2px solid hsl(var(--foreground) / 0.3);
+  outline-offset: 2px;
+}
+.receiving-batch-menu {
+  z-index: 1100;
+  width: var(--radix-popover-trigger-width);
+  max-width: calc(100vw - 36px);
+  overflow: hidden;
+}
+.receiving-batch-menu [cmdk-root] {
+  background: inherit;
+  color: inherit;
+}
+.receiving-batch-menu [cmdk-list] {
+  max-height: min(190px, 30dvh);
+}
+.receiving-batch-menu [cmdk-item] {
+  cursor: pointer;
+}
+.receiving-batch-menu [cmdk-item] > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.receiving-batch-menu small {
+  color: hsl(var(--muted));
+  font-size: var(--text-xs);
+}
+.receiving-new-batch {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  border: 0;
+  border-top: 1px solid hsl(var(--border));
+  background: hsl(var(--surface));
+  color: hsl(var(--foreground));
+  font: inherit;
+  cursor: pointer;
+}
+.receiving-choice-menu [cmdk-list] {
+  max-height: min(280px, 40dvh);
+}
+.receiving-choice-menu [cmdk-item] {
+  align-items: flex-start;
+}
+.receiving-choice-menu [cmdk-item] > svg {
+  margin-top: 3px;
+}
+.receiving-choice-menu [cmdk-item] strong {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.receiving-dialog[aria-busy="true"] .receiving-choice-trigger:disabled {
+  opacity: 1;
+  cursor: wait;
+}
+.receiving-batch-control {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+  gap: 6px;
+}
+.receiving-batch-control > input {
+  flex: 1 1 0;
+  width: 0;
+}
+.receiving-batch-trigger {
+  height: 40px;
+  min-width: 0;
+}
+.receiving-batch-change {
+  flex: 0 0 40px;
+  width: 40px;
+  justify-content: center;
+  padding: 8px;
+}
+.receiving-batch-menu {
+  display: flex;
+  flex-direction: column;
+  max-height: min(360px, var(--radix-popover-content-available-height));
+}
+.receiving-batch-menu [cmdk-root] {
+  flex: 1 1 auto;
+  height: auto;
+}
+.receiving-batch-menu [cmdk-input-wrapper],
+.receiving-new-batch {
+  flex-shrink: 0;
+}
+.receiving-batch-menu [cmdk-list] {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+/* Only form selects and searchable pickers. Existing action menus are untouched. */
+[data-select-value][hidden] {
+  display: none !important;
+}
+/* The app's stable root gutter already reserves the scrollbar width. Radix's
+   additional body margin otherwise reserves it twice on classic scrollbars.
+   Scope the correction to form selects and the category editor, leaving action
+   menus and their scroll-lock behavior unchanged. */
+@supports (scrollbar-gutter: stable) {
+  html:has(.app-select-menu, .category-manager) body[data-scroll-locked] {
+    margin-right: 0 !important;
+  }
+}
+.app-select-trigger,
+.receiving-batch-trigger {
+  font-family: var(--app-font-sans);
+  font-size: var(--text-xs);
+  color: hsl(var(--foreground));
+  background: hsl(var(--surface-soft));
+  border: 1px solid hsl(var(--border));
+  border-radius: 11px;
+}
+.app-select-trigger,
+.receiving-choice-trigger {
+  height: 39px;
+  min-height: 0;
+  padding: 0 11px;
+}
+.app-select-trigger {
+  display: inline-flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+  box-shadow: none;
+}
+.app-select-trigger > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-select-trigger > svg,
+.receiving-batch-trigger > svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: hsl(var(--muted));
+  opacity: 1;
+}
+.app-select-trigger:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.app-select-trigger:is(:focus, :focus-visible),
+.receiving-batch-trigger:is(:focus, :focus-visible) {
+  outline: none !important;
+  box-shadow: none !important;
+  border-color: hsl(var(--border)) !important;
+}
+.app-select-trigger:focus-visible,
+.receiving-batch-trigger:focus-visible {
+  background-color: hsl(var(--foreground) / 0.07);
+  text-decoration: underline dotted;
+  text-underline-offset: 4px;
+}
+.app-select-trigger[aria-invalid="true"],
+.receiving-batch-trigger[aria-invalid="true"] {
+  border-color: hsl(var(--danger)) !important;
+}
+.app-select-menu,
+.receiving-batch-menu {
+  padding: 4px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 11px;
+  background: hsl(var(--surface));
+  color: hsl(var(--foreground));
+  font-family: var(--app-font-sans);
+  box-shadow:
+    0 8px 28px rgb(0 0 0 / 0.1),
+    0 2px 6px rgb(0 0 0 / 0.04);
+}
+.dark .app-select-menu,
+.dark .receiving-batch-menu {
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.3);
+}
+.app-select-menu {
+  min-width: min(var(--radix-select-trigger-width), calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+  max-height: min(264px, var(--radix-select-content-available-height));
+}
+.app-select-menu [data-radix-select-viewport] {
+  min-width: 0 !important;
+}
+.app-select-menu [role="option"] {
+  margin: 3px 0;
+  min-height: 32px;
+  padding: 7px 28px 7px 9px;
+  border-radius: 7px;
+  font-family: var(--app-font-sans);
+  font-size: var(--text-xs);
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.app-select-menu [role="option"][data-highlighted] {
+  outline: none;
+  background: hsl(var(--foreground) / 0.1);
+  color: hsl(var(--foreground));
+}
+.app-select-menu [role="option"][data-state="checked"]:not([data-highlighted]) {
+  background: hsl(var(--foreground) / 0.045);
+}
+.receiving-choice-menu {
+  --choice-available-width: min(
+    calc(100vw - 36px),
+    var(--radix-popover-content-available-width, calc(100vw - 36px))
+  );
+  display: flex;
+  flex-direction: column;
+  width: max-content;
+  min-width: min(
+    var(--radix-popover-trigger-width),
+    var(--choice-available-width)
+  );
+  max-width: var(--choice-available-width);
+  max-height: var(--radix-popover-content-available-height);
+}
+.choice-menu-sizer {
+  height: 0;
+  flex-shrink: 0;
+  visibility: hidden;
+  overflow: hidden;
+  white-space: pre;
+  padding: 0 30px 0 9px;
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+.receiving-choice-menu [cmdk-root] {
+  /* Only the frozen option text above contributes intrinsic panel width. */
+  contain: inline-size;
+}
+.receiving-choice-menu [cmdk-list] {
+  min-height: 0;
+  overflow-x: hidden;
+}
+.choice-menu-error {
+  margin: 0;
+  padding: 12px 9px;
+  font-size: var(--text-xs);
+  color: hsl(var(--muted));
+  overflow-wrap: anywhere;
+}
+.receiving-batch-menu [cmdk-root] {
+  min-height: 0;
+  border-radius: 7px;
+}
+.receiving-batch-menu [cmdk-input-wrapper] {
+  margin: 1px 1px 4px;
+  padding: 0 8px;
+  gap: 6px;
+  border: 0;
+  border-radius: 7px;
+  background: hsl(var(--surface-soft));
+}
+.receiving-batch-menu [cmdk-input-wrapper] > svg {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  color: hsl(var(--muted));
+}
+.receiving-batch-menu [cmdk-input] {
+  height: 32px !important;
+  min-height: 32px;
+  padding: 0 !important;
+  border: 0 !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  color: hsl(var(--foreground));
+  font-family: var(--app-font-sans);
+  font-size: var(--text-xs);
+}
+.receiving-batch-menu [cmdk-input]::placeholder {
+  color: hsl(var(--muted));
+}
+.receiving-batch-menu [cmdk-list] {
+  padding: 1px 0;
+}
+.receiving-batch-menu [cmdk-item] {
+  min-height: 32px;
+  margin: 3px 0;
+  padding: 7px 9px;
+  gap: 8px;
+  border-radius: 7px;
+  color: hsl(var(--foreground));
+  font-family: var(--app-font-sans);
+  font-size: var(--text-xs);
+  line-height: 1.35;
+}
+.receiving-batch-menu [cmdk-item] strong {
+  font: inherit;
+  font-weight: 500;
+}
+.receiving-batch-menu [cmdk-item] small {
+  font-size: 11px;
+  line-height: 1.35;
+  color: hsl(var(--muted));
+}
+.receiving-batch-menu [cmdk-item] > svg {
+  order: 2;
+  margin-left: auto;
+  align-self: center;
+  width: 13px;
+  height: 13px;
+}
+.receiving-batch-menu [cmdk-item] > span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.receiving-batch-menu [cmdk-item][data-selected="true"] {
+  background: hsl(var(--foreground) / 0.1);
+  color: hsl(var(--foreground));
+}
+.receiving-batch-menu
+  [cmdk-item][data-current="true"]:not([data-selected="true"]) {
+  background: hsl(var(--foreground) / 0.045);
+}
+.receiving-batch-menu [cmdk-empty] {
+  padding: 16px 10px;
+  font-size: var(--text-xs);
+  color: hsl(var(--muted));
+}
+.receiving-new-batch {
+  flex-shrink: 0;
+  padding: 9px;
+  border-radius: 0 0 7px 7px;
+  font-size: var(--text-xs);
+}
+.category-manager-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgb(0 0 0 / 0.4);
+}
+.modal.category-manager {
+  animation: none;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1201;
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  overflow: hidden;
+}
+.category-manager .modal-header,
+.category-manager .modal-actions {
+  flex-shrink: 0;
+}
+.category-manager-body {
+  overflow-y: auto;
+  min-height: 0;
+}
+.category-manager-add,
+.category-manager-list li {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+}
+.category-manager .field {
+  flex: 1;
+  min-width: 0;
+}
+.category-manager-list {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0 0;
+  display: grid;
+  gap: 8px;
+}
+.category-manager .modal-actions {
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+.receiving-new-batch:hover,
+.receiving-new-batch:focus-visible {
+  background: hsl(var(--foreground) / 0.1);
+}
+.receiving-new-batch:focus-visible {
+  outline: none;
+  background: hsl(var(--surface-soft));
+  text-decoration: underline dotted;
+  text-underline-offset: 4px;
+}
+@media (max-width: 600px) {
+  .receiving-batch-menu {
+    max-height: min(224px, var(--radix-popover-content-available-height));
+    padding: 4px;
+  }
+  .receiving-batch-menu [cmdk-list] {
+    max-height: min(164px, 27dvh);
+  }
+  .receiving-batch-menu [cmdk-input] {
+    height: 30px !important;
+    min-height: 30px;
+    font-size: 14px;
+  }
+  .receiving-batch-menu [cmdk-item] {
+    min-height: 32px;
+    padding: 6px 8px;
+    gap: 6px;
+  }
+  .receiving-batch-menu [cmdk-item] strong {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+  .receiving-batch-menu [cmdk-item] small {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .app-select-menu {
+    max-height: min(224px, var(--radix-select-content-available-height));
+  }
+}
+@supports (-webkit-touch-callout: none) {
+  @media (max-width: 600px) {
+    .receiving-batch-menu [cmdk-input] {
+      font-size: 16px;
+    }
+  }
+}
+/* Shared choice labels remain complete on every viewport, including mobile. */
+.receiving-choice-menu [cmdk-item] :is(strong, small) {
+  display: block;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: anywhere;
+  overflow: visible;
+  text-overflow: clip;
+  -webkit-line-clamp: unset;
+}
