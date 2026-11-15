@@ -1,3 +1,4 @@
+import { SelectField } from "@/components/custom-ui/select-field";
 import { displayPeso } from "@/lib/currency";
 import { formatDisplayDateTime } from "@/lib/business-date";
 import { PageTableValue } from "@/components/page-table-context";
@@ -390,7 +391,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
               </div>
 
               <div className="table-tools-right">
-                <select
+                <SelectField
                   className="select"
                   aria-label="Filter transactions by user"
                   value={trxFilterUser}
@@ -405,9 +406,9 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                       {user}
                     </option>
                   ))}
-                </select>
+                </SelectField>
 
-                <select
+                <SelectField
                   className="select"
                   aria-label="Filter transactions by business type"
                   value={trxFilterType}
@@ -419,7 +420,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                   <option value="All">All business types</option>
                   <option value="Retail">Retail (Cashier)</option>
                   <option value="Wholesale">Wholesale (Front desk)</option>
-                </select>
+                </SelectField>
               </div>
             </div>
 
@@ -542,7 +543,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
               </div>
 
               <div className="table-tools-right">
-                <select
+                <SelectField
                   className="select"
                   aria-label="Filter system logs by user"
                   value={logFilterUser}
@@ -557,9 +558,9 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                       {user}
                     </option>
                   ))}
-                </select>
+                </SelectField>
 
-                <select
+                <SelectField
                   className="select"
                   aria-label="Filter system logs by action"
                   value={logFilterAction}
@@ -574,7 +575,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                       {action}
                     </option>
                   ))}
-                </select>
+                </SelectField>
               </div>
             </div>
 
@@ -687,7 +688,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
               </div>
 
               <div className="table-tools-right">
-                <select
+                <SelectField
                   className="select"
                   aria-label="Filter user activity by user"
                   value={activityFilterUser}
@@ -702,9 +703,9 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                       {user}
                     </option>
                   ))}
-                </select>
+                </SelectField>
 
-                <select
+                <SelectField
                   className="select"
                   aria-label="Filter user activity by activity"
                   value={activityFilterAction}
@@ -719,7 +720,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                       {act}
                     </option>
                   ))}
-                </select>
+                </SelectField>
               </div>
             </div>
 

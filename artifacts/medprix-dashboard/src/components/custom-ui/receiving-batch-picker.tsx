@@ -86,6 +86,9 @@ export function ReceivingBatchPicker({
             align="start"
             sideOffset={6}
             collisionPadding={18}
+            onCloseAutoFocus={(event) => {
+              if (enteringNew) event.preventDefault();
+            }}
             onEscapeKeyDown={(event) => event.stopPropagation()}
           >
             <Command

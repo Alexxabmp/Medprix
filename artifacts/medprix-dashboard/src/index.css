@@ -1730,7 +1730,7 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
 
 .pos-product-bar {
   display: grid;
-  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr) 90px auto;
+  grid-template-columns: minmax(0, 1fr) 90px auto;
   gap: 12px;
   align-items: end;
   padding: 14px 16px;
@@ -1797,6 +1797,9 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
   .pos-product-bar {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  .pos-product-bar > :first-child {
+    grid-column: 1 / -1;
+  }
 
   .pos-checkout-grid {
     grid-template-columns: 1fr;
@@ -1807,7 +1810,7 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
   .pos-product-bar {
     grid-template-columns: minmax(0, 1fr) auto;
   }
-  .pos-product-bar > :nth-child(-n + 2) {
+  .pos-product-bar > :first-child {
     grid-column: 1 / -1;
   }
 

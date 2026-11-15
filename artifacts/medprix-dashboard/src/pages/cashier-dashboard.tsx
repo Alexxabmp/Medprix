@@ -1,3 +1,4 @@
+import { SelectField } from "@/components/custom-ui/select-field";
 import { displayPeso } from "@/lib/currency";
 import { PageTableValue, PageTableAction, usePageTableStandard } from "@/components/page-table-context";
 import { AppTooltip } from "@/components/ui/tooltip";
@@ -444,23 +445,6 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
         <div
           className="pos-product-bar">
           <div>
-            <label htmlFor="pos-product-search">
-              Search Product
-            </label>
-            <div className="search-wrap" style={{ height: 39 }}>
-              <Search size={15} />
-              <input
-                id="pos-product-search"
-                data-testid="input-pos-product-search"
-                type="search"
-                placeholder="Search product, SKU, category..."
-                aria-label="Search products to add to cart"
-                value={productSearch}
-                onChange={(e) => setProductSearch(e.target.value)}
-              />
-            </div>
-          </div>
-          <div>
             <div className="pos-product-label">
               <label htmlFor="pos-product-select">Select Product / Medicine *</label>
               <AppTooltip content={"Refresh stock"}><button type="button" className="icon-button pos-stock-refresh" aria-label="Refresh stock"
@@ -468,7 +452,8 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                 <RefreshCw size={14} className={stockChecking ? "spin" : undefined} />
               </button></AppTooltip>
             </div>
-            <select
+            <SelectField searchable pickerLabel="Product / medicine" searchValue={productSearch} onSearchChange={setProductSearch} shouldFilter={false}
+              searchPlaceholder="Search name, generic, SKU or category"
               id="pos-product-select"
               className="select"
               aria-describedby={productLoadError ? "pos-stock-error" : undefined}
@@ -478,7 +463,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                 setSelectedProductId(e.target.value);
                 setQty(1);
               }}
-              disabled={stockChecking || !!productLoadError || filteredProducts.length === 0}
+              disabled={stockChecking || !!productLoadError || products.length === 0}
               style={{ width: "100%", height: 39 }}>
               <option value="" disabled>
                 {stockChecking ? "Loading stock…" : productLoadError ? "Stock unavailable" : filteredProducts.length === 0 ? "No products match your search" : "Select product / medicine"}
@@ -489,7 +474,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                   {product.name} ({product.sku}) - {displayPeso(product.price)}{availability ? ` — ${availability}` : ""}
                 </option>;
               })}
-            </select>
+            </SelectField>
           </div>
           <div className="">
             <label htmlFor="pos-product-quantity">

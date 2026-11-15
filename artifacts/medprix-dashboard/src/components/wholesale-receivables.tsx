@@ -1,3 +1,4 @@
+import { SelectField } from "@/components/custom-ui/select-field";
 import { formatDisplayDate } from "@/lib/business-date";
 import { PageTableValue, PageTableScroll, usePageTableStandard } from "./page-table-context";
 import { useReceivablePages } from "./use-receivable-pages";
@@ -500,7 +501,7 @@ export function WholesaleReceivables({
                       <label htmlFor="wholesale-payment-method">
                         Payment method *
                       </label>
-                      <select
+                      <SelectField
                         id="wholesale-payment-method"
                         value={method}
                         onChange={(event) => setMethod(event.target.value)}
@@ -508,7 +509,7 @@ export function WholesaleReceivables({
                         {detail.methods.map((value) => (
                           <option key={value}>{value}</option>
                         ))}
-                      </select>
+                      </SelectField>
                     </div>
                     {method !== "Cash" && (
                       <div className="field">
