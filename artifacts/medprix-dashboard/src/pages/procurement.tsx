@@ -89,7 +89,14 @@ function receivingDataProblem(orders: PurchaseOrder[]): string {
 
 const poStatuses = ["Draft", "Pending", "Approved", "Submitted", "Fulfilled", "Cancelled"];
 
+const editablePoStatuses = poStatuses.filter(item => item !== "Fulfilled");
+const orderStatusOptions = {
+  cancellable: editablePoStatuses.map(item => <option key={item}>{item}</option>),
+  received: editablePoStatuses.map(item => <option key={item} disabled={item === "Cancelled"}>{item}</option>),
+};
+
 function matchesSearch(search: string, fields: unknown[]): boolean {
+  if (!search.trim()) return true;
   const text = fields.map(value => String(value ?? "")).join(" ").toLocaleLowerCase();
   return search.trim().toLocaleLowerCase().split(/\s+/).every(term => text.includes(term));
 }
@@ -278,7 +285,9 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
   const matchingDeliveryBatches = deliveryBatches.filter(batch =>
     batch.batchNumber.trim().toUpperCase() === deliveryForm.batchNumber.trim().toUpperCase());
   const existingDeliveryBatch = matchingDeliveryBatches.length === 1 ? matchingDeliveryBatches[0] : undefined;
-  const receivingOrders = orders.filter(order => !["Fulfilled", "Cancelled"].includes(order.status) && order.items?.some(item => item.quantityRemaining > 0));
+  const receivingOrders = isDeliveryOpen
+    ? orders.filter(order => !["Fulfilled", "Cancelled"].includes(order.status) && order.items?.some(item => item.quantityRemaining > 0))
+    : [];
   const receivingOrder = receivingOrders.find(order => order.id === deliveryForm.poId);
   const receivingItems = receivingOrder?.items?.filter(item => item.quantityRemaining > 0) ?? [];
   const receivingItem = receivingItems.find(item => item.productId === deliveryForm.productId);
@@ -399,11 +408,11 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
     void loadData();
   }, []);
 
-  const filteredOrders = orders.filter(
+  const filteredOrders = activeSection === "Purchase Order Monitoring" ? orders.filter(
     order => (status === "All orders" || status === "All statuses" || order.status === status) && matchesSearch(orderSearch,
       [order.poNumber, order.supplier, order.status, ...(order.items ?? []).flatMap(item => [item.product, item.sku])]),
-  );
-  const filteredReceivingRows = deliveries.flatMap(delivery => delivery.items.map(item => ({delivery, item})))
+  ) : [];
+  const filteredReceivingRows = activeSection === "Receiving Report Management" ? deliveries.flatMap(delivery => delivery.items.map(item => ({delivery, item})))
     .filter(({delivery, item}) => {
       const expiry = expiryStatus(item.expirationDate).label;
       const matchesStatus =
@@ -412,8 +421,8 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
         expiry === receivingStatusFilter;
       return matchesStatus && matchesSearch(receivingSearch,
         [delivery.poNumber, delivery.supplier, delivery.deliveryStatus, item.product, item.sku, item.batchNumber, item.expirationDate]);
-    });
-  const filteredInvoices = invoices.filter(invoice => {
+    }) : [];
+  const filteredInvoices = activeSection === "Purchase Invoice Monitoring" ? invoices.filter(invoice => {
     const displayStatus = invoice.status === "Paid" ? "Settled" : invoice.status;
     const matchesStatus =
       invoiceStatusFilter === "All statuses" ||
@@ -421,7 +430,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
       displayStatus === invoiceStatusFilter;
     return matchesStatus && matchesSearch(invoiceSearch,
       [invoice.invoiceNumber, invoice.supplier, invoice.poNumber, invoice.status, invoice.dueDate, invoice.invoiceAmount]);
-  });
+  }) : [];
 
   const PROCUREMENT_PAGE_SIZE = 15;
   const totalOrderPages = Math.max(1, Math.ceil(filteredOrders.length / PROCUREMENT_PAGE_SIZE));
@@ -884,9 +893,9 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                             onChange={(event) =>
                               event.target.value === "Cancelled" ? setOrderToCancel(order) : void updateStatus(order.id, event.target.value)
                             }>
-                            {poStatuses.filter(item => item !== "Fulfilled").map((item) => (
-                              <option key={item} disabled={item === "Cancelled" && order.items?.some(line => line.quantityReceived > 0)}>{item}</option>
-                            ))}
+                            {order.items?.some(line => line.quantityReceived > 0)
+                              ? orderStatusOptions.received
+                              : orderStatusOptions.cancellable}
                           </SelectField> : <span className="pill neutral">{order.status}</span>}
                         </td>
                         <td className="table-action-cell">

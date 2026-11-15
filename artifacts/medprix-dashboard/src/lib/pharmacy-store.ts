@@ -8,6 +8,8 @@ const formatPeso = (amount: number) =>
     maximumFractionDigits: 2,
   })}`;
 
+let receiptTimeFormatter: Intl.DateTimeFormat | undefined;
+
 export function mapTransactionsToReceipts(data: any[]): ShiftReceipt[] {
   if (!Array.isArray(data)) return [];
   return data.map((t: any) => {
@@ -37,7 +39,7 @@ export function mapTransactionsToReceipts(data: any[]): ShiftReceipt[] {
       id: t.transactionNumber || `TRX-${t.id}`,
       rawId: t.id,
       time: instant && Number.isFinite(instant.getTime())
-        ? new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(instant)
+        ? (receiptTimeFormatter ??= new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" })).format(instant)
         : t.dateTime
         ? t.dateTime.includes(" – ")
           ? t.dateTime.split(" – ")[1]

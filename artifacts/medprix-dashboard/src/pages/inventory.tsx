@@ -423,6 +423,7 @@ export default function InventoryPage({
   );
 
   const posStockMovements = useMemo(() => {
+    if (activeTab !== "movements") return [];
     const formatDate = (value: string) => formatDisplayDateTime(value, "Asia/Manila");
     const productById = new Map(items.map((p) => [p.id, p]));
     const productByName = new Map(items.map((p) => [p.name.toLowerCase(), p]));
@@ -458,7 +459,7 @@ export default function InventoryPage({
           };
         });
       });
-  }, [posTransactions, items]);
+  }, [activeTab, posTransactions, items]);
 
   const filteredMovements = useMemo(() => {
     const q = movementSearch.trim().toLowerCase();
