@@ -262,23 +262,26 @@ function formatShortDate(dateKey: string): string {
   return formatCalendarDate(parsed);
 }
 
+let manilaHourFormatter: Intl.DateTimeFormat | undefined;
+let manilaTimeFormatter: Intl.DateTimeFormat | undefined;
+
 function getManilaShift(dateTime: unknown): { shift: "Morning" | "Afternoon" | "Evening"; timeLabel: string } {
   const raw = typeof dateTime === "string" ? dateTime : "";
   const instant = raw ? new Date(raw) : null;
   if (!instant || Number.isNaN(instant.getTime())) {
     return { shift: "Morning", timeLabel: raw || "—" };
   }
-  const hourStr = new Intl.DateTimeFormat("en-US", {
+  const hourStr = (manilaHourFormatter ??= new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Manila",
     hour: "numeric",
     hour12: false,
-  }).format(instant);
+  })).format(instant);
   const hour = Number(hourStr) % 24;
-  const timeLabel = new Intl.DateTimeFormat("en-US", {
+  const timeLabel = (manilaTimeFormatter ??= new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Manila",
     hour: "2-digit",
     minute: "2-digit",
-  }).format(instant);
+  })).format(instant);
   if (hour < 12) return { shift: "Morning", timeLabel };
   if (hour < 18) return { shift: "Afternoon", timeLabel };
   return { shift: "Evening", timeLabel };

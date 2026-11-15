@@ -15,11 +15,18 @@ export function formatDisplayDate(value: string | Date | null | undefined, timeZ
   return new Intl.DateTimeFormat("en-US", { year: "numeric", month: "2-digit", day: "2-digit", timeZone }).format(parsed);
 }
 
+const displayDateTimeFormatters = new Map<string | undefined, Intl.DateTimeFormat>();
+
 export function formatDisplayDateTime(value: string | Date | null | undefined, timeZone?: string): string {
   if (!value) return "—";
   const parsed = value instanceof Date ? value : parseCalendarDate(value) ?? new Date(value);
   if (!Number.isFinite(parsed.getTime())) return String(value);
-  return new Intl.DateTimeFormat("en-US", { year: "numeric", month: "2-digit", day: "2-digit", hour: "numeric", minute: "2-digit", hour12: true, ...(timeZone ? { timeZone } : {}) }).format(parsed);
+  let formatter = displayDateTimeFormatters.get(timeZone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-US", { year: "numeric", month: "2-digit", day: "2-digit", hour: "numeric", minute: "2-digit", hour12: true, ...(timeZone ? { timeZone } : {}) });
+    displayDateTimeFormatters.set(timeZone, formatter);
+  }
+  return formatter.format(parsed);
 }
 
 export function parseCalendarDate(value: string): Date | null {
