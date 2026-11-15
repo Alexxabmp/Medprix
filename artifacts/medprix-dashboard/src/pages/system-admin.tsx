@@ -48,11 +48,8 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
     transactions: liveTransactions,
     refresh: refreshLiveTransactions,
   } = usePharmacyTransactions();
+  const transactions: UserTransaction[] = liveTransactions;
 
-  // Transactions state
-  const [transactions, setTransactions] = useState<UserTransaction[]>(() => {
-    return liveTransactions;
-  });
   const [trxFilterUser, setTrxFilterUser] = useState<string>("All users");
   const [trxFilterType, setTrxFilterType] = useState<"All" | "Retail" | "Wholesale">("All");
   const [trxSearch, setTrxSearch] = useState("");
@@ -79,11 +76,6 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isBackingUp, setIsBackingUp] = useState(false);
 
-  // Keep transactions in sync with pharmacy-store
-  useEffect(() => {
-    setTransactions(liveTransactions);
-  }, [liveTransactions]);
-
   // Modal body scroll lock
   useEffect(() => {
     if (!selectedTrx && !selectedLog) return undefined;
@@ -96,7 +88,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
   const loadBackendData = async (force = false) => {
     if (force) setIsRefreshing(true);
     setAuditError("");
-    void (force || liveTransactions.length === 0 ? refreshLiveTransactions() : Promise.resolve(liveTransactions));
+    void (force || transactions.length === 0 ? refreshLiveTransactions() : Promise.resolve(transactions));
     try {
       const audit = await fetchAuditRecords(force);
       setSystemLogs(audit.logs);
