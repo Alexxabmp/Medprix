@@ -781,7 +781,7 @@ export default function WholesalePage({
                 )}
               </div>
               {tab === "orders" && (
-                <div className="wholesale-pagination" role="navigation" aria-label="Wholesale orders pagination">
+                <div className="table-pagination" role="navigation" aria-label="Wholesale orders pagination">
                   <span className="muted">
                     Page {safeOrderPage} of {totalOrderPages} ({visibleOrders.length} orders)
                   </span>
@@ -804,7 +804,7 @@ export default function WholesalePage({
                 </div>
               )}
               {tab === "clients" && (
-                <div className="wholesale-pagination" role="navigation" aria-label="Wholesale clients pagination">
+                <div className="table-pagination" role="navigation" aria-label="Wholesale clients pagination">
                   <span className="muted">
                     Page {safeClientPage} of {totalClientPages} ({visibleClients.length} clients)
                   </span>
@@ -827,7 +827,7 @@ export default function WholesalePage({
                 </div>
               )}
               {tab === "prices" && (
-                <div className="wholesale-pagination" role="navigation" aria-label="Wholesale prices pagination">
+                <div className="table-pagination" role="navigation" aria-label="Wholesale prices pagination">
                   <span className="muted">
                     Page {safePricePage} of {totalPricePages} ({visibleProducts.length} products)
                   </span>

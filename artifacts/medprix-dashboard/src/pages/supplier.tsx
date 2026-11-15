@@ -654,7 +654,7 @@ export default function SupplierPage({
                 </tbody>
               </table>
             </div>
-            <div className="wholesale-pagination" role="navigation" aria-label="Supplier directory pagination">
+            <div className="table-pagination" role="navigation" aria-label="Supplier directory pagination">
               <span className="muted">
                 Page {safeDirectoryPage} of {totalDirectoryPages} ({filtered.length} suppliers)
               </span>
@@ -820,7 +820,7 @@ export default function SupplierPage({
                 </tbody>
               </table>
             </div>
-            <div className="wholesale-pagination" role="navigation" aria-label="Accounts payable pagination">
+            <div className="table-pagination" role="navigation" aria-label="Accounts payable pagination">
               <span className="muted">
                 Page {safePayablePage} of {totalPayablePages} ({filteredPayables.length} invoices)
               </span>

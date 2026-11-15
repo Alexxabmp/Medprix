@@ -523,7 +523,7 @@ export default function UserManagementPage({
             </div>
           )}
         </div>
-        <div className="wholesale-pagination" role="navigation" aria-label="User accounts pagination">
+        <div className="table-pagination" role="navigation" aria-label="User accounts pagination">
           <span className="muted">
             Page {safeUserPage} of {totalUserPages} ({shown.length} users)
           </span>

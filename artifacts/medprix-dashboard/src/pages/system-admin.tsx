@@ -497,7 +497,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                 </div>
               )}
             </div>
-            <div className="wholesale-pagination" role="navigation" aria-label="Transactions pagination">
+            <div className="table-pagination" role="navigation" aria-label="Transactions pagination">
               <span className="muted">
                 Page {safeTrxPage} of {totalTrxPages} ({filteredTransactions.length} transactions)
               </span>
@@ -642,7 +642,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                 </div>
               )}
             </div>
-            <div className="wholesale-pagination" role="navigation" aria-label="Audit log pagination">
+            <div className="table-pagination" role="navigation" aria-label="Audit log pagination">
               <span className="muted">
                 Page {safeLogPage} of {totalLogPages} ({filteredLogs.length} logs)
               </span>
@@ -780,7 +780,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                 </div>
               )}
             </div>
-            <div className="wholesale-pagination" role="navigation" aria-label="User activity pagination">
+            <div className="table-pagination" role="navigation" aria-label="User activity pagination">
               <span className="muted">
                 Page {safeActivityPage} of {totalActivityPages} ({filteredActivities.length} activities)
               </span>

@@ -916,7 +916,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               </tbody>
             </table>
           </div>
-          <div className="wholesale-pagination" role="navigation" aria-label="Purchase orders pagination">
+          <div className="table-pagination" role="navigation" aria-label="Purchase orders pagination">
             <span className="muted">
               Page {safeOrderPage} of {totalOrderPages} ({filteredOrders.length} orders)
             </span>
@@ -1023,7 +1023,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               </tbody>
             </table>
           </div>
-          <div className="wholesale-pagination" role="navigation" aria-label="Receiving reports pagination">
+          <div className="table-pagination" role="navigation" aria-label="Receiving reports pagination">
             <span className="muted">
               Page {safeReceivingPage} of {totalReceivingPages} ({filteredReceivingRows.length} receiving items)
             </span>
@@ -1152,7 +1152,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               </tbody>
             </table>
           </div>
-          <div className="wholesale-pagination" role="navigation" aria-label="Purchase invoices pagination">
+          <div className="table-pagination" role="navigation" aria-label="Purchase invoices pagination">
             <span className="muted">
               Page {safeInvoicePage} of {totalInvoicePages} ({filteredInvoices.length} invoices)
             </span>

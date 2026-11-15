@@ -1008,7 +1008,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
             </tbody>
           </table>
         </div>
-        {standard && <nav className="wholesale-pagination" aria-label="Shift receipts pagination">
+        {standard && <nav className="table-pagination" aria-label="Shift receipts pagination">
           <span className="muted">Page {safeReceiptPage} of {receiptPages} ({filteredReceipts.length} receipts)</span>
           <button type="button" className="button soft" disabled={safeReceiptPage <= 1} onClick={() => setReceiptPage(p => Math.max(1, p - 1))}>Previous</button>
           <button type="button" className="button soft" disabled={safeReceiptPage >= receiptPages} onClick={() => setReceiptPage(p => Math.min(receiptPages, p + 1))}>Next</button>

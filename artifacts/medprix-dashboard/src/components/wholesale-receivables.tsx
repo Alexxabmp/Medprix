@@ -268,7 +268,7 @@ export function WholesaleReceivables({
               )}
             </tbody>
           </table></PageTableScroll>
-          <div className="wholesale-pagination" role="navigation" aria-label="Accounts receivable pagination">
+          <div className="table-pagination" role="navigation" aria-label="Accounts receivable pagination">
             <span className="muted">
               {standard && listLoading ? "Loading accounts…" : <>Page {listPage} of {listPages} ({listTotal} accounts)</>}
             </span>

@@ -99,7 +99,7 @@ function Pagination({
 }) {
   if (total <= 50) return null;
   return (
-    <div className="wholesale-pagination">
+    <div className="table-pagination">
       <button
         className="button soft"
         disabled={loading || page === 1}

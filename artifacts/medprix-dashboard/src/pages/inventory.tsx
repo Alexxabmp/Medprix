@@ -1079,7 +1079,7 @@ export default function InventoryPage({
             </div>
           )}
         </div>
-        <div className="wholesale-pagination" role="navigation" aria-label="Inventory pagination">
+        <div className="table-pagination" role="navigation" aria-label="Inventory pagination">
           <span className="muted">
             Page {safeInventoryPage} of {totalInventoryPages} ({filtered.length} products)
           </span>
@@ -1213,7 +1213,7 @@ export default function InventoryPage({
               </div>
             )}
           </div>
-          <div className="wholesale-pagination" role="navigation" aria-label="Stock movement pagination">
+          <div className="table-pagination" role="navigation" aria-label="Stock movement pagination">
             <span className="muted">
               Page {safeMovementPage} of {totalMovementPages} ({filteredMovements.length} movements)
             </span>
