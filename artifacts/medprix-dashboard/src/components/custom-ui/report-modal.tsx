@@ -239,7 +239,7 @@ export function ReportModal({
         aria-modal="true"
         data-testid={`modal-report-${type}`}>
         <ModalTableContext.Provider value={standard}>
-        <ModalTableLayout close={onClose}>
+        <ModalTableLayout>
         <div className="modal-header">
           <div>
             <h2>{titles[type]}</h2>

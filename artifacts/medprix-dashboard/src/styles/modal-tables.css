@@ -100,6 +100,10 @@
   flex-wrap: wrap;
   gap: 12px;
 }
+/* Keep the portal target mounted without showing an empty footer. */
+.modal.modal-table-standard.modal-table-standard .modal-table-footer:has(> .modal-table-footer-content:empty) {
+  display: none;
+}
 .modal.modal-table-standard.modal-table-standard
   .modal-table-footer
   :is(.modal-actions, .wholesale-actions) {

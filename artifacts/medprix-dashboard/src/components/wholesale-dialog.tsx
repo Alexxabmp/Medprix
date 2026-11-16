@@ -53,7 +53,7 @@ export function WholesaleDialog({
         }
       >
         <ModalTableContext.Provider value={tableDialog ? preview : null}>
-        <ModalTableLayout close={close} busy={busy}>
+        <ModalTableLayout>
         <div className="modal-header">
           <div>
             <div className="wholesale-dialog-title">
