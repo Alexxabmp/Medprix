@@ -62,6 +62,16 @@ html {
   scrollbar-gutter: stable;
 }
 
+html:has(
+  .modal-backdrop,
+  .modal-overlay,
+  [role="dialog"][data-state="open"],
+  [role="alertdialog"][data-state="open"]
+) {
+  scrollbar-gutter: auto;
+  overflow: hidden;
+}
+
 body {
   margin: 0;
   min-width: 320px;
