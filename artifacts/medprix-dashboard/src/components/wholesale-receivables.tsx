@@ -538,7 +538,7 @@ export function WholesaleReceivables({
                           <th>Method / reference</th>
                           <th>Collector</th>
                           <th>Status</th>
-                          {role === "Admin" && <th>Action</th>}
+                          {role === "Admin" && <th className="table-action-head">Action</th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -611,24 +611,26 @@ export function WholesaleReceivables({
                                 className="table-action-cell"
                               >
                                 {!payment.reversalId && (
-                                  <AppTooltip content="Reverse payment">
-                                    <button
-                                      type="button"
-                                      className="button soft table-action-btn"
-                                      aria-label={
-                                        "Reverse payment of " +
-                                        wholesalePeso(payment.amount)
-                                      }
-                                      disabled={request.locked}
-                                      onClick={() => {
-                                        setMode(payment.id);
-                                        setValidation("");
-                                        request.clearError();
-                                      }}
-                                    >
-                                      <RotateCcw size={14} />
-                                    </button>
-                                  </AppTooltip>
+                                  <div className="table-actions">
+                                    <AppTooltip content="Reverse payment">
+                                      <button
+                                        type="button"
+                                        className="button soft table-action-btn"
+                                        aria-label={
+                                          "Reverse payment of " +
+                                          wholesalePeso(payment.amount)
+                                        }
+                                        disabled={request.locked}
+                                        onClick={() => {
+                                          setMode(payment.id);
+                                          setValidation("");
+                                          request.clearError();
+                                        }}
+                                      >
+                                        <RotateCcw size={14} />
+                                      </button>
+                                    </AppTooltip>
+                                  </div>
                                 )}
                               </td>
                             )}

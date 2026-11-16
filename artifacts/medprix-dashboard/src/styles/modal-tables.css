@@ -395,3 +395,12 @@
   :is(.modal-table-body, .wholesale-dialog-body) {
   padding-bottom: 0;
 }
+/* Action columns share the same alignment in summary and detail tables. */
+.modal.modal-table-standard.modal-table-standard :is(.table-action-head, .table-action-cell, th[data-label="Action"], td[data-label="Action"]),
+.modal.modal-table-standard.modal-table-standard [data-modal-table="summary"] th:last-child {
+  text-align: center;
+}
+.modal.modal-table-standard.modal-table-standard .table-action-cell .table-actions {
+  justify-content: center;
+  width: 100%;
+}

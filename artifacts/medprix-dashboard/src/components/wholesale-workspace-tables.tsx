@@ -466,7 +466,7 @@ export function WholesaleSummaryModal({
                       {accounts && <th>Next unpaid</th>}
                       <th>Status</th>
                       {deliveries && <th>Notes</th>}
-                      <th>Action</th>
+                      <th className="table-action-head">Action</th>
                     </tr>
                   </thead>
                   <tbody>
