@@ -1,5 +1,15 @@
-import { wholesaleOverdue, wholesalePaymentStatus } from "./wholesale-overview";
-import { isCalendarDate } from "@workspace/api-zod";
+import {
+  wholesaleOverdue,
+  wholesalePaymentStatus,
+  wholesaleCreditJoin,
+} from "./wholesale-receivable-aging";
+import {
+  isCalendarDate,
+  allocateWholesalePayment,
+  pharmacyDate,
+  wholesaleReceivableAging,
+} from "@workspace/api-zod";
+import { wholesaleAccountLedger } from "./wholesale-account-ledger";
 import type { AuditActor } from "./audit-events";
 import {
   WholesaleError,
@@ -50,8 +60,8 @@ async function account(query: WholesaleQuery, id: string) {
   const {
     rows: [row],
   } = await query(
-    `SELECT a.*,${wholesalePaymentStatus} AS payment_status,a.due_date::text AS due_day,f.delivered_at,f.snapshot->>'total' AS sale_total,
-    f.snapshot->>'clientName' AS client_name,o.order_number
+    `SELECT a.*,a.due_date::text AS due_day,f.delivered_at,f.snapshot->>'total' AS sale_total,
+    f.snapshot->>'clientName' AS client_name,o.order_number,o.payment_plan,f.received_at
     FROM accounts_receivable a JOIN wholesale_fulfillments f ON f.ar_id=a.id
     JOIN wholesale_orders o ON o.id=a.order_id WHERE a.id=$1 FOR UPDATE OF a`,
     [id],
@@ -60,30 +70,10 @@ async function account(query: WholesaleQuery, id: string) {
     throw new WholesaleError(404, "A delivered order receivable is required.");
   return row;
 }
-async function reconcile(query: WholesaleQuery, row: any) {
-  const {
-    rows: [ledger],
-  } = await query(
-    `SELECT count(*) FILTER(WHERE c.id IS NULL)::int AS unknown,
-    coalesce(sum(CASE WHEN r.id IS NULL THEN p.amount_paid ELSE 0 END),0)::text AS paid
-    FROM ar_payments p LEFT JOIN wholesale_collections c ON c.id=p.id
-    LEFT JOIN wholesale_collection_reversals r ON r.collection_id=c.id WHERE p.ar_id=$1`,
-    [row.id],
-  );
-  if (
-    ledger.unknown ||
-    row.total_owed !== row.sale_total ||
-    cents(row.total_paid) !== cents(ledger.paid) ||
-    cents(row.balance) !== cents(row.total_owed) - cents(ledger.paid)
-  )
-    throw new WholesaleError(
-      409,
-      "This receivable has unresolved payment history or balances. Review it before recording another change.",
-    );
-}
 export function createWholesaleCollections(
   read: WholesaleQuery,
   transaction: WholesaleTransaction,
+  clock: () => Date = () => new Date(),
 ) {
   const operation = createWholesaleOperation(transaction);
   return {
@@ -106,29 +96,39 @@ export function createWholesaleCollections(
         );
       if (
         typeof status !== "string" ||
-        !["all", "outstanding", "overdue", "paid"].includes(status)
+        !["all", "outstanding", "overdue", "paid", "deadline"].includes(status)
       )
         throw new WholesaleError(400, "Choose a valid payment status.");
       const filter =
         status === "overdue"
           ? wholesaleOverdue
-          : status === "outstanding"
-            ? "a.balance > 0"
-            : status === "paid"
-              ? "a.balance = 0"
-              : "true";
+          : status === "deadline"
+            ? "a.balance>0 AND a.due_date<$3::date"
+            : status === "outstanding"
+              ? "a.balance > 0"
+              : status === "paid"
+                ? "a.balance = 0"
+                : "true";
       const where = `FROM accounts_receivable a JOIN wholesale_fulfillments f ON f.ar_id=a.id
         JOIN wholesale_orders o ON o.id=a.order_id
+        ${wholesaleCreditJoin("$3::date")}
         WHERE strpos(lower(o.order_number || ' ' || (f.snapshot->>'clientName')),lower($1))>0 AND (${filter})`;
+      const today = pharmacyDate(clock());
       const {
         rows: [count],
-      } = await read("SELECT count(*)::int AS total " + where, [search.trim()]);
+      } = await read(
+        "SELECT count(*)::int AS total " + where.replaceAll("$3", "$2"),
+        [search.trim(), today],
+      );
       const { rows: items } = await read(
         `SELECT a.id,o.order_number AS "orderNumber",
         f.snapshot->>'clientName' AS "clientName",a.total_owed::text AS total,
-        a.total_paid::text AS paid,a.balance::text,${wholesalePaymentStatus} AS status,a.due_date::text AS "dueDate",f.delivered_at AS "deliveredAt"
+        a.total_paid::text AS paid,a.balance::text,${wholesalePaymentStatus} AS status,a.due_date::text AS "dueDate",f.delivered_at AS "deliveredAt",
+        o.payment_plan AS "paymentPlan",$3::date::text AS "asOfDate",credit.overdue_amount::numeric(12,2)::text AS "overdueAmount",
+        credit.overdue_count AS "overdueInstallmentCount",credit.next_due_date::text AS "nextDueDate",
+        credit.next_due_amount::numeric(12,2)::text AS "nextDueAmount",(a.balance>0 AND a.due_date<$3::date) AS "finalDeadlineBreached"
         ${where} ORDER BY f.delivered_at DESC,a.id LIMIT 50 OFFSET $2`,
-        [search.trim(), (Number(page) - 1) * 50],
+        [search.trim(), (Number(page) - 1) * 50, today],
       );
       return { items, total: count.total, page: Number(page), pageSize: 50 };
     },
@@ -137,22 +137,7 @@ export function createWholesaleCollections(
       const id = requireUuid(arId);
       return transaction(async (query) => {
         const row = await account(query, id);
-        const { rows: payments } = await query(
-          `SELECT p.id,p.amount_paid::text AS amount,p.payment_date AS "collectedAt",
-          p.notes,c.method,c.reference,c.collector_name AS "collectorName",c.collector_id AS "collectorId",
-          r.id AS "reversalId",r.reason AS "reversalReason",r.reversed_at AS "reversedAt"
-          FROM ar_payments p LEFT JOIN wholesale_collections c ON c.id=p.id
-          LEFT JOIN wholesale_collection_reversals r ON r.collection_id=c.id
-          WHERE p.ar_id=$1 ORDER BY p.payment_date DESC,p.id`,
-          [id],
-        );
-        let reviewRequired = false;
-        try {
-          await reconcile(query, row);
-        } catch (error) {
-          if (error instanceof WholesaleError) reviewRequired = true;
-          else throw error;
-        }
+        const ledger = await wholesaleAccountLedger(query, row);
         return {
           id,
           orderNumber: row.order_number,
@@ -161,10 +146,14 @@ export function createWholesaleCollections(
           paid: row.total_paid,
           balance: row.balance,
           dueDate: row.due_day,
-          status: row.payment_status,
+          paymentPlan: row.payment_plan,
           deliveredAt: row.delivered_at,
-          payments,
-          reviewRequired,
+          ...ledger,
+          ...wholesaleReceivableAging(
+            ledger.installments,
+            row.due_day,
+            pharmacyDate(clock()),
+          ),
           methods: wholesalePaymentMethods,
         };
       });
@@ -211,13 +200,13 @@ export function createWholesaleCollections(
           notes,
         },
         async (query) => {
-          if (Date.parse(collectedAt) > Date.now())
+          if (Date.parse(collectedAt) > clock().getTime())
             throw new WholesaleError(
               400,
               "Collection time cannot be in the future.",
             );
           const row = await account(query, id);
-          await reconcile(query, row);
+          const ledger = await wholesaleAccountLedger(query, row);
           if (Date.parse(collectedAt) < new Date(row.delivered_at).getTime())
             throw new WholesaleError(
               400,
@@ -228,6 +217,24 @@ export function createWholesaleCollections(
               409,
               "This payment exceeds the outstanding balance. Refresh the account.",
             );
+          if (
+            method !== "Cash" &&
+            ledger.payments.some(
+              (payment) =>
+                !payment.reversalId &&
+                payment.method === method &&
+                payment.reference?.trim().toLowerCase() ===
+                  reference!.toLowerCase(),
+            )
+          )
+            throw new WholesaleError(
+              409,
+              "A payment with this method and reference is already recorded on this account.",
+            );
+          const allocations = allocateWholesalePayment(
+            amount,
+            ledger.installments,
+          );
           const collector = await wholesaleActorName(query, actor.id);
           const {
             rows: [payment],
@@ -239,11 +246,22 @@ export function createWholesaleCollections(
             "INSERT INTO wholesale_collections(id,collector_id,collector_name,method,reference) VALUES($1,$2,$3,$4,$5)",
             [payment.id, actor.id, collector, method, reference],
           );
+          for (const allocation of allocations) {
+            await query(
+              "INSERT INTO wholesale_payment_allocations(payment_id,ar_id,sequence_number,amount) VALUES($1,$2,$3,$4)",
+              [payment.id, id, allocation.sequenceNumber, allocation.amount],
+            );
+          }
           const balance = money(cents(row.balance) - cents(amount));
           await query(
             "UPDATE accounts_receivable SET total_paid=total_paid+$2,balance=balance-$2 WHERE id=$1",
             [id, amount],
           );
+          await wholesaleAccountLedger(query, {
+            ...row,
+            balance,
+            total_paid: money(cents(row.total_paid) + cents(amount)),
+          });
           await wholesaleAudit(
             query,
             actor,
@@ -257,7 +275,7 @@ export function createWholesaleCollections(
               " " +
               method,
           );
-          return { id: payment.id, arId: id, balance };
+          return { id: payment.id, arId: id, balance, allocations };
         },
       );
     },
@@ -290,7 +308,7 @@ export function createWholesaleCollections(
               "Managed wholesale payment not found.",
             );
           const row = await account(query, payment.ar_id);
-          await reconcile(query, row);
+          await wholesaleAccountLedger(query, row);
           if (
             (
               await query(
@@ -310,6 +328,11 @@ export function createWholesaleCollections(
             "UPDATE accounts_receivable SET total_paid=total_paid-$2,balance=balance+$2 WHERE id=$1",
             [row.id, payment.amount],
           );
+          await wholesaleAccountLedger(query, {
+            ...row,
+            balance: money(cents(row.balance) + cents(payment.amount)),
+            total_paid: money(cents(row.total_paid) - cents(payment.amount)),
+          });
           await wholesaleAudit(
             query,
             actor,

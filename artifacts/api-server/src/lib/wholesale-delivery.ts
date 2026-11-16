@@ -1,4 +1,10 @@
-import { pharmacyDate, isCalendarDate } from "@workspace/api-zod";
+import {
+  pharmacyDate,
+  isCalendarDate,
+  wholesaleAgreementSchema,
+  wholesaleFullReceiptInputSchema,
+  calculateWholesaleSchedule,
+} from "@workspace/api-zod";
 import type { AuditActor } from "./audit-events";
 import {
   WholesaleError,
@@ -80,13 +86,14 @@ async function attempt(
 export function createWholesaleDelivery(
   read: WholesaleQuery,
   transaction: WholesaleTransaction,
+  clock: () => Date = () => new Date(),
 ) {
   const operation = createWholesaleOperation(transaction);
   return {
     async detail(orderId: unknown) {
       const id = requireUuid(orderId);
       const { rows: attempts } = await read(
-        `SELECT id,scheduled_date::text AS date,status,notes FROM delivery_schedules
+        `SELECT id,scheduled_date::text AS date,status,notes,dispatched_at AS "dispatchedAt" FROM delivery_schedules
         WHERE order_id=$1 AND managed_by IS NOT NULL ORDER BY created_at,id`,
         [id],
       );
@@ -132,7 +139,7 @@ export function createWholesaleDelivery(
         key,
         { action: "schedule-delivery", id, expected, day, notes },
         async (query) => {
-          if (day < pharmacyDate())
+          if (day < pharmacyDate(clock()))
             throw new WholesaleError(
               400,
               "Schedule the delivery for today or a future date.",
@@ -204,7 +211,7 @@ export function createWholesaleDelivery(
           await lockOrder(query, id, expected, ["Confirmed", "Processing"]);
           const row = await attempt(query, id, scheduleId);
           if (status === "InTransit") {
-            if (row.status !== "Scheduled" || row.day > pharmacyDate())
+            if (row.status !== "Scheduled" || row.day > pharmacyDate(clock()))
               throw new WholesaleError(
                 409,
                 "Only a delivery scheduled for today or earlier may be dispatched.",
@@ -222,8 +229,8 @@ export function createWholesaleDelivery(
             );
           }
           await query(
-            "UPDATE delivery_schedules SET status=$2,notes=concat_ws(E'\\n',notes,$3::text) WHERE id=$1",
-            [scheduleId, status, reason],
+            "UPDATE delivery_schedules SET status=$2,notes=concat_ws(E'\\n',notes,$3::text),dispatched_at=CASE WHEN $4::boolean THEN now() ELSE dispatched_at END WHERE id=$1",
+            [scheduleId, status, reason, status === "InTransit"],
           );
           await query(
             "UPDATE wholesale_orders SET status=$2,draft_revision=draft_revision+1 WHERE id=$1",
@@ -253,12 +260,17 @@ export function createWholesaleDelivery(
         "revision",
         "scheduleId",
         "receivedBy",
-        "dueDate",
+        "receivedAt",
+        "receivedInFull",
       ]);
       const id = requireUuid(orderId);
-      const scheduleId = requireUuid(input.scheduleId);
-      const receivedBy = text(input.receivedBy, "the recipient's name", 255);
-      const dueDate = date(input.dueDate, "payment due date");
+      const parsed = wholesaleFullReceiptInputSchema.safeParse(input);
+      if (!parsed.success)
+        throw new WholesaleError(
+          400,
+          "Enter the recipient's name and a valid actual receipt time with a timezone, and confirm full receipt.",
+        );
+      const { scheduleId, receivedBy, receivedAt } = parsed.data;
       return operation(
         actor,
         key,
@@ -268,13 +280,15 @@ export function createWholesaleDelivery(
           expected,
           scheduleId,
           receivedBy,
-          dueDate,
+          receivedAt,
+          receivedInFull: true,
         },
         async (query) => {
-          if (dueDate < pharmacyDate())
+          const recordedAt = clock().toISOString();
+          if (Date.parse(receivedAt) > Date.parse(recordedAt))
             throw new WholesaleError(
               400,
-              "The due date cannot precede delivery.",
+              "Actual receipt time cannot be in the future.",
             );
           const order = await lockOrder(query, id, expected, ["Processing"]);
           const schedule = await attempt(query, id, scheduleId);
@@ -282,6 +296,21 @@ export function createWholesaleDelivery(
             throw new WholesaleError(
               409,
               "Dispatch this attempt before confirming delivery.",
+            );
+          if (
+            !schedule.dispatched_at ||
+            !Number.isFinite(new Date(schedule.dispatched_at).getTime())
+          )
+            throw new WholesaleError(
+              409,
+              "This delivery attempt has no recorded dispatch time.",
+            );
+          if (
+            Date.parse(receivedAt) < new Date(schedule.dispatched_at).getTime()
+          )
+            throw new WholesaleError(
+              400,
+              "Actual receipt cannot precede dispatch.",
             );
           const { rows: previous } = await query(
             "SELECT id FROM delivery_receipts WHERE order_id=$1 UNION ALL SELECT id FROM accounts_receivable WHERE order_id=$1",
@@ -293,7 +322,14 @@ export function createWholesaleDelivery(
               "This order already has delivery or financial records. Review them before continuing.",
             );
           const source = order.confirmation_snapshot;
+          const agreement = wholesaleAgreementSchema.safeParse({
+            paymentPlan: source.paymentPlan,
+            paymentPlanVersion: source.paymentPlanVersion,
+            total: source.total,
+          });
           if (
+            !agreement.success ||
+            source.paymentPlan !== order.payment_plan ||
             !Array.isArray(source.lines) ||
             !source.lines.length ||
             source.total !== order.total_order_amount
@@ -302,6 +338,11 @@ export function createWholesaleDelivery(
               409,
               "The confirmed order snapshot is incomplete.",
             );
+          const installmentSchedule = calculateWholesaleSchedule({
+            ...agreement.data,
+            receivedAt,
+          });
+          const dueDate = installmentSchedule.finalDueDate;
           const ids = source.lines.map((line: any) => line.productId).sort();
           const { rows: products } = await query(
             "SELECT * FROM products WHERE id=ANY($1::uuid[]) ORDER BY id FOR UPDATE",
@@ -356,7 +397,7 @@ export function createWholesaleDelivery(
             if (
               !batch ||
               batch.quantity_remaining < allocation.quantity ||
-              batch.expiry < pharmacyDate() ||
+              batch.expiry < installmentSchedule.receiptDate ||
               batch.expiry !== expiry ||
               batch.batch_number !== allocation.batch_number_at_reservation
             )
@@ -365,7 +406,8 @@ export function createWholesaleDelivery(
                 "A reserved batch is expired, missing or changed. Delivery was not recorded.",
               );
           }
-          const deliveredAt = new Date().toISOString();
+          // Delivery/stock event time is actual receipt; audit entry time stays separate.
+          const deliveredAt = receivedAt;
           const {
             rows: [number],
           } = await query(
@@ -449,12 +491,14 @@ export function createWholesaleDelivery(
             calculationVersion: source.calculationVersion,
             batches: receiptBatches,
             deliveredAt,
+            recordedAt,
             receivedBy,
             dueDate,
+            installmentSchedule,
           };
           await query(
-            `INSERT INTO wholesale_fulfillments(order_id,schedule_id,receipt_id,ar_id,snapshot,delivered_by,delivered_at)
-          VALUES($1,$2,$3,$4,$5::text::jsonb,$6,$7)`,
+            `INSERT INTO wholesale_fulfillments(order_id,schedule_id,receipt_id,ar_id,snapshot,delivered_by,delivered_at,received_at,recorded_at)
+          VALUES($1,$2,$3,$4,$5::text::jsonb,$6,$7,$7,$8)`,
             [
               id,
               scheduleId,
@@ -463,8 +507,35 @@ export function createWholesaleDelivery(
               JSON.stringify(snapshot),
               actor.id,
               deliveredAt,
+              recordedAt,
             ],
           );
+          await query(
+            `INSERT INTO wholesale_installment_schedules(ar_id,payment_plan,plan_version,principal,installment_count,received_at,receipt_date,final_due_date,generated_at)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+            [
+              ar.id,
+              installmentSchedule.paymentPlan,
+              installmentSchedule.paymentPlanVersion,
+              installmentSchedule.total,
+              installmentSchedule.installments.length,
+              receivedAt,
+              installmentSchedule.receiptDate,
+              dueDate,
+              recordedAt,
+            ],
+          );
+          for (const installment of installmentSchedule.installments) {
+            await query(
+              "INSERT INTO wholesale_installments(ar_id,sequence_number,due_date,amount) VALUES($1,$2,$3,$4)",
+              [
+                ar.id,
+                installment.sequenceNumber,
+                installment.dueDate,
+                installment.amount,
+              ],
+            );
+          }
           await query(
             "UPDATE delivery_schedules SET status='Completed' WHERE id=$1",
             [scheduleId],
@@ -484,11 +555,18 @@ export function createWholesaleDelivery(
               "; AR " +
               ar.id +
               "; total " +
-              source.total,
+              source.total +
+              "; received " +
+              receivedAt +
+              "; plan " +
+              installmentSchedule.paymentPlan,
           );
           return {
             id,
             receiptId: receipt.id,
+            arId: ar.id,
+            receivedAt,
+            finalDueDate: dueDate,
             revision: expected + 1,
             status: "Delivered",
           };

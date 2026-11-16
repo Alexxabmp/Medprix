@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { calculateRetailLine, pharmacyDate } from "@workspace/api-zod";
+import {
+  calculateRetailLine,
+  pharmacyDate,
+  wholesalePaymentPlanSchema,
+  type WholesalePaymentPlan,
+} from "@workspace/api-zod";
 import type { AuditActor } from "./audit-events";
 import {
   WholesaleError,
@@ -20,6 +25,7 @@ export {
 
 type DraftInput = {
   clientId: string;
+  paymentPlan: WholesalePaymentPlan | null;
   lines: Array<{ productId: string; quantity: number }>;
 };
 const maxMoney = 999999999999n;
@@ -27,14 +33,18 @@ const maxMoney = 999999999999n;
 function parseDraft(value: any): DraftInput {
   if (
     !value ||
-    Object.keys(value).some((key) => !["clientId", "lines"].includes(key))
+    Object.keys(value).some(
+      (key) => !["clientId", "lines", "paymentPlan"].includes(key),
+    )
   ) {
     throw new WholesaleError(
       400,
-      "Only a client and product quantities can be submitted.",
+      "Only a client, payment plan and product quantities can be submitted.",
     );
   }
   const clientId = requireUuid(value.clientId);
+  const plan = wholesalePaymentPlanSchema.nullable().safeParse(value.paymentPlan ?? null);
+  if (!plan.success) throw new WholesaleError(400, "Choose Net-30 or Net-60.");
   if (
     !Array.isArray(value.lines) ||
     !value.lines.length ||
@@ -74,7 +84,7 @@ function parseDraft(value: any): DraftInput {
   ) {
     throw new WholesaleError(400, "Combine duplicate products into one line.");
   }
-  return { clientId, lines };
+  return { clientId, paymentPlan: plan.data, lines };
 }
 
 export function createWholesaleDrafts(read: Query, transaction: Transaction) {
@@ -276,7 +286,7 @@ export function createWholesaleDrafts(read: Query, transaction: Transaction) {
         await read(
           `SELECT o.id,o.order_number AS "orderNumber",o.draft_revision AS revision,
         o.status,o.client_id AS "clientId",COALESCE(o.confirmation_snapshot->>'clientName',c.client_name) AS "clientName",o.total_order_amount::text AS total,
-        o.updated_at AS "updatedAt",
+        o.updated_at AS "updatedAt",o.payment_plan AS "paymentPlan",
         COALESCE((SELECT jsonb_agg(jsonb_build_object('productId',i.product_id,'quantity',i.quantity,
           'unitPrice',i.unit_price::text,'name',p.product_name) ORDER BY i.id)
           FROM wholesale_order_items i JOIN products p ON p.id=i.product_id WHERE i.order_id=o.id),'[]'::jsonb) AS lines
@@ -374,15 +384,15 @@ export function createWholesaleDrafts(read: Query, transaction: Transaction) {
           const savedId = id ?? randomUUID();
           if (!id) {
             await query(
-              `INSERT INTO wholesale_orders(id,client_id,order_number,draft_revision,created_by,total_order_amount)
-            VALUES($1,$2,'WS-' || nextval('wholesale_order_number_seq')::text,1,$3,$4)`,
-              [savedId, draft.clientId, actor.id, money(total)],
+              `INSERT INTO wholesale_orders(id,client_id,order_number,draft_revision,created_by,total_order_amount,payment_plan)
+            VALUES($1,$2,'WS-' || nextval('wholesale_order_number_seq')::text,1,$3,$4,$5)`,
+              [savedId, draft.clientId, actor.id, money(total), draft.paymentPlan],
             );
           } else {
             await query(
               `UPDATE wholesale_orders SET client_id=$2,total_order_amount=$3,
-            draft_revision=draft_revision+1 WHERE id=$1`,
-              [id, draft.clientId, money(total)],
+            draft_revision=draft_revision+1,payment_plan=$4 WHERE id=$1`,
+              [id, draft.clientId, money(total), draft.paymentPlan],
             );
             await query("DELETE FROM wholesale_order_items WHERE order_id=$1", [
               id,
