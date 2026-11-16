@@ -1,5 +1,9 @@
 import { SelectField } from "@/components/custom-ui/select-field";
 import {
+  wholesaleClientContactsSchema,
+  cleanWholesalePhoneInput,
+} from "@workspace/api-zod";
+import {
   PageTableValue,
   usePageTableStandard,
 } from "@/components/page-table-context";
@@ -1205,7 +1209,21 @@ export default function WholesalePage({
               onSubmit={(event) => {
                 event.preventDefault();
                 const data = new FormData(event.currentTarget);
-                if (dialog.kind === "client")
+                if (dialog.kind === "client") {
+                  const contacts = wholesaleClientContactsSchema.safeParse({
+                    contactPerson: data.get("contactPerson"),
+                    contactNumber: data.get("contactNumber"),
+                    email: data.get("email"),
+                  });
+                  if (!contacts.success) {
+                    const issue = contacts.error.issues[0];
+                    setFormError(issue.message);
+                    const field = event.currentTarget.elements.namedItem(
+                      String(issue.path[0]),
+                    ) as HTMLInputElement | null;
+                    field?.focus();
+                    return;
+                  }
                   mutate(
                     dialog.client ? "/clients/" + dialog.client.id : "/clients",
                     dialog.client ? "PUT" : "POST",
@@ -1225,12 +1243,10 @@ export default function WholesalePage({
                         : {}),
                       name: data.get("name"),
                       address: data.get("address"),
-                      contactPerson: data.get("contactPerson"),
-                      contactNumber: data.get("contactNumber"),
-                      email: data.get("email"),
+                      ...contacts.data,
                     },
                   );
-                else
+                } else
                   mutate("/products/" + dialog.product.id + "/price", "PUT", {
                     wholesalePrice: data.get("price") || null,
                     expectedPrice: dialog.product.wholesalePrice,
@@ -1281,6 +1297,18 @@ export default function WholesalePage({
                           maxLength={255}
                           defaultValue={dialog.client?.contactPerson ?? ""}
                           autoComplete="name"
+                          onInput={(event) => {
+                            const result =
+                              wholesaleClientContactsSchema.shape.contactPerson.safeParse(
+                                event.currentTarget.value,
+                              );
+                            event.currentTarget.setCustomValidity(
+                              result.success
+                                ? ""
+                                : result.error.issues[0].message,
+                            );
+                            setFormError("");
+                          }}
                         />
                       </div>
                       <div className="field">
@@ -1291,7 +1319,30 @@ export default function WholesalePage({
                           id="wholesale-client-contact-number"
                           name="contactNumber"
                           type="tel"
-                          maxLength={50}
+                          inputMode="tel"
+                          maxLength={20}
+                          onInput={(event) => {
+                            const input = event.currentTarget;
+                            input.value = cleanWholesalePhoneInput(input.value);
+                            const result =
+                              wholesaleClientContactsSchema.shape.contactNumber.safeParse(
+                                input.value,
+                              );
+                            input.setCustomValidity(
+                              result.success
+                                ? ""
+                                : result.error.issues[0].message,
+                            );
+                            setFormError("");
+                          }}
+                          onBlur={(event) => {
+                            const result =
+                              wholesaleClientContactsSchema.shape.contactNumber.safeParse(
+                                event.currentTarget.value,
+                              );
+                            if (result.success)
+                              event.currentTarget.value = result.data ?? "";
+                          }}
                           defaultValue={dialog.client?.contactNumber ?? ""}
                           autoComplete="tel"
                         />
@@ -1308,6 +1359,18 @@ export default function WholesalePage({
                         maxLength={255}
                         defaultValue={dialog.client?.email ?? ""}
                         autoComplete="email"
+                        onInput={(event) => {
+                          const result =
+                            wholesaleClientContactsSchema.shape.email.safeParse(
+                              event.currentTarget.value,
+                            );
+                          event.currentTarget.setCustomValidity(
+                            result.success
+                              ? ""
+                              : result.error.issues[0].message,
+                          );
+                          setFormError("");
+                        }}
                       />
                     </div>
                   </>

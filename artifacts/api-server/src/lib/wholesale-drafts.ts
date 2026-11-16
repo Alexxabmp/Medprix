@@ -3,6 +3,7 @@ import {
   calculateRetailLine,
   pharmacyDate,
   wholesalePaymentPlanSchema,
+  wholesaleClientContactsSchema,
   type WholesalePaymentPlan,
 } from "@workspace/api-zod";
 import type { AuditActor } from "./audit-events";
@@ -31,28 +32,10 @@ type DraftInput = {
 const maxMoney = 999999999999n;
 const contactFields = ["contactPerson", "contactNumber", "email"] as const;
 function clientContacts(input: any) {
-  const result = {
-    contactPerson: null,
-    contactNumber: null,
-    email: null,
-  } as Record<(typeof contactFields)[number], string | null>;
-  for (const field of contactFields) {
-    const value = input?.[field];
-    const max = field === "contactNumber" ? 50 : 255;
-    if (
-      value !== undefined &&
-      value !== null &&
-      (typeof value !== "string" || value.length > max)
-    )
-      throw new WholesaleError(
-        400,
-        `Enter a valid ${field === "contactPerson" ? "contact person" : field === "contactNumber" ? "contact number" : "email"} (up to ${max} characters).`,
-      );
-    result[field] = typeof value === "string" ? value.trim() || null : null;
-  }
-  if (result.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(result.email))
-    throw new WholesaleError(400, "Enter a valid email address.");
-  return result;
+  const parsed = wholesaleClientContactsSchema.safeParse(input);
+  if (!parsed.success)
+    throw new WholesaleError(400, parsed.error.issues[0].message);
+  return parsed.data;
 }
 
 function parseDraft(value: any): DraftInput {
