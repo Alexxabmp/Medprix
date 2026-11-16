@@ -163,10 +163,12 @@
   padding: 0;
 }
 @media (max-width: 600px) {
-  .modal.modal-table-standard.modal-table-standard.wholesale-dialog > .modal-header {
+  .modal.modal-table-standard.modal-table-standard.wholesale-dialog
+    > .modal-header {
     padding: 16px;
   }
-  .modal.modal-table-standard.modal-table-standard.wholesale-dialog .wholesale-dialog-body {
+  .modal.modal-table-standard.modal-table-standard.wholesale-dialog
+    .wholesale-dialog-body {
     padding: 0 16px 16px;
   }
   .modal.modal-table-standard.modal-table-standard.wholesale-dialog
@@ -238,12 +240,20 @@
 .wholesale-summary-dialog .modal-table-pager > span:first-child {
   margin-right: auto;
 }
-.delivery-receipt-details { min-width: 0; }
+.delivery-receipt-details {
+  min-width: 0;
+}
 
 .wholesale-dialog .wholesale-draft-line > button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+.wholesale-plan-deadline {
+  display: block;
+  margin-top: 6px;
+  color: hsl(var(--muted));
+  font-size: var(--text-xs);
 }
 .wholesale-confirmation-note {
   margin: 0;
@@ -258,5 +268,66 @@
 @media (max-width: 600px) {
   .wholesale-client-details {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* Order, delivery and receipt tables share one responsive presentation. */
+.modal.modal-table-standard.modal-table-standard.wholesale-dialog
+  .wholesale-task-table[data-modal-table] {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+}
+.modal.modal-table-standard.modal-table-standard.wholesale-dialog
+  .wholesale-task-table[data-modal-table]
+  :is(th, td) {
+  min-width: 0;
+  max-width: none;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 760px) {
+  .modal.modal-table-standard.modal-table-standard.wholesale-dialog
+    .wholesale-task-table
+    :is(thead, colgroup) {
+    display: none;
+  }
+  .modal.modal-table-standard.modal-table-standard.wholesale-dialog
+    .wholesale-task-table,
+  .modal.modal-table-standard.modal-table-standard.wholesale-dialog
+    .wholesale-task-table
+    tbody {
+    display: block;
+  }
+  .modal.modal-table-standard.modal-table-standard.wholesale-dialog
+    .wholesale-task-table
+    tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    padding: 14px;
+    border-bottom: 1px solid hsl(var(--border));
+  }
+  .modal.modal-table-standard.modal-table-standard.wholesale-dialog
+    .wholesale-task-table
+    tr:last-child {
+    border-bottom: 0;
+  }
+  .modal.modal-table-standard.modal-table-standard.wholesale-dialog
+    .wholesale-task-table[data-modal-table]
+    td[data-label] {
+    display: block;
+    width: 100%;
+    padding: 8px 0;
+    border: 0;
+    text-align: left;
+  }
+  .modal.modal-table-standard.modal-table-standard.wholesale-dialog
+    .wholesale-task-table
+    td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 6px;
+    color: hsl(var(--muted));
+    font-size: var(--text-xs);
+    font-weight: 600;
   }
 }

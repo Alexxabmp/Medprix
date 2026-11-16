@@ -1,4 +1,5 @@
 import { useLayoutEffect, useId, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import {
   pharmacyDate,
   calculateWholesaleSchedule,
@@ -128,6 +129,7 @@ export function WholesaleDeliveryPanel({
         <>
           <WholesaleInstallmentScheduleView
             schedule={detail.receipt.snapshot.installmentSchedule}
+            showTerms={showTotal}
           />
           <ModalTableFooter>
             <button
@@ -141,46 +143,63 @@ export function WholesaleDeliveryPanel({
         </>
       )}
       {(action || showTotal) && (
-        <section
-          className="wholesale-context"
-          aria-label="Delivery destination"
-        >
-          <strong>
-            {detail.snapshot?.clientName ??
-              detail.client?.name ??
-              order.clientName}
-          </strong>
-          <p>
-            {detail.snapshot?.address ??
-              detail.client?.address ??
-              "No delivery address"}
-          </p>
-          {action && active && (
-            <p className="muted">
-              {active.status === "InTransit" ? "In transit" : "Scheduled"} ·{" "}
-              {formatDisplayDate(active.date)}
-            </p>
-          )}
-          {active?.notes && (
+        <>
+          <section
+            className="wholesale-context"
+            aria-label="Delivery destination"
+          >
+            <strong>
+              {detail.snapshot?.clientName ??
+                detail.client?.name ??
+                order.clientName}
+            </strong>
             <p>
-              <span className="field-label">Delivery instructions: </span>
-              {active.notes}
+              {detail.snapshot?.address ??
+                detail.client?.address ??
+                "No delivery address"}
             </p>
-          )}
-          <details>
+            {action && active && (
+              <p className="muted">
+                {active.status === "InTransit" ? "In transit" : "Scheduled"} ·{" "}
+                {formatDisplayDate(active.date)}
+              </p>
+            )}
+            {active?.notes && (
+              <p>
+                <span className="field-label">Delivery instructions: </span>
+                {active.notes}
+              </p>
+            )}
+          </section>
+          <details className="wholesale-review-overrides">
             <summary>
-              Items ({order.lines.reduce((sum, line) => sum + line.quantity, 0)}{" "}
-              units)
+              <span>
+                Items (
+                {order.lines.reduce((sum, line) => sum + line.quantity, 0)}{" "}
+                units)
+              </span>
+              <ChevronDown size={16} aria-hidden="true" />
             </summary>
-            <ul>
-              {order.lines.map((line) => (
-                <li key={line.productId}>
-                  {line.name} · {line.quantity} units
-                </li>
-              ))}
-            </ul>
+            <div className="wholesale-details">
+              <ModalDataTable className="data-table wholesale-task-table">
+                <thead>
+                  <tr>
+                    <th>Product</th>
+                    <th>Quantity</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {order.lines.map((line) => (
+                    <tr key={line.productId}>
+                      <td data-label="Product">{line.name}</td>
+                      <td data-label="Quantity">{line.quantity} units</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </ModalDataTable>
+            </div>
           </details>
-        </section>
+        </>
       )}
       {eligible && action && (
         <>
@@ -400,10 +419,13 @@ export function WholesaleDeliveryPanel({
           className="wholesale-review-overrides"
           onToggle={(event) => setHistoryOpen(event.currentTarget.open)}
         >
-          <summary>Delivery history ({detail.attempts.length})</summary>
+          <summary>
+            <span>Delivery history ({detail.attempts.length})</span>
+            <ChevronDown size={16} aria-hidden="true" />
+          </summary>
           {historyOpen && (
             <div className="wholesale-details">
-              <ModalDataTable className="data-table">
+              <ModalDataTable className="data-table wholesale-task-table">
                 <thead>
                   <tr>
                     <th>Scheduled date</th>

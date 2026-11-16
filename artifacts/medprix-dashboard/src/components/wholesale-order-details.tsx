@@ -15,6 +15,7 @@ import {
   type WholesaleOverride,
 } from "@/lib/wholesale-api";
 import { safeError } from "@/lib/feedback";
+import { formatDisplayDate } from "@/lib/business-date";
 import {
   ModalTableValue,
   useModalTableStandard,
@@ -210,6 +211,15 @@ export function WholesaleOrderDetails({
                       : order.paymentPlan === "Net60"
                         ? "Net-60 · 8 weekly installments"
                         : "Select a plan before confirmation"}
+                    {detail.receipt && (
+                      <span className="wholesale-plan-deadline">
+                        Final deadline:{" "}
+                        {formatDisplayDate(
+                          detail.receipt.snapshot.installmentSchedule
+                            .finalDueDate,
+                        )}
+                      </span>
+                    )}
                   </dd>
                 </div>
                 <div>
@@ -257,7 +267,7 @@ export function WholesaleOrderDetails({
                     tabIndex={tablePreview ? 0 : undefined}
                   >
                     <table
-                      className="data-table"
+                      className="data-table wholesale-task-table"
                       data-modal-table={
                         tablePreview ? (draft ? "draft" : "items") : undefined
                       }
@@ -518,69 +528,80 @@ export function WholesaleOrderDetails({
             </details>
           )}
           {detail.reservations.length > 0 && !action && !deliveryTask && (
-            <details className="modal-section">
-              <summary>Batch reservations</summary>
-              <ModalTableFrame>
-                <div
-                  className="table-scroll"
-                  role={tablePreview ? "region" : undefined}
-                  aria-label={
-                    tablePreview
-                      ? "Batch reservations, scroll horizontally for more columns"
-                      : undefined
-                  }
-                  tabIndex={tablePreview ? 0 : undefined}
-                >
-                  <table
-                    className="data-table"
-                    data-modal-table={tablePreview ? "reservations" : undefined}
+            <details className="wholesale-review-overrides">
+              <summary>
+                <span>Batch reservations</span>
+                <ChevronDown size={16} aria-hidden="true" />
+              </summary>
+              <div className="wholesale-details">
+                <ModalTableFrame>
+                  <div
+                    className="table-scroll"
+                    role={tablePreview ? "region" : undefined}
+                    aria-label={
+                      tablePreview
+                        ? "Batch reservations, scroll horizontally for more columns"
+                        : undefined
+                    }
+                    tabIndex={tablePreview ? 0 : undefined}
                   >
-                    {tablePreview && (
-                      <colgroup>
-                        <col className="modal-table-order-product-column" />
-                        <col />
-                        <col />
-                        <col />
-                        <col />
-                      </colgroup>
-                    )}
-                    <thead>
-                      <tr>
-                        <th>Product</th>
-                        <th>Batch</th>
-                        <th>Expiry</th>
-                        <th>Quantity</th>
-                        <th>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {reservationPages.rows.map((reservation) => (
-                        <tr key={reservation.id}>
-                          <td data-label="Product">
-                            <ModalTableValue value={reservation.product} />
-                          </td>
-                          <td data-label="Batch">{reservation.batchNumber}</td>
-                          <td data-label="Expiry">{reservation.expiry}</td>
-                          <td data-label="Quantity">{reservation.quantity}</td>
-                          <td data-label="Status">
-                            <span className="pill neutral">
-                              {reservation.releasedAt
-                                ? "Released"
-                                : reservation.consumedAt
-                                  ? "Delivered"
-                                  : "Reserved"}
-                            </span>
-                          </td>
+                    <table
+                      className="data-table wholesale-task-table"
+                      data-modal-table={
+                        tablePreview ? "reservations" : undefined
+                      }
+                    >
+                      {tablePreview && (
+                        <colgroup>
+                          <col className="modal-table-order-product-column" />
+                          <col />
+                          <col />
+                          <col />
+                          <col />
+                        </colgroup>
+                      )}
+                      <thead>
+                        <tr>
+                          <th>Product</th>
+                          <th>Batch</th>
+                          <th>Expiry</th>
+                          <th>Quantity</th>
+                          <th>Status</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </ModalTableFrame>
-              <ModalTablePager
-                {...reservationPages}
-                label="Batch reservations"
-              />
+                      </thead>
+                      <tbody>
+                        {reservationPages.rows.map((reservation) => (
+                          <tr key={reservation.id}>
+                            <td data-label="Product">
+                              <ModalTableValue value={reservation.product} />
+                            </td>
+                            <td data-label="Batch">
+                              {reservation.batchNumber}
+                            </td>
+                            <td data-label="Expiry">{reservation.expiry}</td>
+                            <td data-label="Quantity">
+                              {reservation.quantity}
+                            </td>
+                            <td data-label="Status">
+                              <span className="pill neutral">
+                                {reservation.releasedAt
+                                  ? "Released"
+                                  : reservation.consumedAt
+                                    ? "Delivered"
+                                    : "Reserved"}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </ModalTableFrame>
+                <ModalTablePager
+                  {...reservationPages}
+                  label="Batch reservations"
+                />
+              </div>
             </details>
           )}
           {!draft && !action && (

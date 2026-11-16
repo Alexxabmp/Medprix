@@ -8,9 +8,11 @@ import { ModalDataTable } from "./modal-data-table";
 export function WholesaleInstallmentScheduleView({
   schedule,
   preview = false,
+  showTerms = true,
 }: {
   schedule: WholesaleInstallmentSchedule;
   preview?: boolean;
+  showTerms?: boolean;
 }) {
   return (
     <section
@@ -22,14 +24,16 @@ export function WholesaleInstallmentScheduleView({
       }
     >
       <h3>Payment schedule</h3>
-      <p className="field-hint">
-        {schedule.paymentPlan === "Net30"
-          ? "Net-30 · 4 weekly installments"
-          : "Net-60 · 8 weekly installments"}
-        . Final settlement deadline:{" "}
-        <strong>{formatDisplayDate(schedule.finalDueDate)}</strong>.
-      </p>
-      <ModalDataTable className="data-table">
+      {showTerms && (
+        <p className="field-hint">
+          {schedule.paymentPlan === "Net30"
+            ? "Net-30 · 4 weekly installments"
+            : "Net-60 · 8 weekly installments"}
+          . Final settlement deadline:{" "}
+          <strong>{formatDisplayDate(schedule.finalDueDate)}</strong>.
+        </p>
+      )}
+      <ModalDataTable className="data-table wholesale-task-table">
         <thead>
           <tr>
             <th>Installment</th>
