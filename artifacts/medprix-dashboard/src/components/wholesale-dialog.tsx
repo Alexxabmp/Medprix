@@ -21,7 +21,7 @@ export type WholesaleDialogVariant = "form" | "compact-table" | "table";
 type Presentation = {
   title: string;
   variant: WholesaleDialogVariant;
-  back: () => void;
+  back?: () => void;
   description?: string;
   busy?: boolean;
   className?: string;
@@ -36,15 +36,23 @@ export function useWholesaleDialogView(view: Presentation | null) {
   backRef.current = view?.back;
   const back = useCallback(() => backRef.current?.(), []);
   const title = view?.title,
+    hasBack = Boolean(view?.back),
     variant = view?.variant,
     description = view?.description,
     busy = view?.busy,
     className = view?.className;
   useLayoutEffect(() => {
     if (!update || !title || !variant) return;
-    update({ title, variant, back, description, busy, className });
+    update({
+      title,
+      variant,
+      back: hasBack ? back : undefined,
+      description,
+      busy,
+      className,
+    });
     return () => update(null);
-  }, [update, title, variant, back, description, busy, className]);
+  }, [update, title, variant, back, hasBack, description, busy, className]);
 }
 
 export function WholesaleDialog({
@@ -110,6 +118,7 @@ export function WholesaleDialog({
     };
   }, [hidden, embedded]);
   const shownTitle = view?.title ?? title;
+  const shownBack = view ? view.back : back;
   const previousTitle = useRef(shownTitle);
   useLayoutEffect(() => {
     const changed = previousTitle.current !== shownTitle;
@@ -166,12 +175,12 @@ export function WholesaleDialog({
                   )}
                 </div>
                 <div className="wholesale-dialog-header-actions">
-                  {(view?.back ?? back) && (
+                  {shownBack && (
                     <button
                       type="button"
                       className="button soft wholesale-dialog-back"
                       aria-label="Back"
-                      onClick={view?.back ?? back}
+                      onClick={shownBack}
                       disabled={effectiveBusy}
                     >
                       <ArrowLeft size={14} /> Back

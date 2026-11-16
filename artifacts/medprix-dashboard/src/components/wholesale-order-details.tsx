@@ -113,7 +113,10 @@ export function WholesaleOrderDetails({
               ? "Confirm wholesale order"
               : "Cancel wholesale order",
           variant: action === "confirm" ? "table" : "form",
-          back: () => setAction(null),
+          back:
+            initialAction === "confirm" && action === "confirm"
+              ? undefined
+              : () => setAction(null),
         }
       : null,
   );
@@ -624,17 +627,19 @@ export function WholesaleOrderDetails({
                   Add a delivery address to the client before confirmation.
                 </p>
               )}
-              <p>
-                Availability and batch reservations are checked again when you
-                confirm.
-              </p>
-              <p>
-                Confirm this order for {wholesalePeso(preview.toFixed(2))} and
-                reserve all{" "}
-                {order.lines.reduce((sum, line) => sum + line.quantity, 0)}{" "}
-                units. Prices and client details will be saved. Physical stock
-                stays unchanged.
-              </p>
+              <section
+                className="wholesale-context wholesale-confirmation-note"
+                aria-label="Confirmation details"
+              >
+                <h3>On confirmation</h3>
+                <p>
+                  Availability is checked and the quantities above are reserved.
+                </p>
+                <p className="muted">
+                  Agreed prices and client details are saved. Stock is deducted
+                  after confirmed delivery.
+                </p>
+              </section>
               <ModalTableFooter>
                 <div className="wholesale-actions">
                   <button
@@ -726,14 +731,12 @@ export function WholesaleOrderDetails({
       back={
         showReceipt
           ? () => setShowReceipt(false)
-          : action
+          : action && !(initialAction === "confirm" && action === "confirm")
             ? () => setAction(null)
             : undefined
       }
       close={close}
-      variant={
-        showReceipt ? "form" : action === "cancel" ? "form" : "table"
-      }
+      variant={showReceipt ? "form" : action === "cancel" ? "form" : "table"}
       description={
         showReceipt && detail?.receipt
           ? detail.receipt.snapshot.receiptNumber
