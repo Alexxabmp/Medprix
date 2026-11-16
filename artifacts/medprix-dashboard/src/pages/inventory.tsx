@@ -1281,85 +1281,25 @@ export default function InventoryPage({
                 </button>
               </div>
 
-              {/* Product Info Grid */}
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
-                  gap: 10,
-                  marginBottom: 16,
-                }}>
-                <div
-                  style={{
-                    background: "hsl(var(--surface-soft))",
-                    border: "1px solid hsl(var(--border))",
-                    padding: "10px 14px",
-                    borderRadius: 11,
-                  }}>
-                  <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
-                    Category
-                  </div>
-                  <strong style={{ fontSize: 13 }}>{viewProduct.category}</strong>
-                </div>
-                <div
-                  style={{
-                    background: "hsl(var(--surface-soft))",
-                    border: "1px solid hsl(var(--border))",
-                    padding: "10px 14px",
-                    borderRadius: 11,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "6px"
-                  }}>
-                  <div>
-                    <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
-                      Unit Price
-                    </div>
-                    <strong style={{ fontSize: 13 }}>{displayPeso(viewProduct.price)}</strong>
-                  </div>
-                  <div>
-                    <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
-                      Cost Price
-                    </div>
-                    <strong style={{ fontSize: 13 }}>{displayPeso(viewProduct.cost)}</strong>
-                  </div>
-                  <div>
-                    <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
-                      VAT treatment
-                    </div>
-                    <strong style={{ fontSize: 13 }}>
-                      {viewProduct.isVatExempt === true ? "VAT-exempt" : viewProduct.isVatExempt === false ? "VATable" : "Not classified"}
-                    </strong>
-                  </div>
-                </div>
-                <div
-                  style={{
-                    background: "hsl(var(--surface-soft))",
-                    border: "1px solid hsl(var(--border))",
-                    padding: "10px 14px",
-                    borderRadius: 11,
-                  }}>
-                  <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
-                    Reorder Level
-                  </div>
-                  <strong style={{ fontSize: 13 }}>
-                    {viewProduct.reorder} units
-                  </strong>
-                </div>
-                <div
-                  style={{
-                    background: "hsl(var(--surface-soft))",
-                    border: "1px solid hsl(var(--border))",
-                    padding: "10px 14px",
-                    borderRadius: 11,
-                  }}>
-                  <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
-                    Total Stock
-                  </div>
-                  <strong style={{ fontSize: 13 }}>
-                    {getProductTotalStock(viewProduct)} units
-                  </strong>
-                </div>
+              <div className="product-details-overview">
+                <section className="product-details-section" aria-labelledby="view-product-information">
+                  <h3 id="view-product-information">Product information</h3>
+                  <dl className="product-details-facts">
+                    <div><dt>Category</dt><dd>{viewProduct.category || "\u2014"}</dd></div>
+                    <div><dt>Category VAT</dt><dd>{viewProduct.isVatExempt === true ? "Non-VAT" : viewProduct.isVatExempt === false ? "VAT (12%)" : "Not classified"}</dd></div>
+                    <div><dt>Total stock</dt><dd>{getProductTotalStock(viewProduct)} <span>units</span></dd></div>
+                    <div><dt>Reorder level</dt><dd>{viewProduct.reorder} <span>units</span></dd></div>
+                  </dl>
+                </section>
+                <section className="product-details-section" aria-labelledby="view-product-pricing">
+                  <h3 id="view-product-pricing">Pricing</h3>
+                  <dl className="product-details-facts product-details-pricing">
+                    <div><dt>Initial price</dt><dd>{displayPeso(viewProduct.initialPrice)}</dd></div>
+                    <div><dt>Selling price</dt><dd>{displayPeso(viewProduct.price)}</dd></div>
+                    <div><dt>Purchase cost</dt><dd>{displayPeso(viewProduct.cost)}</dd></div>
+                  </dl>
+                  <p className="field-hint">{viewProduct.isVatExempt === false ? "Selling price includes the category's 12% VAT." : viewProduct.isVatExempt === true ? "Selling price equals the initial price for this Non-VAT category." : "VAT is determined by the product category."}</p>
+                </section>
               </div>
 
               {/* Batches Table */}
@@ -1754,7 +1694,6 @@ export default function InventoryPage({
                         })
                       }
                     />
-                    <span className="field-hint">Whole units only</span>
                   </div>
                   <div className="field">
                     <label>Date *</label>
