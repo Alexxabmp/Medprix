@@ -61,7 +61,7 @@
 .modal.modal-table-standard.modal-table-standard > .modal-header {
   flex: 0 0 auto;
   min-width: 0;
-  padding: 24px;
+  padding: 25px;
   margin: 0;
 }
 .modal.modal-table-standard.modal-table-standard
@@ -76,7 +76,7 @@
   min-height: 0;
   min-width: 0;
   margin: 0 12px 0 0;
-  padding: 0 12px 24px 24px;
+  padding: 0 13px 25px 25px;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-gutter: stable;
@@ -88,7 +88,7 @@
   align-items: center;
   justify-content: flex-end;
   gap: 12px;
-  padding: 16px 24px;
+  padding: 16px 25px 25px;
   background: hsl(var(--surface));
 }
 .modal-table-footer-content {
@@ -332,7 +332,7 @@
     padding: 0 12px 16px 16px;
   }
   .modal.modal-table-standard.modal-table-standard .modal-table-footer {
-    padding: 12px 16px;
+    padding: 12px 16px 16px;
     align-items: flex-end;
   }
   .modal-table-footer-content {
@@ -388,4 +388,10 @@
 }
 .modal.modal-table-standard.modal-table-standard .modal-data-table {
   min-width: var(--modal-table-min, 640px);
+}
+
+/* The outer bottom inset belongs to the footer only when it has actions. */
+.modal.modal-table-standard.modal-table-standard:has(> .modal-table-footer > .modal-table-footer-content:not(:empty), > .wholesale-form-footer)
+  :is(.modal-table-body, .wholesale-dialog-body) {
+  padding-bottom: 0;
 }

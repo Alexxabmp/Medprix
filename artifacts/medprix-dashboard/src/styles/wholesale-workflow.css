@@ -64,16 +64,16 @@
   border-radius: 23px;
 }
 .modal.modal-table-standard.wholesale-dialog > .modal-header {
-  padding: 24px 24px 18px;
+  padding: 25px 25px 18px;
 }
 .modal.modal-table-standard.wholesale-dialog .wholesale-dialog-body {
   margin: 0;
-  padding: 0 24px 24px;
+  padding: 0 25px 25px;
   scrollbar-gutter: auto;
 }
 .modal.modal-table-standard.wholesale-dialog
   :is(.modal-table-footer, .wholesale-form-footer) {
-  padding: 16px 24px;
+  padding: 16px 25px 25px;
 }
 .modal.modal-table-standard.wholesale-dialog .wholesale-form-footer {
   border-top: 0;
@@ -163,13 +163,13 @@
   padding: 0;
 }
 @media (max-width: 600px) {
-  .modal.modal-table-standard.wholesale-dialog > .modal-header {
+  .modal.modal-table-standard.modal-table-standard.wholesale-dialog > .modal-header {
     padding: 16px;
   }
-  .modal.modal-table-standard.wholesale-dialog .wholesale-dialog-body {
+  .modal.modal-table-standard.modal-table-standard.wholesale-dialog .wholesale-dialog-body {
     padding: 0 16px 16px;
   }
-  .modal.modal-table-standard.wholesale-dialog
+  .modal.modal-table-standard.modal-table-standard.wholesale-dialog
     :is(.modal-table-footer, .wholesale-form-footer) {
     padding: 16px;
   }
