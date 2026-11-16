@@ -633,6 +633,7 @@ function buildData(passwordHash: string) {
     T.wholesale_orders.push({
       id, client_id: client.id, order_number: "WS-" + (index + 1), draft_revision: 1,
       created_by: frontDesk.id, order_date: orderedAt, status: "Pending",
+      payment_plan: index % 2 ? "Net60" : "Net30",
       total_order_amount: r2(sum(lines.map((line) => line.qty * line.price))),
       created_at: orderedAt, updated_at: orderedAt,
     });
@@ -834,6 +835,10 @@ async function main() {
     await sql.begin(async (tx) => {
       for (const t of TABLE_ORDER) await insertMany(tx, t, T[t]);
       await tx`SELECT setval('wholesale_order_number_seq', ${T.wholesale_orders.length}, true)`;
+      const { seedWholesaleExamples } = await import(new URL("../../../scripts/seed-wholesale.mjs", import.meta.url).href);
+      const examples = await seedWholesaleExamples(tx);
+      console.log("Wholesale scenarios:");
+      for (const example of examples) console.log(`  ${example.scenario} (${example.paymentPlan})`);
     });
 
     console.log("\nRows inserted:");

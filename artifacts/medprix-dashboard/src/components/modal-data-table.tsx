@@ -51,7 +51,7 @@ function labelHeading(node: ReactNode, id: string): ReactNode {
 /** Used only by existing inline table dialogs, never by page tables. */
 export function ModalTableDialog({
   children,
-  close,
+  close: _close,
   className = "",
   ...props
 }: HTMLAttributes<HTMLDivElement> & { close: () => void }) {
@@ -75,7 +75,7 @@ export function ModalTableDialog({
       aria-modal="true"
       aria-labelledby={id}
     >
-      <ModalTableLayout close={close}>
+      <ModalTableLayout>
         {labelHeading(header, id)}
         <ModalTableBody>
           {all.filter((child) => child !== header && !actions.includes(child))}

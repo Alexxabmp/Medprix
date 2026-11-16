@@ -1,7 +1,10 @@
 import { SelectField } from "./custom-ui/select-field";
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
+import type { WholesalePaymentPlan } from "@workspace/api-zod";
 import { Plus, Trash2 } from "lucide-react";
 import { WholesaleDialog } from "./wholesale-dialog";
+import { wholesaleDraftPreview } from "@/lib/wholesale-draft-preview";
+import "@/styles/wholesale-workflow.css";
 import {
   wholesalePeso,
   type WholesaleClient,
@@ -15,6 +18,7 @@ export function WholesaleOrderEditor({
   clients,
   products,
   busy,
+  submitting = busy,
   error,
   close,
   save,
@@ -24,13 +28,22 @@ export function WholesaleOrderEditor({
   clients: WholesaleClient[];
   products: WholesaleProduct[];
   busy: boolean;
+  submitting?: boolean;
   error: string;
   retry?: () => void;
   close: () => void;
-  save: (draft: { clientId: string; lines: WholesaleLine[] }) => void;
+  save: (draft: {
+    clientId: string;
+    paymentPlan: WholesalePaymentPlan;
+    lines: WholesaleLine[];
+  }) => void;
 }) {
   const form = useRef<HTMLFormElement>(null);
+  const formId = useId();
   const [clientId, setClientId] = useState(order?.clientId ?? "");
+  const [paymentPlan, setPaymentPlan] = useState<WholesalePaymentPlan | "">(
+    order?.paymentPlan ?? "",
+  );
   const [lines, setLines] = useState<WholesaleLine[]>(
     order?.lines.map(({ productId, quantity }) => ({
       productId,
@@ -38,6 +51,7 @@ export function WholesaleOrderEditor({
     })) ?? [{ productId: "", quantity: 1 }],
   );
   const [attempted, setAttempted] = useState(false);
+  const preview = wholesaleDraftPreview(products, lines, paymentPlan);
   const invalidQuantity = (quantity: number) =>
     !Number.isInteger(quantity) || quantity < 1 || quantity > 1000000;
   const missingPrice = (line: WholesaleLine) =>
@@ -46,13 +60,17 @@ export function WholesaleOrderEditor({
       null;
   const validationError = !clientId
     ? "Select a client before saving the draft."
-    : lines.some((line) => !line.productId)
-      ? "Select a product for every line."
-      : lines.some((line) => invalidQuantity(line.quantity))
-        ? "Enter a whole quantity from 1 to 1,000,000 for every line."
-        : lines.some(missingPrice)
-          ? "This draft cannot be saved until Admin configures a wholesale unit price for each selected product."
-          : "";
+    : !paymentPlan
+      ? "Choose Net-30 or Net-60 before saving the draft."
+      : lines.some((line) => !line.productId)
+        ? "Select a product for every line."
+        : lines.some((line) => invalidQuantity(line.quantity))
+          ? "Enter a whole quantity from 1 to 1,000,000 for every line."
+          : lines.some(missingPrice)
+            ? "This draft cannot be saved until Admin configures a wholesale unit price for each selected product."
+            : preview.overflow
+              ? "The order total exceeds the supported amount."
+              : "";
   const unclassified = lines.some(
     (line) =>
       products.find((product) => product.id === line.productId)?.isVatExempt ===
@@ -69,12 +87,24 @@ export function WholesaleOrderEditor({
   return (
     <WholesaleDialog
       title={order ? "Edit " + order.orderNumber : "New wholesale draft"}
-      description="Prices include VAT where applicable. Fields marked * are required."
-      busy={busy}
+      busy={submitting}
       close={close}
+      footer={
+        <>
+          <button
+            className="button dark"
+            type="submit"
+            form={formId}
+            disabled={busy}
+          >
+            {submitting ? "Saving…" : "Save draft and review"}
+          </button>
+        </>
+      }
     >
       <form
         ref={form}
+        id={formId}
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
@@ -88,31 +118,65 @@ export function WholesaleOrderEditor({
             );
             return;
           }
-          save({ clientId, lines });
+          if (paymentPlan) save({ clientId, paymentPlan, lines });
         }}
       >
         <fieldset disabled={busy} className="wholesale-fields">
-          <div className="field">
-            <label htmlFor="wholesale-draft-client">Client *</label>
-            <SelectField searchable pickerLabel="Client"
-              id="wholesale-draft-client"
-              required
-              value={clientId}
-              aria-invalid={attempted && !clientId}
-              onChange={(event) => {
-                setClientId(event.target.value);
-                setAttempted(false);
-              }}
-            >
-              <option value="">Select client</option>
-              {clients.map((client) => (
-                <option key={client.id} value={client.id}>
-                  {client.name}
-                </option>
-              ))}
-            </SelectField>
+          <div className="form-grid">
+            <div className="field">
+              <label htmlFor="wholesale-draft-client">Client *</label>
+              <SelectField
+                searchable
+                pickerLabel="Client"
+                id="wholesale-draft-client"
+                required
+                value={clientId}
+                aria-invalid={attempted && !clientId}
+                onChange={(event) => {
+                  setClientId(event.target.value);
+                  setAttempted(false);
+                }}
+              >
+                <option value="">Select client</option>
+                {clients.map((client) => (
+                  <option key={client.id} value={client.id}>
+                    {client.name}
+                  </option>
+                ))}
+              </SelectField>
+            </div>
+            <div className="field">
+              <label htmlFor="wholesale-draft-plan">Payment plan *</label>
+              <SelectField
+                id="wholesale-draft-plan"
+                required
+                value={paymentPlan}
+                aria-invalid={attempted && !paymentPlan}
+                onChange={(event) => {
+                  setPaymentPlan(
+                    event.target.value as WholesalePaymentPlan | "",
+                  );
+                  setAttempted(false);
+                }}
+              >
+                <option value="">Select payment plan</option>
+                <option value="Net30">Net-30 — 4 weekly installments</option>
+                <option value="Net60">Net-60 — 8 weekly installments</option>
+              </SelectField>
+            </div>
           </div>
-          <p className="field-hint">Saving a draft does not reserve stock.</p>
+          {clientId && (
+            <section
+              className="wholesale-context"
+              aria-label="Delivery destination"
+            >
+              <span className="field-label">Delivery address</span>
+              <p>
+                {clients.find((client) => client.id === clientId)?.address ||
+                  "No delivery address. Add one before confirming this order."}
+              </p>
+            </section>
+          )}
           {order && (
             <div className="inline-error" role="note">
               Saving changes uses current wholesale prices. Any existing price
@@ -129,12 +193,14 @@ export function WholesaleOrderEditor({
             const product = products.find((item) => item.id === line.productId);
             const priceMissing = missingPrice(line);
             return (
-              <div className="wholesale-line" key={index}>
+              <div className="wholesale-line wholesale-draft-line" key={index}>
                 <div className="field">
                   <label htmlFor={"wholesale-draft-product-" + index}>
                     Product *
                   </label>
-                  <SelectField searchable pickerLabel={`Product line ${index + 1}`}
+                  <SelectField
+                    searchable
+                    pickerLabel={`Product line ${index + 1}`}
                     id={"wholesale-draft-product-" + index}
                     required
                     value={line.productId}
@@ -186,7 +252,15 @@ export function WholesaleOrderEditor({
                 <div className="field">
                   <span className="field-label">Unit price</span>
                   <strong>
-                    {wholesalePeso(product?.wholesalePrice ?? null)}
+                    {product ? wholesalePeso(product.wholesalePrice) : "—"}
+                  </strong>
+                </div>
+                <div className="field">
+                  <span className="field-label">Line total</span>
+                  <strong>
+                    {preview.lineTotals[index] === null
+                      ? "—"
+                      : wholesalePeso(preview.lineTotals[index])}
                   </strong>
                 </div>
                 <button
@@ -219,7 +293,7 @@ export function WholesaleOrderEditor({
           })}
           <button
             type="button"
-            className="button soft"
+            className="button soft w-fit"
             disabled={lines.length >= 100}
             onClick={() =>
               setLines((current) => [
@@ -230,19 +304,33 @@ export function WholesaleOrderEditor({
           >
             <Plus size={15} /> Add line
           </button>
-          <p className="field-hint">
-            Wholesale unit prices are maintained by Admin.
-          </p>
+          <dl
+            className="delivery-receipt-totals"
+            aria-label="Draft total"
+            aria-live="polite"
+          >
+            <div>
+              <dt>Total (incl. VAT)</dt>
+              <dd>
+                <strong>
+                  {preview.total === null ? "—" : wholesalePeso(preview.total)}
+                </strong>
+              </dd>
+            </div>
+          </dl>
+          {paymentPlan && (
+            <p className="field-hint">
+              {paymentPlan === "Net60" ? "8" : "4"} weekly installments from
+              client receipt. Final settlement within{" "}
+              {paymentPlan === "Net60" ? "60" : "30"} days. No interest or
+              penalties.
+            </p>
+          )}
           {attempted && validationError && (
             <div className="inline-error" role="alert">
               {validationError}
             </div>
           )}
-          <div className="wholesale-actions">
-            <button type="submit" className="button dark">
-              {busy ? "Saving…" : "Save draft"}
-            </button>
-          </div>
         </fieldset>
         {error && (
           <div className="inline-error" role="alert">

@@ -1,5 +1,6 @@
 import { queryDb } from "@workspace/db";
 import { isCalendarDate } from "@workspace/api-zod";
+import { wholesaleCreditJoin } from "./wholesale-receivable-aging";
 
 type FinanceQuery = (
   text: string,
@@ -26,8 +27,7 @@ const moneyCents = (value: unknown): bigint => {
   const unsigned = negative ? text.slice(1) : text;
   const [whole, fraction = ""] = unsigned.split(".");
   const cents =
-    BigInt(whole || "0") * 100n +
-    BigInt(fraction.padEnd(2, "0").slice(0, 2));
+    BigInt(whole || "0") * 100n + BigInt(fraction.padEnd(2, "0").slice(0, 2));
   return negative ? -cents : cents;
 };
 
@@ -44,7 +44,10 @@ function validateDateRange(from: unknown, to: unknown): FinanceDateRange {
     throw new FinanceInputError(400, "Enter valid from and to calendar dates.");
   }
   if (from > to) {
-    throw new FinanceInputError(400, "The from date cannot be after the to date.");
+    throw new FinanceInputError(
+      400,
+      "The from date cannot be after the to date.",
+    );
   }
   return { from, to };
 }
@@ -169,6 +172,7 @@ ar_facts AS (
     a.due_date,
     a.total_owed,
     a.total_paid,
+    credit.overdue_amount,
     COALESCE(h.recorded_paid, 0) AS recorded_paid,
     f.total AS sale_total,
     (
@@ -181,6 +185,7 @@ ar_facts AS (
   LEFT JOIN wholesale_fulfillments raw_f ON raw_f.ar_id = a.id
   LEFT JOIN ar_fulfillment_snapshots f ON f.fulfillment_id = raw_f.id
   LEFT JOIN ar_history h ON h.ar_id = a.id
+  ${wholesaleCreditJoin()}
 ),
 ar_warnings AS (
   SELECT COUNT(*)::int AS missing_fulfillment_count
@@ -226,8 +231,8 @@ ap_warnings AS (
 ar_totals AS (
   SELECT
     COALESCE(SUM(balance) FILTER (WHERE reconciled), 0)::text AS outstanding,
-    COALESCE(SUM(balance) FILTER (WHERE reconciled AND balance > 0 AND due_date < (now() AT TIME ZONE 'Asia/Manila')::date), 0)::text AS overdue,
-    COUNT(*) FILTER (WHERE reconciled AND balance > 0 AND due_date < (now() AT TIME ZONE 'Asia/Manila')::date)::int AS overdue_count,
+    COALESCE(SUM(overdue_amount) FILTER (WHERE reconciled AND balance > 0), 0)::text AS overdue,
+    COUNT(*) FILTER (WHERE reconciled AND balance > 0 AND overdue_amount > 0)::int AS overdue_count,
     COUNT(*) FILTER (WHERE NOT reconciled)::int AS review_count,
     COALESCE(SUM(balance) FILTER (WHERE NOT reconciled), 0)::text AS review_amount
   FROM ar_facts
@@ -277,7 +282,9 @@ export async function readFinanceSummary(
   to: unknown,
 ) {
   const range = validateDateRange(from, to);
-  const { rows: [row] } = await query(summarySql, [range.from, range.to]);
+  const {
+    rows: [row],
+  } = await query(summarySql, [range.from, range.to]);
 
   const retailRevenue = moneyCents(row.retail_revenue);
   const wholesaleRevenue = moneyCents(row.wholesale_revenue);
@@ -306,10 +313,14 @@ export async function readFinanceSummary(
   const warnings: string[] = [];
 
   if (arReviewCount) {
-    warnings.push(`${arReviewCount} receivable record(s) excluded from totals pending reconciliation.`);
+    warnings.push(
+      `${arReviewCount} receivable record(s) excluded from totals pending reconciliation.`,
+    );
   }
   if (apReviewCount) {
-    warnings.push(`${apReviewCount} payable record(s) excluded from totals pending reconciliation.`);
+    warnings.push(
+      `${apReviewCount} payable record(s) excluded from totals pending reconciliation.`,
+    );
   }
   if (missingCostItems) {
     warnings.push(

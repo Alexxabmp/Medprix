@@ -1,18 +1,27 @@
 import { SelectField } from "@/components/custom-ui/select-field";
 import { formatDisplayDate } from "@/lib/business-date";
-import { PageTableValue, PageTableScroll, usePageTableStandard } from "./page-table-context";
+import {
+  PageTableValue,
+  PageTableScroll,
+  usePageTableStandard,
+} from "./page-table-context";
 import { useReceivablePages } from "./use-receivable-pages";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { ModalDataTable } from "./modal-data-table";
 import { ModalTableFooter } from "./modal-table-layout";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Eye } from "lucide-react";
+import { Eye, RotateCcw } from "lucide-react";
 import { LoadingState } from "./custom-ui/loading-state";
 import { WholesaleDialog } from "./wholesale-dialog";
 import { WholesaleRequestFeedback } from "./wholesale-request-feedback";
 import { useWholesaleRequest } from "@/lib/use-wholesale-request";
 import { safeError } from "@/lib/feedback";
+import {
+  allocateWholesalePayment,
+  wholesalePrincipalSchema,
+} from "@workspace/api-zod";
+import { WholesaleInstallmentBalances } from "./wholesale-installment-balances";
 import {
   wholesaleGet,
   getCachedWholesale,
@@ -31,7 +40,9 @@ export function WholesaleReceivables({
   onChanged,
   initialDetail,
   detailsOnly = false,
+  embedded = false,
   onClose,
+  onBack,
 }: {
   search: string;
   role: string;
@@ -39,13 +50,21 @@ export function WholesaleReceivables({
   onChanged?: () => void;
   initialDetail?: WholesaleReceivableDetail;
   detailsOnly?: boolean;
+  embedded?: boolean;
   onClose?: () => void;
+  onBack?: () => void;
 }) {
   const standard = !!usePageTableStandard() && !detailsOnly;
   const paging = useReceivablePages(standard, search, status);
   const [page, setPage] = useState(1);
-  const initialCacheKey = "/accounts-receivable?search=" + encodeURIComponent(search) + "&page=1&status=" + status;
-  const [data, setData] = useState<WholesaleReceivablePage | null>(() => getCachedWholesale<WholesaleReceivablePage>(initialCacheKey));
+  const initialCacheKey =
+    "/accounts-receivable?search=" +
+    encodeURIComponent(search) +
+    "&page=1&status=" +
+    status;
+  const [data, setData] = useState<WholesaleReceivablePage | null>(() =>
+    getCachedWholesale<WholesaleReceivablePage>(initialCacheKey),
+  );
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(
@@ -57,12 +76,16 @@ export function WholesaleReceivables({
   const [opening, setOpening] = useState(false);
   const [mode, setMode] = useState("view");
   const [method, setMethod] = useState("Cash");
+  const [paymentAmount, setPaymentAmount] = useState("");
   const [validation, setValidation] = useState("");
   const [subPage, setSubPage] = useState(1);
   const contentRef = useRef<HTMLDivElement>(null);
   const RECEIVABLE_PAGE_SIZE = 15;
   const items = data?.items ?? [];
-  const totalPages = Math.max(1, Math.ceil(items.length / RECEIVABLE_PAGE_SIZE));
+  const totalPages = Math.max(
+    1,
+    Math.ceil(items.length / RECEIVABLE_PAGE_SIZE),
+  );
   const safeSubPage = Math.min(subPage, totalPages);
   const paginatedItems = items.slice(
     (safeSubPage - 1) * RECEIVABLE_PAGE_SIZE,
@@ -90,6 +113,7 @@ export function WholesaleReceivables({
     setDetail(
       await wholesaleGet<WholesaleReceivableDetail>(
         "/accounts-receivable/" + id,
+        true,
       ),
     );
   }
@@ -99,6 +123,18 @@ export function WholesaleReceivables({
     setMode("view");
     onChanged?.();
   });
+  let allocationPreview: ReturnType<typeof allocateWholesalePayment> = [];
+  const enteredAmount = wholesalePrincipalSchema.safeParse(paymentAmount);
+  if (detail && enteredAmount.success) {
+    try {
+      allocationPreview = allocateWholesalePayment(
+        enteredAmount.data,
+        detail.installments ?? [],
+      );
+    } catch {
+      /* The server validates the live balance again under the account lock. */
+    }
+  }
   useEffect(() => {
     setPage(1);
     setSubPage(1);
@@ -106,7 +142,13 @@ export function WholesaleReceivables({
   useEffect(() => {
     if (detailsOnly || standard) return;
     let active = true;
-    const reqPath = "/accounts-receivable?search=" + encodeURIComponent(search) + "&page=" + page + "&status=" + status;
+    const reqPath =
+      "/accounts-receivable?search=" +
+      encodeURIComponent(search) +
+      "&page=" +
+      page +
+      "&status=" +
+      status;
     const cached = getCachedWholesale<WholesaleReceivablePage>(reqPath);
     if (cached) {
       setData(cached);
@@ -149,10 +191,8 @@ export function WholesaleReceivables({
         setLoadError(safeError(failure));
       }
     };
-    window.addEventListener("focus", refresh);
     const timer = window.setInterval(refresh, 60000);
     return () => {
-      window.removeEventListener("focus", refresh);
       window.clearInterval(timer);
     };
   }, [search, page, status, selectedId, mode, request.locked]);
@@ -183,100 +223,151 @@ export function WholesaleReceivables({
       {!detailsOnly && (
         <>
           {!selectedId && <WholesaleRequestFeedback {...request} />}
-          {opening && !selectedId && (
-            <LoadingState label="Opening account..." />
-          )}
           {listError && (
             <div role="alert" className="inline-error">
               {listError}
-              {standard && paging.error && <button type="button" className="button soft" onClick={() => void paging.refresh()}>Retry</button>}
+              {standard && paging.error && (
+                <button
+                  type="button"
+                  className="button soft"
+                  onClick={() => void paging.refresh()}
+                >
+                  Retry
+                </button>
+              )}
             </div>
           )}
-          <PageTableScroll><table data-page-table="wholesale-receivables" className="data-table">
-            <thead>
-              <tr>
-                <th>Order / client</th>
-                <th>Total</th>
-                <th>Paid</th>
-                <th>Balance</th>
-                <th>Due date</th>
-                <th>Status</th>
-                <th className="table-action-head">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {!listLoading &&
-                !listError &&
-                listItems.map((item) => (
-                  <tr key={item.id}>
-                    <td>
-                      <strong>{item.orderNumber}</strong>
-                      <div className="muted"><PageTableValue value={item.clientName} /></div>
-                    </td>
-                    <td>{wholesalePeso(item.total)}</td>
-                    <td>{wholesalePeso(item.paid)}</td>
-                    <td>
-                      <strong>{wholesalePeso(item.balance)}</strong>
-                    </td>
-                    <td>{formatDisplayDate(item.dueDate)}</td>
-                    <td>
-                      <span
-                        className={
-                          "pill " +
-                          (item.status === "Overdue"
-                            ? "danger"
-                            : item.status === "Paid"
-                              ? "success"
-                              : "neutral")
-                        }
-                      >
-                        {item.status}
-                      </span>
-                    </td>
-                    <td className="table-action-cell">
-                      <div className="table-actions">
-                        <AppTooltip content={"View account"}><button
-                          className="button soft table-action-btn"
-                          disabled={request.locked || opening}
-                          aria-label="View account"
-
-                          onClick={() => void open(item.id)}
-                        >
-                          <Eye size={13} />
-                        </button></AppTooltip>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              {listLoading ? (
+          <PageTableScroll>
+            <table
+              data-page-table="wholesale-receivables"
+              className="data-table"
+            >
+              <thead>
                 <tr>
-                  <td colSpan={7}>
-                    <LoadingState label="Loading receivables…" />
-                  </td>
+                  <th>Order / client</th>
+                  <th>Total</th>
+                  <th>Paid</th>
+                  <th>Balance</th>
+                  <th>Overdue</th>
+                  <th>Next unpaid</th>
+                  <th>Final deadline</th>
+                  <th>Status</th>
+                  <th className="table-action-head">Action</th>
                 </tr>
-              ) : (
-                !listError &&
-                !listTotal && (
+              </thead>
+              <tbody>
+                {!listLoading &&
+                  listItems.map((item) => (
+                    <tr key={item.id}>
+                      <td>
+                        <strong>{item.orderNumber}</strong>
+                        <div className="muted">
+                          <PageTableValue value={item.clientName} />
+                        </div>
+                        <div className="muted">
+                          {item.paymentPlan === "Net60" ? "Net-60" : "Net-30"}
+                        </div>
+                      </td>
+                      <td>{wholesalePeso(item.total)}</td>
+                      <td>{wholesalePeso(item.paid)}</td>
+                      <td>
+                        <strong>{wholesalePeso(item.balance)}</strong>
+                      </td>
+                      <td>{wholesalePeso(item.overdueAmount)}</td>
+                      <td>
+                        {item.nextDueDate ? (
+                          <>
+                            {formatDisplayDate(item.nextDueDate)}
+                            <div className="muted">
+                              {wholesalePeso(item.nextDueAmount)}
+                            </div>
+                          </>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td>{formatDisplayDate(item.dueDate)}</td>
+                      <td>
+                        <span
+                          className={
+                            "pill " +
+                            (item.status === "Overdue"
+                              ? "danger"
+                              : item.status === "Paid"
+                                ? "success"
+                                : "neutral")
+                          }
+                        >
+                          {item.status}
+                        </span>
+                        {item.finalDeadlineBreached && (
+                          <div className="muted">Final deadline passed</div>
+                        )}
+                      </td>
+                      <td className="table-action-cell">
+                        <div className="table-actions">
+                          <AppTooltip content={"View account"}>
+                            <button
+                              className="button soft table-action-btn"
+                              disabled={request.locked}
+                              aria-disabled={request.locked || opening}
+                              aria-busy={opening}
+                              aria-label="View account"
+                              onClick={() => {
+                                if (!opening) void open(item.id);
+                              }}
+                            >
+                              <Eye size={13} />
+                            </button>
+                          </AppTooltip>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                {listLoading ? (
                   <tr>
-                    <TableEmptyState colSpan={7}>
-                      {search
-                        ? "No matching receivables."
-                        : "No delivered receivables found."}
-                    </TableEmptyState>
+                    <td colSpan={9}>
+                      <LoadingState label="Loading receivables…" />
+                    </td>
                   </tr>
-                )
-              )}
-            </tbody>
-          </table></PageTableScroll>
-          <div className="table-pagination" role="navigation" aria-label="Accounts receivable pagination">
+                ) : (
+                  !listError &&
+                  !listTotal && (
+                    <tr>
+                      <TableEmptyState colSpan={9}>
+                        {search
+                          ? "No matching receivables."
+                          : "No delivered receivables found."}
+                      </TableEmptyState>
+                    </tr>
+                  )
+                )}
+              </tbody>
+            </table>
+          </PageTableScroll>
+          <div
+            className="table-pagination"
+            role="navigation"
+            aria-label="Accounts receivable pagination"
+          >
             <span className="muted">
-              {standard && listLoading ? "Loading accounts…" : <>Page {listPage} of {listPages} ({listTotal} accounts)</>}
+              {standard && listLoading ? (
+                "Loading accounts…"
+              ) : (
+                <>
+                  Page {listPage} of {listPages} ({listTotal} accounts)
+                </>
+              )}
             </span>
             <button
               type="button"
               className="button soft"
               disabled={listLoading || listPage <= 1}
-              onClick={() => standard ? paging.go(Math.max(1, listPage - 1)) : setSubPage(value => Math.max(1, value - 1))}
+              onClick={() =>
+                standard
+                  ? paging.go(Math.max(1, listPage - 1))
+                  : setSubPage((value) => Math.max(1, value - 1))
+              }
             >
               Previous
             </button>
@@ -284,7 +375,11 @@ export function WholesaleReceivables({
               type="button"
               className="button soft"
               disabled={listLoading || listPage >= listPages}
-              onClick={() => standard ? paging.go(Math.min(listPages, listPage + 1)) : setSubPage(value => Math.min(totalPages, value + 1))}
+              onClick={() =>
+                standard
+                  ? paging.go(Math.min(listPages, listPage + 1))
+                  : setSubPage((value) => Math.min(totalPages, value + 1))
+              }
             >
               Next
             </button>
@@ -293,17 +388,34 @@ export function WholesaleReceivables({
       )}
       {selectedId && (
         <WholesaleDialog
-          title="Accounts receivable"
+          embedded={embedded}
+          title={
+            mode === "view"
+              ? "Accounts receivable"
+              : mode === "payment"
+                ? "Record payment"
+                : "Reverse payment"
+          }
+          back={
+            mode !== "view"
+              ? () => {
+                  setMode("view");
+                  setValidation("");
+                  request.clearError();
+                }
+              : onBack
+          }
           description={
             detail
               ? detail.orderNumber + " · " + detail.clientName
               : "Loading account"
           }
-          busy={request.locked || opening}
+          busy={request.busy || opening}
           close={() => {
             setSelectedId(null);
             onClose?.();
           }}
+          variant={mode === "view" ? "table" : "form"}
           className="wholesale-account-dialog"
         >
           {validation && (
@@ -313,146 +425,253 @@ export function WholesaleReceivables({
           )}
           {detail && (
             <div className="wholesale-details" ref={contentRef}>
-              <dl className="wholesale-review-summary">
-                <div>
-                  <dt>Total owed</dt>
-                  <dd>{wholesalePeso(detail.total)}</dd>
-                </div>
-                <div>
-                  <dt>Paid amount</dt>
-                  <dd>{wholesalePeso(detail.paid)}</dd>
-                </div>
-                <div>
-                  <dt>Balance</dt>
-                  <dd>
+              {mode === "view" ? (
+                <>
+                  <dl className="wholesale-review-summary wholesale-account-summary">
+                    <div>
+                      <dt>Total owed</dt>
+                      <dd>{wholesalePeso(detail.total)}</dd>
+                    </div>
+                    <div>
+                      <dt>Paid amount</dt>
+                      <dd>{wholesalePeso(detail.paid)}</dd>
+                    </div>
+                    <div>
+                      <dt>Balance</dt>
+                      <dd>
+                        <strong>{wholesalePeso(detail.balance)}</strong>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Overdue installments</dt>
+                      <dd>{wholesalePeso(detail.overdueAmount)}</dd>
+                    </div>
+                  </dl>
+                  <p className="field-hint">
+                    Payment plan:{" "}
+                    {detail.paymentPlan === "Net60" ? "Net-60" : "Net-30"}
+                  </p>
+                  {detail.nextDueDate && (
+                    <p className="field-hint">
+                      Next unpaid: {formatDisplayDate(detail.nextDueDate)} ·{" "}
+                      {wholesalePeso(detail.nextDueAmount)}
+                    </p>
+                  )}
+                  <p className="field-hint">
+                    Final settlement deadline{" "}
+                    {formatDisplayDate(detail.dueDate)} · Delivered{" "}
+                    {wholesaleDateTime(detail.deliveredAt)}
+                  </p>
+                  {detail.finalDeadlineBreached && (
+                    <p className="pill danger">
+                      Final settlement deadline passed
+                    </p>
+                  )}
+                  {detail.balance === "0.00" && (
+                    <p className="pill success">Fully paid</p>
+                  )}
+                </>
+              ) : mode === "payment" ? (
+                <section
+                  className="wholesale-context wholesale-payment-context"
+                  aria-label="Payment context"
+                >
+                  <div>
+                    <span className="field-label">Already paid</span>
+                    <strong>{wholesalePeso(detail.paid)}</strong>
+                  </div>
+                  <div>
+                    <span className="field-label">Outstanding balance</span>
                     <strong>{wholesalePeso(detail.balance)}</strong>
-                  </dd>
-                </div>
-              </dl>
-              <p className="field-hint">
-                Payment due {formatDisplayDate(detail.dueDate)} · Delivered{" "}
-                {wholesaleDateTime(detail.deliveredAt)}
-              </p>
-              {detail.reviewRequired && (
-                <div className="inline-error" role="alert">
-                  This account has unresolved historical payments or balances.
-                  New collections are blocked until reviewed.
-                </div>
+                  </div>
+                  <button
+                    className="button soft w-fit"
+                    type="button"
+                    disabled={request.locked}
+                    onClick={() => setPaymentAmount(detail.balance)}
+                  >
+                    Pay remaining balance
+                  </button>
+                </section>
+              ) : (
+                <section
+                  className="wholesale-context"
+                  aria-label="Payment to reverse"
+                >
+                  {detail.payments
+                    .filter((payment) => payment.id === mode)
+                    .map((payment) => (
+                      <dl key={payment.id} className="wholesale-detail-list">
+                        <div>
+                          <dt>Payment amount</dt>
+                          <dd>
+                            <strong>{wholesalePeso(payment.amount)}</strong>
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Collected at</dt>
+                          <dd>{wholesaleDateTime(payment.collectedAt)}</dd>
+                        </div>
+                        <div>
+                          <dt>Method / reference</dt>
+                          <dd>
+                            {payment.method} ·{" "}
+                            {payment.reference || "No reference"}
+                          </dd>
+                        </div>
+                      </dl>
+                    ))}
+                </section>
               )}
               {mode === "view" ? (
                 <>
+                  <WholesaleInstallmentBalances
+                    installments={detail.installments ?? []}
+                  />
                   <section className="modal-section">
                     <h3>Payment history</h3>
-                    <div className="table-scroll">
-                      <ModalDataTable className="data-table">
-                        <thead>
-                          <tr>
-                            <th>Collected</th>
-                            <th>Amount / method</th>
-                            <th>Collector / reference</th>
-                            <th>Status</th>
-                            {role === "Admin" && <th>Action</th>}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {detail.payments.map((payment) => (
-                            <tr key={payment.id}>
-                              <td data-label="Collected">
-                                {wholesaleDateTime(payment.collectedAt)}
-                              </td>
-                              <td data-label="Amount / method">
-                                {wholesalePeso(payment.amount)}
-                                <div className="muted">
-                                  {payment.method ??
-                                    "Unclassified historical payment"}
-                                </div>
-                              </td>
-                              <td data-label="Collector / reference">
-                                {payment.collectorName ?? "Unknown collector"}
-                                {payment.reference && (
-                                  <div className="muted">
-                                    {payment.reference}
-                                  </div>
-                                )}
-                                {payment.notes && (
-                                  <div className="muted">{payment.notes}</div>
-                                )}
-                              </td>
-                              <td data-label="Status">
-                                {payment.reversalId ? (
-                                  <>
-                                    <span className="pill neutral">
-                                      Reversed
-                                    </span>
-                                    <div className="muted">
-                                      {payment.reversalReason}
+                    <ModalDataTable className="data-table wholesale-payment-history">
+                      <thead>
+                        <tr>
+                          <th>Collected</th>
+                          <th>Amount</th>
+                          <th>Method / reference</th>
+                          <th>Collector</th>
+                          <th>Status</th>
+                          {role === "Admin" && <th className="table-action-head">Action</th>}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {detail.payments.map((payment) => (
+                          <tr key={payment.id}>
+                            <td data-label="Collected">
+                              {wholesaleDateTime(payment.collectedAt)}
+                              <details>
+                                <summary>Payment details</summary>
+                                {payment.notes && <p>{payment.notes}</p>}
+                                <dl
+                                  className="wholesale-allocation-list"
+                                  aria-label="Installment allocations"
+                                >
+                                  {payment.allocations?.map((allocation) => (
+                                    <div key={allocation.sequenceNumber}>
+                                      <dt>
+                                        Installment {allocation.sequenceNumber}
+                                      </dt>
+                                      <dd>
+                                        {wholesalePeso(allocation.amount)}
+                                      </dd>
                                     </div>
+                                  ))}
+                                </dl>
+                                {payment.reversalId && (
+                                  <>
+                                    <p>
+                                      Reversal reason: {payment.reversalReason}
+                                    </p>
                                     {payment.reversedAt && (
-                                      <div className="muted">
+                                      <p>
+                                        Reversed{" "}
                                         {wholesaleDateTime(payment.reversedAt)}
-                                      </div>
+                                      </p>
                                     )}
+                                    <p className="muted">
+                                      Original allocations retained; payment
+                                      reversed.
+                                    </p>
                                   </>
-                                ) : (
-                                  <span className="pill success">Recorded</span>
                                 )}
-                              </td>
-                              {role === "Admin" && (
-                                <td data-label="Action">
-                                  {payment.method &&
-                                    !payment.reversalId &&
-                                    !detail.reviewRequired && (
+                              </details>
+                            </td>
+                            <td data-label="Amount">
+                              {wholesalePeso(payment.amount)}
+                            </td>
+                            <td data-label="Method / reference">
+                              {payment.method}
+                              <div className="muted">
+                                {payment.reference || "?"}
+                              </div>
+                            </td>
+                            <td data-label="Collector">
+                              {payment.collectorName}
+                            </td>
+                            <td data-label="Status">
+                              <span
+                                className={
+                                  "pill " +
+                                  (payment.reversalId ? "neutral" : "success")
+                                }
+                              >
+                                {payment.reversalId ? "Reversed" : "Recorded"}
+                              </span>
+                            </td>
+                            {role === "Admin" && (
+                              <td
+                                data-label="Action"
+                                className="table-action-cell"
+                              >
+                                {!payment.reversalId && (
+                                  <div className="table-actions">
+                                    <AppTooltip content="Reverse payment">
                                       <button
-                                        className="button soft"
+                                        type="button"
+                                        className="button soft table-action-btn"
+                                        aria-label={
+                                          "Reverse payment of " +
+                                          wholesalePeso(payment.amount)
+                                        }
                                         disabled={request.locked}
                                         onClick={() => {
                                           setMode(payment.id);
+                                          setValidation("");
                                           request.clearError();
                                         }}
                                       >
-                                        Reverse payment
+                                        <RotateCcw size={14} />
                                       </button>
-                                    )}
-                                </td>
-                              )}
-                            </tr>
-                          ))}
-                          {!detail.payments.length && (
-                            <tr>
-                              <TableEmptyState colSpan={role === "Admin" ? 5 : 4}>
-                                No payments recorded.
-                              </TableEmptyState>
-                            </tr>
-                          )}
-                        </tbody>
-                      </ModalDataTable>
-                    </div>
+                                    </AppTooltip>
+                                  </div>
+                                )}
+                              </td>
+                            )}
+                          </tr>
+                        ))}
+                        {!detail.payments.length && (
+                          <tr>
+                            <TableEmptyState colSpan={role === "Admin" ? 6 : 5}>
+                              No payments recorded.
+                            </TableEmptyState>
+                          </tr>
+                        )}
+                      </tbody>
+                    </ModalDataTable>
                   </section>
                   <ModalTableFooter>
-                  <div className="wholesale-actions">
-                    <button
-                      className="button primary-action"
-                      disabled={
-                        request.locked ||
-                        opening ||
-                        detail.reviewRequired ||
-                        Number(detail.balance) <= 0
-                      }
-                      onClick={() => {
-                        setMethod("Cash");
-                        setMode("payment");
-                        request.clearError();
-                      }}
-                    >
-                      Record payment
-                    </button>
-                  </div>
+                    <div className="wholesale-actions">
+                      <button
+                        className="button primary-action"
+                        disabled={
+                          request.locked ||
+                          opening ||
+                          Number(detail.balance) <= 0
+                        }
+                        onClick={() => {
+                          setMethod("Cash");
+                          setPaymentAmount("");
+                          setMode("payment");
+                          request.clearError();
+                        }}
+                      >
+                        Record payment
+                      </button>
+                    </div>
                   </ModalTableFooter>
                 </>
               ) : mode === "payment" ? (
                 <form
                   key="payment"
-                  className="modal-section"
+                  id="wholesale-payment-form"
+                  className="wholesale-account-form"
                   onSubmit={(event) => {
                     event.preventDefault();
                     setValidation("");
@@ -478,91 +697,117 @@ export function WholesaleReceivables({
                     );
                   }}
                 >
-                  <h3>Record client payment</h3>
                   <fieldset
                     className="wholesale-fields"
                     disabled={request.locked}
                   >
-                    <div className="field">
-                      <label htmlFor="wholesale-payment-amount">
-                        Amount (₱) *
-                      </label>
-                      <input
-                        id="wholesale-payment-amount"
-                        name="amount"
-                        type="number"
-                        min="0.01"
-                        max={detail.balance}
-                        step="0.01"
-                        required
-                      />
-                    </div>
-                    <div className="field">
-                      <label htmlFor="wholesale-payment-method">
-                        Payment method *
-                      </label>
-                      <SelectField
-                        id="wholesale-payment-method"
-                        value={method}
-                        onChange={(event) => setMethod(event.target.value)}
-                      >
-                        {detail.methods.map((value) => (
-                          <option key={value}>{value}</option>
-                        ))}
-                      </SelectField>
-                    </div>
-                    {method !== "Cash" && (
+                    <div className="form-grid">
+                      <div className="field">
+                        <label htmlFor="wholesale-payment-amount">
+                          Amount (₱) *
+                        </label>
+                        <input
+                          autoFocus
+                          id="wholesale-payment-amount"
+                          name="amount"
+                          value={paymentAmount}
+                          onChange={(event) =>
+                            setPaymentAmount(event.target.value)
+                          }
+                          type="number"
+                          min="0.01"
+                          max={detail.balance}
+                          step="0.01"
+                          required
+                        />
+                        <span className="field-hint">
+                          Up to {wholesalePeso(detail.balance)}
+                        </span>
+                      </div>
+                      <div className="field">
+                        <label htmlFor="wholesale-payment-time">
+                          Collected at (Manila) *
+                        </label>
+                        <input
+                          id="wholesale-payment-time"
+                          name="collectedAt"
+                          type="datetime-local"
+                          step="0.001"
+                          defaultValue={wholesaleManilaInput()}
+                          required
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor="wholesale-payment-method">
+                          Payment method *
+                        </label>
+                        <SelectField
+                          id="wholesale-payment-method"
+                          value={method}
+                          onChange={(event) => setMethod(event.target.value)}
+                        >
+                          {detail.methods.map((value) => (
+                            <option key={value}>{value}</option>
+                          ))}
+                        </SelectField>
+                      </div>
                       <div className="field">
                         <label htmlFor="wholesale-payment-reference">
-                          Payment reference *
+                          Payment reference{method !== "Cash" ? " *" : ""}
                         </label>
                         <input
                           id="wholesale-payment-reference"
                           name="reference"
+                          disabled={method === "Cash"}
+                          placeholder={
+                            method === "Cash"
+                              ? "Not required for cash"
+                              : "Transaction reference"
+                          }
                           maxLength={255}
-                          required
+                          required={method !== "Cash"}
                         />
                       </div>
+                      <div className="field full-width">
+                        <label htmlFor="wholesale-payment-notes">Notes</label>
+                        <textarea
+                          rows={3}
+                          id="wholesale-payment-notes"
+                          name="notes"
+                          maxLength={500}
+                        />
+                      </div>
+                    </div>
+                    {allocationPreview.length > 0 && (
+                      <section className="wholesale-context" role="status">
+                        <span className="field-label">Payment allocation</span>
+                        <dl className="wholesale-allocation-list">
+                          {allocationPreview.map((allocation) => (
+                            <div key={allocation.sequenceNumber}>
+                              <dt>Installment {allocation.sequenceNumber}</dt>
+                              <dd>{wholesalePeso(allocation.amount)}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                      </section>
                     )}
-                    <div className="field">
-                      <label htmlFor="wholesale-payment-time">
-                        Collected at (Manila) *
-                      </label>
-                      <input
-                        id="wholesale-payment-time"
-                        name="collectedAt"
-                        type="datetime-local"
-                        step="0.001"
-                        defaultValue={wholesaleManilaInput()}
-                        required
-                      />
-                    </div>
-                    <div className="field">
-                      <label htmlFor="wholesale-payment-notes">Notes</label>
-                      <textarea
-                        id="wholesale-payment-notes"
-                        name="notes"
-                        maxLength={500}
-                      />
-                    </div>
-                    <div className="wholesale-actions">
+                    <ModalTableFooter>
                       <button
-                        className="button soft"
-                        type="button"
-                        onClick={() => setMode("view")}
+                        className="button primary-action"
+                        type="submit"
+                        form="wholesale-payment-form"
+                        disabled={request.locked}
                       >
-                        Back
+                        {request.busy ? "Recording…" : "Record payment"}
                       </button>
-                      <button className="button primary-action" type="submit">
-                        Save payment
-                      </button>
-                    </div>
+                    </ModalTableFooter>
                   </fieldset>
                 </form>
               ) : (
                 <form
                   key="reversal"
-                  className="modal-section"
+                  id="wholesale-reversal-form"
+                  className="wholesale-account-form"
                   onSubmit={(event) => {
                     event.preventDefault();
                     request.mutate("/payments/" + mode + "/reverse", {
@@ -570,7 +815,6 @@ export function WholesaleReceivables({
                     });
                   }}
                 >
-                  <h3>Reverse incorrect payment</h3>
                   <p>
                     This restores the full payment amount to the account balance
                     and retains the original entry. It does not record a refund.
@@ -591,18 +835,16 @@ export function WholesaleReceivables({
                         maxLength={500}
                       />
                     </div>
-                    <div className="wholesale-actions">
+                    <ModalTableFooter>
                       <button
-                        className="button soft"
-                        type="button"
-                        onClick={() => setMode("view")}
+                        className="button primary-action"
+                        type="submit"
+                        form="wholesale-reversal-form"
+                        disabled={request.locked}
                       >
-                        Back
-                      </button>
-                      <button className="button primary-action" type="submit">
                         Confirm payment reversal
                       </button>
-                    </div>
+                    </ModalTableFooter>
                   </fieldset>
                 </form>
               )}

@@ -10,13 +10,14 @@ const controlHelp: Column = { wrap: true };
 
 /** Explicit page-only opt-ins. Display headings never determine data type or alignment. */
 export const pageTablePolicies: Record<string, PageTablePolicy> = {
+  "wholesale-deliveries": { label: "Wholesale deliveries", columns: [plain, text, number, plain, plain, actions] },
   "supplier-directory": { label: "Supplier directory", columns: [text, text, number, number, plain, actions] },
   "supplier-payables": { label: "Supplier accounts payable", columns: [text, plain, plain, number, number, number, plain, actions] },
   "wholesale-orders": { label: "Wholesale orders", columns: [plain, text, number, plain, actions] },
   "wholesale-clients": { label: "Wholesale clients", columns: [text, address, actions] },
   "wholesale-prices": { label: "Wholesale prices", columns: [product, number, plain, number, number, number, actions] },
   "wholesale-receipts": { label: "Wholesale delivery receipts", columns: [plain, plain, text, actions] },
-  "wholesale-receivables": { label: "Wholesale accounts receivable", columns: [text, number, number, number, plain, plain, actions] },
+  "wholesale-receivables": { label: "Wholesale accounts receivable", columns: [text, number, number, number, number, plain, plain, plain, actions] },
   transactions: { label: "Transactions", columns: [plain, plain, text, plain, text, number, plain, plain, actions] },
   "audit-logs": { label: "System audit logs", columns: [plain, text, text, plain, actions] },
   "user-activity": { label: "User activity", columns: [plain, text, plain, plain, plain, { ...address, flexible: 2 }] },

@@ -47,12 +47,8 @@ const FooterTarget = createContext<HTMLElement | null>(null);
 /** Stationary shell slots around the one vertically scrolling modal body. */
 export function ModalTableLayout({
   children,
-  close,
-  busy = false,
 }: {
   children: ReactNode;
-  close: () => void;
-  busy?: boolean;
 }) {
   const preview = useModalTableStandard();
   const [target, setTarget] = useState<HTMLElement | null>(null);
@@ -62,14 +58,6 @@ export function ModalTableLayout({
       {children}
       <footer className="modal-table-footer" aria-label="Modal footer">
         <div className="modal-table-footer-content" ref={setTarget} />
-        <button
-          type="button"
-          className="button soft"
-          disabled={busy}
-          onClick={close}
-        >
-          Close
-        </button>
       </footer>
     </FooterTarget.Provider>
   );

@@ -1,4 +1,5 @@
 import { writeAuditEvent, type AuditActor } from "./audit-events";
+import { wholesaleAmountSchema } from "@workspace/api-zod";
 
 export type WholesaleQuery = (
   sql: string,
@@ -27,13 +28,14 @@ export function requireUuid(value: unknown): string {
   return value.toLowerCase();
 }
 export function wholesaleMoney(value: unknown): string {
-  if (typeof value !== "string" || !/^\d{1,10}(\.\d{1,2})?$/.test(value)) {
+  const parsed = wholesaleAmountSchema.safeParse(value);
+  if (!parsed.success) {
     throw new WholesaleError(
       400,
       "Enter an amount with at most two decimal places.",
     );
   }
-  return Number(value).toFixed(2);
+  return parsed.data;
 }
 export function cents(value: string): bigint {
   const [whole, fraction = ""] = value.split(".");

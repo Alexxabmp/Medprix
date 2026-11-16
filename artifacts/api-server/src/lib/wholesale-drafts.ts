@@ -1,5 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { calculateRetailLine, pharmacyDate } from "@workspace/api-zod";
+import {
+  calculateRetailLine,
+  pharmacyDate,
+  wholesalePaymentPlanSchema,
+  wholesaleClientContactsSchema,
+  type WholesalePaymentPlan,
+} from "@workspace/api-zod";
 import type { AuditActor } from "./audit-events";
 import {
   WholesaleError,
@@ -20,21 +26,35 @@ export {
 
 type DraftInput = {
   clientId: string;
+  paymentPlan: WholesalePaymentPlan | null;
   lines: Array<{ productId: string; quantity: number }>;
 };
 const maxMoney = 999999999999n;
+const contactFields = ["contactPerson", "contactNumber", "email"] as const;
+function clientContacts(input: any) {
+  const parsed = wholesaleClientContactsSchema.safeParse(input);
+  if (!parsed.success)
+    throw new WholesaleError(400, parsed.error.issues[0].message);
+  return parsed.data;
+}
 
 function parseDraft(value: any): DraftInput {
   if (
     !value ||
-    Object.keys(value).some((key) => !["clientId", "lines"].includes(key))
+    Object.keys(value).some(
+      (key) => !["clientId", "lines", "paymentPlan"].includes(key),
+    )
   ) {
     throw new WholesaleError(
       400,
-      "Only a client and product quantities can be submitted.",
+      "Only a client, payment plan and product quantities can be submitted.",
     );
   }
   const clientId = requireUuid(value.clientId);
+  const plan = wholesalePaymentPlanSchema
+    .nullable()
+    .safeParse(value.paymentPlan ?? null);
+  if (!plan.success) throw new WholesaleError(400, "Choose Net-30 or Net-60.");
   if (
     !Array.isArray(value.lines) ||
     !value.lines.length ||
@@ -74,7 +94,7 @@ function parseDraft(value: any): DraftInput {
   ) {
     throw new WholesaleError(400, "Combine duplicate products into one line.");
   }
-  return { clientId, lines };
+  return { clientId, paymentPlan: plan.data, lines };
 }
 
 export function createWholesaleDrafts(read: Query, transaction: Transaction) {
@@ -101,7 +121,8 @@ export function createWholesaleDrafts(read: Query, transaction: Transaction) {
     async clients() {
       return (
         await read(`SELECT id,client_name AS name,
-        address FROM wholesale_clients ORDER BY client_name,id`)
+        address,contact_person AS "contactPerson",contact_number AS "contactNumber",email
+        FROM wholesale_clients ORDER BY client_name,id`)
       ).rows;
     },
     async createClient(actor: AuditActor, key: unknown, input: any) {
@@ -112,7 +133,9 @@ export function createWholesaleDrafts(read: Query, transaction: Transaction) {
         input.name.trim().length > 255 ||
         (input.address !== undefined &&
           (typeof input.address !== "string" || input.address.length > 2000)) ||
-        Object.keys(input).some((field) => !["name", "address"].includes(field))
+        Object.keys(input).some(
+          (field) => !["name", "address", ...contactFields].includes(field),
+        )
       ) {
         throw new WholesaleError(
           400,
@@ -122,6 +145,7 @@ export function createWholesaleDrafts(read: Query, transaction: Transaction) {
       const payload = {
         name: input.name.trim(),
         address: input.address?.trim() || "",
+        ...clientContacts(input),
       };
       return operation(
         actor,
@@ -131,8 +155,16 @@ export function createWholesaleDrafts(read: Query, transaction: Transaction) {
           const {
             rows: [client],
           } = await query(
-            "INSERT INTO wholesale_clients(client_name,address) VALUES($1,$2) RETURNING id,client_name AS name,address",
-            [payload.name, payload.address || null],
+            `INSERT INTO wholesale_clients(client_name,address,contact_person,contact_number,email)
+             VALUES($1,$2,$3,$4,$5) RETURNING id,client_name AS name,address,
+             contact_person AS "contactPerson",contact_number AS "contactNumber",email`,
+            [
+              payload.name,
+              payload.address || null,
+              payload.contactPerson,
+              payload.contactNumber,
+              payload.email,
+            ],
           );
           await audit(
             query,
@@ -157,7 +189,16 @@ export function createWholesaleDrafts(read: Query, transaction: Transaction) {
         input.name.trim().length > 255 ||
         typeof input?.address !== "string" ||
         input.address.length > 2000 ||
+        Object.keys(input).some(
+          (field) =>
+            !["name", "address", "expected", ...contactFields].includes(field),
+        ) ||
         typeof input?.expected?.name !== "string" ||
+        contactFields.some(
+          (field) =>
+            input.expected[field] !== null &&
+            typeof input.expected[field] !== "string",
+        ) ||
         !(
           input.expected.address === null ||
           typeof input.expected.address === "string"
@@ -167,6 +208,7 @@ export function createWholesaleDrafts(read: Query, transaction: Transaction) {
       }
       const name = input.name.trim();
       const address = input.address.trim() || null;
+      const contacts = clientContacts(input);
       return operation(
         actor,
         key,
@@ -175,19 +217,24 @@ export function createWholesaleDrafts(read: Query, transaction: Transaction) {
           id,
           name,
           address,
+          ...contacts,
           expected: input.expected,
         },
         async (query) => {
           const {
             rows: [client],
           } = await query(
-            "SELECT client_name,address FROM wholesale_clients WHERE id=$1 FOR UPDATE",
+            `SELECT client_name,address,contact_person AS "contactPerson",contact_number AS "contactNumber",email
+             FROM wholesale_clients WHERE id=$1 FOR UPDATE`,
             [id],
           );
           if (!client) throw new WholesaleError(404, "Client not found.");
           if (
             client.client_name !== input.expected.name ||
-            client.address !== input.expected.address
+            client.address !== input.expected.address ||
+            contactFields.some(
+              (field) => client[field] !== input.expected[field],
+            )
           ) {
             throw new WholesaleError(
               409,
@@ -195,8 +242,15 @@ export function createWholesaleDrafts(read: Query, transaction: Transaction) {
             );
           }
           await query(
-            "UPDATE wholesale_clients SET client_name=$2,address=$3 WHERE id=$1",
-            [id, name, address],
+            "UPDATE wholesale_clients SET client_name=$2,address=$3,contact_person=$4,contact_number=$5,email=$6 WHERE id=$1",
+            [
+              id,
+              name,
+              address,
+              contacts.contactPerson,
+              contacts.contactNumber,
+              contacts.email,
+            ],
           );
           await audit(
             query,
@@ -204,7 +258,7 @@ export function createWholesaleDrafts(read: Query, transaction: Transaction) {
             "WHOLESALE_CLIENT_UPDATED",
             "Updated client " + id,
           );
-          return { id, name, address };
+          return { id, name, address, ...contacts };
         },
       );
     },
@@ -276,7 +330,7 @@ export function createWholesaleDrafts(read: Query, transaction: Transaction) {
         await read(
           `SELECT o.id,o.order_number AS "orderNumber",o.draft_revision AS revision,
         o.status,o.client_id AS "clientId",COALESCE(o.confirmation_snapshot->>'clientName',c.client_name) AS "clientName",o.total_order_amount::text AS total,
-        o.updated_at AS "updatedAt",
+        o.updated_at AS "updatedAt",o.payment_plan AS "paymentPlan",
         COALESCE((SELECT jsonb_agg(jsonb_build_object('productId',i.product_id,'quantity',i.quantity,
           'unitPrice',i.unit_price::text,'name',p.product_name) ORDER BY i.id)
           FROM wholesale_order_items i JOIN products p ON p.id=i.product_id WHERE i.order_id=o.id),'[]'::jsonb) AS lines
@@ -374,15 +428,21 @@ export function createWholesaleDrafts(read: Query, transaction: Transaction) {
           const savedId = id ?? randomUUID();
           if (!id) {
             await query(
-              `INSERT INTO wholesale_orders(id,client_id,order_number,draft_revision,created_by,total_order_amount)
-            VALUES($1,$2,'WS-' || nextval('wholesale_order_number_seq')::text,1,$3,$4)`,
-              [savedId, draft.clientId, actor.id, money(total)],
+              `INSERT INTO wholesale_orders(id,client_id,order_number,draft_revision,created_by,total_order_amount,payment_plan)
+            VALUES($1,$2,'WS-' || nextval('wholesale_order_number_seq')::text,1,$3,$4,$5)`,
+              [
+                savedId,
+                draft.clientId,
+                actor.id,
+                money(total),
+                draft.paymentPlan,
+              ],
             );
           } else {
             await query(
               `UPDATE wholesale_orders SET client_id=$2,total_order_amount=$3,
-            draft_revision=draft_revision+1 WHERE id=$1`,
-              [id, draft.clientId, money(total)],
+            draft_revision=draft_revision+1,payment_plan=$4 WHERE id=$1`,
+              [id, draft.clientId, money(total), draft.paymentPlan],
             );
             await query("DELETE FROM wholesale_order_items WHERE order_id=$1", [
               id,

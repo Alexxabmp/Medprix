@@ -1,4 +1,11 @@
-import { pharmacyDate, calculateRetailLine } from "@workspace/api-zod";
+import {
+  pharmacyDate,
+  calculateRetailLine,
+  wholesaleAgreementSchema,
+  wholesalePaymentPlanSchema,
+  wholesalePlanTerms,
+  WHOLESALE_PLAN_VERSION,
+} from "@workspace/api-zod";
 import type { AuditActor } from "./audit-events";
 import {
   WholesaleError,
@@ -82,8 +89,10 @@ export function createWholesaleConfirmation(
       const {
         rows: [order],
       } = await read(
-        `SELECT id,confirmation_snapshot AS snapshot FROM wholesale_orders
-          WHERE id=$1 AND draft_revision IS NOT NULL`,
+        `SELECT o.id,o.confirmation_snapshot AS snapshot,
+          json_build_object('id',c.id,'name',c.client_name,'address',c.address) AS client
+          FROM wholesale_orders o JOIN wholesale_clients c ON c.id=o.client_id
+          WHERE o.id=$1 AND o.draft_revision IS NOT NULL`,
         [id],
       );
       if (!order) throw new WholesaleError(404, "Order not found.");
@@ -102,7 +111,12 @@ export function createWholesaleConfirmation(
           JOIN products p ON p.id=b.product_id WHERE r.order_id=$1 ORDER BY p.id,b.expiration_date,b.id`,
         [id],
       );
-      return { snapshot: order.snapshot, overrides, reservations };
+      return {
+        snapshot: order.snapshot,
+        client: order.client,
+        overrides,
+        reservations,
+      };
     },
     async requestOverride(
       actor: AuditActor,
@@ -241,6 +255,12 @@ export function createWholesaleConfirmation(
         { action: "confirm", id, expected, chosen },
         async (query) => {
           const order = await lockOrder(query, id, expected, ["Pending"]);
+          const plan = wholesalePaymentPlanSchema.safeParse(order.payment_plan);
+          if (!plan.success)
+            throw new WholesaleError(
+              409,
+              "Choose Net-30 or Net-60 before confirming the order.",
+            );
           const { rows: lines } = await query(
             "SELECT * FROM wholesale_order_items WHERE order_id=$1 ORDER BY product_id",
             [id],
@@ -422,12 +442,23 @@ export function createWholesaleConfirmation(
               400,
               "An approval does not belong to this order.",
             );
+          const agreement = wholesaleAgreementSchema.safeParse({
+            paymentPlan: plan.data,
+            paymentPlanVersion: WHOLESALE_PLAN_VERSION,
+            total: money(total),
+          });
+          if (!agreement.success)
+            throw new WholesaleError(
+              400,
+              "The confirmed wholesale order total must be greater than zero.",
+            );
           const snapshot = {
             clientId: order.client_id,
             clientName: client.client_name,
             address: client.address,
             lines: snapshots,
-            total: money(total),
+            ...agreement.data,
+            paymentPlanTerms: wholesalePlanTerms[plan.data],
             vat: money(vat),
             calculationVersion: "wholesale-inclusive-v1",
           };

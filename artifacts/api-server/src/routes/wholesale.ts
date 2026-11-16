@@ -58,6 +58,18 @@ router.get(
   }),
 );
 router.get(
+  "/wholesale/delivery-queue",
+  handle(async (req, res) => {
+    res.json(
+      await workspace.deliveryQueue(
+        req.query.search ?? "",
+        req.query.page ?? "1",
+        req.query.status ?? "all",
+      ),
+    );
+  }),
+);
+router.get(
   "/wholesale/deliveries",
   handle(async (req, res) => {
     res.json(

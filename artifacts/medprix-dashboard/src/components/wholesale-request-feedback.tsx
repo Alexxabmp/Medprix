@@ -19,8 +19,7 @@ export function WholesaleRequestFeedback({
       {!!pending && !busy && (
         <div className="surface-card wholesale-notice" role="status">
           <p>
-            A saved request needs confirmation. Retry it before recording
-            another change.
+            A saved request needs confirmation. You can close this window and browse records. Retry it before recording another change.
           </p>
           <button
             className="button primary-action"

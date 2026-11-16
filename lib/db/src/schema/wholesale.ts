@@ -26,6 +26,10 @@ export const wholesaleOrderStatusEnum = pgEnum("wholesale_order_status_enum", [
   "Delivered",
   "Cancelled",
 ]);
+export const wholesalePaymentPlanEnum = pgEnum("wholesale_payment_plan_enum", [
+  "Net30",
+  "Net60",
+]);
 export const deliveryScheduleStatusEnum = pgEnum("delivery_schedule_status_enum", [
   "Scheduled",
   "InTransit",
@@ -93,6 +97,7 @@ export const wholesaleOrdersTable = pgTable(
       onDelete: "set null",
     }),
 
+    paymentPlan: wholesalePaymentPlanEnum("payment_plan"),
     confirmationSnapshot: jsonb("confirmation_snapshot"),
     confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
     confirmedBy: uuid("confirmed_by").references(() => usersTable.id, { onDelete: "restrict" }),
@@ -108,6 +113,7 @@ export const wholesaleOrdersTable = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    check("wholesale_confirmed_agreement_check", sql`${t.confirmationSnapshot} IS NULL OR (${t.totalOrderAmount}>0 AND ${t.paymentPlan} IS NOT NULL AND (${t.confirmationSnapshot}->>'paymentPlan'=${t.paymentPlan}::text AND ${t.confirmationSnapshot}->>'paymentPlanVersion'='wholesale-installments-v1' AND ${t.confirmationSnapshot}->>'total'=${t.totalOrderAmount}::text) IS TRUE)`),
     check("wholesale_confirmation_check", sql`(${t.confirmationSnapshot} IS NULL AND ${t.confirmedAt} IS NULL AND ${t.confirmedBy} IS NULL)
       OR (${t.confirmationSnapshot} IS NOT NULL AND jsonb_typeof(${t.confirmationSnapshot})='object' AND ${t.confirmedAt} IS NOT NULL AND ${t.confirmedBy} IS NOT NULL)`),
     check("wholesale_draft_revision_check", sql`${t.draftRevision} IS NULL OR (${t.draftRevision} > 0 AND ${t.orderNumber} IS NOT NULL AND ${t.createdBy} IS NOT NULL)`),
@@ -150,6 +156,7 @@ export const deliverySchedulesTable = pgTable(
     managedBy: uuid("managed_by").references(() => usersTable.id, {
       onDelete: "restrict",
     }),
+    dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
     scheduledDate: date("scheduled_date").notNull(),
     status: deliveryScheduleStatusEnum("status").notNull().default("Scheduled"),
     notes: text("notes"),
@@ -220,6 +227,7 @@ export const accountsReceivableTable = pgTable(
     check("accounts_receivable_total_owed_check", sql`${t.totalOwed} >= 0`),
     check("accounts_receivable_total_paid_check", sql`${t.totalPaid} >= 0`),
     check("accounts_receivable_balance_check", sql`${t.balance} >= 0`),
+    check("wholesale_ar_balance_equation_check", sql`${t.totalPaid}<=${t.totalOwed} AND ${t.balance}=${t.totalOwed}-${t.totalPaid}`),
     index("idx_accounts_receivable_client_id").on(t.clientId),
     index("idx_accounts_receivable_order_id").on(t.orderId),
   ],
@@ -239,6 +247,7 @@ export const arPaymentsTable = pgTable(
   },
   (t) => [
     check("ar_payments_amount_paid_check", sql`${t.amountPaid} > 0`),
+    unique("wholesale_payment_id_ar_key").on(t.id, t.arId),
     index("idx_ar_payments_ar_id").on(t.arId),
   ],
 );
