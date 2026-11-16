@@ -1039,14 +1039,26 @@ export default function WholesalePage({
           busy={false}
           close={() => setViewClient(null)}
         >
-          <dl className="wholesale-detail-list">
-            <div>
+          <dl className="wholesale-detail-list wholesale-client-details">
+            <div className="wholesale-client-wide">
               <dt>Client name</dt>
               <dd>{viewClient.name}</dd>
             </div>
-            <div>
+            <div className="wholesale-client-wide">
               <dt>Delivery address</dt>
               <dd>{viewClient.address || "Not provided"}</dd>
+            </div>
+            <div>
+              <dt>Contact person</dt>
+              <dd>{viewClient.contactPerson || "Not provided"}</dd>
+            </div>
+            <div>
+              <dt>Contact number</dt>
+              <dd>{viewClient.contactNumber || "Not provided"}</dd>
+            </div>
+            <div className="wholesale-client-wide">
+              <dt>Email</dt>
+              <dd>{viewClient.email || "Not provided"}</dd>
             </div>
           </dl>
         </WholesaleDialog>
@@ -1203,11 +1215,19 @@ export default function WholesalePage({
                             expected: {
                               name: dialog.client.name,
                               address: dialog.client.address,
+                              contactPerson:
+                                dialog.client.contactPerson ?? null,
+                              contactNumber:
+                                dialog.client.contactNumber ?? null,
+                              email: dialog.client.email ?? null,
                             },
                           }
                         : {}),
                       name: data.get("name"),
                       address: data.get("address"),
+                      contactPerson: data.get("contactPerson"),
+                      contactNumber: data.get("contactNumber"),
+                      email: data.get("email"),
                     },
                   );
                 else
@@ -1248,6 +1268,46 @@ export default function WholesalePage({
                             ? (dialog.client?.address ?? "")
                             : ""
                         }
+                      />
+                    </div>
+                    <div className="form-grid">
+                      <div className="field">
+                        <label htmlFor="wholesale-client-contact-person">
+                          Contact person (optional)
+                        </label>
+                        <input
+                          id="wholesale-client-contact-person"
+                          name="contactPerson"
+                          maxLength={255}
+                          defaultValue={dialog.client?.contactPerson ?? ""}
+                          autoComplete="name"
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor="wholesale-client-contact-number">
+                          Contact number (optional)
+                        </label>
+                        <input
+                          id="wholesale-client-contact-number"
+                          name="contactNumber"
+                          type="tel"
+                          maxLength={50}
+                          defaultValue={dialog.client?.contactNumber ?? ""}
+                          autoComplete="tel"
+                        />
+                      </div>
+                    </div>
+                    <div className="field">
+                      <label htmlFor="wholesale-client-email">
+                        Email (optional)
+                      </label>
+                      <input
+                        id="wholesale-client-email"
+                        name="email"
+                        type="email"
+                        maxLength={255}
+                        defaultValue={dialog.client?.email ?? ""}
+                        autoComplete="email"
                       />
                     </div>
                   </>

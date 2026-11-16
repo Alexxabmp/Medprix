@@ -239,3 +239,15 @@
   margin-right: auto;
 }
 .delivery-receipt-details { min-width: 0; }
+
+.wholesale-client-details {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.wholesale-client-wide {
+  grid-column: 1 / -1;
+}
+@media (max-width: 600px) {
+  .wholesale-client-details {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

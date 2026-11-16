@@ -23,6 +23,9 @@ export type WholesaleClient = {
   id: string;
   name: string;
   address: string | null;
+  contactPerson?: string | null;
+  contactNumber?: string | null;
+  email?: string | null;
 };
 
 export type WholesaleLine = {
