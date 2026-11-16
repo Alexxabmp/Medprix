@@ -13,7 +13,14 @@ import {
   Wallet,
 } from "lucide-react";
 import { WholesaleDialog } from "./wholesale-dialog";
-import { ModalTableValue, useModalTableStandard, ModalTableFrame, ModalTableFooter, ModalTablePager, ModalTableHint } from "./modal-table-layout";
+import {
+  ModalTableValue,
+  useModalTableStandard,
+  ModalTableFrame,
+  ModalTableFooter,
+  ModalTablePager,
+  ModalTableHint,
+} from "./modal-table-layout";
 import { LoadingState } from "./custom-ui/loading-state";
 import { safeError } from "@/lib/feedback";
 import {
@@ -26,18 +33,27 @@ import {
   type DeliveryReceipt,
 } from "@/lib/wholesale-api";
 
-function useWorkspaceList<T>(
+export function useWorkspaceList<T>(
   path: string,
   search: string,
   status = "",
   initialData?: WholesalePageResult<T>,
 ) {
   const [page, setPage] = useState(1);
-  const initialQueryPath = path + "?search=" + encodeURIComponent(search) + "&page=1&status=" + encodeURIComponent(status);
+  const initialQueryPath =
+    path +
+    "?search=" +
+    encodeURIComponent(search) +
+    "&page=1&status=" +
+    encodeURIComponent(status);
   const [data, setData] = useState<WholesalePageResult<T> | null>(
-    () => initialData ?? getCachedWholesale<WholesalePageResult<T>>(initialQueryPath),
+    () =>
+      initialData ??
+      getCachedWholesale<WholesalePageResult<T>>(initialQueryPath),
   );
-  const [loading, setLoading] = useState(() => !initialData && getCachedWholesale(initialQueryPath) === null);
+  const [loading, setLoading] = useState(
+    () => !initialData && getCachedWholesale(initialQueryPath) === null,
+  );
   const firstLoad = useRef(true);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -64,7 +80,14 @@ function useWorkspaceList<T>(
         if (active) setLoading(false);
       }
     };
-    const reqPath = path + "?search=" + encodeURIComponent(search) + "&page=" + page + "&status=" + encodeURIComponent(status);
+    const reqPath =
+      path +
+      "?search=" +
+      encodeURIComponent(search) +
+      "&page=" +
+      page +
+      "&status=" +
+      encodeURIComponent(status);
     const cached = getCachedWholesale<WholesalePageResult<T>>(reqPath);
     if (cached) setData(cached);
     const seeded = (firstLoad.current && initialData) || cached !== null;
@@ -132,6 +155,11 @@ export type WholesaleSummaryRow = {
   total?: string;
   balance?: string;
   dueDate?: string;
+  overdueAmount?: string;
+  nextDueDate?: string | null;
+  nextDueAmount?: string;
+  paymentPlan?: string;
+  finalDeadlineBreached?: boolean;
   date?: string;
   notes?: string | null;
 };
@@ -144,8 +172,9 @@ const summaries = {
     icon: ClipboardList,
   },
   deliveries: {
-    title: "Deliveries",
-    description: "Delivery schedules, dispatch status and delivery history.",
+    title: "Active delivery attempts",
+    description:
+      "Initially showing scheduled and in-transit attempts. Filter to include completed, failed or cancelled attempts.",
     path: "/deliveries",
     status: "active",
     icon: Truck,
@@ -159,7 +188,7 @@ const summaries = {
   },
   overdue: {
     title: "Overdue accounts",
-    description: "Unpaid client accounts past their payment due date.",
+    description: "Client accounts with unpaid overdue installments.",
     path: "/accounts-receivable",
     status: "overdue",
     icon: AlertTriangle,
@@ -174,22 +203,26 @@ export function WholesaleSummaryModal({
   kind,
   initialData,
   busy,
+  submitting = busy,
   close,
   role,
   mutate,
   error,
   retry,
   viewAccount,
+  suspended = false,
 }: {
   kind: WholesaleSummaryKind;
   initialData: WholesalePageResult<WholesaleSummaryRow>;
   busy: boolean;
+  submitting?: boolean;
   close: () => void;
   role: string;
   mutate: (path: string, method: string, body: unknown) => void;
   error: string;
   retry?: () => void;
   viewAccount: (id: string) => void;
+  suspended?: boolean;
 }) {
   const preview = useModalTableStandard();
   const [selectedOrder, setSelectedOrder] = useState<
@@ -229,18 +262,22 @@ export function WholesaleSummaryModal({
     if (!selectedOrder) {
       const table = content?.querySelector(".wholesale-summary-table");
       if (table) table.scrollTop = listScroll.current.table;
-      content
-        ?.querySelector<HTMLButtonElement>(
-          '[data-order-id="' + listScroll.current.orderId + '"]',
-        )
-        ?.focus({ preventScroll: true });
+      const timer = requestAnimationFrame(() =>
+        content
+          ?.querySelector<HTMLButtonElement>(
+            '[data-order-id="' + listScroll.current.orderId + '"]',
+          )
+          ?.focus({ preventScroll: true }),
+      );
+      return () => cancelAnimationFrame(timer);
     } else {
       body
         ?.closest(".wholesale-dialog")
         ?.querySelector<HTMLButtonElement>('[aria-label="Back"]')
         ?.focus({ preventScroll: true });
     }
-  }, [selectedOrder, receipt]);
+    return undefined;
+  }, [selectedOrder, receipt, suspended]);
   const summary = summaries[kind];
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState(summary.status);
@@ -255,14 +292,25 @@ export function WholesaleSummaryModal({
   const deliveries = kind === "deliveries";
   const accounts = kind === "outstanding" || kind === "overdue";
   const columns = deliveries || accounts ? 5 : 4;
-  useEffect(() => { if (preview) setPreviewPage(1); }, [search, status, preview]);
+  useEffect(() => {
+    if (preview) setPreviewPage(1);
+  }, [search, status, preview]);
   useEffect(() => {
     if (preview) list.setPage(Math.ceil(previewPage / 5));
   }, [previewPage, preview]);
-  const previewBlockPending = Boolean(preview && list.data?.page !== Math.ceil(previewPage / 5));
-  const visibleRows = preview ? list.data?.items.slice(((previewPage - 1) % 5) * 10, ((previewPage - 1) % 5 + 1) * 10) : list.data?.items;
+  const previewBlockPending = Boolean(
+    preview && list.data?.page !== Math.ceil(previewPage / 5),
+  );
+  const visibleRows = preview
+    ? list.data?.items.slice(
+        ((previewPage - 1) % 5) * 10,
+        (((previewPage - 1) % 5) + 1) * 10,
+      )
+    : list.data?.items;
   return (
     <WholesaleDialog
+      hidden={suspended}
+      variant={receipt ? "form" : "table"}
       title={
         receipt
           ? "Delivery receipt details"
@@ -278,12 +326,10 @@ export function WholesaleSummaryModal({
         receipt
           ? receipt.receiptNumber
           : selectedOrder
-            ? selectedOrder.order.orderNumber +
-              " \u00b7 " +
-              selectedOrder.order.clientName
+            ? selectedOrder.order.orderNumber
             : summary.description
       }
-      busy={busy || opening || printing}
+      busy={submitting || opening || printing}
       close={close}
       back={
         receipt
@@ -313,6 +359,7 @@ export function WholesaleSummaryModal({
             initialDetail={selectedOrder}
             role={role}
             busy={busy}
+            submitting={submitting}
             error={error}
             retry={retry}
             close={close}
@@ -343,7 +390,7 @@ export function WholesaleSummaryModal({
                   <option value="all">All deliveries</option>
                   <option value="Scheduled">Scheduled</option>
                   <option value="InTransit">In transit</option>
-                  <option value="Completed">Completed</option>
+                  <option value="Completed">Delivered</option>
                   <option value="Failed">Failed</option>
                   <option value="Cancelled">Cancelled</option>
                 </SelectField>
@@ -355,134 +402,215 @@ export function WholesaleSummaryModal({
               </div>
             )}
             <ModalTableFrame>
-            <div className="wholesale-summary-table" role={preview ? "region" : undefined} aria-label={preview ? "Summary records, scroll horizontally for more columns" : undefined} tabIndex={preview ? 0 : undefined}>
-              <table className="data-table" data-modal-table={preview ? "summary" : undefined}>
-                <thead>
-                  <tr>
-                    <th>Order / client</th>
-                    <th>
-                      {deliveries
-                        ? "Scheduled date"
-                        : accounts
-                          ? "Balance"
-                          : "Total"}
-                    </th>
-                    {accounts && <th>Due date</th>}
-                    <th>Status</th>
-                    {deliveries && <th>Notes</th>}
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {list.loading || previewBlockPending ? (
+              <div
+                className="wholesale-summary-table"
+                role={preview ? "region" : undefined}
+                aria-label={
+                  preview
+                    ? "Summary records, scroll horizontally for more columns"
+                    : undefined
+                }
+                tabIndex={preview ? 0 : undefined}
+              >
+                <table
+                  className="data-table"
+                  data-modal-table={preview ? "summary" : undefined}
+                >
+                  <thead>
                     <tr>
-                      <td colSpan={columns}>
-                        <LoadingState label="Loading records..." />
-                      </td>
+                      <th>Order / client</th>
+                      <th>
+                        {deliveries
+                          ? "Scheduled date"
+                          : accounts
+                            ? kind === "overdue"
+                              ? "Overdue"
+                              : "Balance"
+                            : "Total"}
+                      </th>
+                      {accounts && <th>Next unpaid</th>}
+                      <th>Status</th>
+                      {deliveries && <th>Notes</th>}
+                      <th>Action</th>
                     </tr>
-                  ) : (
-                    !list.error &&
-                    visibleRows?.map((row) => (
-                      <tr key={row.id}>
-                        <td data-label="Order / client">
-                          <strong>{row.orderNumber}</strong>
-                          <span className="muted wholesale-summary-client">
-                            <ModalTableValue value={row.clientName} />
-                          </span>
-                        </td>
-                        <td
-                          data-label={
-                            deliveries
-                              ? "Scheduled date"
-                              : accounts
-                                ? "Balance"
-                                : "Total"
-                          }
-                        >
-                          {deliveries
-                            ? row.date
-                            : accounts
-                              ? row.balance
-                                ? wholesalePeso(row.balance)
-                                : "—"
-                              : row.total
-                                ? wholesalePeso(row.total)
-                                : "—"}
-                        </td>
-                        {accounts && (
-                          <td data-label="Due date">{formatDisplayDate(row.dueDate)}</td>
-                        )}
-                        <td data-label="Status">
-                          <span
-                            className={
-                              "pill " +
-                              (row.status === "Completed" ||
-                              row.status === "Paid"
-                                ? "success"
-                                : row.status === "Failed" ||
-                                    row.status === "Overdue"
-                                  ? "danger"
-                                  : "neutral")
-                            }
-                          >
-                            {row.status === "Pending"
-                              ? "Draft"
-                              : row.status === "InTransit"
-                                ? "In transit"
-                                : row.status}
-                          </span>
-                        </td>
-                        {deliveries && (
-                          <td data-label="Notes"><ModalTableValue value={row.notes || "—"} /></td>
-                        )}
-                        <td data-label="Action" className="table-action-cell">
-                          <div className="table-actions">
-                            <ModalTableHint value={accounts ? "View account" : "Review order"}>
-                            <button
-                              className="button soft table-action-btn"
-                              disabled={busy || opening}
-                              aria-label={accounts ? "View account" : "Review order"}
-
-                              data-order-id={
-                                accounts ? undefined : (row.orderId ?? row.id)
-                              }
-                              onClick={() =>
-                                accounts
-                                  ? viewAccount(row.id)
-                                  : reviewOrder(row.orderId ?? row.id)
-                              }
-                            >
-                              <Eye size={13} />
-                            </button>
-                            </ModalTableHint>
-                          </div>
+                  </thead>
+                  <tbody>
+                    {list.loading || previewBlockPending ? (
+                      <tr>
+                        <td colSpan={columns}>
+                          <LoadingState label="Loading records..." />
                         </td>
                       </tr>
-                    ))
-                  )}
-                  {!list.loading && !list.error && !list.data?.items.length && (
-                    <tr>
-                      <TableEmptyState colSpan={columns}>
-                        {search
-                          ? "No matching records."
-                          : deliveries
-                            ? "No deliveries found."
-                            : accounts
-                              ? "No accounts found."
-                              : "No orders awaiting delivery."}
-                      </TableEmptyState>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                    ) : (
+                      !list.error &&
+                      visibleRows?.map((row) => (
+                        <tr key={row.id}>
+                          <td data-label="Order / client">
+                            <strong>{row.orderNumber}</strong>
+                            <span className="muted wholesale-summary-client">
+                              <ModalTableValue value={row.clientName} />
+                            </span>
+                            {accounts && (
+                              <div className="muted">
+                                {row.paymentPlan === "Net60"
+                                  ? "Net-60"
+                                  : "Net-30"}
+                              </div>
+                            )}
+                          </td>
+                          <td
+                            data-label={
+                              deliveries
+                                ? "Scheduled date"
+                                : accounts
+                                  ? kind === "overdue"
+                                    ? "Overdue"
+                                    : "Balance"
+                                  : "Total"
+                            }
+                          >
+                            {deliveries
+                              ? row.date
+                              : accounts
+                                ? (
+                                    kind === "overdue"
+                                      ? row.overdueAmount
+                                      : row.balance
+                                  )
+                                  ? wholesalePeso(
+                                      (kind === "overdue"
+                                        ? row.overdueAmount
+                                        : row.balance)!,
+                                    )
+                                  : "—"
+                                : row.total
+                                  ? wholesalePeso(row.total)
+                                  : "—"}
+                            {kind === "overdue" && row.balance && (
+                              <div className="muted">
+                                Balance {wholesalePeso(row.balance)}
+                              </div>
+                            )}
+                          </td>
+                          {accounts && (
+                            <td data-label="Next unpaid">
+                              {formatDisplayDate(row.nextDueDate)}
+                              {row.nextDueAmount && (
+                                <div className="muted">
+                                  {wholesalePeso(row.nextDueAmount)}
+                                </div>
+                              )}
+                            </td>
+                          )}
+                          <td data-label="Status">
+                            <span
+                              className={
+                                "pill " +
+                                (row.status === "Completed" ||
+                                row.status === "Paid"
+                                  ? "success"
+                                  : row.status === "Failed" ||
+                                      row.status === "Overdue"
+                                    ? "danger"
+                                    : "neutral")
+                              }
+                            >
+                              {row.status === "Pending"
+                                ? "Draft"
+                                : row.status === "Completed"
+                                  ? "Delivered"
+                                  : row.status === "InTransit"
+                                    ? "In transit"
+                                    : row.status}
+                            </span>
+                            {accounts && row.finalDeadlineBreached && (
+                              <div className="muted">Final deadline passed</div>
+                            )}
+                          </td>
+                          {deliveries && (
+                            <td data-label="Notes">
+                              <ModalTableValue value={row.notes || "—"} />
+                            </td>
+                          )}
+                          <td data-label="Action" className="table-action-cell">
+                            <div className="table-actions">
+                              <ModalTableHint
+                                value={
+                                  accounts ? "View account" : "Review order"
+                                }
+                              >
+                                <button
+                                  className="button soft table-action-btn"
+                                  disabled={busy || opening}
+                                  aria-label={
+                                    accounts ? "View account" : "Review order"
+                                  }
+
+                                  data-order-id={row.orderId ?? row.id}
+                                  onClick={() =>
+                                    accounts
+                                      ? (() => {
+                                          listScroll.current = {
+                                            body:
+                                              contentRef.current?.closest(
+                                                ".wholesale-dialog-body",
+                                              )?.scrollTop ?? 0,
+                                            table:
+                                              contentRef.current?.querySelector(
+                                                ".wholesale-summary-table",
+                                              )?.scrollTop ?? 0,
+                                            orderId: row.id,
+                                          };
+                                          viewAccount(row.id);
+                                        })()
+                                      : reviewOrder(row.orderId ?? row.id)
+                                  }
+                                >
+                                  <Eye size={13} />
+                                </button>
+                              </ModalTableHint>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                    {!list.loading &&
+                      !list.error &&
+                      !list.data?.items.length && (
+                        <tr>
+                          <TableEmptyState colSpan={columns}>
+                            {search
+                              ? "No matching records."
+                              : deliveries
+                                ? "No deliveries found."
+                                : accounts
+                                  ? "No accounts found."
+                                  : "No orders awaiting delivery."}
+                          </TableEmptyState>
+                        </tr>
+                      )}
+                  </tbody>
+                </table>
+              </div>
             </ModalTableFrame>
-            {preview ? <ModalTableFooter><ModalTablePager page={previewPage} total={list.data?.total ?? 0} loading={list.loading || previewBlockPending} change={setPreviewPage} label="Deliveries" /></ModalTableFooter> : <Pagination
-              page={list.page}
-              total={list.data?.total ?? 0}
-              loading={list.loading}
-              change={list.setPage}
-            />}
+            {preview ? (
+              <ModalTableFooter>
+                <ModalTablePager
+                  page={previewPage}
+                  total={list.data?.total ?? 0}
+                  loading={list.loading || previewBlockPending}
+                  change={setPreviewPage}
+                  label={summary.title}
+                />
+              </ModalTableFooter>
+            ) : (
+              <Pagination
+                page={list.page}
+                total={list.data?.total ?? 0}
+                loading={list.loading}
+                change={list.setPage}
+              />
+            )}
           </>
         )}
       </div>

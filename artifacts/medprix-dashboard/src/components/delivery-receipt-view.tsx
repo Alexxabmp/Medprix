@@ -5,6 +5,8 @@ import { wholesalePeso, type DeliveryReceipt } from "@/lib/wholesale-api";
 import { printDeliveryReceipt } from "@/lib/wholesale-receipt-print";
 import { safeError } from "@/lib/feedback";
 import { formatDisplayDate, formatDisplayDateTime } from "@/lib/business-date";
+import { ModalTableFooter } from "./modal-table-layout";
+import { WholesaleInstallmentScheduleView } from "./wholesale-installment-schedule";
 
 export function DeliveryReceiptView({
   receipt,
@@ -20,10 +22,10 @@ export function DeliveryReceiptView({
   const [error, setError] = useState("");
   const [printing, setPrinting] = useState(false);
   const deliveredAt = formatDisplayDateTime(receipt.deliveredAt, "Asia/Manila");
-  const dueDate = formatDisplayDate(receipt.dueDate);
   const quantity = receipt.lines.reduce((sum, line) => sum + line.quantity, 0);
   const content = (
     <div className="delivery-receipt-details">
+      <strong>{receipt.merchantName}</strong>
       <dl className="delivery-receipt-meta">
         <div>
           <dt>Delivery status</dt>
@@ -36,8 +38,12 @@ export function DeliveryReceiptView({
           <dd>{receipt.orderNumber}</dd>
         </div>
         <div>
-          <dt>Delivered on</dt>
+          <dt>Actual client receipt</dt>
           <dd>{deliveredAt}</dd>
+        </div>
+        <div>
+          <dt>Recorded on</dt>
+          <dd>{formatDisplayDateTime(receipt.recordedAt, "Asia/Manila")}</dd>
         </div>
         <div>
           <dt>Received by</dt>
@@ -66,7 +72,7 @@ export function DeliveryReceiptView({
               <strong>{wholesalePeso(line.total)}</strong>
             </div>
             <p className="muted">
-              {line.quantity} × {wholesalePeso(line.unitPrice)} ·{" "}
+              {line.sku} / {line.quantity} × {wholesalePeso(line.unitPrice)} ·{" "}
               {line.isVatExempt ? "VAT-exempt" : "VAT included"}
             </p>
             <ul
@@ -81,8 +87,8 @@ export function DeliveryReceiptView({
                       Batch <strong>{batch.batchNumber}</strong>
                     </span>
                     <span>
-                      Expires {batch.expiry} · {batch.quantity}{" "}
-                      {batch.quantity === 1 ? "unit" : "units"}
+                      Expires {formatDisplayDate(batch.expiry)} ·{" "}
+                      {batch.quantity} {batch.quantity === 1 ? "unit" : "units"}
                     </span>
                   </li>
                 ))}
@@ -99,11 +105,10 @@ export function DeliveryReceiptView({
           <dt>Total amount</dt>
           <dd>{wholesalePeso(receipt.total)}</dd>
         </div>
-        <div>
-          <dt>Payment due</dt>
-          <dd>{dueDate}</dd>
-        </div>
       </dl>
+      <WholesaleInstallmentScheduleView
+        schedule={receipt.installmentSchedule}
+      />
       <p className="delivery-receipt-note">
         This receipt confirms delivery. It does not record a payment.
       </p>
@@ -112,35 +117,38 @@ export function DeliveryReceiptView({
           {error}
         </div>
       )}
-      <div className="modal-actions delivery-receipt-actions">
-        <button
-          type="button"
-          className="button primary-action"
-          disabled={printing}
-          onClick={async () => {
-            setPrinting(true);
-            onBusyChange?.(true);
-            setError("");
-            try {
-              await printDeliveryReceipt(receipt);
-            } catch (failure) {
-              setError(safeError(failure));
-            } finally {
-              setPrinting(false);
-              onBusyChange?.(false);
-            }
-          }}
-        >
-          <Printer size={14} />
-          {printing ? "Preparing receipt…" : "Print delivery receipt"}
-        </button>
-      </div>
+      <ModalTableFooter>
+        <div className="modal-actions delivery-receipt-actions">
+          <button
+            type="button"
+            className="button primary-action"
+            disabled={printing}
+            onClick={async () => {
+              setPrinting(true);
+              onBusyChange?.(true);
+              setError("");
+              try {
+                await printDeliveryReceipt(receipt);
+              } catch (failure) {
+                setError(safeError(failure));
+              } finally {
+                setPrinting(false);
+                onBusyChange?.(false);
+              }
+            }}
+          >
+            <Printer size={14} />
+            {printing ? "Preparing receipt…" : "Print delivery receipt"}
+          </button>
+        </div>
+      </ModalTableFooter>
     </div>
   );
   return embedded ? (
     content
   ) : (
     <WholesaleDialog
+      variant="form"
       title="Delivery receipt details"
       description={receipt.receiptNumber}
       busy={printing}

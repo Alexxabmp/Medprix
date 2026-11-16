@@ -1,5 +1,8 @@
 import { SelectField } from "@/components/custom-ui/select-field";
-import { PageTableValue, usePageTableStandard } from "@/components/page-table-context";
+import {
+  PageTableValue,
+  usePageTableStandard,
+} from "@/components/page-table-context";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import {
@@ -13,8 +16,15 @@ import { Summary } from "@/components/custom-ui/summary-card";
 import { LoadingState } from "@/components/custom-ui/loading-state";
 import { WholesaleDeliveryReceipts } from "@/components/wholesale-delivery-receipts";
 import { WholesaleOrderDetails } from "@/components/wholesale-order-details";
-import { useEffect, useState } from "react";
-import { Check, Eye, Pencil, Plus, Search } from "lucide-react";
+import {
+  WholesaleDeliveries,
+  type DeliveryQueueStatus,
+} from "@/components/wholesale-deliveries";
+import { WholesaleDeliveryPanel } from "@/components/wholesale-delivery-panel";
+import { WholesaleRequestFeedback } from "@/components/wholesale-request-feedback";
+import { DeliveryReceiptView } from "@/components/delivery-receipt-view";
+import { useEffect, useRef, useState } from "react";
+import { Check, Eye, Pencil, Plus, Search, Truck } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import { WholesaleDialog } from "@/components/wholesale-dialog";
 import { WholesaleOrderEditor } from "@/components/wholesale-order-editor";
@@ -27,6 +37,8 @@ import {
   type DeliveryReceiptSummary,
   type WholesaleClient,
   type WholesaleOrder,
+  type WholesaleOrderDetail,
+  type DeliveryReceipt,
   type WholesaleProduct,
   type WholesaleRequest,
   type WholesaleLine,
@@ -41,6 +53,7 @@ type Dialog =
   | { kind: "client"; client?: WholesaleClient }
   | { kind: "price"; product: WholesaleProduct }
   | { kind: "order"; order: WholesaleOrder | null }
+  | { kind: "delivery"; order: WholesaleOrder; detail: WholesaleOrderDetail }
   | { kind: "details"; order: WholesaleOrder; confirm?: boolean };
 
 export default function WholesalePage({
@@ -55,11 +68,22 @@ export default function WholesalePage({
   const storageKey =
     "medprix-wholesale-request:" +
     (localStorage.getItem("medprix-username") ?? "");
-  const [clients, setClients] = useState<WholesaleClient[]>(() => getCachedWholesale<WholesaleClient[]>("/clients") ?? []);
-  const [products, setProducts] = useState<WholesaleProduct[]>(() => getCachedWholesale<WholesaleProduct[]>("/catalog") ?? []);
-  const [orders, setOrders] = useState<WholesaleOrder[]>(() => getCachedWholesale<WholesaleOrder[]>("/orders") ?? []);
-  const [receipts, setReceipts] = useState<DeliveryReceiptSummary[]>(() => getCachedWholesale<DeliveryReceiptSummary[]>("/delivery-receipts") ?? []);
-  const [overview, setOverview] = useState<WholesaleOverview | null>(() => getCachedWholesale<WholesaleOverview>("/overview"));
+  const [clients, setClients] = useState<WholesaleClient[]>(
+    () => getCachedWholesale<WholesaleClient[]>("/clients") ?? [],
+  );
+  const [products, setProducts] = useState<WholesaleProduct[]>(
+    () => getCachedWholesale<WholesaleProduct[]>("/catalog") ?? [],
+  );
+  const [orders, setOrders] = useState<WholesaleOrder[]>(
+    () => getCachedWholesale<WholesaleOrder[]>("/orders") ?? [],
+  );
+  const [receipts, setReceipts] = useState<DeliveryReceiptSummary[]>(
+    () =>
+      getCachedWholesale<DeliveryReceiptSummary[]>("/delivery-receipts") ?? [],
+  );
+  const [overview, setOverview] = useState<WholesaleOverview | null>(() =>
+    getCachedWholesale<WholesaleOverview>("/overview"),
+  );
   const [overviewError, setOverviewError] = useState("");
   const [summary, setSummary] = useState<{
     kind: WholesaleSummaryKind;
@@ -73,18 +97,26 @@ export default function WholesalePage({
   const [accountStatus, setAccountStatus] =
     useState<WholesaleAccountFilter>("all");
   const [orderStatus, setOrderStatus] = useState("All statuses");
+  const [deliveryStatus, setDeliveryStatus] =
+    useState<DeliveryQueueStatus>("all");
   const [vatFilter, setVatFilter] = useState("All VAT classifications");
   const [orderPage, setOrderPage] = useState(1);
   const [clientPage, setClientPage] = useState(1);
   const [pricePage, setPricePage] = useState(1);
   const [tab, setTab] = useState<
-    "orders" | "clients" | "prices" | "receipts" | "accounts"
+    "orders" | "deliveries" | "clients" | "prices" | "receipts" | "accounts"
   >("orders");
   const [dialog, setDialog] = useState<Dialog | null>(null);
+  const [priceInput, setPriceInput] = useState("");
+  const [printingReceipt, setPrintingReceipt] = useState(false);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [ready, setReady] = useState(true);
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
+  const [deliveryVersion, setDeliveryVersion] = useState(0);
+  const [deliveryReceipt, setDeliveryReceipt] =
+    useState<DeliveryReceipt | null>(null);
   const [error, setError] = useState("");
   const [formError, setFormError] = useState("");
   const [pending, setPending] = useState<WholesaleRequest | null>(() => {
@@ -144,10 +176,8 @@ export default function WholesalePage({
     const refresh = () => {
       if (document.visibilityState === "visible") void load(true);
     };
-    window.addEventListener("focus", refresh);
     const timer = window.setInterval(refresh, 60000);
     return () => {
-      window.removeEventListener("focus", refresh);
       window.clearInterval(timer);
     };
   }, []);
@@ -170,8 +200,8 @@ export default function WholesalePage({
     try {
       const detail = await wholesaleGet<WholesaleReceivableDetail>(
         "/accounts-receivable/" + id,
+        true,
       );
-      setSummary(null);
       setSummaryAccount(detail);
     } catch (failure) {
       setError(safeError(failure));
@@ -180,17 +210,39 @@ export default function WholesalePage({
     }
   }
   async function submit(request: WholesaleRequest) {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setFormError("");
+    let recorded = false;
     try {
       sessionStorage.setItem(storageKey, JSON.stringify(request));
       setPending(request);
-      await wholesaleWrite(request);
+      const result = await wholesaleWrite(request);
+      recorded = true;
       sessionStorage.removeItem(storageKey);
       setPending(null);
       setDialog(null);
       setSummary(null);
       onToast("Wholesale record saved.");
+      setDeliveryVersion((version) => version + 1);
+      const orderAction = request.path.match(
+        /^\/orders\/([^/]+)\/(confirm|schedule|delivery-status|deliver)$/,
+      );
+      if (orderAction) {
+        const next = await wholesaleGet<
+          WholesaleOrderDetail & { order: WholesaleOrder }
+        >("/orders/" + orderAction[1], true);
+        setTab("deliveries");
+        setSearch("");
+        setDialog({ kind: "delivery", order: next.order, detail: next });
+      } else if (/^\/orders(?:\/[^/]+)?$/.test(request.path) && result.id) {
+        const next = await wholesaleGet<
+          WholesaleOrderDetail & { order: WholesaleOrder }
+        >("/orders/" + result.id, true);
+        setTab("orders");
+        setDialog({ kind: "details", order: next.order, confirm: true });
+      }
       await load();
     } catch (failure) {
       const definitive = (failure as { definitive?: boolean }).definitive;
@@ -198,15 +250,33 @@ export default function WholesalePage({
         sessionStorage.removeItem(storageKey);
         setPending(null);
       }
-      const message = safeError(failure);
+      const message = recorded
+        ? "The change was saved, but refreshed records could not be loaded. Refresh the page to view the saved result."
+        : safeError(failure);
       setFormError(message);
-      if (!dialog) setError(message);
+      if (recorded || !dialog) setError(message);
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
   function mutate(path: string, method: string, body: unknown) {
+    if (pending || inFlight.current) return;
     void submit({ key: crypto.randomUUID(), path, method, body });
+  }
+  async function openDelivery(id: string) {
+    setOpeningAccount(true);
+    setFormError("");
+    try {
+      const detail = await wholesaleGet<
+        WholesaleOrderDetail & { order: WholesaleOrder }
+      >("/orders/" + id, true);
+      setDialog({ kind: "delivery", order: detail.order, detail });
+    } catch (failure) {
+      setError(safeError(failure));
+    } finally {
+      setOpeningAccount(false);
+    }
   }
   function open(next: Dialog) {
     if (
@@ -224,9 +294,14 @@ export default function WholesalePage({
       return;
     }
     setFormError("");
+    if (next.kind === "price") setPriceInput(next.product.wholesalePrice ?? "");
     setDialog(next);
   }
-  function saveDraft(draft: { clientId: string; lines: WholesaleLine[] }) {
+  function saveDraft(draft: {
+    clientId: string;
+    paymentPlan: NonNullable<WholesaleOrder["paymentPlan"]>;
+    lines: WholesaleLine[];
+  }) {
     const order = dialog?.kind === "order" ? dialog.order : null;
     mutate(
       order ? "/orders/" + order.id : "/orders",
@@ -236,6 +311,7 @@ export default function WholesalePage({
   }
   const locked =
     busy || pending !== null || openingAccount || openingSummary !== null;
+  const navigating = busy || openingAccount || openingSummary !== null;
   const query = search.toLocaleLowerCase();
   const visibleOrders = orders.filter((order) => {
     const displayStatus = order.status === "Pending" ? "Draft" : order.status;
@@ -269,21 +345,30 @@ export default function WholesalePage({
   });
 
   const WHOLESALE_PAGE_SIZE = 15;
-  const totalOrderPages = Math.max(1, Math.ceil(visibleOrders.length / WHOLESALE_PAGE_SIZE));
+  const totalOrderPages = Math.max(
+    1,
+    Math.ceil(visibleOrders.length / WHOLESALE_PAGE_SIZE),
+  );
   const safeOrderPage = Math.min(orderPage, totalOrderPages);
   const paginatedOrders = visibleOrders.slice(
     (safeOrderPage - 1) * WHOLESALE_PAGE_SIZE,
     safeOrderPage * WHOLESALE_PAGE_SIZE,
   );
 
-  const totalClientPages = Math.max(1, Math.ceil(visibleClients.length / WHOLESALE_PAGE_SIZE));
+  const totalClientPages = Math.max(
+    1,
+    Math.ceil(visibleClients.length / WHOLESALE_PAGE_SIZE),
+  );
   const safeClientPage = Math.min(clientPage, totalClientPages);
   const paginatedClients = visibleClients.slice(
     (safeClientPage - 1) * WHOLESALE_PAGE_SIZE,
     safeClientPage * WHOLESALE_PAGE_SIZE,
   );
 
-  const totalPricePages = Math.max(1, Math.ceil(visibleProducts.length / WHOLESALE_PAGE_SIZE));
+  const totalPricePages = Math.max(
+    1,
+    Math.ceil(visibleProducts.length / WHOLESALE_PAGE_SIZE),
+  );
   const safePricePage = Math.min(pricePage, totalPricePages);
   const paginatedProducts = visibleProducts.slice(
     (safePricePage - 1) * WHOLESALE_PAGE_SIZE,
@@ -294,6 +379,12 @@ export default function WholesalePage({
     orders: {
       title: "Wholesale orders",
       description: "Drafts, agreed prices and delivery status",
+      placeholder: "Search order or client",
+    },
+    deliveries: {
+      title: "Deliveries",
+      description:
+        "Schedule confirmed orders, dispatch goods and confirm client receipt",
       placeholder: "Search order or client",
     },
     clients: {
@@ -324,15 +415,6 @@ export default function WholesalePage({
       <PageHeading
         title="Wholesale"
         description="Clients, orders, deliveries and client collections."
-        action={
-          <button
-            className="button primary-action"
-            disabled={locked || !ready || loading || !clients.length}
-            onClick={() => open({ kind: "order", order: null })}
-          >
-            <Plus size={14} /> New draft
-          </button>
-        }
       />
       {error && (
         <div role="alert" className="inline-error">
@@ -347,7 +429,8 @@ export default function WholesalePage({
       {pending && (
         <div className="inline-error" role="status">
           <span>
-            A saved request needs confirmation. Retry it before starting another
+            The previous request needs confirmation. You can browse records or
+            close a dialog. Retry the saved request before recording another
             change.
           </span>
           <button
@@ -371,7 +454,7 @@ export default function WholesalePage({
           action={
             <button
               className="button soft wholesale-summary-action"
-              disabled={locked || !overview}
+              disabled={navigating || !overview}
               onClick={() => void openSummary("pending")}
             >
               {openingSummary === "pending" ? "Opening..." : "View"}
@@ -385,7 +468,7 @@ export default function WholesalePage({
           action={
             <button
               className="button soft wholesale-summary-action"
-              disabled={locked || !overview}
+              disabled={navigating || !overview}
               onClick={() => void openSummary("deliveries")}
             >
               {openingSummary === "deliveries" ? "Opening..." : "View"}
@@ -399,7 +482,7 @@ export default function WholesalePage({
           action={
             <button
               className="button soft wholesale-summary-action"
-              disabled={locked || !overview}
+              disabled={navigating || !overview}
               onClick={() => void openSummary("outstanding")}
             >
               {openingSummary === "outstanding" ? "Opening..." : "View"}
@@ -423,7 +506,7 @@ export default function WholesalePage({
           action={
             <button
               className="button soft wholesale-summary-action"
-              disabled={locked || !overview}
+              disabled={navigating || !overview}
               onClick={() => void openSummary("overdue")}
             >
               {openingSummary === "overdue" ? "Opening..." : "View"}
@@ -439,8 +522,10 @@ export default function WholesalePage({
       {summary && (
         <WholesaleSummaryModal
           kind={summary.kind}
+          suspended={Boolean(summaryAccount)}
           initialData={summary.data}
           busy={busy || pending !== null || openingAccount}
+          submitting={busy || openingAccount}
           close={() => setSummary(null)}
           role={role}
           mutate={mutate}
@@ -456,34 +541,45 @@ export default function WholesalePage({
           role={role}
           initialDetail={summaryAccount}
           detailsOnly
-          onClose={() => setSummaryAccount(null)}
+          onBack={() => setSummaryAccount(null)}
+          onClose={() => {
+            setSummaryAccount(null);
+            setSummary(null);
+          }}
           onChanged={() => void refreshOverview()}
         />
       )}
-      <div
-        className="page-tabs"
-        role="group"
-        aria-label="Wholesale sections"
-      >
-        {(["orders", "clients", "prices", "receipts", "accounts"] as const).map(
-          (item) => (
-            <button
-              key={item}
-              className={"button " + (tab === item ? "dark" : "soft")}
-              aria-pressed={tab === item}
-              onClick={() => {
-                setTab(item);
-                setSearch("");
-                setAccountStatus("all");
-                setOrderStatus("All statuses");
-                setVatFilter("All VAT classifications");
-                setOrderPage(1);
-                setClientPage(1);
-                setPricePage(1);
-              }}
-            >
-              {item === "orders"
-                ? "Orders"
+      <div className="page-tabs" role="group" aria-label="Wholesale sections">
+        {(
+          [
+            "orders",
+            "deliveries",
+            "accounts",
+            "clients",
+            "prices",
+            "receipts",
+          ] as const
+        ).map((item) => (
+          <button
+            key={item}
+            className={"button " + (tab === item ? "dark" : "soft")}
+            aria-pressed={tab === item}
+            onClick={() => {
+              setTab(item);
+              setSearch("");
+              setAccountStatus("all");
+              setOrderStatus("All statuses");
+              setDeliveryStatus("all");
+              setVatFilter("All VAT classifications");
+              setOrderPage(1);
+              setClientPage(1);
+              setPricePage(1);
+            }}
+          >
+            {item === "orders"
+              ? "Orders"
+              : item === "deliveries"
+                ? "Deliveries"
                 : item === "clients"
                   ? "Clients"
                   : item === "prices"
@@ -491,9 +587,8 @@ export default function WholesalePage({
                     : item === "receipts"
                       ? "Delivery receipts"
                       : "Receivables"}
-            </button>
-          ),
-        )}
+          </button>
+        ))}
       </div>
       <section className="surface-card table-card">
         <div className="table-tools">
@@ -513,6 +608,23 @@ export default function WholesalePage({
             />
           </div>
           <div className="table-tools-right">
+            {tab === "deliveries" && (
+              <SelectField
+                className="select"
+                aria-label="Delivery status"
+                value={deliveryStatus}
+                onChange={(event) =>
+                  setDeliveryStatus(event.target.value as DeliveryQueueStatus)
+                }
+              >
+                <option value="all">All deliveries</option>
+                <option value="active">Awaiting delivery</option>
+                <option value="Ready">Needs scheduling</option>
+                <option value="Scheduled">Scheduled</option>
+                <option value="InTransit">In transit</option>
+                <option value="Completed">Delivered</option>
+              </SelectField>
+            )}
             {tab === "orders" && (
               <SelectField
                 className="select"
@@ -542,10 +654,14 @@ export default function WholesalePage({
                 }}
                 data-testid="select-wholesale-vat-filter"
               >
-                <option value="All VAT classifications">All VAT classifications</option>
+                <option value="All VAT classifications">
+                  All VAT classifications
+                </option>
                 <option value="VATable">VATable</option>
                 <option value="Exempt">Exempt</option>
-                <option value="Needs classification">Needs classification</option>
+                <option value="Needs classification">
+                  Needs classification
+                </option>
               </SelectField>
             )}
             {tab === "accounts" && (
@@ -560,8 +676,18 @@ export default function WholesalePage({
                 <option value="all">All statuses</option>
                 <option value="outstanding">Outstanding</option>
                 <option value="overdue">Overdue</option>
+                <option value="deadline">Final deadline passed</option>
                 <option value="paid">Paid</option>
               </SelectField>
+            )}
+            {tab === "orders" && (
+              <button
+                className="button primary-action"
+                disabled={locked || !ready || loading || !clients.length}
+                onClick={() => open({ kind: "order", order: null })}
+              >
+                <Plus size={14} /> New draft
+              </button>
             )}
             {tab === "clients" && (
               <button
@@ -579,211 +705,282 @@ export default function WholesalePage({
         ) : (
           ready && (
             <>
-              <div className="table-scroll">
-                {tab === "accounts" && (
-                  <WholesaleReceivables
-                    search={search}
-                    role={role}
-                    status={accountStatus}
-                    onChanged={() => void refreshOverview()}
-                  />
-                )}
-                {tab === "receipts" && (
-                  <WholesaleDeliveryReceipts
-                    receipts={receipts}
-                    search={search}
-                    disabled={locked}
-                  />
-                )}
-                {tab === "orders" && (
-                  <table data-page-table="wholesale-orders" className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Order</th>
-                        <th>Client</th>
-                        <th>Total including VAT</th>
-                        <th>Status</th>
-                        <th className="table-action-head">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paginatedOrders.map((order) => (
-                        <tr key={order.id}>
-                          <td>{order.orderNumber}</td>
-                          <td><PageTableValue value={order.clientName} /></td>
-                          <td>{wholesalePeso(order.total)}</td>
-                          <td>
-                            {order.status === "Pending"
-                              ? "Draft"
-                              : order.status}
-                          </td>
-                          <td className="table-action-cell">
-                            <div className="table-actions">
-                              {pageTableStandard && order.status === "Pending" && (
-                                <AppTooltip content="Confirm draft">
-                                  <button
-                                    type="button"
-                                    className="button soft table-action-btn"
-                                    disabled={locked}
-                                    aria-label="Confirm draft"
-                                    onClick={() => open({ kind: "details", order, confirm: true })}
-                                  >
-                                    <Check size={13} aria-hidden="true" />
-                                  </button>
-                                </AppTooltip>
-                              )}
-                              <AppTooltip content={"Edit draft"}><button
-                                className="button soft table-action-btn"
-                                disabled={locked}
-                                aria-label="Edit draft"
-
-                                onClick={() => open({ kind: "order", order })}
-                              >
-                                <Pencil size={13} />
-                              </button></AppTooltip>
-                              <AppTooltip content={"Review order"}><button
-                                className="button soft table-action-btn"
-                                disabled={locked}
-                                aria-label="Review order"
-
-                                onClick={() => open({ kind: "details", order })}
-                              >
-                                <Eye size={13} />
-                              </button></AppTooltip>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                      {!visibleOrders.length && (
+              {tab === "deliveries" ? (
+                <WholesaleDeliveries
+                  key={deliveryVersion}
+                  search={search}
+                  status={deliveryStatus}
+                  busy={navigating}
+                  open={(id) => void openDelivery(id)}
+                />
+              ) : (
+                <div className="table-scroll">
+                  {tab === "accounts" && (
+                    <WholesaleReceivables
+                      search={search}
+                      role={role}
+                      status={accountStatus}
+                      onChanged={() => void refreshOverview()}
+                    />
+                  )}
+                  {tab === "receipts" && (
+                    <WholesaleDeliveryReceipts
+                      receipts={receipts}
+                      search={search}
+                      disabled={navigating}
+                    />
+                  )}
+                  {tab === "orders" && (
+                    <table
+                      data-page-table="wholesale-orders"
+                      className="data-table"
+                    >
+                      <thead>
                         <tr>
-                          <TableEmptyState colSpan={5}>
-                            {search
-                              ? "No matching records."
-                              : "No wholesale orders found."}
-                          </TableEmptyState>
+                          <th>Order</th>
+                          <th>Client</th>
+                          <th>Total including VAT</th>
+                          <th>Status</th>
+                          <th className="table-action-head">Action</th>
                         </tr>
-                      )}
-                    </tbody>
-                  </table>
-                )}
-                {tab === "clients" && (
-                  <table data-page-table="wholesale-clients" className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Client</th>
-                        <th>Address</th>
-                        <th className="table-action-head">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paginatedClients.map((client) => (
-                        <tr key={client.id}>
-                          <td><PageTableValue value={client.name} /></td>
-                          <td>{client.address || "Not provided"}</td>
-                          <td className="table-action-cell">
-                            <div className="table-actions">
-                              <AppTooltip content={"Edit client"}><button
-                                className="button soft table-action-btn"
-                                disabled={locked}
-                                aria-label="Edit client"
-
-                                onClick={() => open({ kind: "client", client })}
-                              >
-                                <Pencil size={13} />
-                              </button></AppTooltip>
-                              {pageTableStandard && (
-                                <AppTooltip content="View client">
-                                  <button
-                                    type="button"
-                                    className="button soft table-action-btn"
-                                    aria-label="View client"
-                                    onClick={() => setViewClient(client)}
-                                  >
-                                    <Eye size={13} aria-hidden="true" />
-                                  </button>
-                                </AppTooltip>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                      {!visibleClients.length && (
-                        <tr>
-                          <TableEmptyState colSpan={3}>
-                            {search
-                              ? "No matching records."
-                              : "No wholesale clients found."}
-                          </TableEmptyState>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                )}
-                {tab === "prices" && (
-                  <table data-page-table="wholesale-prices" className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Product / SKU</th>
-                        <th>Wholesale unit price</th>
-                        <th>VAT classification</th>
-                        <th>Physical</th>
-                        <th>Reserved</th>
-                        <th>Available</th>
-                        {role === "Admin" && <th className="table-action-head">Action</th>}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paginatedProducts.map((product) => (
-                        <tr key={product.id}>
-                          <td>
-                            <PageTableValue value={product.name} />
-                            <div className="muted">{product.sku}</div>
-                          </td>
-                          <td>{wholesalePeso(product.wholesalePrice)}</td>
-                          <td>
-                            {product.isVatExempt === null
-                              ? "Needs classification"
-                              : product.isVatExempt
-                                ? "Exempt"
-                                : "VATable"}
-                          </td>
-                          <td>{product.physicalStock}</td>
-                          <td>{product.reservedStock}</td>
-                          <td>{product.availableStock}</td>
-                          {role === "Admin" && (
+                      </thead>
+                      <tbody>
+                        {paginatedOrders.map((order) => (
+                          <tr key={order.id}>
+                            <td>{order.orderNumber}</td>
+                            <td>
+                              <PageTableValue value={order.clientName} />
+                            </td>
+                            <td>{wholesalePeso(order.total)}</td>
+                            <td>
+                              {order.status === "Pending"
+                                ? "Draft"
+                                : order.status}
+                            </td>
                             <td className="table-action-cell">
                               <div className="table-actions">
-                                <AppTooltip content={"Set price"}><button
-                                  className="button soft table-action-btn"
-                                  disabled={locked}
-                                  aria-label="Set price"
+                                {pageTableStandard &&
+                                  order.status === "Pending" && (
+                                    <AppTooltip content="Confirm draft">
+                                      <button
+                                        type="button"
+                                        className="button soft table-action-btn"
+                                        disabled={locked}
+                                        aria-label="Confirm draft"
+                                        onClick={() =>
+                                          open({
+                                            kind: "details",
+                                            order,
+                                            confirm: true,
+                                          })
+                                        }
+                                      >
+                                        <Check size={13} aria-hidden="true" />
+                                      </button>
+                                    </AppTooltip>
+                                  )}
+                                {order.status === "Pending" && (
+                                  <AppTooltip content={"Edit draft"}>
+                                    <button
+                                      className="button soft table-action-btn"
+                                      disabled={locked}
+                                      aria-label="Edit draft"
 
-                                  onClick={() => open({ kind: "price", product })}
-                                >
-                                  <Pencil size={13} />
-                                </button></AppTooltip>
+                                      onClick={() =>
+                                        open({ kind: "order", order })
+                                      }
+                                    >
+                                      <Pencil size={13} />
+                                    </button>
+                                  </AppTooltip>
+                                )}
+                                {["Confirmed", "Processing"].includes(
+                                  order.status,
+                                ) && (
+                                  <AppTooltip content="Manage delivery">
+                                    <button
+                                      className="button soft table-action-btn"
+                                      aria-label="Manage delivery"
+                                      disabled={navigating}
+                                      onClick={() =>
+                                        void openDelivery(order.id)
+                                      }
+                                    >
+                                      <Truck size={13} />
+                                    </button>
+                                  </AppTooltip>
+                                )}
+                                <AppTooltip content={"Review order"}>
+                                  <button
+                                    className="button soft table-action-btn"
+                                    disabled={navigating}
+                                    aria-label="Review order"
+
+                                    onClick={() =>
+                                      open({ kind: "details", order })
+                                    }
+                                  >
+                                    <Eye size={13} />
+                                  </button>
+                                </AppTooltip>
                               </div>
                             </td>
+                          </tr>
+                        ))}
+                        {!visibleOrders.length && (
+                          <tr>
+                            <TableEmptyState colSpan={5}>
+                              {search
+                                ? "No matching records."
+                                : "No wholesale orders found."}
+                            </TableEmptyState>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  )}
+                  {tab === "clients" && (
+                    <table
+                      data-page-table="wholesale-clients"
+                      className="data-table"
+                    >
+                      <thead>
+                        <tr>
+                          <th>Client</th>
+                          <th>Address</th>
+                          <th className="table-action-head">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {paginatedClients.map((client) => (
+                          <tr key={client.id}>
+                            <td>
+                              <PageTableValue value={client.name} />
+                            </td>
+                            <td>{client.address || "Not provided"}</td>
+                            <td className="table-action-cell">
+                              <div className="table-actions">
+                                <AppTooltip content={"Edit client"}>
+                                  <button
+                                    className="button soft table-action-btn"
+                                    disabled={locked}
+                                    aria-label="Edit client"
+
+                                    onClick={() =>
+                                      open({ kind: "client", client })
+                                    }
+                                  >
+                                    <Pencil size={13} />
+                                  </button>
+                                </AppTooltip>
+                                {pageTableStandard && (
+                                  <AppTooltip content="View client">
+                                    <button
+                                      type="button"
+                                      className="button soft table-action-btn"
+                                      aria-label="View client"
+                                      onClick={() => setViewClient(client)}
+                                    >
+                                      <Eye size={13} aria-hidden="true" />
+                                    </button>
+                                  </AppTooltip>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                        {!visibleClients.length && (
+                          <tr>
+                            <TableEmptyState colSpan={3}>
+                              {search
+                                ? "No matching records."
+                                : "No wholesale clients found."}
+                            </TableEmptyState>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  )}
+                  {tab === "prices" && (
+                    <table
+                      data-page-table="wholesale-prices"
+                      className="data-table"
+                    >
+                      <thead>
+                        <tr>
+                          <th>Product / SKU</th>
+                          <th>Wholesale unit price</th>
+                          <th>VAT classification</th>
+                          <th>Physical</th>
+                          <th>Reserved</th>
+                          <th>Available</th>
+                          {role === "Admin" && (
+                            <th className="table-action-head">Action</th>
                           )}
                         </tr>
-                      ))}
-                      {!visibleProducts.length && (
-                        <tr>
-                          <TableEmptyState colSpan={role === "Admin" ? 7 : 6}>
-                            {search
-                              ? "No matching records."
-                              : "No wholesale products found."}
-                          </TableEmptyState>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                )}
-              </div>
+                      </thead>
+                      <tbody>
+                        {paginatedProducts.map((product) => (
+                          <tr key={product.id}>
+                            <td>
+                              <PageTableValue value={product.name} />
+                              <div className="muted">{product.sku}</div>
+                            </td>
+                            <td>{wholesalePeso(product.wholesalePrice)}</td>
+                            <td>
+                              {product.isVatExempt === null
+                                ? "Needs classification"
+                                : product.isVatExempt
+                                  ? "Exempt"
+                                  : "VATable"}
+                            </td>
+                            <td>{product.physicalStock}</td>
+                            <td>{product.reservedStock}</td>
+                            <td>{product.availableStock}</td>
+                            {role === "Admin" && (
+                              <td className="table-action-cell">
+                                <div className="table-actions">
+                                  <AppTooltip content={"Set price"}>
+                                    <button
+                                      className="button soft table-action-btn"
+                                      disabled={locked}
+                                      aria-label="Set price"
+
+                                      onClick={() =>
+                                        open({ kind: "price", product })
+                                      }
+                                    >
+                                      <Pencil size={13} />
+                                    </button>
+                                  </AppTooltip>
+                                </div>
+                              </td>
+                            )}
+                          </tr>
+                        ))}
+                        {!visibleProducts.length && (
+                          <tr>
+                            <TableEmptyState colSpan={role === "Admin" ? 7 : 6}>
+                              {search
+                                ? "No matching records."
+                                : "No wholesale products found."}
+                            </TableEmptyState>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
               {tab === "orders" && (
-                <div className="table-pagination" role="navigation" aria-label="Wholesale orders pagination">
+                <div
+                  className="table-pagination"
+                  role="navigation"
+                  aria-label="Wholesale orders pagination"
+                >
                   <span className="muted">
-                    Page {safeOrderPage} of {totalOrderPages} ({visibleOrders.length} orders)
+                    Page {safeOrderPage} of {totalOrderPages} (
+                    {visibleOrders.length} orders)
                   </span>
                   <button
                     type="button"
@@ -797,16 +994,23 @@ export default function WholesalePage({
                     type="button"
                     className="button soft"
                     disabled={safeOrderPage >= totalOrderPages}
-                    onClick={() => setOrderPage((p) => Math.min(totalOrderPages, p + 1))}
+                    onClick={() =>
+                      setOrderPage((p) => Math.min(totalOrderPages, p + 1))
+                    }
                   >
                     Next
                   </button>
                 </div>
               )}
               {tab === "clients" && (
-                <div className="table-pagination" role="navigation" aria-label="Wholesale clients pagination">
+                <div
+                  className="table-pagination"
+                  role="navigation"
+                  aria-label="Wholesale clients pagination"
+                >
                   <span className="muted">
-                    Page {safeClientPage} of {totalClientPages} ({visibleClients.length} clients)
+                    Page {safeClientPage} of {totalClientPages} (
+                    {visibleClients.length} clients)
                   </span>
                   <button
                     type="button"
@@ -820,16 +1024,23 @@ export default function WholesalePage({
                     type="button"
                     className="button soft"
                     disabled={safeClientPage >= totalClientPages}
-                    onClick={() => setClientPage((p) => Math.min(totalClientPages, p + 1))}
+                    onClick={() =>
+                      setClientPage((p) => Math.min(totalClientPages, p + 1))
+                    }
                   >
                     Next
                   </button>
                 </div>
               )}
               {tab === "prices" && (
-                <div className="table-pagination" role="navigation" aria-label="Wholesale prices pagination">
+                <div
+                  className="table-pagination"
+                  role="navigation"
+                  aria-label="Wholesale prices pagination"
+                >
                   <span className="muted">
-                    Page {safePricePage} of {totalPricePages} ({visibleProducts.length} products)
+                    Page {safePricePage} of {totalPricePages} (
+                    {visibleProducts.length} products)
                   </span>
                   <button
                     type="button"
@@ -843,7 +1054,9 @@ export default function WholesalePage({
                     type="button"
                     className="button soft"
                     disabled={safePricePage >= totalPricePages}
-                    onClick={() => setPricePage((p) => Math.min(totalPricePages, p + 1))}
+                    onClick={() =>
+                      setPricePage((p) => Math.min(totalPricePages, p + 1))
+                    }
                   >
                     Next
                   </button>
@@ -854,22 +1067,21 @@ export default function WholesalePage({
         )}
       </section>
       {pageTableStandard && viewClient && (
-        <WholesaleDialog title="Client information" busy={false} close={() => setViewClient(null)}>
-          <dl style={{ display: "grid", gap: 16 }}>
+        <WholesaleDialog
+          title="Client information"
+          busy={false}
+          close={() => setViewClient(null)}
+        >
+          <dl className="wholesale-detail-list">
             <div>
-              <dt className="field-label">Client name</dt>
-              <dd style={{ margin: 0, overflowWrap: "anywhere" }}>{viewClient.name}</dd>
+              <dt>Client name</dt>
+              <dd>{viewClient.name}</dd>
             </div>
             <div>
-              <dt className="field-label">Delivery address</dt>
-              <dd style={{ margin: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
-                {viewClient.address || "Not provided"}
-              </dd>
+              <dt>Delivery address</dt>
+              <dd>{viewClient.address || "Not provided"}</dd>
             </div>
           </dl>
-          <div className="wholesale-actions">
-            <button type="button" className="button soft" onClick={() => setViewClient(null)}>Close</button>
-          </div>
         </WholesaleDialog>
       )}
       {dialog?.kind === "order" && (
@@ -878,6 +1090,7 @@ export default function WholesalePage({
           clients={clients}
           products={products}
           busy={locked}
+          submitting={busy}
           error={formError}
           retry={pending && !busy ? () => void submit(pending) : undefined}
           close={() => setDialog(null)}
@@ -886,140 +1099,249 @@ export default function WholesalePage({
       )}
       {dialog?.kind === "details" && (
         <WholesaleOrderDetails
-          initialAction={pageTableStandard && dialog.confirm ? "confirm" : undefined}
+          key={dialog.order.id + ":" + dialog.order.revision}
+          initialAction={dialog.confirm ? "confirm" : undefined}
           order={dialog.order}
           role={role}
           busy={locked}
+          submitting={busy}
           error={formError}
           retry={pending && !busy ? () => void submit(pending) : undefined}
           close={() => setDialog(null)}
           mutate={mutate}
         />
       )}
-      {dialog && dialog.kind !== "order" && dialog.kind !== "details" && (
+      {dialog?.kind === "delivery" && (
         <WholesaleDialog
+          variant="form"
+          back={deliveryReceipt ? () => setDeliveryReceipt(null) : undefined}
           title={
-            dialog.kind === "client"
-              ? dialog.client
-                ? "Edit wholesale client"
-                : "Add wholesale client"
-              : "Set wholesale price"
+            deliveryReceipt
+              ? "Delivery receipt details"
+              : "Delivery · " + dialog.order.orderNumber
           }
-          busy={locked}
-          close={() => setDialog(null)}
           description={
-            dialog.kind === "client"
-              ? "Fields marked * are required. A delivery address is needed before confirmation."
-              : "Wholesale unit prices include VAT where applicable."
+            deliveryReceipt
+              ? deliveryReceipt.receiptNumber
+              : dialog.order.orderNumber
           }
+          busy={busy || printingReceipt}
+          close={() => {
+            setDialog(null);
+            setDeliveryReceipt(null);
+          }}
         >
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              const data = new FormData(event.currentTarget);
-              if (dialog.kind === "client")
-                mutate(
-                  dialog.client ? "/clients/" + dialog.client.id : "/clients",
-                  dialog.client ? "PUT" : "POST",
-                  {
-                    ...(dialog.client
-                      ? {
-                          expected: {
-                            name: dialog.client.name,
-                            address: dialog.client.address,
-                          },
-                        }
-                      : {}),
-                    name: data.get("name"),
-                    address: data.get("address"),
-                  },
-                );
-              else
-                mutate("/products/" + dialog.product.id + "/price", "PUT", {
-                  wholesalePrice: data.get("price") || null,
-                  expectedPrice: dialog.product.wholesalePrice,
-                });
-            }}
-          >
-            <fieldset className="wholesale-fields" disabled={locked}>
-              {dialog.kind === "client" ? (
-                <>
-                  <div className="field">
-                    <label htmlFor={"wholesale-client-name"}>
-                      Client name *
-                    </label>
-                    <input
-                      id={"wholesale-client-name"}
-                      name="name"
-                      maxLength={255}
-                      required
-                      defaultValue={
-                        dialog.kind === "client" ? dialog.client?.name : ""
-                      }
-                    />
-                  </div>
-                  <div className="field">
-                    <label htmlFor={"wholesale-client-address"}>
-                      Delivery address (optional)
-                    </label>
-                    <textarea
-                      id={"wholesale-client-address"}
-                      name="address"
-                      maxLength={2000}
-                      defaultValue={
-                        dialog.kind === "client"
-                          ? (dialog.client?.address ?? "")
-                          : ""
-                      }
-                    />
-                  </div>
-                </>
-              ) : (
-                <>
-                  <p>{dialog.product.name}</p>
-                  <div className="field">
-                    <label htmlFor={"wholesale-product-price"}>
-                      Wholesale unit price (₱)
-                    </label>
-                    <input
-                      id={"wholesale-product-price"}
-                      name="price"
-                      type="number"
-                      min="0"
-                      max="9999999999.99"
-                      step="0.01"
-                      defaultValue={dialog.product.wholesalePrice ?? ""}
-                    />
-                  </div>
-                  <p className="field-hint">
-                    Leave blank to mark the price unconfigured. Retail price is
-                    unchanged.
-                  </p>
-                </>
-              )}
-              <div className="wholesale-actions">
-                <button className="button dark" type="submit">
-                  {busy ? "Saving…" : "Save"}
-                </button>
-              </div>
-            </fieldset>
-            {formError && (
-              <div className="inline-error" role="alert">
-                {formError}
-              </div>
-            )}
-            {pending && !busy && (
-              <button
-                type="button"
-                className="button dark"
-                onClick={() => void submit(pending)}
-              >
-                Retry saved request
-              </button>
-            )}
-          </form>
+          {deliveryReceipt ? (
+            <DeliveryReceiptView
+              receipt={deliveryReceipt}
+              onBusyChange={setPrintingReceipt}
+              close={() => {
+                setDialog(null);
+                setDeliveryReceipt(null);
+              }}
+              embedded
+            />
+          ) : (
+            <>
+              <WholesaleRequestFeedback
+                error={formError}
+                pending={pending}
+                busy={busy}
+                retry={() => pending && void submit(pending)}
+              />
+              <WholesaleDeliveryPanel
+                key={dialog.order.id + ":" + dialog.order.revision}
+                order={dialog.order}
+                detail={dialog.detail}
+                busy={locked}
+                mutate={mutate}
+                initialAction={
+                  dialog.detail.attempts.some(
+                    (attempt) => attempt.status === "InTransit",
+                  )
+                    ? "deliver"
+                    : dialog.detail.attempts.some(
+                          (attempt) => attempt.status === "Scheduled",
+                        )
+                      ? "dispatch"
+                      : dialog.detail.receipt
+                        ? undefined
+                        : "schedule"
+                }
+                viewReceipt={() => {
+                  if (dialog.detail.receipt) {
+                    setDeliveryReceipt(dialog.detail.receipt.snapshot);
+                  }
+                }}
+              />
+            </>
+          )}
         </WholesaleDialog>
       )}
+      {deliveryReceipt && dialog?.kind !== "delivery" && (
+        <DeliveryReceiptView
+          receipt={deliveryReceipt}
+          close={() => setDeliveryReceipt(null)}
+        />
+      )}
+      {dialog &&
+        dialog.kind !== "order" &&
+        dialog.kind !== "details" &&
+        dialog.kind !== "delivery" && (
+          <WholesaleDialog
+            footer={
+              <button
+                className="button dark"
+                type="submit"
+                form="wholesale-maintenance-form"
+                disabled={locked}
+              >
+                {busy
+                  ? "Saving…"
+                  : dialog.kind === "client"
+                    ? "Save client"
+                    : !priceInput.trim() &&
+                        dialog.product.wholesalePrice !== null
+                      ? "Remove wholesale price"
+                      : "Save wholesale price"}
+              </button>
+            }
+            title={
+              dialog.kind === "client"
+                ? dialog.client
+                  ? "Edit wholesale client"
+                  : "Add wholesale client"
+                : "Set wholesale price"
+            }
+            busy={busy}
+            close={() => setDialog(null)}
+            description={
+              dialog.kind === "client"
+                ? "Business name and delivery destination."
+                : "Wholesale unit prices include VAT where applicable."
+            }
+          >
+            <form
+              id="wholesale-maintenance-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const data = new FormData(event.currentTarget);
+                if (dialog.kind === "client")
+                  mutate(
+                    dialog.client ? "/clients/" + dialog.client.id : "/clients",
+                    dialog.client ? "PUT" : "POST",
+                    {
+                      ...(dialog.client
+                        ? {
+                            expected: {
+                              name: dialog.client.name,
+                              address: dialog.client.address,
+                            },
+                          }
+                        : {}),
+                      name: data.get("name"),
+                      address: data.get("address"),
+                    },
+                  );
+                else
+                  mutate("/products/" + dialog.product.id + "/price", "PUT", {
+                    wholesalePrice: data.get("price") || null,
+                    expectedPrice: dialog.product.wholesalePrice,
+                  });
+              }}
+            >
+              <fieldset className="wholesale-fields" disabled={locked}>
+                {dialog.kind === "client" ? (
+                  <>
+                    <div className="field">
+                      <label htmlFor={"wholesale-client-name"}>
+                        Client name *
+                      </label>
+                      <input
+                        id={"wholesale-client-name"}
+                        name="name"
+                        maxLength={255}
+                        required
+                        defaultValue={
+                          dialog.kind === "client" ? dialog.client?.name : ""
+                        }
+                      />
+                    </div>
+                    <div className="field">
+                      <label htmlFor={"wholesale-client-address"}>
+                        Delivery address (optional)
+                      </label>
+                      <textarea
+                        id={"wholesale-client-address"}
+                        name="address"
+                        rows={3}
+                        maxLength={2000}
+                        defaultValue={
+                          dialog.kind === "client"
+                            ? (dialog.client?.address ?? "")
+                            : ""
+                        }
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <section className="wholesale-context">
+                      <strong>{dialog.product.name}</strong>
+                      <span>
+                        {dialog.product.sku} ·{" "}
+                        {dialog.product.isVatExempt === null
+                          ? "VAT classification missing"
+                          : dialog.product.isVatExempt
+                            ? "VAT-exempt"
+                            : "VATable"}
+                      </span>
+                      <span>
+                        Current price:{" "}
+                        {dialog.product.wholesalePrice === null
+                          ? "Not configured"
+                          : wholesalePeso(dialog.product.wholesalePrice)}
+                      </span>
+                    </section>
+                    <div className="field">
+                      <label htmlFor={"wholesale-product-price"}>
+                        Wholesale unit price (₱)
+                      </label>
+                      <input
+                        id={"wholesale-product-price"}
+                        name="price"
+                        type="number"
+                        min="0"
+                        max="9999999999.99"
+                        step="0.01"
+                        value={priceInput}
+                        onChange={(event) => setPriceInput(event.target.value)}
+                      />
+                    </div>
+                    <p className="field-hint">
+                      Prices include VAT where applicable. Leave blank to remove
+                      the configured wholesale price.
+                    </p>
+                  </>
+                )}
+              </fieldset>
+              {formError && (
+                <div className="inline-error" role="alert">
+                  {formError}
+                </div>
+              )}
+              {pending && !busy && (
+                <button
+                  type="button"
+                  className="button dark"
+                  onClick={() => void submit(pending)}
+                >
+                  Retry saved request
+                </button>
+              )}
+            </form>
+          </WholesaleDialog>
+        )}
     </div>
   );
 }

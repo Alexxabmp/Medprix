@@ -1,0 +1,55 @@
+import * as React from "react";
+import type { WholesaleInstallmentSchedule } from "@workspace/api-zod";
+import { formatDisplayDate } from "@/lib/business-date";
+import { wholesalePeso } from "@/lib/wholesale-api";
+import { ModalDataTable } from "./modal-data-table";
+
+/** Original obligations only; actual collections remain a separate history. */
+export function WholesaleInstallmentScheduleView({
+  schedule,
+  preview = false,
+}: {
+  schedule: WholesaleInstallmentSchedule;
+  preview?: boolean;
+}) {
+  return (
+    <section
+      className="modal-section"
+      aria-label={
+        preview
+          ? "Installment schedule preview"
+          : "Original installment schedule"
+      }
+    >
+      <h3>Payment schedule</h3>
+      <p className="field-hint">
+        {schedule.paymentPlan === "Net30"
+          ? "Net-30 · 4 weekly installments"
+          : "Net-60 · 8 weekly installments"}
+        . Final settlement deadline:{" "}
+        <strong>{formatDisplayDate(schedule.finalDueDate)}</strong>.
+      </p>
+      <ModalDataTable className="data-table">
+        <thead>
+          <tr>
+            <th>Installment</th>
+            <th>Due date</th>
+            <th>Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {schedule.installments.map((row) => (
+            <tr key={row.sequenceNumber}>
+              <td data-label="Installment">{row.sequenceNumber}</td>
+              <td data-label="Due date">{formatDisplayDate(row.dueDate)}</td>
+              <td data-label="Amount">
+                {wholesalePeso(row.amount)}
+                {row.amount === "0.00" ? " · No payment due" : ""}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </ModalDataTable>
+    </section>
+  );
+}

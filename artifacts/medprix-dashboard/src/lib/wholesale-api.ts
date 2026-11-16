@@ -1,5 +1,12 @@
 import { safeError } from "./feedback";
 import { formatDisplayDateTime } from "./business-date";
+import type {
+  WholesaleAgreement,
+  WholesalePaymentPlan,
+  WholesaleInstallmentSchedule,
+  WholesaleInstallmentBalance,
+  WholesalePaymentAllocation,
+} from "@workspace/api-zod";
 
 export type WholesaleProduct = {
   physicalStock: number;
@@ -29,6 +36,7 @@ export type WholesaleOrder = {
   revision: number;
   status: string;
   clientId: string;
+  paymentPlan: WholesalePaymentPlan | null;
   clientName: string;
   total: string;
   updatedAt: string;
@@ -42,7 +50,10 @@ export type WholesaleRequest = {
   body: unknown;
 };
 
-const wholesaleMemoryCache = new Map<string, { data: unknown; fetchedAt: number }>();
+const wholesaleMemoryCache = new Map<
+  string,
+  { data: unknown; fetchedAt: number }
+>();
 const wholesaleInFlight = new Map<string, Promise<unknown>>();
 const WHOLESALE_STORAGE_PREFIX = "medprix_wholesale_cache:";
 
@@ -120,15 +131,23 @@ export async function wholesaleWrite(request: WholesaleRequest) {
 }
 
 async function writeWholesaleRequest(base: string, request: WholesaleRequest) {
-  const response = await fetch(base + request.path, {
-    method: request.method,
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      "Idempotency-Key": request.key,
-    },
-    body: JSON.stringify(request.body),
-  });
+  let response: Response;
+  try {
+    response = await fetch(base + request.path, {
+      method: request.method,
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": request.key,
+      },
+      body: JSON.stringify(request.body),
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch {
+    throw new Error(
+      "The result is uncertain. Retry the saved request. You can close this window and browse records.",
+    );
+  }
   const data = await response.json().catch(() => null);
   if (!response.ok) {
     const error = new Error(
@@ -138,7 +157,10 @@ async function writeWholesaleRequest(base: string, request: WholesaleRequest) {
       ),
     );
     Object.assign(error, {
-      definitive: response.status >= 400 && response.status < 500,
+      definitive:
+        response.status >= 400 &&
+        response.status < 500 &&
+        response.status !== 408,
     });
     throw error;
   }
@@ -165,27 +187,31 @@ export type WholesaleOverride = {
   approvedByName: string | null;
 };
 export type WholesaleOrderDetail = {
+  client?: WholesaleClient;
   attempts: Array<{
     id: string;
     date: string;
     status: string;
     notes: string | null;
+    dispatchedAt: string | null;
   }>;
   receipt: { receiptId: string; snapshot: DeliveryReceipt } | null;
-  snapshot: null | {
-    clientName: string;
-    address: string;
-    total: string;
-    vat: string;
-    lines: Array<
-      WholesaleLine & {
-        name: string;
-        unitPrice: string;
-        originalPrice: string;
-        override: null | { adminId: string; reason: string };
-      }
-    >;
-  };
+  snapshot:
+    | null
+    | (WholesaleAgreement & {
+        clientName: string;
+        address: string;
+        total: string;
+        vat: string;
+        lines: Array<
+          WholesaleLine & {
+            name: string;
+            unitPrice: string;
+            originalPrice: string;
+            override: null | { adminId: string; reason: string };
+          }
+        >;
+      });
   overrides: WholesaleOverride[];
   reservations: Array<{
     id: string;
@@ -205,6 +231,8 @@ export type DeliveryReceipt = {
   clientName: string;
   address: string;
   deliveredAt: string;
+  recordedAt: string;
+  installmentSchedule: WholesaleInstallmentSchedule;
   receivedBy: string;
   dueDate: string;
   total: string;
@@ -235,7 +263,8 @@ export type DeliveryReceiptSummary = {
   deliveredAt: string;
 };
 
-export type WholesaleAccountFilter = "all" | "outstanding" | "overdue" | "paid";
+export type WholesaleAccountFilter =
+  "all" | "outstanding" | "overdue" | "paid" | "deadline";
 
 export type WholesaleOverview = {
   today: string;
@@ -248,6 +277,13 @@ export type WholesaleOverview = {
 };
 
 export type WholesaleReceivable = {
+  paymentPlan: WholesalePaymentPlan;
+  asOfDate: string;
+  overdueAmount: string;
+  overdueInstallmentCount: number;
+  nextDueDate: string | null;
+  nextDueAmount: string;
+  finalDeadlineBreached: boolean;
   status: string;
   id: string;
   orderNumber: string;
@@ -268,24 +304,26 @@ export type WholesaleCollection = {
   id: string;
   amount: string;
   collectedAt: string;
-  method: string | null;
+  method: string;
   reference: string | null;
   notes: string | null;
-  collectorId: string | null;
-  collectorName: string | null;
+  collectorId: string;
+  collectorName: string;
   reversalId: string | null;
   reversalReason: string | null;
   reversedAt: string | null;
+  allocations: WholesalePaymentAllocation[];
 };
 export type WholesaleReceivableDetail = WholesaleReceivable & {
   payments: WholesaleCollection[];
-  reviewRequired: boolean;
+  schedule: WholesaleInstallmentSchedule;
+  installments: WholesaleInstallmentBalance[];
   methods: string[];
 };
 export function wholesaleDateTime(value: string) {
   return formatDisplayDateTime(value, "Asia/Manila");
 }
-export function wholesaleManilaInput() {
+export function wholesaleManilaInput(instant = new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Manila",
     year: "numeric",
@@ -296,7 +334,7 @@ export function wholesaleManilaInput() {
     second: "2-digit",
     hourCycle: "h23",
     fractionalSecondDigits: 3,
-  }).formatToParts(new Date());
+  }).formatToParts(instant);
   const value = (name: string) =>
     parts.find((part) => part.type === name)!.value;
   return (

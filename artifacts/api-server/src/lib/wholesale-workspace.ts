@@ -18,6 +18,56 @@ function paging(search: unknown, page: unknown) {
 
 export function createWholesaleWorkspace(read: WholesaleQuery) {
   return {
+    async deliveryQueue(
+      search: unknown = "",
+      page: unknown = "1",
+      status: unknown = "all",
+    ) {
+      const values = paging(search, page);
+      if (
+        typeof status !== "string" ||
+        ![
+          "active",
+          "all",
+          "Ready",
+          "Scheduled",
+          "InTransit",
+          "Completed",
+        ].includes(status)
+      )
+        throw new WholesaleError(400, "Choose a valid delivery status.");
+      const where = `FROM (
+        SELECT o.id,o.order_number AS "orderNumber",o.confirmation_snapshot->>'clientName' AS "clientName",
+          o.total_order_amount::text AS total,d.scheduled_date::text AS date,
+          o.confirmed_at,d.dispatched_at,f.delivered_at,
+          CASE WHEN o.status='Delivered' THEN 'Completed'
+            WHEN d.status IN ('Scheduled','InTransit') THEN d.status::text ELSE 'Ready' END AS status
+        FROM wholesale_orders o LEFT JOIN LATERAL (
+          SELECT scheduled_date,status,dispatched_at FROM delivery_schedules WHERE order_id=o.id AND managed_by IS NOT NULL
+          ORDER BY created_at DESC,id DESC LIMIT 1
+        ) d ON true
+        LEFT JOIN wholesale_fulfillments f ON f.order_id=o.id
+        WHERE o.confirmation_snapshot IS NOT NULL AND o.status IN ('Confirmed','Processing','Delivered')
+      ) queue WHERE ($2='all' OR ($2='active' AND status<>'Completed') OR status=$2)
+        AND strpos(lower("orderNumber" || ' ' || "clientName"),lower($1))>0`;
+      const {
+        rows: [count],
+      } = await read("SELECT count(*)::int AS total " + where, [
+        values.search,
+        status,
+      ]);
+      const { rows: items } = await read(
+        `SELECT id,"orderNumber","clientName",total,date,status ${where}
+        ORDER BY CASE status WHEN 'InTransit' THEN 0 WHEN 'Ready' THEN 1 WHEN 'Scheduled' THEN 2 ELSE 3 END,
+          CASE WHEN status='InTransit' THEN dispatched_at END ASC NULLS LAST,
+          CASE WHEN status='Ready' THEN confirmed_at END ASC NULLS LAST,
+          CASE WHEN status='Scheduled' THEN date END ASC NULLS LAST,
+          CASE WHEN status='Completed' THEN delivered_at END DESC NULLS LAST,id
+        LIMIT 50 OFFSET $3`,
+        [values.search, status, values.offset],
+      );
+      return { items, total: count.total, page: values.page, pageSize: 50 };
+    },
     async pendingOrders(search: unknown = "", page: unknown = "1") {
       const values = paging(search, page);
       const where = `FROM wholesale_orders o JOIN wholesale_clients c ON c.id=o.client_id

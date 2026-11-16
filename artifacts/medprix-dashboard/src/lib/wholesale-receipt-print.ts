@@ -1,5 +1,5 @@
 import type { DeliveryReceipt } from "./wholesale-api";
-import { formatDisplayDate } from "./business-date";
+import { formatDisplayDate, formatDisplayDateTime } from "./business-date";
 import { printDocument } from "./receipt-print";
 
 const escapeHtml = (value: unknown) =>
@@ -188,14 +188,16 @@ export function deliveryReceiptMarkup(receipt: DeliveryReceipt): string {
       <div class="dr-merchant">${e(receipt.merchantName)}</div>
       <div class="dr-heading"><h1>DELIVERY RECEIPT</h1>
         <p>DR No. <strong>${e(receipt.receiptNumber)}</strong></p>
-        <p>Date: ${e(date(receipt.deliveredAt))}</p>
+        <p>Actual receipt: ${e(formatDisplayDateTime(receipt.deliveredAt, "Asia/Manila"))}</p>
+        <p>Recorded: ${e(formatDisplayDateTime(receipt.recordedAt, "Asia/Manila"))}</p>
       </div>
     </header>
     <section class="dr-details">
       <div><h2>Deliver to</h2><strong>${e(receipt.clientName)}</strong><p class="dr-address">${e(receipt.address)}</p></div>
       <div><h2>Order details</h2>
         <p class="dr-pair"><span>Order reference</span><strong>${e(receipt.orderNumber)}</strong></p>
-        <p class="dr-pair"><span>Payment due</span><span>${e(date(receipt.dueDate + "T00:00:00+08:00"))}</span></p>
+        <p class="dr-pair"><span>Payment plan</span><span>${receipt.installmentSchedule.paymentPlan === "Net30" ? "Net-30" : "Net-60"}</span></p>
+        <p class="dr-pair"><span>Final settlement deadline</span><span>${e(date(receipt.dueDate))}</span></p>
       </div>
     </section>
     <table aria-label="Delivered items"><colgroup>
@@ -221,6 +223,13 @@ export function deliveryReceiptMarkup(receipt: DeliveryReceipt): string {
         <p class="dr-pair"><span>VAT (included)</span><span>${decimal(amount(receipt.vat))}</span></p>
         <p class="dr-pair dr-total"><span>TOTAL (PHP)</span><span>${decimal(amount(receipt.total))}</span></p>
       </div>
+    </section>
+    <section aria-label="Original installment schedule" style="margin-top:24px">
+      <h2>Original installment schedule</h2>
+      <table><thead><tr><th>INSTALLMENT</th><th>DUE DATE</th><th class="dr-number">AMOUNT (PHP)</th></tr></thead><tbody>
+        ${receipt.installmentSchedule.installments.map((row) => `<tr><td>${row.sequenceNumber}</td><td>${e(date(row.dueDate))}</td><td class="dr-number">${decimal(amount(row.amount))}${row.amount === "0.00" ? " (No payment due)" : ""}</td></tr>`).join("")}
+      </tbody></table>
+      <p>No interest or penalties. Early settlement is allowed.</p>
     </section>
     <section class="dr-acknowledgment"><div class="dr-received"><strong>Received by</strong>
       <p>${e(receipt.receivedBy)}</p><p>${e(date(receipt.deliveredAt))}</p>

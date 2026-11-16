@@ -1,0 +1,241 @@
+/* Wholesale form placement only; shared modal and table styles own presentation. */
+.wholesale-dialog .wholesale-form-footer {
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  margin: 0;
+  padding: 16px 25px;
+  border-top: 1px solid hsl(var(--border));
+}
+.wholesale-line.wholesale-draft-line {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+}
+.wholesale-draft-line > .field:first-child,
+.wholesale-draft-line .wholesale-line-error {
+  grid-column: 1 / -1;
+}
+.wholesale-draft-line .field strong {
+  overflow-wrap: anywhere;
+}
+.wholesale-delivery-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+@media (max-width: 600px) {
+  .wholesale-delivery-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.wholesale-account-dialog .wholesale-account-summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.wholesale-account-form {
+  display: grid;
+  gap: 16px;
+  width: 100%;
+}
+.wholesale-account-form .form-grid {
+  align-items: start;
+}
+.wholesale-account-form .field {
+  min-width: 0;
+}
+@media (max-width: 600px) {
+  .wholesale-account-dialog .wholesale-account-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .wholesale-account-dialog .wholesale-account-summary > :last-child {
+    grid-column: auto;
+  }
+}
+
+/* Explicit Wholesale variants share the same shell and spacing. */
+.modal.modal-table-standard.wholesale-dialog.wholesale-modal-form {
+  width: min(640px, 100%);
+}
+.modal.modal-table-standard.wholesale-dialog.wholesale-modal-compact-table {
+  width: min(900px, 100%);
+}
+.modal.modal-table-standard.wholesale-dialog.wholesale-modal-table {
+  width: min(1280px, 100%);
+}
+.modal.modal-table-standard.wholesale-dialog {
+  border-radius: 23px;
+}
+.modal.modal-table-standard.wholesale-dialog > .modal-header {
+  padding: 24px 24px 18px;
+}
+.modal.modal-table-standard.wholesale-dialog .wholesale-dialog-body {
+  margin: 0;
+  padding: 0 24px 24px;
+  scrollbar-gutter: auto;
+}
+.modal.modal-table-standard.wholesale-dialog
+  :is(.modal-table-footer, .wholesale-form-footer) {
+  padding: 16px 24px;
+}
+.modal.modal-table-standard.wholesale-dialog .wholesale-form-footer {
+  border-top: 0;
+}
+.wholesale-review-summary.wholesale-order-summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.wholesale-context {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 10px;
+  background: hsl(var(--surface-soft));
+}
+.wholesale-context :is(p, h3) {
+  margin: 0;
+}
+.wholesale-context dl {
+  margin: 0;
+}
+.wholesale-context .button {
+  justify-self: start;
+}
+.wholesale-detail-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+.wholesale-detail-list dt {
+  color: hsl(var(--muted));
+  font-size: var(--text-xs);
+}
+.wholesale-detail-list dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.wholesale-dialog details > summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: var(--text-sm);
+}
+.wholesale-dialog details > :not(summary) {
+  margin-top: 12px;
+}
+.wholesale-dialog .wholesale-allocation-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+.wholesale-allocation-list > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+.wholesale-allocation-list dd {
+  margin: 0;
+}
+.wholesale-payment-context {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.wholesale-payment-context > .button {
+  grid-column: 1 / -1;
+}
+.wholesale-account-dialog .wholesale-payment-history {
+  min-width: 0;
+}
+.wholesale-dialog .wholesale-receipt-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0;
+}
+.wholesale-receipt-meta dt {
+  color: hsl(var(--muted));
+  font-size: var(--text-xs);
+}
+.wholesale-receipt-meta dd {
+  margin: 4px 0 0;
+}
+.wholesale-dialog .wholesale-row-details td {
+  white-space: normal;
+}
+.wholesale-dialog .wholesale-line .button {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+}
+@media (max-width: 600px) {
+  .modal.modal-table-standard.wholesale-dialog > .modal-header {
+    padding: 16px;
+  }
+  .modal.modal-table-standard.wholesale-dialog .wholesale-dialog-body {
+    padding: 0 16px 16px;
+  }
+  .modal.modal-table-standard.wholesale-dialog
+    :is(.modal-table-footer, .wholesale-form-footer) {
+    padding: 16px;
+  }
+  .wholesale-review-summary.wholesale-order-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .wholesale-review-summary.wholesale-order-summary > :last-child {
+    grid-column: auto;
+  }
+  .wholesale-dialog .form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .wholesale-dialog .wholesale-receipt-meta {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.wholesale-dialog .wholesale-fields {
+  grid-template-columns: minmax(0, 1fr);
+}
+.wholesale-dialog .wholesale-fields > * {
+  min-width: 0;
+}
+.wholesale-payment-context > div {
+  display: grid;
+  gap: 4px;
+}
+.wholesale-payment-context > .button {
+  grid-column: 2;
+}
+.wholesale-dialog [data-modal-table="receipt-items"] {
+  min-width: 760px;
+}
+.wholesale-dialog [data-modal-table="receipt-items"] td:first-child {
+  white-space: normal;
+}
+
+.wholesale-dialog .wholesale-context {
+  font-size: var(--text-sm);
+}
+.wholesale-details > .pill {
+  justify-self: start;
+}
+.wholesale-override-group {
+  display: grid;
+  gap: 12px;
+}
+.wholesale-override-group > h3 {
+  margin: 0;
+}
+.modal.wholesale-dialog :is(input, textarea, button):focus-visible {
+  outline: 2px solid hsl(var(--foreground));
+  outline-offset: 2px;
+}
+@media (max-width: 600px) {
+  .wholesale-payment-context > .button {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Summary pagination owns the footer; there is no second action group. */
+.wholesale-summary-dialog .modal-table-footer .modal-table-pager {
+  width: 100%;
+  margin-right: 0;
+}
+.wholesale-summary-dialog .modal-table-pager > span:first-child {
+  margin-right: auto;
+}
+.delivery-receipt-details { min-width: 0; }

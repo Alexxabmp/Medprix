@@ -3169,9 +3169,6 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
 .dark .wholesale-dialog {
   color-scheme: dark;
 }
-.wholesale-review-dialog {
-  height: min(760px, calc(100dvh - 36px));
-}
 .wholesale-dialog .modal-header {
   flex: 0 0 auto;
   padding: 24px;
@@ -3261,9 +3258,6 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
 @media (max-width: 600px) {
   .wholesale-dialog {
     padding: 0;
-  }
-  .wholesale-review-dialog {
-    height: min(760px, calc(100dvh - 24px));
   }
   .wholesale-dialog .modal-header {
     padding: 18px;
@@ -3648,7 +3642,7 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
   min-width: 0;
   height: 40px;
 }
-.modal.wholesale-summary-dialog .wholesale-summary-controls > select {
+.modal.wholesale-summary-dialog .wholesale-summary-controls > .app-select-trigger {
   flex: 0 1 200px;
   width: auto;
   max-width: 100%;
@@ -3771,7 +3765,7 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
   .wholesale-summary-table .button {
     justify-self: start;
   }
-  .modal.wholesale-summary-dialog .wholesale-summary-controls > select {
+  .modal.wholesale-summary-dialog .wholesale-summary-controls > .app-select-trigger {
     flex: 1 1 100%;
     width: 100%;
   }

@@ -1,11 +1,21 @@
-import { formatDisplayDate } from "@/lib/business-date";
-import { useState } from "react";
-import { Truck } from "lucide-react";
-import { EmptyState } from "./custom-ui/empty-state";
-import { pharmacyDate } from "@workspace/api-zod";
+import { useLayoutEffect, useId, useState } from "react";
+import {
+  pharmacyDate,
+  calculateWholesaleSchedule,
+  wholesaleReceiptTimeSchema,
+} from "@workspace/api-zod";
 import type { WholesaleOrder, WholesaleOrderDetail } from "@/lib/wholesale-api";
-import { wholesalePeso } from "@/lib/wholesale-api";
-import { ModalTableValue, useModalTableStandard, ModalTableFrame, ModalTablePager, useModalTableRows } from "./modal-table-layout";
+import {
+  wholesalePeso,
+  wholesaleManilaInput,
+  wholesaleDateTime,
+} from "@/lib/wholesale-api";
+import { formatDisplayDate } from "@/lib/business-date";
+import { WholesaleInstallmentScheduleView } from "./wholesale-installment-schedule";
+import { useWholesaleDialogView } from "./wholesale-dialog";
+import { ModalDataTable } from "./modal-data-table";
+import { ModalTableFooter } from "./modal-table-layout";
+import "@/styles/wholesale-workflow.css";
 
 export function WholesaleDeliveryPanel({
   order,
@@ -13,266 +23,422 @@ export function WholesaleDeliveryPanel({
   busy,
   mutate,
   viewReceipt,
+  initialAction,
+  showTotal = true,
+  onTaskChange,
 }: {
-  viewReceipt: () => void;
   order: WholesaleOrder;
   detail: WholesaleOrderDetail;
   busy: boolean;
   mutate: (path: string, method: string, body: unknown) => void;
+  viewReceipt: () => void;
+  initialAction?: "dispatch" | "deliver" | "schedule";
+  showTotal?: boolean;
+  onTaskChange?: (active: boolean) => void;
 }) {
-  const preview = useModalTableStandard();
-  const [action, setAction] = useState("");
-  const pages = useModalTableRows(detail.attempts, order.id);
+  const formId = useId();
+  const [action, setAction] = useState(initialAction ?? "");
+  const [receiptTime, setReceiptTime] = useState(
+    initialAction === "deliver" ? wholesaleManilaInput() : "",
+  );
+  const [validation, setValidation] = useState("");
+  const [historyOpen, setHistoryOpen] = useState(false);
   const active = detail.attempts.find((item) =>
     ["Scheduled", "InTransit"].includes(item.status),
   );
   const path = "/orders/" + order.id;
   const eligible = ["Confirmed", "Processing"].includes(order.status);
+  const parsedTime = wholesaleReceiptTimeSchema.safeParse(
+    (receiptTime.length === 16 ? receiptTime + ":00" : receiptTime) + "+08:00",
+  );
+  const schedule =
+    action === "deliver" && parsedTime.success && order.paymentPlan
+      ? calculateWholesaleSchedule({
+          paymentPlan: order.paymentPlan,
+          total: order.total,
+          receivedAt: parsedTime.data,
+        })
+      : null;
+  useLayoutEffect(() => {
+    onTaskChange?.(Boolean(action));
+  }, [action, onTaskChange]);
+  useWholesaleDialogView(
+    action
+      ? {
+          title:
+            action === "schedule"
+              ? "Schedule delivery"
+              : action === "dispatch"
+                ? "Dispatch delivery"
+                : action === "deliver"
+                  ? "Confirm client receipt"
+                  : action === "fail"
+                    ? "Record failed delivery"
+                    : "Cancel delivery attempt",
+          variant: action === "deliver" ? "compact-table" : "form",
+          back: () => {
+            setAction("");
+            setValidation("");
+          },
+        }
+      : null,
+  );
+  const submitLabel = !active
+    ? "Schedule delivery"
+    : action === "deliver"
+      ? "Confirm receipt"
+      : action === "dispatch"
+        ? "Confirm dispatch"
+        : action === "fail"
+          ? "Record failed delivery"
+          : "Cancel attempt";
   return (
-    <section className="modal-section wholesale-details">
-      <h3>Delivery</h3>
-      {detail.attempts.length === 0 && (
-        <EmptyState icon={Truck}>No delivery attempts scheduled.</EmptyState>
-      )}
-      {detail.attempts.length > 0 && (
-        <>
-        <ModalTableFrame>
-        <div className="table-scroll" role={preview ? "region" : undefined} aria-label={preview ? "Delivery attempts, scroll horizontally for more columns" : undefined} tabIndex={preview ? 0 : undefined}>
-          <table className="data-table" data-modal-table={preview ? "attempts" : undefined}>
-            <thead>
-              <tr>
-                <th>Scheduled date</th>
-                <th>Status</th>
-                <th>Notes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pages.rows.map((item) => (
-                <tr key={item.id}>
-                  <td data-label={preview ? "Scheduled date" : undefined}>{formatDisplayDate(item.date)}</td>
-                  <td data-label={preview ? "Status" : undefined}>
-                    <span className="pill neutral">
-                      {item.status === "InTransit" ? "In transit" : item.status}
-                    </span>
-                  </td>
-                  <td data-label={preview ? "Notes" : undefined}><ModalTableValue value={item.notes || "—"} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        </ModalTableFrame>
-        <ModalTablePager {...pages} label="Delivery attempts" />
-        </>
+    <div className="wholesale-details">
+      {!action && (
+        <dl className="wholesale-review-summary">
+          <div>
+            <dt>Status</dt>
+            <dd>
+              {detail.receipt
+                ? "Delivered"
+                : active?.status === "InTransit"
+                  ? "In transit"
+                  : active?.status === "Scheduled"
+                    ? "Scheduled"
+                    : "Needs scheduling"}
+            </dd>
+          </div>
+          {showTotal && (
+            <div>
+              <dt>Order total</dt>
+              <dd>
+                <strong>{wholesalePeso(order.total)}</strong>
+              </dd>
+            </div>
+          )}
+          {active && (
+            <div>
+              <dt>Scheduled date</dt>
+              <dd>{formatDisplayDate(active.date)}</dd>
+            </div>
+          )}
+        </dl>
       )}
       {detail.receipt && (
         <>
-          <p>
-            Delivered in full. The receivable was created for{" "}
-            {wholesalePeso(detail.receipt.snapshot.total)}.
-          </p>
-          <button className="button soft" disabled={busy} onClick={viewReceipt}>
-            View delivery receipt
-          </button>
+          <WholesaleInstallmentScheduleView
+            schedule={detail.receipt.snapshot.installmentSchedule}
+          />
+          <ModalTableFooter>
+            <button
+              className="button soft"
+              disabled={busy}
+              onClick={viewReceipt}
+            >
+              View receipt
+            </button>
+          </ModalTableFooter>
         </>
       )}
-      {eligible && !active && (
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            const form = new FormData(event.currentTarget);
-            mutate(path + "/schedule", "POST", {
-              revision: order.revision,
-              date: form.get("date"),
-              notes: form.get("notes"),
-            });
-          }}
+      {(action || showTotal) && (
+        <section
+          className="wholesale-context"
+          aria-label="Delivery destination"
         >
-          <fieldset className="wholesale-fields" disabled={busy}>
-            <div className="field">
-              <label htmlFor="wholesale-delivery-date">Scheduled date *</label>
-              <input
-                id="wholesale-delivery-date"
-                name="date"
-                type="date"
-                min={pharmacyDate()}
-                required
-                defaultValue={pharmacyDate()}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="wholesale-delivery-notes">Delivery notes</label>
-              <textarea
-                id="wholesale-delivery-notes"
-                name="notes"
-                maxLength={500}
-              />
-            </div>
-            <button className="button dark w-fit" type="submit">
-              Schedule delivery
+          <strong>
+            {detail.snapshot?.clientName ??
+              detail.client?.name ??
+              order.clientName}
+          </strong>
+          <p>
+            {detail.snapshot?.address ??
+              detail.client?.address ??
+              "No delivery address"}
+          </p>
+          {action && active && (
+            <p className="muted">
+              {active.status === "InTransit" ? "In transit" : "Scheduled"} ·{" "}
+              {formatDisplayDate(active.date)}
+            </p>
+          )}
+          {active?.notes && (
+            <p>
+              <span className="field-label">Delivery instructions: </span>
+              {active.notes}
+            </p>
+          )}
+          <details>
+            <summary>
+              Items ({order.lines.reduce((sum, line) => sum + line.quantity, 0)}{" "}
+              units)
+            </summary>
+            <ul>
+              {order.lines.map((line) => (
+                <li key={line.productId}>
+                  {line.name} · {line.quantity} units
+                </li>
+              ))}
+            </ul>
+          </details>
+        </section>
+      )}
+      {eligible && action && (
+        <>
+          <form
+            id={formId}
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (busy) return;
+              const form = new FormData(event.currentTarget);
+              if (!active) {
+                mutate(path + "/schedule", "POST", {
+                  revision: order.revision,
+                  date: form.get("date"),
+                  notes: form.get("notes"),
+                });
+              } else if (action === "deliver") {
+                if (!parsedTime.success) {
+                  setValidation(
+                    "Enter the actual receipt date and time in Manila.",
+                  );
+                  return;
+                }
+                mutate(path + "/deliver", "POST", {
+                  revision: order.revision,
+                  scheduleId: active.id,
+                  receivedBy: form.get("receivedBy"),
+                  receivedAt: new Date(parsedTime.data).toISOString(),
+                  receivedInFull: form.get("receivedInFull") === "on",
+                });
+              } else {
+                mutate(path + "/delivery-status", "POST", {
+                  revision: order.revision,
+                  scheduleId: active.id,
+                  status:
+                    action === "dispatch"
+                      ? "InTransit"
+                      : action === "fail"
+                        ? "Failed"
+                        : "Cancelled",
+                  ...(action === "dispatch"
+                    ? {}
+                    : {
+                        reason: form.get("reason"),
+                        returned: form.get("returned") === "on",
+                      }),
+                });
+              }
+            }}
+          >
+            <fieldset className="wholesale-fields" disabled={busy}>
+              {!active ? (
+                <>
+                  <div className="field">
+                    <label htmlFor={formId + "-date"}>Scheduled date *</label>
+                    <input
+                      id={formId + "-date"}
+                      name="date"
+                      type="date"
+                      min={pharmacyDate()}
+                      defaultValue={pharmacyDate()}
+                      required
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor={formId + "-notes"}>Notes</label>
+                    <textarea
+                      id={formId + "-notes"}
+                      name="notes"
+                      maxLength={500}
+                    />
+                  </div>
+                </>
+              ) : action === "deliver" ? (
+                <>
+                  <div className="wholesale-delivery-fields">
+                    <div className="field">
+                      <label htmlFor={formId + "-recipient"}>
+                        Received by *
+                      </label>
+                      <input
+                        id={formId + "-recipient"}
+                        name="receivedBy"
+                        maxLength={255}
+                        required
+                      />
+                    </div>
+                    <div className="field">
+                      <label htmlFor={formId + "-received"}>
+                        Received at (Manila) *
+                      </label>
+                      <input
+                        id={formId + "-received"}
+                        name="receivedAt"
+                        type="datetime-local"
+                        step="0.001"
+                        min={
+                          active.dispatchedAt
+                            ? wholesaleManilaInput(
+                                new Date(active.dispatchedAt),
+                              )
+                            : undefined
+                        }
+                        max={wholesaleManilaInput()}
+                        value={receiptTime}
+                        onChange={(event) => {
+                          setReceiptTime(event.target.value);
+                          setValidation("");
+                        }}
+                        required
+                      />
+                    </div>
+                  </div>
+                  {validation && (
+                    <p className="inline-error" role="alert">
+                      {validation}
+                    </p>
+                  )}
+                  <label className="wholesale-check">
+                    <input name="receivedInFull" type="checkbox" required />
+                    All{" "}
+                    {order.lines.reduce(
+                      (sum, line) => sum + line.quantity,
+                      0,
+                    )}{" "}
+                    units were received by the client.
+                  </label>
+                  {schedule && (
+                    <WholesaleInstallmentScheduleView
+                      schedule={schedule}
+                      preview
+                    />
+                  )}
+                  <p className="field-hint">
+                    Confirming receipt posts the sale and starts the payment
+                    schedule. The receipt cannot be edited.
+                  </p>
+                </>
+              ) : action === "dispatch" ? (
+                <p>
+                  Confirm the goods have left for delivery. Stock stays reserved
+                  until client receipt is confirmed.
+                </p>
+              ) : (
+                <>
+                  <div className="field">
+                    <label htmlFor={formId + "-reason"}>Reason *</label>
+                    <input
+                      id={formId + "-reason"}
+                      name="reason"
+                      maxLength={500}
+                      required
+                    />
+                  </div>
+                  {action === "fail" && (
+                    <label className="wholesale-check">
+                      <input name="returned" type="checkbox" required />
+                      All dispatched goods returned to custody.
+                    </label>
+                  )}
+                </>
+              )}
+            </fieldset>
+          </form>
+          <ModalTableFooter>
+            <button
+              className="button dark"
+              type="submit"
+              form={formId}
+              disabled={busy}
+            >
+              {submitLabel}
             </button>
-          </fieldset>
-        </form>
+          </ModalTableFooter>
+        </>
+      )}
+      {eligible && !active && !action && (
+        <ModalTableFooter>
+          <button
+            className="button dark"
+            disabled={busy}
+            onClick={() => setAction("schedule")}
+          >
+            Schedule delivery
+          </button>
+        </ModalTableFooter>
       )}
       {eligible && active && !action && (
-        <div className="wholesale-actions">
-          {active.status === "Scheduled" ? (
-            <>
-              <button
-                className="button soft"
-                disabled={busy}
-                onClick={() => setAction("cancel")}
-              >
-                Cancel delivery attempt
-              </button>
-              <button
-                className="button dark"
-                disabled={busy}
-                onClick={() => setAction("dispatch")}
-              >
-                Review dispatch
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                className="button soft"
-                disabled={busy}
-                onClick={() => setAction("fail")}
-              >
-                Record failed delivery
-              </button>
-              <button
-                className="button dark"
-                disabled={busy}
-                onClick={() => setAction("deliver")}
-              >
-                Review full delivery
-              </button>
-            </>
-          )}
-        </div>
-      )}
-      {eligible && active && action && (
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            const form = new FormData(event.currentTarget);
-            if (action === "deliver") {
-              mutate(path + "/deliver", "POST", {
-                revision: order.revision,
-                scheduleId: active.id,
-                receivedBy: form.get("receivedBy"),
-                dueDate: form.get("dueDate"),
-              });
-            } else {
-              mutate(path + "/delivery-status", "POST", {
-                revision: order.revision,
-                scheduleId: active.id,
-                status:
-                  action === "dispatch"
-                    ? "InTransit"
-                    : action === "fail"
-                      ? "Failed"
-                      : "Cancelled",
-                ...(action === "dispatch"
-                  ? {}
-                  : {
-                      reason: form.get("reason"),
-                      returned: form.get("returned") === "on",
-                    }),
-              });
+        <ModalTableFooter>
+          <button
+            className="button soft"
+            disabled={busy}
+            onClick={() =>
+              setAction(active.status === "Scheduled" ? "cancel" : "fail")
             }
-          }}
-        >
-          <fieldset className="wholesale-fields" disabled={busy}>
-            {action === "deliver" ? (
-              <>
-                <p>
-                  Confirm receipt of all{" "}
-                  {order.lines.reduce((sum, line) => sum + line.quantity, 0)}{" "}
-                  units for {wholesalePeso(order.total)}. This records the sale,
-                  deducts physical stock and creates the full receivable. This
-                  delivery cannot be edited or cancelled.
-                </p>
-                <div className="field">
-                  <label htmlFor="wholesale-delivery-recipient">
-                    Received by *
-                  </label>
-                  <input
-                    id="wholesale-delivery-recipient"
-                    name="receivedBy"
-                    maxLength={255}
-                    required
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="wholesale-delivery-due">
-                    Payment due date *
-                  </label>
-                  <input
-                    id="wholesale-delivery-due"
-                    name="dueDate"
-                    type="date"
-                    min={pharmacyDate()}
-                    required
-                  />
-                </div>
-                <label className="wholesale-check">
-                  <input type="checkbox" required /> I confirm the entire order
-                  was received.
-                </label>
-              </>
-            ) : action === "dispatch" ? (
-              <p>
-                Mark this order in transit. All goods stay reserved until full
-                delivery is confirmed or a failed attempt returns to custody.
-              </p>
-            ) : (
-              <>
-                <p>
-                  {action === "fail"
-                    ? "Reservations remain protected. Confirm all goods returned before closing this attempt."
-                    : "Cancel this scheduled attempt. The order and its reservations remain active."}
-                </p>
-                <div className="field">
-                  <label htmlFor="wholesale-delivery-reason">Reason *</label>
-                  <input
-                    id="wholesale-delivery-reason"
-                    name="reason"
-                    required
-                    maxLength={500}
-                  />
-                </div>
-                {action === "fail" && (
-                  <label className="wholesale-check">
-                    <input name="returned" type="checkbox" required /> All
-                    dispatched goods returned to custody.
-                  </label>
-                )}
-              </>
-            )}
-            <div className="wholesale-actions">
-              <button
-                className="button soft"
-                type="button"
-                onClick={() => setAction("")}
-              >
-                Back
-              </button>
-              <button className="button dark" type="submit">
-                {action === "deliver"
-                  ? "Confirm full delivery"
-                  : action === "dispatch"
-                    ? "Confirm dispatch"
-                    : action === "fail"
-                      ? "Confirm failed delivery"
-                      : "Confirm attempt cancellation"}
-              </button>
-            </div>
-          </fieldset>
-        </form>
+          >
+            {active.status === "Scheduled"
+              ? "Cancel attempt"
+              : "Record failed delivery"}
+          </button>
+          <button
+            className="button dark"
+            disabled={busy}
+            onClick={() => {
+              setAction(active.status === "Scheduled" ? "dispatch" : "deliver");
+              setReceiptTime(wholesaleManilaInput());
+              setValidation("");
+            }}
+          >
+            {active.status === "Scheduled"
+              ? "Dispatch delivery"
+              : "Confirm client receipt"}
+          </button>
+        </ModalTableFooter>
       )}
-    </section>
+      {!!detail.attempts.length && (
+        <details
+          className="wholesale-review-overrides"
+          onToggle={(event) => setHistoryOpen(event.currentTarget.open)}
+        >
+          <summary>Delivery history ({detail.attempts.length})</summary>
+          {historyOpen && (
+            <div className="wholesale-details">
+              <ModalDataTable className="data-table">
+                <thead>
+                  <tr>
+                    <th>Scheduled date</th>
+                    <th>Dispatched</th>
+                    <th>Status</th>
+                    <th>Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {detail.attempts.map((item) => (
+                    <tr key={item.id}>
+                      <td data-label="Scheduled date">
+                        {formatDisplayDate(item.date)}
+                      </td>
+                      <td data-label="Dispatched">
+                        {item.dispatchedAt
+                          ? wholesaleDateTime(item.dispatchedAt)
+                          : "—"}
+                      </td>
+                      <td data-label="Status">
+                        {item.status === "InTransit"
+                          ? "In transit"
+                          : item.status === "Completed"
+                            ? "Delivered"
+                            : item.status}
+                      </td>
+                      <td data-label="Notes">{item.notes || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </ModalDataTable>
+            </div>
+          )}
+        </details>
+      )}
+    </div>
   );
 }
