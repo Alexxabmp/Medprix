@@ -32,6 +32,9 @@ export const wholesaleFulfillmentsTable = pgTable(
     deliveredBy: uuid("delivered_by")
       .notNull()
       .references(() => usersTable.id, { onDelete: "restrict" }),
+    // Required by schedule activation; populated by the receipt workflow in checkpoint 2.
+    receivedAt: timestamp("received_at", { withTimezone: true }),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
     deliveredAt: timestamp("delivered_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
