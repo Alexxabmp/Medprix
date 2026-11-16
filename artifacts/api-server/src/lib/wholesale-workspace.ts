@@ -38,7 +38,9 @@ export function createWholesaleWorkspace(read: WholesaleQuery) {
         throw new WholesaleError(400, "Choose a valid delivery status.");
       const where = `FROM (
         SELECT o.id,o.order_number AS "orderNumber",o.confirmation_snapshot->>'clientName' AS "clientName",
-          o.total_order_amount::text AS total,d.scheduled_date::text AS date,
+          o.total_order_amount::text AS total,
+          CASE WHEN o.status='Delivered' OR d.status IN ('Scheduled','InTransit')
+            THEN d.scheduled_date::text ELSE NULL END AS date,
           o.confirmed_at,d.dispatched_at,f.delivered_at,
           CASE WHEN o.status='Delivered' THEN 'Completed'
             WHEN d.status IN ('Scheduled','InTransit') THEN d.status::text ELSE 'Ready' END AS status
