@@ -1,0 +1,234 @@
+﻿/* Inventory editors share the spacing and controls of supplier/account dialogs,
+   with the fixed header and footer used by longer wholesale forms. */
+.modal.inventory-form-dialog {
+  width: min(640px, 100%);
+  max-height: min(820px, calc(100dvh - 36px));
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: clip;
+  color-scheme: light;
+}
+.dark .inventory-form-dialog {
+  color-scheme: dark;
+}
+
+.inventory-form-dialog .modal-header > div {
+  min-width: 0;
+}
+.inventory-form-dialog .modal-sub {
+  margin: 6px 0 0;
+  line-height: 1.5;
+}
+.inventory-form-dialog .modal-close {
+  flex: 0 0 30px;
+}
+.product-form-layout {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.product-form-fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.inventory-form-section + .inventory-form-section {
+  margin-top: 22px;
+  padding-top: 22px;
+  border-top: 1px solid hsl(var(--border));
+}
+.inventory-form-section h3 {
+  margin: 0 0 16px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.inventory-form-dialog .form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.inventory-form-dialog .full-width {
+  grid-column: 1 / -1;
+}
+.inventory-form-dialog .field {
+  min-width: 0;
+  gap: 8px;
+  align-content: start;
+}
+.inventory-form-dialog .field label {
+  margin: 0;
+}
+.inventory-form-dialog .field-hint {
+  margin: 0;
+  line-height: 1.5;
+  font-weight: 400;
+}
+
+.product-form-layout > .inline-error {
+  flex: 0 0 auto;
+  margin: 0 25px 16px;
+}
+.inventory-form-dialog :disabled {
+  cursor: not-allowed;
+}
+.inventory-form-dialog :is(input, button):focus-visible {
+  outline: 2px solid hsl(var(--foreground));
+  outline-offset: 2px;
+}
+.product-price-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  background: hsl(var(--surface-soft));
+  border: 1px solid hsl(var(--border));
+  border-radius: 11px;
+}
+.product-price-summary label {
+  font-size: 12px;
+  font-weight: 600;
+}
+.product-price-summary .field-hint {
+  margin-top: 4px;
+}
+.product-price-summary output {
+  flex-shrink: 0;
+  font-family: var(--app-font-display);
+  font-size: 23px;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+.inventory-checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.inventory-checkbox-row strong {
+  display: block;
+  font-weight: 500;
+}
+.inventory-checkbox-row .field-hint {
+  margin-top: 2px;
+}
+.inventory-form-dialog input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  margin: 1px 0 0;
+  padding: 0;
+  accent-color: hsl(var(--foreground));
+}
+.product-opening-fields {
+  margin-top: 18px;
+}
+.inventory-section-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.inventory-section-heading h3 {
+  margin: 0;
+}
+.category-manager-add {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 66px auto;
+  gap: 12px;
+  align-items: end;
+}
+.category-manager-add .button {
+  height: 39px;
+}
+.category-vat-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 39px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.inventory-form-dialog .category-vat-explanation {
+  margin-bottom: 16px;
+}
+.category-manager-columns,
+.category-manager-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 90px 36px;
+  gap: 12px;
+  align-items: center;
+}
+.category-manager-columns {
+  padding: 0 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: hsl(var(--muted));
+}
+.category-manager-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 10px;
+}
+.category-manager-list .category-remove {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+.category-remove svg {
+  flex-shrink: 0;
+}
+.inventory-form-dialog .category-delete-hint {
+  margin-top: 16px;
+}
+.inventory-form-dialog .category-draft-hint,
+.category-manager-body > .inline-error {
+  margin: 16px 0 0;
+}
+.category-empty {
+  font-size: 12px;
+  color: hsl(var(--muted));
+  margin: 18px 0;
+}
+@media (max-width: 520px) {
+  .inventory-form-dialog .form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .category-manager-add {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+  .category-manager-add .field {
+    grid-column: 1 / -1;
+  }
+  .category-manager-add .button {
+    justify-self: end;
+  }
+  .category-manager-columns,
+  .category-manager-list li {
+    grid-template-columns: minmax(0, 1fr) 78px 32px;
+    gap: 8px;
+  }
+  .category-manager-list .category-remove {
+    width: 32px;
+  }
+  .product-price-summary {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+}

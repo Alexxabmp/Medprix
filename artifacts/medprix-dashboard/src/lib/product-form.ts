@@ -4,7 +4,7 @@ import type { ProductItem } from "./types";
 export function emptyProductForm() {
   return {
     name: "", genericName: "", sku: "", category: "", strength: "", medicineForm: "",
-    price: "", costPrice: "", reorder: "", vatClassification: "", isDangerousDrug: false, includeStock: false,
+    initialPrice: "", costPrice: "", reorder: "", isDangerousDrug: false, includeStock: false,
     batchNumber: "", quantity: "", expiryDate: "", mfgDate: "", dateReceived: "", supplier: "",
   };
 }
@@ -15,8 +15,8 @@ export function productFormPayload(values: ProductFormValues, original?: Product
     name: original ? values.name.trim() : composeProductName(values.name, values.strength, values.medicineForm),
     genericName: values.genericName.trim(),
     ...(original ? { sku: original.sku } : {}),
-    category: values.category.trim(), price: values.price, costPrice: values.costPrice,
-    reorder: values.reorder, isVatExempt: values.vatClassification === "" ? undefined : values.vatClassification === "VAT-exempt", isDangerousDrug: values.isDangerousDrug,
+    category: values.category.trim(), initialPrice: values.initialPrice, costPrice: values.costPrice,
+    reorder: values.reorder, isDangerousDrug: values.isDangerousDrug,
     ...(!original && values.includeStock ? {
       batchNumber: values.batchNumber.trim(), quantity: values.quantity, expiryDate: values.expiryDate,
       mfgDate: values.mfgDate, dateReceived: values.dateReceived, supplier: values.supplier.trim(),

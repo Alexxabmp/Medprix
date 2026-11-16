@@ -19,6 +19,16 @@ export function parseProductMoney(value: unknown): string | null {
   return Number.isFinite(amount) && amount <= 9999999999.99 ? amount.toFixed(2) : null;
 }
 
+/** Calculate the VAT-inclusive selling price from the user-entered initial price. */
+export function productSellingPrice(initialPrice: unknown, isVat: boolean): string | null {
+  const parsed = parseProductMoney(initialPrice);
+  if (parsed === null) return null;
+  const [whole, fraction] = parsed.split(".");
+  const baseCents = BigInt(whole) * 100n + BigInt(fraction);
+  const cents = (baseCents * (isVat ? 112n : 100n) + 50n) / 100n;
+  return `${cents / 100n}.${String(cents % 100n).padStart(2, "0")}`;
+}
+
 function validDate(value: unknown): boolean {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value) || value.startsWith("0000")) return false;
   const date = new Date(`${value}T00:00:00Z`);
@@ -34,12 +44,12 @@ export function validateProductInput(input: Record<string, unknown>, options: { 
     }
   }
   if (input.sku !== undefined && input.sku !== "" && (typeof input.sku !== "string" || (input.sku !== options.originalSku && !PRODUCT_CODE_PATTERN.test(normalizeProductCode(input.sku))))) errors.sku = PRODUCT_CODE_HINT;
-  if (input.category !== undefined && (typeof input.category !== "string" || input.category.trim().length > 100)) errors.category = "Category must be at most 100 characters.";
-  for (const key of ["price", "costPrice"]) {
-    if (supplied(key) && parseProductMoney(input[key]) === null) errors[key] = "Enter a nonnegative price with at most two decimal places (maximum 9,999,999,999.99).";
+  if (supplied("category") && (typeof input.category !== "string" || !input.category.trim() || input.category.trim().length > 100)) errors.category = "Choose a category (at most 100 characters).";
+  for (const key of ["initialPrice", "costPrice"]) {
+    if (supplied(key) && parseProductMoney(input[key]) === null) errors[key] = key === "initialPrice" ? "Enter a nonnegative initial price with at most two decimal places." : "Enter a nonnegative cost with at most two decimal places (maximum 9,999,999,999.99).";
   }
+  if (supplied("initialPrice") && Number(parseProductMoney(input.initialPrice)) > 8928571428.56) errors.initialPrice = "Initial price must be at most 8,928,571,428.56 to allow VAT.";
   if (supplied("reorder") && !wholeNumber(input.reorder, 0, 2147483647)) errors.reorder = "Enter a nonnegative whole-number reorder level (maximum 2,147,483,647).";
-  if ((!options.partial || input.isVatExempt !== undefined) && typeof input.isVatExempt !== "boolean") errors.isVatExempt = "Select VATable or VAT-exempt.";
   if (input.isDangerousDrug !== undefined && typeof input.isDangerousDrug !== "boolean") errors.isDangerousDrug = "Controlled item must be on or off.";
   if (options.batch && PRODUCT_BATCH_FIELDS.some((key) => input[key] !== undefined && input[key] !== null)) {
     if (typeof input.batchNumber !== "string" || !input.batchNumber.trim() || input.batchNumber.trim().length > 100) errors.batchNumber = "Enter a batch number of at most 100 characters.";

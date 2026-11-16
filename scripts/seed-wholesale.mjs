@@ -41,15 +41,15 @@ export async function seedWholesaleExamples(tx) {
   );
   if (!clients.length) throw new Error("Wholesale seed requires clients.");
   const products = [];
-  for (const [sku, name, price] of [
+  for (const [sku, name, initialPrice] of [
     ["WS-SEED-STANDARD", "Wholesale sample pack", "100.01"],
     ["WS-SEED-TINY", "Wholesale rounding sample", "0.01"],
   ]) {
     const {
       rows: [product],
     } = await query(
-      "INSERT INTO products(sku,product_name,generic_name,category,wholesale_price,selling_price,cost_price,is_vat_exempt,current_stock,minimum_stock_level) VALUES($1,$2,'Wholesale seed sample','Medicine',$3,$3,0,false,1000,10) RETURNING id",
-      [sku, name, price],
+      "INSERT INTO products(sku,product_name,generic_name,category,wholesale_price,initial_price,cost_price,current_stock,minimum_stock_level) VALUES($1,$2,'Wholesale seed sample','Medicine',$3,$3,0,1000,10) RETURNING id",
+      [sku, name, initialPrice],
     );
     const {
       rows: [batch],

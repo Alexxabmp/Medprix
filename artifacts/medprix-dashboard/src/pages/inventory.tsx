@@ -1,4 +1,5 @@
 import { SelectField } from "@/components/custom-ui/select-field";
+import type { ProductCategory } from "@/lib/types";
 import { CategoryManagementDialog } from "@/components/custom-ui/category-management-dialog";
 import { displayPeso } from "@/lib/currency";
 import { formatDisplayDate, formatDisplayDateTime } from "@/lib/business-date";
@@ -274,6 +275,21 @@ export default function InventoryPage({
   const [movementPage, setMovementPage] = useState(1);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All statuses");
+  const [categoryRecords, setCategoryRecords] = useState<ProductCategory[]>([]);
+  const [categoryLoading, setCategoryLoading] = useState(true);
+  const [categoryError, setCategoryError] = useState("");
+  const loadCategories = async () => {
+    setCategoryLoading(true);
+    try {
+      const response = await fetch("/api/inventory/categories");
+      if (!response.ok) throw new Error();
+      const data = await response.json();
+      setCategoryRecords(data.categories);
+      setCategoryError("");
+    } catch { setCategoryError("Categories could not be loaded. Retry before editing products."); }
+    finally { setCategoryLoading(false); }
+  };
+  useEffect(() => { void loadCategories(); }, []);
   const [categoryFilter, setCategoryFilter] = useState("All categories");
   const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
 
@@ -402,13 +418,7 @@ export default function InventoryPage({
     return skuComparison !== 0 ? skuComparison : a.id.localeCompare(b.id);
   });
 
-  const availableCategories = Array.from(
-    new Set(
-      items
-        .map((product) => product.category?.trim())
-        .filter((category): category is string => Boolean(category)),
-    ),
-  ).sort((a, b) => a.localeCompare(b));
+  const availableCategories = categoryRecords.map(category => category.name);
   const hasUncategorized = items.some((product) => !product.category?.trim());
   const categoryOptions =
     availableCategories.length > 0
@@ -688,7 +698,8 @@ export default function InventoryPage({
 
   return (
     <div>
-      {categoryManagerOpen && canEditProduct && <CategoryManagementDialog categories={availableCategories} onClose={() => setCategoryManagerOpen(false)} />}
+      {categoryManagerOpen && canEditProduct && <CategoryManagementDialog onToast={onToast} categories={categoryRecords} onSaved={async (rows) => { setCategoryRecords(rows); await fetchInventory(); }} onClose={() => setCategoryManagerOpen(false)} />}
+      {categoryError && <div className="inline-error" role="alert">{categoryError}<button className="button soft" onClick={() => void loadCategories()}>Retry</button></div>}
       {inventoryLoadError && <div className="inline-error" role="alert"><span>{inventoryLoadError} Previously loaded stock may be out of date.</span><button className="button soft" onClick={() => void fetchInventory()}>Retry</button></div>}
       <PageHeading
         title="Inventory"
@@ -806,7 +817,7 @@ export default function InventoryPage({
               data-testid="select-inventory-category"
               searchable
               searchPlaceholder="Search categories"
-              footerAction={canEditProduct ? { label: "Manage categories", onClick: () => setCategoryManagerOpen(true) } : undefined}
+              footerAction={canEditProduct ? { label: "Manage categories", onClick: () => { if (!categoryLoading && !categoryError) setCategoryManagerOpen(true); else void loadCategories(); } } : undefined}
               value={categoryFilter}
               onChange={(e) => {
                 setCategoryFilter(e.target.value);
@@ -1426,7 +1437,7 @@ export default function InventoryPage({
       {(isAddProductOpen || editProduct) && <ProductDialog
         key={editProduct?.id ?? "new"}
         product={editProduct ?? undefined}
-        categories={availableCategories}
+        categories={categoryRecords}
         suppliers={suppliers.map((supplier) => supplier.name)}
         onClose={() => { setIsAddProductOpen(false); setEditProduct(null); }}
         onSaved={handleProductSaved}

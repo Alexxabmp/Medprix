@@ -6,7 +6,7 @@ import { CheckoutError } from "../lib/atomic-checkout";
 import { requireAuth, requireRoles } from "../middleware/auth";
 import { Router, type IRouter, type Request, type Response } from "express";
 import { and, asc, eq, or } from "drizzle-orm";
-import { db, withTransaction, productsTable, batchInfoTable, stockMovementsTable } from "@workspace/db";
+import { db, withTransaction, productCategoriesTable, productsTable, batchInfoTable, stockMovementsTable } from "@workspace/db";
 import { normalizeProductCode, parseProductMoney, validateProductInput, PRODUCT_BATCH_FIELDS } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -14,6 +14,52 @@ const stockMutations = createStockMutations(withTransaction);
 
 const NOW = () => new Date();
 const MAX_STOCK_MOVEMENT_QUANTITY = 1_000_000;
+
+router.get("/inventory/categories", async (_req, res) => {
+  return res.json({ categories: await db.select().from(productCategoriesTable).orderBy(asc(productCategoriesTable.name)) });
+});
+
+router.put("/inventory/categories", requireAuth, requireRoles("Admin", "FrontDesk"), async (req, res) => {
+  const rows = req.body?.categories;
+  if (!Array.isArray(rows) || rows.length > 500 || rows.some(row =>
+    !row || typeof row.name !== "string" || !row.name.trim() || row.name.trim().length > 100 ||
+    typeof row.isVat !== "boolean" || (row.id != null && !/^[0-9a-f-]{36}$/i.test(row.id)))) {
+    return res.status(400).json({ error: "Enter category names and VAT settings." });
+  }
+  if (new Set(rows.map(row => row.name.trim().toLowerCase())).size !== rows.length ||
+      new Set(rows.filter(row => row.id).map(row => row.id)).size !== rows.filter(row => row.id).length)
+    return res.status(400).json({ error: "Category names must be unique." });
+  try {
+    await withTransaction(async query => {
+      await query("LOCK TABLE product_categories IN SHARE ROW EXCLUSIVE MODE");
+      const { rows: existing } = await query('SELECT id, name, is_vat AS "isVat" FROM product_categories');
+      const snapshot = (values: any[]) => JSON.stringify(values.map(row => [row.id, row.name, row.isVat]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))));
+      if (!Array.isArray(req.body.originalCategories) || req.body.originalCategories.some((row: unknown) => !row || typeof row !== "object") || snapshot(req.body.originalCategories) !== snapshot(existing))
+        throw new CheckoutError(409, "Categories have changed. Reopen this window and try again.");
+      if (rows.some(row => row.id && !existing.some(category => category.id === row.id)))
+        throw new CheckoutError(409, "Categories have changed. Reopen this window and try again.");
+      for (const category of existing) {
+        if (!rows.some(row => row.id === category.id)) {
+          if ((await query("SELECT id FROM products WHERE category=$1 LIMIT 1", [category.name])).rows.length)
+            throw new CheckoutError(409, `Move products out of ${category.name} before deleting it.`);
+          await query("DELETE FROM product_categories WHERE id=$1", [category.id]);
+        }
+      }
+      // Temporary names allow swaps while the foreign key follows every rename.
+      for (const row of rows.filter(row => row.id))
+        await query("UPDATE product_categories SET name=$2 WHERE id=$1", [row.id, `__category_${row.id}`]);
+      for (const row of rows) {
+        if (row.id) await query("UPDATE product_categories SET name=$2, is_vat=$3 WHERE id=$1", [row.id, row.name.trim(), row.isVat]);
+        else await query("INSERT INTO product_categories(name,is_vat) VALUES($1,$2)", [row.name.trim(), row.isVat]);
+      }
+    });
+    return res.json({ success: true, categories: await db.select().from(productCategoriesTable).orderBy(asc(productCategoriesTable.name)) });
+  } catch (error) {
+    if (error instanceof CheckoutError) return res.status(error.status).json({ error: error.message });
+    if ((error as { code?: string }).code === "23505") return res.status(409).json({ error: "Category names must be unique." });
+    throw error;
+  }
+});
 
 function parseStockMovementQuantity(value: unknown):
   | { ok: true; quantity: number }
@@ -46,6 +92,7 @@ function toApiProduct(product: typeof productsTable.$inferSelect, batches: (type
     sku: product.sku,
     category: product.category,
     price: `₱${Number(product.sellingPrice).toFixed(2)}`,
+    initialPrice: product.initialPrice,
     cost: `₱${Number(product.costPrice).toFixed(2)}`,
     isDangerousDrug: product.isDangerousDrug,
     isVatExempt: product.isVatExempt,
@@ -163,6 +210,8 @@ router.post("/inventory/products", async (req: Request, res: Response) => {
   const body = req.body ?? {};
   const errors = validateProductInput(body, { batch: true });
   if (Object.keys(errors).length) return res.status(400).json({ success: false, error: Object.values(errors)[0], errors });
+  if (!(await db.select().from(productCategoriesTable).where(eq(productCategoriesTable.name, body.category.trim()))).length)
+    return res.status(400).json({ error: "Choose an existing category.", errors: { category: "Choose an existing category." } });
   const hasBatch = PRODUCT_BATCH_FIELDS.some((key) => body[key] !== undefined && body[key] !== null);
   try {
     const product = await db.transaction(async (tx) => {
@@ -192,8 +241,8 @@ router.post("/inventory/products", async (req: Request, res: Response) => {
       }
       const [saved] = await tx.insert(productsTable).values({
         sku, productName: body.name.trim(), genericName: body.genericName.trim(), category: (body.category ?? "").trim(),
-        sellingPrice: parseProductMoney(body.price)!, costPrice: parseProductMoney(body.costPrice)!,
-        isDangerousDrug: body.isDangerousDrug ?? false, isVatExempt: body.isVatExempt, minimumStockLevel: Number(body.reorder),
+        initialPrice: parseProductMoney(body.initialPrice)!, costPrice: parseProductMoney(body.costPrice)!,
+        isDangerousDrug: body.isDangerousDrug ?? false, minimumStockLevel: Number(body.reorder),
         currentStock: hasBatch ? Number(body.quantity) : 0,
       }).returning();
       if (hasBatch) await tx.insert(batchInfoTable).values({
@@ -216,14 +265,15 @@ router.put("/inventory/products/:id", async (req: Request, res: Response) => {
   const body = req.body ?? {};
   const errors = validateProductInput(body, { partial: true, originalSku: product.sku });
   if (Object.keys(errors).length) return res.status(400).json({ success: false, error: Object.values(errors)[0], errors });
+  if (body.category !== undefined && !(await db.select().from(productCategoriesTable).where(eq(productCategoriesTable.name, body.category.trim()))).length)
+    return res.status(400).json({ error: "Choose an existing category.", errors: { category: "Choose an existing category." } });
   const updates: Partial<typeof productsTable.$inferInsert> = { updatedAt: new Date() };
   if (body.name !== undefined) updates.productName = body.name.trim();
   if (body.genericName !== undefined) updates.genericName = body.genericName.trim();
   if (body.sku !== undefined) updates.sku = normalizeProductCode(body.sku, product.sku);
   if (body.category !== undefined) updates.category = body.category.trim();
-  if (body.price !== undefined) updates.sellingPrice = parseProductMoney(body.price)!;
+  if (body.initialPrice !== undefined) updates.initialPrice = parseProductMoney(body.initialPrice)!;
   if (body.costPrice !== undefined) updates.costPrice = parseProductMoney(body.costPrice)!;
-  if (body.isVatExempt !== undefined) updates.isVatExempt = body.isVatExempt;
   if (body.isDangerousDrug !== undefined) updates.isDangerousDrug = body.isDangerousDrug;
   if (body.reorder !== undefined) updates.minimumStockLevel = Number(body.reorder);
   try {
