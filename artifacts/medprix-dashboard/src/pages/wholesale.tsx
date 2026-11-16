@@ -43,7 +43,6 @@ import {
   type WholesaleRequest,
   type WholesaleLine,
   type WholesaleOverview,
-  type WholesaleReceivableDetail,
   type WholesalePageResult,
   type WholesaleAccountFilter,
 } from "@/lib/wholesale-api";
@@ -91,8 +90,6 @@ export default function WholesalePage({
   } | null>(null);
   const [openingSummary, setOpeningSummary] =
     useState<WholesaleSummaryKind | null>(null);
-  const [summaryAccount, setSummaryAccount] =
-    useState<WholesaleReceivableDetail | null>(null);
   const [openingAccount, setOpeningAccount] = useState(false);
   const [accountStatus, setAccountStatus] =
     useState<WholesaleAccountFilter>("all");
@@ -193,20 +190,6 @@ export default function WholesalePage({
       setError(safeError(failure));
     } finally {
       setOpeningSummary(null);
-    }
-  }
-  async function viewSummaryAccount(id: string) {
-    setOpeningAccount(true);
-    try {
-      const detail = await wholesaleGet<WholesaleReceivableDetail>(
-        "/accounts-receivable/" + id,
-        true,
-      );
-      setSummaryAccount(detail);
-    } catch (failure) {
-      setError(safeError(failure));
-    } finally {
-      setOpeningAccount(false);
     }
   }
   async function submit(request: WholesaleRequest) {
@@ -522,7 +505,6 @@ export default function WholesalePage({
       {summary && (
         <WholesaleSummaryModal
           kind={summary.kind}
-          suspended={Boolean(summaryAccount)}
           initialData={summary.data}
           busy={busy || pending !== null || openingAccount}
           submitting={busy || openingAccount}
@@ -531,22 +513,7 @@ export default function WholesalePage({
           mutate={mutate}
           error={formError}
           retry={pending ? () => void submit(pending) : undefined}
-          viewAccount={(id) => void viewSummaryAccount(id)}
-        />
-      )}
-      {summaryAccount && (
-        <WholesaleReceivables
-          key={summaryAccount.id}
-          search=""
-          role={role}
-          initialDetail={summaryAccount}
-          detailsOnly
-          onBack={() => setSummaryAccount(null)}
-          onClose={() => {
-            setSummaryAccount(null);
-            setSummary(null);
-          }}
-          onChanged={() => void refreshOverview()}
+          onAccountChanged={() => void refreshOverview()}
         />
       )}
       <div className="page-tabs" role="group" aria-label="Wholesale sections">

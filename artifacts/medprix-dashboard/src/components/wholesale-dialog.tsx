@@ -22,6 +22,9 @@ type Presentation = {
   title: string;
   variant: WholesaleDialogVariant;
   back: () => void;
+  description?: string;
+  busy?: boolean;
+  className?: string;
 };
 const ViewContext = createContext<((view: Presentation | null) => void) | null>(
   null,
@@ -33,12 +36,15 @@ export function useWholesaleDialogView(view: Presentation | null) {
   backRef.current = view?.back;
   const back = useCallback(() => backRef.current?.(), []);
   const title = view?.title,
-    variant = view?.variant;
+    variant = view?.variant,
+    description = view?.description,
+    busy = view?.busy,
+    className = view?.className;
   useLayoutEffect(() => {
     if (!update || !title || !variant) return;
-    update({ title, variant, back });
+    update({ title, variant, back, description, busy, className });
     return () => update(null);
-  }, [update, title, variant, back]);
+  }, [update, title, variant, back, description, busy, className]);
 }
 
 export function WholesaleDialog({
@@ -52,6 +58,8 @@ export function WholesaleDialog({
   footer,
   variant,
   hidden = false,
+  embedded = false,
+  focusOnViewChange = true,
   animate = true,
   className = "",
 }: {
@@ -65,27 +73,48 @@ export function WholesaleDialog({
   footer?: ReactNode;
   variant?: WholesaleDialogVariant;
   hidden?: boolean;
+  embedded?: boolean;
+  focusOnViewChange?: boolean;
   animate?: boolean;
   className?: string;
 }) {
   const preview = useModalTableStandard();
   const [view, setView] = useState<Presentation | null>(null);
   const effectiveVariant = view?.variant ?? variant ?? "form";
-  useDialogAccessibility(!hidden, ".wholesale-dialog", close, busy);
+  const effectiveBusy = busy || Boolean(view?.busy);
+  const shownDescription = view?.description ?? description;
+  useWholesaleDialogView(
+    embedded && !hidden
+      ? {
+          title,
+          variant: variant ?? "form",
+          back: back ?? close,
+          description,
+          busy,
+          className,
+        }
+      : null,
+  );
+  useDialogAccessibility(
+    !hidden && !embedded,
+    ".wholesale-dialog",
+    close,
+    effectiveBusy,
+  );
   useLayoutEffect(() => {
-    if (hidden) return;
+    if (hidden || embedded) return;
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = previous;
     };
-  }, [hidden]);
+  }, [hidden, embedded]);
   const shownTitle = view?.title ?? title;
   const previousTitle = useRef(shownTitle);
   useLayoutEffect(() => {
     const changed = previousTitle.current !== shownTitle;
     previousTitle.current = shownTitle;
-    if (hidden || !changed) return;
+    if (hidden || embedded || !focusOnViewChange || !changed) return;
     const dialog = document.querySelector<HTMLElement>(".wholesale-dialog");
     const body = dialog?.querySelector<HTMLElement>(".wholesale-dialog-body");
     if (body) body.scrollTop = 0;
@@ -103,8 +132,9 @@ export function WholesaleDialog({
       )?.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(frame);
-  }, [shownTitle, hidden]);
+  }, [shownTitle, hidden, embedded, focusOnViewChange]);
   if (hidden) return null;
+  if (embedded) return <>{children}</>;
   return createPortal(
     <div
       className={
@@ -118,7 +148,8 @@ export function WholesaleDialog({
           (preview ? " modal-table-standard" : "") +
           " wholesale-modal-" +
           effectiveVariant +
-          (className ? " " + className : "")
+          (className ? " " + className : "") +
+          (view?.className ? " " + view.className : "")
         }
       >
         <ViewContext.Provider value={setView}>
@@ -130,7 +161,9 @@ export function WholesaleDialog({
                     {titleIcon}
                     <h2>{view?.title ?? title}</h2>
                   </div>
-                  {description && <p className="modal-sub">{description}</p>}
+                  {shownDescription && (
+                    <p className="modal-sub">{shownDescription}</p>
+                  )}
                 </div>
                 <div className="wholesale-dialog-header-actions">
                   {(view?.back ?? back) && (
@@ -139,7 +172,7 @@ export function WholesaleDialog({
                       className="button soft wholesale-dialog-back"
                       aria-label="Back"
                       onClick={view?.back ?? back}
-                      disabled={busy}
+                      disabled={effectiveBusy}
                     >
                       <ArrowLeft size={14} /> Back
                     </button>
@@ -149,7 +182,7 @@ export function WholesaleDialog({
                     className="modal-close"
                     aria-label="Close dialog"
                     onClick={close}
-                    disabled={busy}
+                    disabled={effectiveBusy}
                   >
                     <X size={16} />
                   </button>

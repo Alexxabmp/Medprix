@@ -40,6 +40,7 @@ export function WholesaleReceivables({
   onChanged,
   initialDetail,
   detailsOnly = false,
+  embedded = false,
   onClose,
   onBack,
 }: {
@@ -49,6 +50,7 @@ export function WholesaleReceivables({
   onChanged?: () => void;
   initialDetail?: WholesaleReceivableDetail;
   detailsOnly?: boolean;
+  embedded?: boolean;
   onClose?: () => void;
   onBack?: () => void;
 }) {
@@ -386,6 +388,7 @@ export function WholesaleReceivables({
       )}
       {selectedId && (
         <WholesaleDialog
+          embedded={embedded}
           title={
             mode === "view"
               ? "Accounts receivable"

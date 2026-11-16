@@ -3,6 +3,7 @@ import { formatDisplayDate } from "@/lib/business-date";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { WholesaleOrderDetails } from "./wholesale-order-details";
 import { DeliveryReceiptView } from "./delivery-receipt-view";
+import { WholesaleReceivables } from "./wholesale-receivables";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
@@ -31,6 +32,7 @@ import {
   type WholesaleOrder,
   type WholesaleOrderDetail,
   type DeliveryReceipt,
+  type WholesaleReceivableDetail,
 } from "@/lib/wholesale-api";
 
 export function useWorkspaceList<T>(
@@ -209,8 +211,7 @@ export function WholesaleSummaryModal({
   mutate,
   error,
   retry,
-  viewAccount,
-  suspended = false,
+  onAccountChanged,
 }: {
   kind: WholesaleSummaryKind;
   initialData: WholesalePageResult<WholesaleSummaryRow>;
@@ -221,19 +222,37 @@ export function WholesaleSummaryModal({
   mutate: (path: string, method: string, body: unknown) => void;
   error: string;
   retry?: () => void;
-  viewAccount: (id: string) => void;
-  suspended?: boolean;
+  onAccountChanged?: () => void;
 }) {
   const preview = useModalTableStandard();
   const [selectedOrder, setSelectedOrder] = useState<
     (WholesaleOrderDetail & { order: WholesaleOrder }) | null
   >(null);
   const [receipt, setReceipt] = useState<DeliveryReceipt | null>(null);
+  const [account, setAccount] = useState<WholesaleReceivableDetail | null>(
+    null,
+  );
   const [opening, setOpening] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [openError, setOpenError] = useState("");
   const contentRef = useRef<HTMLDivElement>(null);
   const listScroll = useRef({ body: 0, table: 0, orderId: "" });
+  async function viewAccount(id: string) {
+    setOpening(true);
+    setOpenError("");
+    try {
+      setAccount(
+        await wholesaleGet<WholesaleReceivableDetail>(
+          "/accounts-receivable/" + id,
+          true,
+        ),
+      );
+    } catch (failure) {
+      setOpenError(safeError(failure));
+    } finally {
+      setOpening(false);
+    }
+  }
   async function reviewOrder(id: string) {
     setOpening(true);
     setOpenError("");
@@ -258,8 +277,10 @@ export function WholesaleSummaryModal({
   useLayoutEffect(() => {
     const content = contentRef.current;
     const body = content?.closest(".wholesale-dialog-body");
-    if (body) body.scrollTop = selectedOrder ? 0 : listScroll.current.body;
-    if (!selectedOrder) {
+    if (body)
+      body.scrollTop =
+        selectedOrder || account || receipt ? 0 : listScroll.current.body;
+    if (!selectedOrder && !account && !receipt) {
       const table = content?.querySelector(".wholesale-summary-table");
       if (table) table.scrollTop = listScroll.current.table;
       const timer = requestAnimationFrame(() =>
@@ -277,7 +298,7 @@ export function WholesaleSummaryModal({
         ?.focus({ preventScroll: true });
     }
     return undefined;
-  }, [selectedOrder, receipt, suspended]);
+  }, [selectedOrder, receipt, account]);
   const summary = summaries[kind];
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState(summary.status);
@@ -309,7 +330,7 @@ export function WholesaleSummaryModal({
     : list.data?.items;
   return (
     <WholesaleDialog
-      hidden={suspended}
+      focusOnViewChange={Boolean(selectedOrder || receipt || account)}
       variant={receipt ? "form" : "table"}
       title={
         receipt
@@ -321,7 +342,9 @@ export function WholesaleSummaryModal({
               (list.data?.total ?? initialData.total) +
               ")"
       }
-      titleIcon={!selectedOrder ? <Icon size={18} /> : undefined}
+      titleIcon={
+        !selectedOrder && !account && !receipt ? <Icon size={18} /> : undefined
+      }
       description={
         receipt
           ? receipt.receiptNumber
@@ -346,7 +369,19 @@ export function WholesaleSummaryModal({
             {openError}
           </div>
         )}
-        {receipt ? (
+        {account ? (
+          <WholesaleReceivables
+            key={account.id}
+            search=""
+            role={role}
+            initialDetail={account}
+            detailsOnly
+            embedded
+            onBack={() => setAccount(null)}
+            onClose={close}
+            onChanged={onAccountChanged}
+          />
+        ) : receipt ? (
           <DeliveryReceiptView
             receipt={receipt}
             close={() => setReceipt(null)}
