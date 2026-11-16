@@ -1,4 +1,5 @@
 import { SelectField } from "@/components/custom-ui/select-field";
+import type { ProductCategory } from "@/lib/types";
 import { CategoryManagementDialog } from "@/components/custom-ui/category-management-dialog";
 import { displayPeso } from "@/lib/currency";
 import { formatDisplayDate, formatDisplayDateTime } from "@/lib/business-date";
@@ -274,6 +275,21 @@ export default function InventoryPage({
   const [movementPage, setMovementPage] = useState(1);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All statuses");
+  const [categoryRecords, setCategoryRecords] = useState<ProductCategory[]>([]);
+  const [categoryLoading, setCategoryLoading] = useState(true);
+  const [categoryError, setCategoryError] = useState("");
+  const loadCategories = async () => {
+    setCategoryLoading(true);
+    try {
+      const response = await fetch("/api/inventory/categories");
+      if (!response.ok) throw new Error();
+      const data = await response.json();
+      setCategoryRecords(data.categories);
+      setCategoryError("");
+    } catch { setCategoryError("Categories could not be loaded. Retry before editing products."); }
+    finally { setCategoryLoading(false); }
+  };
+  useEffect(() => { void loadCategories(); }, []);
   const [categoryFilter, setCategoryFilter] = useState("All categories");
   const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
 
@@ -402,13 +418,7 @@ export default function InventoryPage({
     return skuComparison !== 0 ? skuComparison : a.id.localeCompare(b.id);
   });
 
-  const availableCategories = Array.from(
-    new Set(
-      items
-        .map((product) => product.category?.trim())
-        .filter((category): category is string => Boolean(category)),
-    ),
-  ).sort((a, b) => a.localeCompare(b));
+  const availableCategories = categoryRecords.map(category => category.name);
   const hasUncategorized = items.some((product) => !product.category?.trim());
   const categoryOptions =
     availableCategories.length > 0
@@ -688,7 +698,8 @@ export default function InventoryPage({
 
   return (
     <div>
-      {categoryManagerOpen && canEditProduct && <CategoryManagementDialog categories={availableCategories} onClose={() => setCategoryManagerOpen(false)} />}
+      {categoryManagerOpen && canEditProduct && <CategoryManagementDialog onToast={onToast} categories={categoryRecords} onSaved={async (rows) => { setCategoryRecords(rows); await fetchInventory(); }} onClose={() => setCategoryManagerOpen(false)} />}
+      {categoryError && <div className="inline-error" role="alert">{categoryError}<button className="button soft" onClick={() => void loadCategories()}>Retry</button></div>}
       {inventoryLoadError && <div className="inline-error" role="alert"><span>{inventoryLoadError} Previously loaded stock may be out of date.</span><button className="button soft" onClick={() => void fetchInventory()}>Retry</button></div>}
       <PageHeading
         title="Inventory"
@@ -806,7 +817,7 @@ export default function InventoryPage({
               data-testid="select-inventory-category"
               searchable
               searchPlaceholder="Search categories"
-              footerAction={canEditProduct ? { label: "Manage categories", onClick: () => setCategoryManagerOpen(true) } : undefined}
+              footerAction={canEditProduct ? { label: "Manage categories", onClick: () => { if (!categoryLoading && !categoryError) setCategoryManagerOpen(true); else void loadCategories(); } } : undefined}
               value={categoryFilter}
               onChange={(e) => {
                 setCategoryFilter(e.target.value);
@@ -1270,85 +1281,25 @@ export default function InventoryPage({
                 </button>
               </div>
 
-              {/* Product Info Grid */}
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
-                  gap: 10,
-                  marginBottom: 16,
-                }}>
-                <div
-                  style={{
-                    background: "hsl(var(--surface-soft))",
-                    border: "1px solid hsl(var(--border))",
-                    padding: "10px 14px",
-                    borderRadius: 11,
-                  }}>
-                  <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
-                    Category
-                  </div>
-                  <strong style={{ fontSize: 13 }}>{viewProduct.category}</strong>
-                </div>
-                <div
-                  style={{
-                    background: "hsl(var(--surface-soft))",
-                    border: "1px solid hsl(var(--border))",
-                    padding: "10px 14px",
-                    borderRadius: 11,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "6px"
-                  }}>
-                  <div>
-                    <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
-                      Unit Price
-                    </div>
-                    <strong style={{ fontSize: 13 }}>{displayPeso(viewProduct.price)}</strong>
-                  </div>
-                  <div>
-                    <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
-                      Cost Price
-                    </div>
-                    <strong style={{ fontSize: 13 }}>{displayPeso(viewProduct.cost)}</strong>
-                  </div>
-                  <div>
-                    <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
-                      VAT treatment
-                    </div>
-                    <strong style={{ fontSize: 13 }}>
-                      {viewProduct.isVatExempt === true ? "VAT-exempt" : viewProduct.isVatExempt === false ? "VATable" : "Not classified"}
-                    </strong>
-                  </div>
-                </div>
-                <div
-                  style={{
-                    background: "hsl(var(--surface-soft))",
-                    border: "1px solid hsl(var(--border))",
-                    padding: "10px 14px",
-                    borderRadius: 11,
-                  }}>
-                  <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
-                    Reorder Level
-                  </div>
-                  <strong style={{ fontSize: 13 }}>
-                    {viewProduct.reorder} units
-                  </strong>
-                </div>
-                <div
-                  style={{
-                    background: "hsl(var(--surface-soft))",
-                    border: "1px solid hsl(var(--border))",
-                    padding: "10px 14px",
-                    borderRadius: 11,
-                  }}>
-                  <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
-                    Total Stock
-                  </div>
-                  <strong style={{ fontSize: 13 }}>
-                    {getProductTotalStock(viewProduct)} units
-                  </strong>
-                </div>
+              <div className="product-details-overview">
+                <section className="product-details-section" aria-labelledby="view-product-information">
+                  <h3 id="view-product-information">Product information</h3>
+                  <dl className="product-details-facts">
+                    <div><dt>Category</dt><dd>{viewProduct.category || "\u2014"}</dd></div>
+                    <div><dt>Category VAT</dt><dd>{viewProduct.isVatExempt === true ? "Non-VAT" : viewProduct.isVatExempt === false ? "VAT (12%)" : "Not classified"}</dd></div>
+                    <div><dt>Total stock</dt><dd>{getProductTotalStock(viewProduct)} <span>units</span></dd></div>
+                    <div><dt>Reorder level</dt><dd>{viewProduct.reorder} <span>units</span></dd></div>
+                  </dl>
+                </section>
+                <section className="product-details-section" aria-labelledby="view-product-pricing">
+                  <h3 id="view-product-pricing">Pricing</h3>
+                  <dl className="product-details-facts product-details-pricing">
+                    <div><dt>Initial price</dt><dd>{displayPeso(viewProduct.initialPrice)}</dd></div>
+                    <div><dt>Selling price</dt><dd>{displayPeso(viewProduct.price)}</dd></div>
+                    <div><dt>Purchase cost</dt><dd>{displayPeso(viewProduct.cost)}</dd></div>
+                  </dl>
+                  <p className="field-hint">{viewProduct.isVatExempt === false ? "Selling price includes the category's 12% VAT." : viewProduct.isVatExempt === true ? "Selling price equals the initial price for this Non-VAT category." : "VAT is determined by the product category."}</p>
+                </section>
               </div>
 
               {/* Batches Table */}
@@ -1426,7 +1377,7 @@ export default function InventoryPage({
       {(isAddProductOpen || editProduct) && <ProductDialog
         key={editProduct?.id ?? "new"}
         product={editProduct ?? undefined}
-        categories={availableCategories}
+        categories={categoryRecords}
         suppliers={suppliers.map((supplier) => supplier.name)}
         onClose={() => { setIsAddProductOpen(false); setEditProduct(null); }}
         onSaved={handleProductSaved}
@@ -1743,7 +1694,6 @@ export default function InventoryPage({
                         })
                       }
                     />
-                    <span className="field-hint">Whole units only</span>
                   </div>
                   <div className="field">
                     <label>Date *</label>

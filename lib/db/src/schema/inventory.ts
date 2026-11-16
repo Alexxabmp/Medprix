@@ -1,5 +1,6 @@
 import {
     pgTable,
+    numeric,
     pgEnum,
     uuid,
     varchar,
@@ -29,6 +30,12 @@ export const alertTypeEnum = pgEnum("alert_type_enum", ["LowStock", "NearExpiry"
 export const alertSeverityEnum = pgEnum("alert_severity_enum", ["Low", "Medium", "High", "Critical"]);
 
 // ─── Products ────────────────────────────────────────────────────────────────
+export const productCategoriesTable = pgTable("product_categories", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: varchar("name", { length: 100 }).notNull().unique(),
+    isVat: boolean("is_vat").notNull().default(true),
+}, (t) => [uniqueIndex("uq_product_categories_name_ci").on(sql`lower(btrim(${t.name}))`)]);
+
 export const productsTable = pgTable(
     "products",
     {
@@ -36,7 +43,8 @@ export const productsTable = pgTable(
         sku: varchar("sku", { length: 100 }).notNull(),
         productName: varchar("product_name", { length: 255 }).notNull(),
         genericName: varchar("generic_name", { length: 255 }).notNull(),
-        category: varchar("category", { length: 100 }).notNull(),
+        category: varchar("category", { length: 100 }).notNull().references(() => productCategoriesTable.name, { onUpdate: "cascade", onDelete: "restrict" }),
+        initialPrice: money("initial_price").notNull(),
         isVatExempt: boolean("is_vat_exempt"),
         isDangerousDrug: boolean("is_dangerous_drug").notNull().default(false),
         sellingPrice: money("selling_price").notNull().default("0.00"),

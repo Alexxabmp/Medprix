@@ -1,3 +1,4 @@
+import { ModalScrollBody } from "./modal-scroll-body";
 import { AppTooltip, TableValue } from "./ui/tooltip";
 import {
   createContext,
@@ -45,11 +46,7 @@ export function ModalTableHint({
 const FooterTarget = createContext<HTMLElement | null>(null);
 
 /** Stationary shell slots around the one vertically scrolling modal body. */
-export function ModalTableLayout({
-  children,
-}: {
-  children: ReactNode;
-}) {
+export function ModalTableLayout({ children }: { children: ReactNode }) {
   const preview = useModalTableStandard();
   const [target, setTarget] = useState<HTMLElement | null>(null);
   if (!preview) return <>{children}</>;
@@ -65,7 +62,7 @@ export function ModalTableLayout({
 
 export function ModalTableBody({ children }: { children: ReactNode }) {
   return useModalTableStandard() ? (
-    <div className="modal-table-body">{children}</div>
+    <ModalScrollBody className="modal-table-body">{children}</ModalScrollBody>
   ) : (
     <>{children}</>
   );

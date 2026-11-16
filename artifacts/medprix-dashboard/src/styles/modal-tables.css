@@ -58,7 +58,8 @@
 .modal.modal-table-standard.modal-table-standard.modal-table-cash {
   width: min(1120px, 100%);
 }
-.modal.modal-table-standard.modal-table-standard > .modal-header {
+.modal.modal-table-standard.modal-table-standard > .modal-header,
+.modal.modal-scroll-standard > .modal-header {
   flex: 0 0 auto;
   min-width: 0;
   padding: 25px;
@@ -71,7 +72,8 @@
   overflow-wrap: anywhere;
 }
 .modal.modal-table-standard.modal-table-standard
-  :is(.modal-table-body, .wholesale-dialog-body) {
+  :is(.modal-table-body, .wholesale-dialog-body),
+.modal.modal-scroll-standard .modal-scroll-body {
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
@@ -82,7 +84,8 @@
   scrollbar-gutter: stable;
   overscroll-behavior: contain;
 }
-.modal.modal-table-standard.modal-table-standard .modal-table-footer {
+.modal.modal-table-standard.modal-table-standard .modal-table-footer,
+.modal.modal-scroll-standard .modal-scroll-footer {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -101,7 +104,8 @@
   gap: 12px;
 }
 /* Keep the portal target mounted without showing an empty footer. */
-.modal.modal-table-standard.modal-table-standard .modal-table-footer:has(> .modal-table-footer-content:empty) {
+.modal.modal-table-standard.modal-table-standard
+  .modal-table-footer:has(> .modal-table-footer-content:empty) {
   display: none;
 }
 .modal.modal-table-standard.modal-table-standard
@@ -292,7 +296,8 @@
     .modal-table-scroll,
     .table-scroll,
     .wholesale-summary-table
-  ) {
+  ),
+.modal.modal-scroll-standard .modal-scroll-body {
   scrollbar-width: thin;
   scrollbar-color: hsl(var(--muted)) hsl(var(--surface-soft));
 }
@@ -324,14 +329,17 @@
   }
 }
 @media (max-width: 480px) {
-  .modal.modal-table-standard.modal-table-standard > .modal-header {
+  .modal.modal-table-standard.modal-table-standard > .modal-header,
+  .modal.modal-scroll-standard > .modal-header {
     padding: 16px;
   }
   .modal.modal-table-standard.modal-table-standard
-    :is(.modal-table-body, .wholesale-dialog-body) {
+    :is(.modal-table-body, .wholesale-dialog-body),
+  .modal.modal-scroll-standard .modal-scroll-body {
     padding: 0 12px 16px 16px;
   }
-  .modal.modal-table-standard.modal-table-standard .modal-table-footer {
+  .modal.modal-table-standard.modal-table-standard .modal-table-footer,
+  .modal.modal-scroll-standard .modal-scroll-footer {
     padding: 12px 16px 16px;
     align-items: flex-end;
   }
@@ -391,16 +399,34 @@
 }
 
 /* The outer bottom inset belongs to the footer only when it has actions. */
-.modal.modal-table-standard.modal-table-standard:has(> .modal-table-footer > .modal-table-footer-content:not(:empty), > .wholesale-form-footer)
-  :is(.modal-table-body, .wholesale-dialog-body) {
+.modal.modal-table-standard.modal-table-standard:has(
+    > .modal-table-footer > .modal-table-footer-content:not(:empty),
+    > .wholesale-form-footer
+  )
+  :is(.modal-table-body, .wholesale-dialog-body),
+.modal.modal-scroll-standard:has(.modal-scroll-footer) .modal-scroll-body {
   padding-bottom: 0;
 }
 /* Action columns share the same alignment in summary and detail tables. */
-.modal.modal-table-standard.modal-table-standard :is(.table-action-head, .table-action-cell, th[data-label="Action"], td[data-label="Action"]),
-.modal.modal-table-standard.modal-table-standard [data-modal-table="summary"] th:last-child {
+.modal.modal-table-standard.modal-table-standard
+  :is(
+    .table-action-head,
+    .table-action-cell,
+    th[data-label="Action"],
+    td[data-label="Action"]
+  ),
+.modal.modal-table-standard.modal-table-standard
+  [data-modal-table="summary"]
+  th:last-child {
   text-align: center;
 }
-.modal.modal-table-standard.modal-table-standard .table-action-cell .table-actions {
+.modal.modal-table-standard.modal-table-standard
+  .table-action-cell
+  .table-actions {
   justify-content: center;
   width: 100%;
+}
+
+.modal.modal-scroll-standard .modal-scroll-footer {
+  margin: 0;
 }

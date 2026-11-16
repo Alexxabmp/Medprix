@@ -209,7 +209,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
       onToast("Select a live inventory product first");
       return;
     }
-    if (typeof prod.isVatExempt !== "boolean") { onToast("Set this product's VAT treatment in Inventory before adding it."); return; }
+    if (typeof prod.isVatExempt !== "boolean") { onToast("Check this product's category VAT setting in Inventory before adding it."); return; }
     const availableStock = getProductStock(prod);
     const existing = cart.find((item) => item.id === prod.id);
     const remainingStock = Math.max(0, availableStock - (existing?.qty || 0));
@@ -717,7 +717,6 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                   <span>{pendingCheckout && pendingCheckout.payload.contractVersion !== 3 ? "VAT" : "VAT (included)"}</span>
                   <span>₱{vat.toFixed(2)}</span>
                 </div>
-                {vatRelief > 0 && <div style={{display:"flex",justifyContent:"space-between",color:"hsl(var(--muted))"}}><span>VAT exemption</span><span>-{formatPeso(vatRelief)}</span></div>}
                 {isDiscountEligible && (
                   <div
                     style={{
@@ -726,8 +725,8 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                       color: "#34C759",
                       fontWeight: 700,
                     }}>
-                    <span>{discountType} Privilege (20%)</span>
-                    <span>-₱{discountAmount.toFixed(2)}</span>
+                    <span>{discountType} savings</span>
+                    <span>-₱{(discountAmount + vatRelief).toFixed(2)}</span>
                   </div>
                 )}
                 <div style={{ height: 1, background: "hsl(var(--border))", margin: "2px 0" }} />

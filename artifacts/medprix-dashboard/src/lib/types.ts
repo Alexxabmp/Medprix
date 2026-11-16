@@ -32,7 +32,10 @@ export interface ProductBatch {
   supplier?: string;
 }
 
+export interface ProductCategory { id: string; name: string; isVat: boolean; }
+
 export interface ProductItem {
+  initialPrice?: string | null;
   pharmacyDate?: string;
   isVatExempt?: boolean | null;
   id: string;

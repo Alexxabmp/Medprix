@@ -1,3 +1,4 @@
+import { ModalScrollBody } from "./modal-scroll-body";
 import {
   createContext,
   useContext,
@@ -197,7 +198,9 @@ export function WholesaleDialog({
                   </button>
                 </div>
               </div>
-              <div className="wholesale-dialog-body">{children}</div>
+              <ModalScrollBody className="wholesale-dialog-body">
+                {children}
+              </ModalScrollBody>
               {footer && (
                 <footer className="modal-actions wholesale-form-footer">
                   {footer}

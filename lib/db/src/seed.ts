@@ -1,3 +1,4 @@
+import { SEED_CATEGORIES, seedSellingPrice } from "./seed-categories";
 import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
 import postgres from "postgres";
@@ -22,7 +23,7 @@ const SENIOR_PWD_DISCOUNT = 0.2;
 const TABLE_ORDER = [
   "users",
   "system_logs", "user_activities", "backup_records",
-  "products", "batch_info", "stock_movements", "inventory_alerts",
+  "product_categories", "products", "batch_info", "stock_movements", "inventory_alerts",
   "customers", "transactions", "transaction_items", "discounts", "receipts",
   "suppliers", "purchase_orders", "po_items", "supplier_deliveries", "delivery_items",
   "supplier_invoices", "accounts_payable", "supplier_payments",
@@ -102,7 +103,7 @@ interface ProductDef {
   generic: string;
   cat: string;
   cost: number;
-  price: number;
+  initialPrice: number;
   /** popularity 1-5: relative share of retail sales */
   pop: number;
   dd?: boolean; // dangerous drug
@@ -116,62 +117,62 @@ interface ProductDef {
 
 const PRODUCT_DEFS: ProductDef[] = [
   // Analgesic
-  { name: "Biogesic 500mg Tablet", generic: "Paracetamol", cat: "Analgesic", cost: 1.1, price: 2, pop: 5 },
-  { name: "Paracetamol 500mg Tablet", generic: "Paracetamol", cat: "Analgesic", cost: 0.55, price: 1.25, pop: 4 },
-  { name: "Medicol Advance 400mg Softgel", generic: "Ibuprofen", cat: "Analgesic", cost: 5.5, price: 8.5, pop: 4 },
-  { name: "Alaxan FR Capsule", generic: "Ibuprofen + Paracetamol", cat: "Analgesic", cost: 4.5, price: 7, pop: 4 },
-  { name: "Mefenamic Acid 500mg Capsule", generic: "Mefenamic Acid", cat: "Analgesic", cost: 2, price: 4.5, pop: 4 },
+  { name: "Biogesic 500mg Tablet", generic: "Paracetamol", cat: "Analgesic", cost: 1.1, initialPrice: 2, pop: 5 },
+  { name: "Paracetamol 500mg Tablet", generic: "Paracetamol", cat: "Analgesic", cost: 0.55, initialPrice: 1.25, pop: 4 },
+  { name: "Medicol Advance 400mg Softgel", generic: "Ibuprofen", cat: "Analgesic", cost: 5.5, initialPrice: 8.5, pop: 4 },
+  { name: "Alaxan FR Capsule", generic: "Ibuprofen + Paracetamol", cat: "Analgesic", cost: 4.5, initialPrice: 7, pop: 4 },
+  { name: "Mefenamic Acid 500mg Capsule", generic: "Mefenamic Acid", cat: "Analgesic", cost: 2, initialPrice: 4.5, pop: 4 },
   // Antibiotic
-  { name: "Amoxicillin 500mg Capsule", generic: "Amoxicillin", cat: "Antibiotic", cost: 3.5, price: 7, pop: 4 },
-  { name: "Cefalexin 500mg Capsule", generic: "Cefalexin", cat: "Antibiotic", cost: 6, price: 12, pop: 3 },
-  { name: "Co-Amoxiclav 625mg Tablet", generic: "Amoxicillin + Clavulanic Acid", cat: "Antibiotic", cost: 22, price: 38, pop: 2 },
-  { name: "Azithromycin 500mg Tablet", generic: "Azithromycin", cat: "Antibiotic", cost: 28, price: 48, pop: 2 },
-  { name: "Ciprofloxacin 500mg Tablet", generic: "Ciprofloxacin", cat: "Antibiotic", cost: 12, price: 22, pop: 2 },
-  { name: "Cotrimoxazole 800/160mg Tablet", generic: "Sulfamethoxazole + Trimethoprim", cat: "Antibiotic", cost: 3.5, price: 7, pop: 2 },
+  { name: "Amoxicillin 500mg Capsule", generic: "Amoxicillin", cat: "Antibiotic", cost: 3.5, initialPrice: 7, pop: 4 },
+  { name: "Cefalexin 500mg Capsule", generic: "Cefalexin", cat: "Antibiotic", cost: 6, initialPrice: 12, pop: 3 },
+  { name: "Co-Amoxiclav 625mg Tablet", generic: "Amoxicillin + Clavulanic Acid", cat: "Antibiotic", cost: 22, initialPrice: 38, pop: 2 },
+  { name: "Azithromycin 500mg Tablet", generic: "Azithromycin", cat: "Antibiotic", cost: 28, initialPrice: 48, pop: 2 },
+  { name: "Ciprofloxacin 500mg Tablet", generic: "Ciprofloxacin", cat: "Antibiotic", cost: 12, initialPrice: 22, pop: 2 },
+  { name: "Cotrimoxazole 800/160mg Tablet", generic: "Sulfamethoxazole + Trimethoprim", cat: "Antibiotic", cost: 3.5, initialPrice: 7, pop: 2 },
   // Antihypertensive
-  { name: "Amlodipine 5mg Tablet", generic: "Amlodipine", cat: "Antihypertensive", cost: 2.5, price: 6, pop: 3, low: true },
-  { name: "Losartan 50mg Tablet", generic: "Losartan Potassium", cat: "Antihypertensive", cost: 4, price: 9, pop: 3, low: true },
-  { name: "Losartan 100mg Tablet", generic: "Losartan Potassium", cat: "Antihypertensive", cost: 7, price: 15, pop: 2 },
-  { name: "Metoprolol 50mg Tablet", generic: "Metoprolol Tartrate", cat: "Antihypertensive", cost: 3, price: 7, pop: 2 },
-  { name: "Atenolol 50mg Tablet", generic: "Atenolol", cat: "Antihypertensive", cost: 2, price: 5, pop: 1 },
-  { name: "Aspirin 80mg Tablet", generic: "Acetylsalicylic Acid", cat: "Antihypertensive", cost: 1.5, price: 3.5, pop: 2 },
+  { name: "Amlodipine 5mg Tablet", generic: "Amlodipine", cat: "Antihypertensive", cost: 2.5, initialPrice: 6, pop: 3, low: true },
+  { name: "Losartan 50mg Tablet", generic: "Losartan Potassium", cat: "Antihypertensive", cost: 4, initialPrice: 9, pop: 3, low: true },
+  { name: "Losartan 100mg Tablet", generic: "Losartan Potassium", cat: "Antihypertensive", cost: 7, initialPrice: 15, pop: 2 },
+  { name: "Metoprolol 50mg Tablet", generic: "Metoprolol Tartrate", cat: "Antihypertensive", cost: 3, initialPrice: 7, pop: 2 },
+  { name: "Atenolol 50mg Tablet", generic: "Atenolol", cat: "Antihypertensive", cost: 2, initialPrice: 5, pop: 1 },
+  { name: "Aspirin 80mg Tablet", generic: "Acetylsalicylic Acid", cat: "Antihypertensive", cost: 1.5, initialPrice: 3.5, pop: 2 },
   // Cholesterol
-  { name: "Simvastatin 20mg Tablet", generic: "Simvastatin", cat: "Cholesterol", cost: 3, price: 7, pop: 2 },
-  { name: "Atorvastatin 20mg Tablet", generic: "Atorvastatin", cat: "Cholesterol", cost: 6, price: 14, pop: 3 },
+  { name: "Simvastatin 20mg Tablet", generic: "Simvastatin", cat: "Cholesterol", cost: 3, initialPrice: 7, pop: 2 },
+  { name: "Atorvastatin 20mg Tablet", generic: "Atorvastatin", cat: "Cholesterol", cost: 6, initialPrice: 14, pop: 3 },
   // Antidiabetic
-  { name: "Metformin 500mg Tablet", generic: "Metformin Hydrochloride", cat: "Antidiabetic", cost: 1.8, price: 4.5, pop: 4, low: true },
-  { name: "Gliclazide 80mg Tablet", generic: "Gliclazide", cat: "Antidiabetic", cost: 4, price: 9, pop: 2 },
+  { name: "Metformin 500mg Tablet", generic: "Metformin Hydrochloride", cat: "Antidiabetic", cost: 1.8, initialPrice: 4.5, pop: 4, low: true },
+  { name: "Gliclazide 80mg Tablet", generic: "Gliclazide", cat: "Antidiabetic", cost: 4, initialPrice: 9, pop: 2 },
   // Antihistamine
-  { name: "Cetirizine 10mg Tablet", generic: "Cetirizine Dihydrochloride", cat: "Antihistamine", cost: 2, price: 5, pop: 4 },
-  { name: "Loratadine 10mg Tablet", generic: "Loratadine", cat: "Antihistamine", cost: 3, price: 8, pop: 2, qtyA: 300, expA: 55 },
+  { name: "Cetirizine 10mg Tablet", generic: "Cetirizine Dihydrochloride", cat: "Antihistamine", cost: 2, initialPrice: 5, pop: 4 },
+  { name: "Loratadine 10mg Tablet", generic: "Loratadine", cat: "Antihistamine", cost: 3, initialPrice: 8, pop: 2, qtyA: 300, expA: 55 },
   // Respiratory
-  { name: "Neozep Forte Tablet", generic: "Phenylephrine + Chlorphenamine + Paracetamol", cat: "Respiratory", cost: 3, price: 6.5, pop: 4 },
-  { name: "Solmux 500mg Capsule", generic: "Carbocisteine", cat: "Respiratory", cost: 6, price: 11, pop: 3 },
-  { name: "Salbutamol 2mg Tablet", generic: "Salbutamol", cat: "Respiratory", cost: 1, price: 3, pop: 2 },
-  { name: "Ambroxol 30mg Tablet", generic: "Ambroxol Hydrochloride", cat: "Respiratory", cost: 2.5, price: 6, pop: 2 },
-  { name: "Salbutamol 2.5mg Nebule", generic: "Salbutamol", cat: "Respiratory", cost: 28, price: 45, pop: 1 },
+  { name: "Neozep Forte Tablet", generic: "Phenylephrine + Chlorphenamine + Paracetamol", cat: "Respiratory", cost: 3, initialPrice: 6.5, pop: 4 },
+  { name: "Solmux 500mg Capsule", generic: "Carbocisteine", cat: "Respiratory", cost: 6, initialPrice: 11, pop: 3 },
+  { name: "Salbutamol 2mg Tablet", generic: "Salbutamol", cat: "Respiratory", cost: 1, initialPrice: 3, pop: 2 },
+  { name: "Ambroxol 30mg Tablet", generic: "Ambroxol Hydrochloride", cat: "Respiratory", cost: 2.5, initialPrice: 6, pop: 2 },
+  { name: "Salbutamol 2.5mg Nebule", generic: "Salbutamol", cat: "Respiratory", cost: 28, initialPrice: 45, pop: 1 },
   // Gastrointestinal
-  { name: "Loperamide 2mg Capsule", generic: "Loperamide Hydrochloride", cat: "Gastrointestinal", cost: 3, price: 7, pop: 1, qtyA: 120, expA: -12 },
-  { name: "Kremil-S Tablet", generic: "Aluminum Hydroxide + Magnesium Hydroxide + Simethicone", cat: "Gastrointestinal", cost: 4, price: 8, pop: 3 },
-  { name: "Omeprazole 20mg Capsule", generic: "Omeprazole", cat: "Gastrointestinal", cost: 3, price: 8, pop: 3, low: true },
-  { name: "Oral Rehydration Salts Sachet", generic: "Oral Rehydration Salts", cat: "Gastrointestinal", cost: 8, price: 15, pop: 3 },
+  { name: "Loperamide 2mg Capsule", generic: "Loperamide Hydrochloride", cat: "Gastrointestinal", cost: 3, initialPrice: 7, pop: 1, qtyA: 120, expA: -12 },
+  { name: "Kremil-S Tablet", generic: "Aluminum Hydroxide + Magnesium Hydroxide + Simethicone", cat: "Gastrointestinal", cost: 4, initialPrice: 8, pop: 3 },
+  { name: "Omeprazole 20mg Capsule", generic: "Omeprazole", cat: "Gastrointestinal", cost: 3, initialPrice: 8, pop: 3, low: true },
+  { name: "Oral Rehydration Salts Sachet", generic: "Oral Rehydration Salts", cat: "Gastrointestinal", cost: 8, initialPrice: 15, pop: 3 },
   // Vitamins & Supplements
-  { name: "Ascorbic Acid 500mg Tablet", generic: "Ascorbic Acid", cat: "Vitamins & Supplements", cost: 2, price: 5, pop: 4 },
-  { name: "Vitamin B Complex Tablet", generic: "Vitamin B1 + B6 + B12", cat: "Vitamins & Supplements", cost: 3, price: 7, pop: 1, qtyA: 120, expA: 85 },
-  { name: "Multivitamins + Minerals Capsule", generic: "Multivitamins + Minerals", cat: "Vitamins & Supplements", cost: 6, price: 12, pop: 3 },
-  { name: "Ferrous Sulfate 325mg Tablet", generic: "Ferrous Sulfate", cat: "Vitamins & Supplements", cost: 1.5, price: 4, pop: 1 },
-  { name: "Calcium Carbonate + Vitamin D3 Tablet", generic: "Calcium Carbonate + Cholecalciferol", cat: "Vitamins & Supplements", cost: 5, price: 10, pop: 1 },
+  { name: "Ascorbic Acid 500mg Tablet", generic: "Ascorbic Acid", cat: "Vitamins & Supplements", cost: 2, initialPrice: 5, pop: 4 },
+  { name: "Vitamin B Complex Tablet", generic: "Vitamin B1 + B6 + B12", cat: "Vitamins & Supplements", cost: 3, initialPrice: 7, pop: 1, qtyA: 120, expA: 85 },
+  { name: "Multivitamins + Minerals Capsule", generic: "Multivitamins + Minerals", cat: "Vitamins & Supplements", cost: 6, initialPrice: 12, pop: 3 },
+  { name: "Ferrous Sulfate 325mg Tablet", generic: "Ferrous Sulfate", cat: "Vitamins & Supplements", cost: 1.5, initialPrice: 4, pop: 1 },
+  { name: "Calcium Carbonate + Vitamin D3 Tablet", generic: "Calcium Carbonate + Cholecalciferol", cat: "Vitamins & Supplements", cost: 5, initialPrice: 10, pop: 1 },
   // Topical
-  { name: "Clotrimazole 1% Cream 15g", generic: "Clotrimazole", cat: "Topical", cost: 35, price: 65, pop: 1, qtyA: 100, expA: 18 },
-  { name: "Betamethasone 0.05% Cream 15g", generic: "Betamethasone Dipropionate", cat: "Topical", cost: 40, price: 75, pop: 1 },
-  { name: "Ketoconazole 2% Cream 15g", generic: "Ketoconazole", cat: "Topical", cost: 55, price: 95, pop: 1, qtyA: 90, expA: -30, dispose: true },
-  { name: "Povidone-Iodine 10% Solution 60ml", generic: "Povidone-Iodine", cat: "Topical", cost: 45, price: 80, pop: 2 },
-  { name: "Isopropyl Alcohol 70% 500ml", generic: "Isopropyl Alcohol", cat: "Topical", cost: 40, price: 75, pop: 3 },
+  { name: "Clotrimazole 1% Cream 15g", generic: "Clotrimazole", cat: "Topical", cost: 35, initialPrice: 65, pop: 1, qtyA: 100, expA: 18 },
+  { name: "Betamethasone 0.05% Cream 15g", generic: "Betamethasone Dipropionate", cat: "Topical", cost: 40, initialPrice: 75, pop: 1 },
+  { name: "Ketoconazole 2% Cream 15g", generic: "Ketoconazole", cat: "Topical", cost: 55, initialPrice: 95, pop: 1, qtyA: 90, expA: -30, dispose: true },
+  { name: "Povidone-Iodine 10% Solution 60ml", generic: "Povidone-Iodine", cat: "Topical", cost: 45, initialPrice: 80, pop: 2 },
+  { name: "Isopropyl Alcohol 70% 500ml", generic: "Isopropyl Alcohol", cat: "Topical", cost: 40, initialPrice: 75, pop: 3 },
   // Controlled (dangerous drugs)
-  { name: "Alprazolam 0.5mg Tablet", generic: "Alprazolam", cat: "Controlled Substance", cost: 6, price: 14, pop: 1, dd: true, min: 20 },
-  { name: "Diazepam 5mg Tablet", generic: "Diazepam", cat: "Controlled Substance", cost: 4, price: 10, pop: 1, dd: true, min: 20 },
-  { name: "Clonazepam 2mg Tablet", generic: "Clonazepam", cat: "Controlled Substance", cost: 9, price: 20, pop: 1, dd: true, min: 20 },
-  { name: "Tramadol 50mg Capsule", generic: "Tramadol Hydrochloride", cat: "Controlled Substance", cost: 8, price: 18, pop: 1, dd: true, min: 20 },
+  { name: "Alprazolam 0.5mg Tablet", generic: "Alprazolam", cat: "Controlled Substance", cost: 6, initialPrice: 14, pop: 1, dd: true, min: 20 },
+  { name: "Diazepam 5mg Tablet", generic: "Diazepam", cat: "Controlled Substance", cost: 4, initialPrice: 10, pop: 1, dd: true, min: 20 },
+  { name: "Clonazepam 2mg Tablet", generic: "Clonazepam", cat: "Controlled Substance", cost: 9, initialPrice: 20, pop: 1, dd: true, min: 20 },
+  { name: "Tramadol 50mg Capsule", generic: "Tramadol Hydrochloride", cat: "Controlled Substance", cost: 8, initialPrice: 18, pop: 1, dd: true, min: 20 },
 ];
 
 const SUPPLIER_DEFS = [
@@ -218,7 +219,7 @@ interface Batch {
 interface Product {
   id: string;
   sku: string;
-  def: ProductDef;
+  def: ProductDef & { sellingPrice: number };
   supplierIdx: number;
   qtyA: number;
   qtyB: number;
@@ -265,7 +266,7 @@ function buildData(passwordHash: string) {
 
   const products: Product[] = PRODUCT_DEFS.map((def, i) => ({
     id: randomUUID(), sku: `MED-${String(i + 1).padStart(4, "0")}`,
-    def, supplierIdx: CATEGORY_SUPPLIER[def.cat] ?? 0, qtyA: 0, qtyB: 0, minStock: 0, batches: [],
+    def: { ...def, sellingPrice: seedSellingPrice(def.initialPrice, def.cat) }, supplierIdx: CATEGORY_SUPPLIER[def.cat] ?? 0, qtyA: 0, qtyB: 0, minStock: 0, batches: [],
   }));
 
   // ── Wholesale clients & contracts (built first: contract items feed the stock sizing) ──
@@ -281,7 +282,7 @@ function buildData(passwordHash: string) {
       id: contractId, client_id: id, effective_date: dateStr(c.eff), expiry_date: dateStr(c.exp),
       payment_terms: c.terms, status: c.status, created_at: at(c.eff, 9), updated_at: at(c.eff, 9),
     });
-    const items = shuffle(eligible).slice(0, 10).map((p) => ({ prod: p, price: r2(Math.max(p.def.cost * 1.08, p.def.price * 0.88)) }));
+    const items = shuffle(eligible).slice(0, 10).map((p) => ({ prod: p, price: r2(Math.max(p.def.cost * 1.08, p.def.sellingPrice * 0.88)) }));
     for (const it of items)
       T.client_contract_items.push({ id: randomUUID(), contract_id: contractId, product_id: it.prod.id, agreed_unit_price: it.price });
     return { idx: i, id, contractId, terms: c.terms, items, name: c.name };
@@ -521,16 +522,16 @@ function buildData(passwordHash: string) {
         if (allocs.length === 0) continue;
         if (consumes) {
           for (const a of allocs) {
-            const subtotal = r2(a.qty * p.def.price);
-            items.push({ id: randomUUID(), transaction_id: txId, product_id: p.id, batch_id: a.batch.id, quantity: a.qty, unit_price_at_sale: p.def.price, subtotal, created_at: when });
+            const subtotal = r2(a.qty * p.def.sellingPrice);
+            items.push({ id: randomUUID(), transaction_id: txId, product_id: p.id, batch_id: a.batch.id, quantity: a.qty, unit_price_at_sale: p.def.sellingPrice, subtotal, created_at: when });
             soldAllocs.push({ p, batch: a.batch, qty: a.qty });
             gross += subtotal;
             cogs += a.qty * p.def.cost;
           }
         } else {
           const qty = sum(allocs.map((a) => a.qty));
-          const subtotal = r2(qty * p.def.price);
-          items.push({ id: randomUUID(), transaction_id: txId, product_id: p.id, batch_id: null, quantity: qty, unit_price_at_sale: p.def.price, subtotal, created_at: when });
+          const subtotal = r2(qty * p.def.sellingPrice);
+          items.push({ id: randomUUID(), transaction_id: txId, product_id: p.id, batch_id: null, quantity: qty, unit_price_at_sale: p.def.sellingPrice, subtotal, created_at: when });
           gross += subtotal;
         }
       }
@@ -665,12 +666,12 @@ function buildData(passwordHash: string) {
     }
 
   // ── Product + batch rows (after the simulation, so stock is final) ───────
+  for (const category of SEED_CATEGORIES) T.product_categories.push({ name: category.name, is_vat: category.isVat });
   for (const p of products)
     T.products.push({
       id: p.id, sku: p.sku, product_name: p.def.name, generic_name: p.def.generic, category: p.def.cat, is_dangerous_drug: !!p.def.dd,
-      is_vat_exempt: false,
-      selling_price: p.def.price,
-      wholesale_price: r2(Math.max(p.def.cost * 1.08, p.def.price * 0.88)),
+      initial_price: p.def.initialPrice,
+      wholesale_price: r2(Math.max(p.def.cost * 1.08, p.def.sellingPrice * 0.88)),
       cost_price: p.def.cost, minimum_stock_level: p.minStock,
       current_stock: sum(p.batches.map((b) => b.remaining)), created_at: day0, updated_at: NOW,
     });
