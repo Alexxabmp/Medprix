@@ -1263,6 +1263,7 @@ export default function WholesalePage({
                       <input
                         id={"wholesale-client-name"}
                         name="name"
+                        placeholder="Business name"
                         maxLength={255}
                         required
                         defaultValue={
@@ -1277,6 +1278,7 @@ export default function WholesalePage({
                       <textarea
                         id={"wholesale-client-address"}
                         name="address"
+                        placeholder="Delivery address"
                         rows={3}
                         maxLength={2000}
                         defaultValue={
@@ -1294,6 +1296,7 @@ export default function WholesalePage({
                         <input
                           id="wholesale-client-contact-person"
                           name="contactPerson"
+                          placeholder="Full name"
                           maxLength={255}
                           defaultValue={dialog.client?.contactPerson ?? ""}
                           autoComplete="name"
@@ -1321,6 +1324,7 @@ export default function WholesalePage({
                           type="tel"
                           inputMode="tel"
                           maxLength={20}
+                          placeholder="+639XXXXXXXXX"
                           onInput={(event) => {
                             const input = event.currentTarget;
                             input.value = cleanWholesalePhoneInput(input.value);
@@ -1356,6 +1360,7 @@ export default function WholesalePage({
                         id="wholesale-client-email"
                         name="email"
                         type="email"
+                        placeholder="name@example.com"
                         maxLength={255}
                         defaultValue={dialog.client?.email ?? ""}
                         autoComplete="email"
