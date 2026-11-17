@@ -1,5 +1,5 @@
 import { safeError, readResponse } from "./feedback";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useSyncExternalStore } from "react";
 import type { ProductItem, ShiftReceipt, SystemLog, UserActivity } from "./types";
 
 const formatPeso = (amount: number) =>
@@ -114,7 +114,7 @@ let globalSystemLogs: SystemLog[] | null = getCachedAuditList<SystemLog>("medpri
 let globalUserActivities: UserActivity[] | null = getCachedAuditList<UserActivity>("medprix_user_activities");
 
 let inventoryLoadError = "";
-let isInventoryLoading = false;
+let inventoryRequestsPending = 0;
 let isTransactionsLoading = false;
 let inventoryInFlight: Promise<ProductItem[]> | null = null;
 let transactionsInFlight: Promise<any[]> | null = null;
@@ -130,6 +130,36 @@ const CACHE_TTL_MS = 60_000;
 
 const inventoryListeners = new Set<() => void>();
 const transactionListeners = new Set<() => void>();
+
+export type PharmacySourceStatus = Readonly<{
+  hasData: boolean;
+  pending: boolean;
+  error: string;
+}>;
+
+const inventoryStatusListeners = new Set<() => void>();
+let inventoryStatus: PharmacySourceStatus = { hasData: false, pending: false, error: "" };
+
+function publishInventoryStatus() {
+  const hasData = globalInventory !== null;
+  const pending = inventoryRequestsPending > 0;
+  if (inventoryStatus.hasData === hasData && inventoryStatus.pending === pending && inventoryStatus.error === inventoryLoadError) return;
+  inventoryStatus = { hasData, pending, error: inventoryLoadError };
+  inventoryStatusListeners.forEach(listener => listener());
+}
+
+const subscribeInventoryStatus = (listener: () => void) => {
+  inventoryStatusListeners.add(listener);
+  return () => { inventoryStatusListeners.delete(listener); };
+};
+export const getPharmacyInventoryStatus = () => inventoryStatus;
+
+/** Observe request state locally without fetching or waking data-only consumers. */
+export function usePharmacyInventoryStatus() {
+  return useSyncExternalStore(subscribeInventoryStatus, getPharmacyInventoryStatus, getPharmacyInventoryStatus);
+}
+
+const emptyInventory: ProductItem[] = [];
 
 function notifyInventory() {
   inventoryListeners.forEach((fn) => {
@@ -196,7 +226,7 @@ export async function fetchInventoryData(force = false): Promise<ProductItem[]> 
   if (!force && inventoryInFlight) {
     return inventoryInFlight;
   }
-  isInventoryLoading = true;
+  inventoryRequestsPending++;
   const requestPromise = (async () => {
     try {
       const response = await fetch("/api/inventory", { credentials: "include" });
@@ -210,13 +240,15 @@ export async function fetchInventoryData(force = false): Promise<ProductItem[]> 
     } catch (failure) {
       inventoryLoadError = safeError(failure, "Could not refresh inventory. Please try again.");
     } finally {
-      isInventoryLoading = false;
+      inventoryRequestsPending--;
       inventoryInFlight = null;
+      publishInventoryStatus();
       notifyInventory();
     }
     return globalInventory ?? [];
   })();
   inventoryInFlight = requestPromise;
+  publishInventoryStatus();
   return requestPromise;
 }
 
@@ -267,6 +299,7 @@ export async function fetchTransactionsData(force = false): Promise<any[]> {
 export function setCachedInventory(products: ProductItem[]) {
   globalInventory = products;
   lastInventoryFetchedAt = Date.now();
+  publishInventoryStatus();
   notifyInventory();
 }
 
@@ -366,24 +399,18 @@ export function prefetchPharmacyData(role?: string) {
  */
 export function usePharmacyInventory() {
   const [error, setError] = useState(inventoryLoadError);
-  const [items, setItemsState] = useState<ProductItem[]>(() => globalInventory ?? []);
+  const [items, setItemsState] = useState<ProductItem[]>(() => globalInventory ?? emptyInventory);
   const [loading, setLoading] = useState<boolean>(() => globalInventory === null);
 
   useEffect(() => {
     const handler = () => {
       setError(inventoryLoadError);
       setLoading(false);
-      if (globalInventory) {
-        setItemsState([...globalInventory]);
-        setLoading(false);
-      }
+      setItemsState(globalInventory ?? emptyInventory);
     };
     inventoryListeners.add(handler);
 
-    fetchInventoryData().then((data) => {
-      setItemsState([...data]);
-      setLoading(false);
-    });
+    void fetchInventoryData().then(handler);
 
     return () => {
       inventoryListeners.delete(handler);
