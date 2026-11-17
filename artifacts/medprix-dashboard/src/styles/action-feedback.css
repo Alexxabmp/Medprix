@@ -1,0 +1,31 @@
+/* Local progress uses the existing control shapes and theme tokens. */
+.action-fields {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.action-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: hsl(var(--muted));
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  font-weight: 500;
+}
+.action-progress { margin-top: 4px; }
+.action-spinner,
+.login-error > svg { flex: 0 0 auto; }
+.login-card .login-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: hsl(var(--danger));
+  margin: 10px 0 0;
+}
+.login-error > svg { margin-top: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .action-spinner.spin { animation: none; }
+}

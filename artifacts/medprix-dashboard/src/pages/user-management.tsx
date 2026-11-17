@@ -1,13 +1,15 @@
 import { SelectField } from "@/components/custom-ui/select-field";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { PageTableValue } from "@/components/page-table-context";
-import { useState, useEffect, type FormEvent } from "react";
+import { useState, useEffect, useRef, type FormEvent } from "react";
+import { useDialogAccessibility } from "@/lib/use-dialog-accessibility";
 import { createPortal } from "react-dom";
 import {
   Check,
   Eye,
   EyeOff,
   KeyRound,
+  LoaderCircle,
   Pencil,
   Plus,
   Search,
@@ -17,6 +19,8 @@ import {
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import { Summary } from "@/components/custom-ui/summary-card";
 import type { ToastFn, UserRecord } from "@/lib/types";
+
+type PendingAction = { kind: "create" | "edit" | "reset" | "role" | "status"; userId?: string };
 
 export default function UserManagementPage({
   users,
@@ -47,6 +51,20 @@ export default function UserManagementPage({
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [resetError, setResetError] = useState("");
+  const busy = useRef(false);
+  const [pending, setPending] = useState<PendingAction | null>(null);
+  const startAction = (action: PendingAction) => {
+    if (busy.current) return false;
+    busy.current = true;
+    setPending(action);
+    return true;
+  };
+  const finishAction = () => {
+    busy.current = false;
+    setPending(null);
+  };
+  const closeDialog = () => { if (!busy.current) setDialog(null); };
+  useDialogAccessibility(dialog !== null, '.user-account-dialog', closeDialog, pending !== null);
   const currentUsername = localStorage.getItem("medprix-username");
 
   useEffect(() => {
@@ -61,11 +79,13 @@ export default function UserManagementPage({
   }, [dialog]);
 
   const openCreate = () => {
+    if (busy.current) return;
     setSelected(null);
     setDraft({ name: "", username: "", role: "Cashier", phone: "" });
     setDialog("create");
   };
   const openEdit = (user: UserRecord) => {
+    if (busy.current) return;
     setSelected(user);
     setDraft({
       name: user.name,
@@ -83,6 +103,7 @@ export default function UserManagementPage({
 
     const next = user.status === "Active" ? "Inactive" : "Active";
     const nextIsActive = next === "Active";
+    if (!startAction({ kind: "status", userId: user.id })) return;
     try {
       const response = await fetch(
         `/api/users/${user.id}`,
@@ -105,136 +126,166 @@ export default function UserManagementPage({
       onToast(`${user.name} is now ${next.toLowerCase()}`);
     } catch {
       onToast("Could not reach the server.");
+    } finally {
+      finishAction();
+    }
+  };
+  const updateRole = async (user: UserRecord, role: string) => {
+    if (user.username === currentUsername || !startAction({ kind: "role", userId: user.id })) return;
+    try {
+      const response = await fetch(`/api/users/${user.id}`, {
+        method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: role === "Administrator" ? "Admin" : role === "Front Desk" ? "FrontDesk" : "Cashier" }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        onToast(data.error ?? "Failed to update role");
+        return;
+      }
+      setUsers(users.map(item => item.id === user.id ? { ...item, role } : item));
+      refreshUsers?.();
+      onToast("Role updated");
+    } catch {
+      onToast("Could not reach the server.");
+    } finally {
+      finishAction();
     }
   };
   const submitUser = async (event: FormEvent, password = "") => {
     event.preventDefault();
+    if (busy.current) return;
     if (!draft.name.trim() || !draft.username.trim()) return;
 
     const rawPhone = draft.phone.trim();
     const validPhone = rawPhone && rawPhone !== "—" && rawPhone !== "\u2014" ? rawPhone : null;
 
-    if (dialog === "create") {
-      const dbRole =
-        draft.role === "Administrator"
-          ? "Admin"
-          : draft.role === "Front Desk"
-            ? "FrontDesk"
-            : "Cashier";
-      try {
-        const response = await fetch("/api/users", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            username: draft.username.trim(),
-            password,
-            fullName: draft.name.trim(),
-            contactNumber: validPhone,
-            role: dbRole,
-          }),
-        });
-        const data = await response.json();
-        if (!response.ok) {
-          onToast(data.error ?? "Failed to create user");
-          return;
-        }
-        const initials = draft.name
-          .trim()
-          .split(" ")
-          .map((part) => part[0])
-          .join("")
-          .slice(0, 2)
-          .toUpperCase();
-        setUsers([
-          ...users,
-          {
-            id: data.id,
-            initials,
-            name: draft.name.trim(),
-            username: draft.username.trim(),
-            role: draft.role,
-            status: "Active",
-            lastActive: "Never",
-            phone: validPhone || "",
-          },
-        ]);
-        refreshUsers?.();
-        onToast("Account created");
-      } catch {
-        onToast("Could not create user. Please check your session.");
-        return;
-      }
-    } else if (selected) {
-      const isEditingSelf = selected.username === currentUsername;
-      const dbRole =
-        draft.role === "Administrator"
-          ? "Admin"
-          : draft.role === "Front Desk"
-            ? "FrontDesk"
-            : "Cashier";
-      try {
-        const body: {
-          username: string;
-          fullName: string;
-          contactNumber: string | null;
-          role?: string;
-        } = {
-          username: draft.username.trim(),
-          fullName: draft.name.trim(),
-          contactNumber: validPhone,
-        };
-        if (!isEditingSelf) {
-          body.role = dbRole;
-        }
-
-        const response = await fetch(
-          `/api/users/${selected.id}`,
-          {
-            method: "PATCH",
+    if (!startAction({ kind: dialog === "create" ? "create" : "edit", userId: selected?.id })) return;
+    try {
+      if (dialog === "create") {
+        const dbRole =
+          draft.role === "Administrator"
+            ? "Admin"
+            : draft.role === "Front Desk"
+              ? "FrontDesk"
+              : "Cashier";
+        try {
+          const response = await fetch("/api/users", {
+            method: "POST",
             credentials: "include",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-          },
-        );
-        if (!response.ok) {
-          const data = await response.json().catch(() => ({}));
-          onToast(data.error ?? "Failed to update user");
-          return;
-        }
-      } catch {
-        onToast("Could not reach the server.");
-        return;
-      }
-      setUsers(
-        users.map((user) =>
-          user.id === selected.id
-            ? {
-              ...user,
+            body: JSON.stringify({
+              username: draft.username.trim(),
+              password,
+              fullName: draft.name.trim(),
+              contactNumber: validPhone,
+              role: dbRole,
+            }),
+          });
+          const data = await response.json();
+          if (!response.ok) {
+            onToast(data.error ?? "Failed to create user");
+            return;
+          }
+          const initials = draft.name
+            .trim()
+            .split(" ")
+            .map((part) => part[0])
+            .join("")
+            .slice(0, 2)
+            .toUpperCase();
+          setUsers([
+            ...users,
+            {
+              id: data.id,
+              initials,
               name: draft.name.trim(),
               username: draft.username.trim(),
-              role: isEditingSelf ? user.role : draft.role,
+              role: draft.role,
+              status: "Active",
+              lastActive: "Never",
               phone: validPhone || "",
-              initials: draft.name
-                .trim()
-                .split(" ")
-                .map((part) => part[0])
-                .join("")
-                .slice(0, 2)
-                .toUpperCase(),
-            }
-            : user,
-        ),
-      );
-      refreshUsers?.();
-      onToast("User profile updated");
-    }
+            },
+          ]);
+          refreshUsers?.();
+          onToast("Account created");
+        } catch {
+          onToast("Could not create user. Please check your session.");
+          return;
+        }
+      } else if (selected) {
+        const isEditingSelf = selected.username === currentUsername;
+        const dbRole =
+          draft.role === "Administrator"
+            ? "Admin"
+            : draft.role === "Front Desk"
+              ? "FrontDesk"
+              : "Cashier";
+        try {
+          const body: {
+            username: string;
+            fullName: string;
+            contactNumber: string | null;
+            role?: string;
+          } = {
+            username: draft.username.trim(),
+            fullName: draft.name.trim(),
+            contactNumber: validPhone,
+          };
+          if (!isEditingSelf) {
+            body.role = dbRole;
+          }
 
-    setDialog(null);
-    return;
+          const response = await fetch(
+            `/api/users/${selected.id}`,
+            {
+              method: "PATCH",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            },
+          );
+          if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            onToast(data.error ?? "Failed to update user");
+            return;
+          }
+        } catch {
+          onToast("Could not reach the server.");
+          return;
+        }
+        setUsers(
+          users.map((user) =>
+            user.id === selected.id
+              ? {
+                ...user,
+                name: draft.name.trim(),
+                username: draft.username.trim(),
+                role: isEditingSelf ? user.role : draft.role,
+                phone: validPhone || "",
+                initials: draft.name
+                  .trim()
+                  .split(" ")
+                  .map((part) => part[0])
+                  .join("")
+                  .slice(0, 2)
+                  .toUpperCase(),
+              }
+              : user,
+          ),
+        );
+        refreshUsers?.();
+        onToast("User profile updated");
+      }
+
+      setDialog(null);
+      return;
+    } finally {
+      finishAction();
+    }
   };
   const reset = async (event: FormEvent) => {
     event.preventDefault();
+    if (busy.current) return;
     if (!selected) return;
     if (password.length < 8) {
       setResetError("Password must be at least 8 characters.");
@@ -244,6 +295,8 @@ export default function UserManagementPage({
       setResetError("Passwords do not match.");
       return;
     }
+    if (!startAction({ kind: "reset", userId: selected.id })) return;
+    setResetError("");
     try {
       const response = await fetch(
         `/api/users/${selected.id}/password`,
@@ -268,6 +321,8 @@ export default function UserManagementPage({
       onToast(`Password successfully updated for ${selected.name}`);
     } catch {
       setResetError("Could not reach the server.");
+    } finally {
+      finishAction();
     }
   };
   const shown = users.filter((user) => {
@@ -295,6 +350,7 @@ export default function UserManagementPage({
           <button
             className="button dark"
             data-testid="button-create-account"
+            disabled={pending !== null}
             onClick={openCreate}>
             <Plus size={14} /> Create account
           </button>
@@ -368,7 +424,7 @@ export default function UserManagementPage({
                 const isCurrentUser = user.username === currentUsername;
 
                 return (
-                <tr key={user.id} data-testid={`row-user-${user.id}`}>
+                <tr key={user.id} data-testid={`row-user-${user.id}`} aria-busy={pending?.userId === user.id}>
                   <td>
                     <div className="product-cell">
                       <span
@@ -398,54 +454,13 @@ export default function UserManagementPage({
                       data-testid={`select-role-${user.id}`}
                       aria-label={`Role for ${user.name}`}
                       value={user.role}
-                      disabled={isCurrentUser}
-                      onChange={async (e) => {
-                        if (isCurrentUser) {
-                          onToast("You cannot change your own role.");
-                          return;
-                        }
-                        const newRoleLabel = e.target.value;
-                        const dbRole =
-                          newRoleLabel === "Administrator"
-                            ? "Admin"
-                            : newRoleLabel === "Front Desk"
-                              ? "FrontDesk"
-                              : "Cashier";
-                        try {
-                          const response = await fetch(
-                            `/api/users/${user.id}`,
-                            {
-                              method: "PATCH",
-                              credentials: "include",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ role: dbRole }),
-                            },
-                          );
-                          if (!response.ok) {
-                            const data = await response
-                              .json()
-                              .catch(() => ({}));
-                            onToast(data.error ?? "Failed to update role");
-                            return;
-                          }
-                        } catch {
-                          onToast("Could not reach the server.");
-                          return;
-                        }
-                        setUsers(
-                          users.map((item) =>
-                            item.id === user.id
-                              ? { ...item, role: newRoleLabel }
-                              : item,
-                          ),
-                        );
-                        refreshUsers?.();
-                        onToast("Role updated");
-                      }}>
+                      disabled={isCurrentUser || pending !== null}
+                      onChange={(e) => void updateRole(user, e.target.value)}>
                       <option>Administrator</option>
                       <option>Front Desk</option>
                       <option>Cashier</option>
                     </SelectField>
+                    {pending?.userId === user.id && pending.kind === "role" && <span className="action-progress" role="status"><LoaderCircle size={13} className="spin action-spinner" aria-hidden="true" />Saving role…</span>}
                     {isCurrentUser && (
                       <div className="muted" style={{ fontSize: 12, marginTop: 5 }}>
                         Your own role is locked.
@@ -471,10 +486,11 @@ export default function UserManagementPage({
                         aria-pressed={user.status === "Active"}
                         aria-label={`Set ${user.name} ${user.status === "Active" ? "inactive" : "active"}`}
                         onClick={() => toggleStatus(user)}
-                        disabled={isCurrentUser}
+                        disabled={isCurrentUser || pending !== null}
                         >
                         <span />
                       </button></AppTooltip>
+                      {pending?.userId === user.id && pending.kind === "status" && <span className="action-progress" role="status"><LoaderCircle size={13} className="spin action-spinner" aria-hidden="true" /><span className="sr-only">Updating account status…</span></span>}
                     </div>
                     {isCurrentUser && (
                       <div className="muted" style={{ fontSize: 12, marginTop: 5 }}>
@@ -488,6 +504,7 @@ export default function UserManagementPage({
                       <AppTooltip content={`Edit ${user.name}`}><button
                         className="button soft table-action-btn"
                         data-testid={`button-edit-user-${user.id}`}
+                        disabled={pending !== null}
                         aria-label={`Edit ${user.name}`}
 
                         onClick={() => openEdit(user)}>
@@ -496,9 +513,11 @@ export default function UserManagementPage({
                       <AppTooltip content={`Reset password for ${user.name}`}><button
                         className="button soft table-action-btn"
                         data-testid={`button-reset-user-${user.id}`}
+                        disabled={pending !== null}
                         aria-label={`Reset password for ${user.name}`}
 
                         onClick={() => {
+                          if (busy.current) return;
                           setSelected(user);
                           setPassword("");
                           setConfirmPassword("");
@@ -549,7 +568,8 @@ export default function UserManagementPage({
           isCreate={dialog === "create"}
           draft={draft}
           setDraft={setDraft}
-          onClose={() => setDialog(null)}
+          onClose={closeDialog}
+          pending={pending !== null}
           onSubmit={submitUser}
           isCurrentUser={selected?.username === currentUsername}
         />
@@ -559,9 +579,9 @@ export default function UserManagementPage({
           <div
             className="modal-backdrop"
             onMouseDown={(event) =>
-              event.currentTarget === event.target && setDialog(null)
+              event.currentTarget === event.target && closeDialog()
             }>
-            <form className="modal dialog" onSubmit={reset}>
+            <form className="modal dialog user-account-dialog" onSubmit={reset} aria-busy={pending !== null}>
               <div className="modal-header">
                 <div>
                   <h2>Reset password</h2>
@@ -573,11 +593,12 @@ export default function UserManagementPage({
                   type="button"
                   className="modal-close"
                   data-testid="button-close-reset"
-                  onClick={() => setDialog(null)}>
+                  disabled={pending !== null}
+                  onClick={closeDialog}>
                   <X size={16} />
                 </button>
               </div>
-              <div className="form-grid">
+              <fieldset className="form-grid action-fields" disabled={pending !== null}>
                 <div className="field" style={{ position: "relative" }}>
                   <label htmlFor="reset-password">New password</label>
                   <input
@@ -644,7 +665,7 @@ export default function UserManagementPage({
                     )}
                   </button>
                 </div>
-              </div>
+              </fieldset>
               {resetError && (
                 <p className="inline-error" role="alert">
                   {resetError}
@@ -654,10 +675,12 @@ export default function UserManagementPage({
                 <button
                   className="button dark"
                   data-testid="button-confirm-reset"
+                  disabled={pending !== null}
                   type="submit">
-                  Reset password <KeyRound size={13} />
+                  {pending ? <><LoaderCircle size={13} className="spin action-spinner" aria-hidden="true" />Resetting password…</> : <>Reset password <KeyRound size={13} aria-hidden="true" /></>}
                 </button>
               </div>
+              <span className="sr-only" role="status">{pending ? "Resetting password…" : ""}</span>
             </form>
           </div>,
           document.body,
@@ -684,6 +707,7 @@ function UserDialog({
   onClose,
   onSubmit,
   isCurrentUser = false,
+  pending,
 }: {
   title: string;
   isCreate: boolean;
@@ -697,6 +721,7 @@ function UserDialog({
   onClose: () => void;
   onSubmit: (event: FormEvent, password: string) => void;
   isCurrentUser?: boolean;
+  pending: boolean;
 }) {
   const [showPwd, setShowPwd] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -713,6 +738,7 @@ function UserDialog({
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
+    if (pending) return;
 
     const cleaned = draft.phone.trim();
     const phoneRegex = /^\+639\d{9}$/;
@@ -740,7 +766,7 @@ function UserDialog({
       onMouseDown={(event) =>
         event.currentTarget === event.target && onClose()
       }>
-      <form className="modal dialog" onSubmit={handleSubmit}>
+      <form className="modal dialog user-account-dialog" onSubmit={handleSubmit} aria-busy={pending}>
         <div className="modal-header">
           <div>
             <h2>{title}</h2>
@@ -750,11 +776,12 @@ function UserDialog({
             type="button"
             className="modal-close"
             data-testid="button-close-user-dialog"
+            disabled={pending}
             onClick={onClose}>
             <X size={16} />
           </button>
         </div>
-        <div className="form-grid">
+        <fieldset className="form-grid action-fields" disabled={pending}>
           <div className="field">
             <label htmlFor="user-name">Full name</label>
             <input
@@ -799,7 +826,7 @@ function UserDialog({
               id="user-role"
               data-testid="select-user-role"
               value={draft.role}
-              disabled={isCurrentUser}
+              disabled={isCurrentUser || pending}
               onChange={(e) => setDraft({ ...draft, role: e.target.value })}>
               <option>Administrator</option>
               <option>Front Desk</option>
@@ -873,7 +900,7 @@ function UserDialog({
               </div>
             </>
           )}
-        </div>
+        </fieldset>
         {formError && (
           <p className="inline-error" role="alert">
             {formError}
@@ -883,10 +910,13 @@ function UserDialog({
           <button
             className="button dark"
             data-testid="button-save-user"
+            disabled={pending}
             type="submit">
-            <Check size={13} /> {isCreate ? "Create account" : "Save changes"}
+            {pending ? <LoaderCircle size={13} className="spin action-spinner" aria-hidden="true" /> : <Check size={13} aria-hidden="true" />}
+            {pending ? (isCreate ? "Creating account…" : "Saving changes…") : (isCreate ? "Create account" : "Save changes")}
           </button>
         </div>
+        <span className="sr-only" role="status">{pending ? (isCreate ? "Creating account…" : "Saving changes…") : ""}</span>
       </form>
     </div>,
     document.body,

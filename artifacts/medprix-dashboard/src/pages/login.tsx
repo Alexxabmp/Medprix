@@ -1,18 +1,24 @@
-import { useState, type FormEvent } from "react";
-import { ArrowUpRight, Eye, EyeOff, Pill } from "lucide-react";
+import { useRef, useState, type FormEvent } from "react";
+import { ArrowUpRight, CircleAlert, Eye, EyeOff, LoaderCircle, Pill } from "lucide-react";
 
 export default function LoginPage({ onLogin }: { onLogin: () => void }) {
   const [showPwd, setShowPwd] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const busy = useRef(false);
+  const [pending, setPending] = useState(false);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (busy.current) return;
     if (!username.trim() || !password.trim()) {
       setError("Enter your username and password to continue.");
       return;
     }
+    busy.current = true;
+    setPending(true);
+    setError("");
     try {
       const response = await fetch("/api/login", {
         method: "POST",
@@ -35,12 +41,15 @@ export default function LoginPage({ onLogin }: { onLogin: () => void }) {
       onLogin();
     } catch {
       setError("Could not reach the server. Is the backend running?");
+    } finally {
+      busy.current = false;
+      setPending(false);
     }
   };
 
   return (
     <main className="login-page">
-      <form className="login-card" onSubmit={submit}>
+      <form className="login-card" onSubmit={submit} aria-busy={pending}>
         <div className="brand">
           <span className="brand-mark">
             <Pill size={16} strokeWidth={2.4} />
@@ -62,6 +71,7 @@ export default function LoginPage({ onLogin }: { onLogin: () => void }) {
             onChange={(e) => setUsername(e.target.value)}
             placeholder="Enter your username"
             autoComplete="username"
+            disabled={pending}
           />
         </div>
         <div className="field" style={{ position: "relative" }}>
@@ -74,10 +84,12 @@ export default function LoginPage({ onLogin }: { onLogin: () => void }) {
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Enter your password"
             autoComplete="current-password"
+            disabled={pending}
             style={{ paddingRight: 38 }}
           />
           <button
             type="button"
+            disabled={pending}
             onClick={() => setShowPwd((v) => !v)}
             style={{
               position: "absolute",
@@ -96,20 +108,23 @@ export default function LoginPage({ onLogin }: { onLogin: () => void }) {
         </div>
         {error && (
           <p
-            style={{ color: "#b34f45", margin: "10px 0 0", fontSize: 12 }}
+            className="login-error"
+            role="alert"
             data-testid="status-login-error"
           >
-            {error}
+            <CircleAlert size={14} aria-hidden="true" /><span>{error}</span>
           </p>
         )}
         <button
           className="button dark full"
           data-testid="button-sign-in"
           type="submit"
+          disabled={pending}
           style={{ marginTop: 22 }}
         >
-          Sign in <ArrowUpRight size={14} />
+          {pending ? <><LoaderCircle size={14} className="spin action-spinner" aria-hidden="true" /> Signing in…</> : <>Sign in </>}
         </button>
+        <span className="sr-only" role="status">{pending ? "Signing in…" : ""}</span>
         <div className="login-footer">
           Protected workspace · Medprix Pharmacy Group
         </div>
