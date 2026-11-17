@@ -114,6 +114,8 @@ let globalSystemLogs: SystemLog[] | null = getCachedAuditList<SystemLog>("medpri
 let globalUserActivities: UserActivity[] | null = getCachedAuditList<UserActivity>("medprix_user_activities");
 
 let inventoryLoadError = "";
+let transactionsLoadError = "";
+let hasTransactionData = globalTransactions !== null;
 let inventoryRequestsPending = 0;
 let isTransactionsLoading = false;
 let inventoryInFlight: Promise<ProductItem[]> | null = null;
@@ -160,6 +162,28 @@ export function usePharmacyInventoryStatus() {
 }
 
 const emptyInventory: ProductItem[] = [];
+const emptyTransactions: any[] = [];
+const emptyReceipts: ShiftReceipt[] = [];
+
+const transactionStatusListeners = new Set<() => void>();
+let transactionStatus: PharmacySourceStatus = { hasData: hasTransactionData, pending: false, error: "" };
+
+function publishTransactionStatus() {
+  if (transactionStatus.hasData === hasTransactionData && transactionStatus.pending === isTransactionsLoading && transactionStatus.error === transactionsLoadError) return;
+  transactionStatus = { hasData: hasTransactionData, pending: isTransactionsLoading, error: transactionsLoadError };
+  transactionStatusListeners.forEach(listener => listener());
+}
+
+const subscribeTransactionStatus = (listener: () => void) => {
+  transactionStatusListeners.add(listener);
+  return () => { transactionStatusListeners.delete(listener); };
+};
+export const getPharmacyTransactionsStatus = () => transactionStatus;
+
+/** Observe transaction availability/activity without fetching or copying receipts. */
+export function usePharmacyTransactionsStatus() {
+  return useSyncExternalStore(subscribeTransactionStatus, getPharmacyTransactionsStatus, getPharmacyTransactionsStatus);
+}
 
 function notifyInventory() {
   inventoryListeners.forEach((fn) => {
@@ -266,33 +290,40 @@ export async function fetchTransactionsData(force = false): Promise<any[]> {
     try {
       const res = await fetch("/api/admin/transactions", { credentials: "include" });
       if (res.status === 401 || res.status === 403) {
-        if (request === transactionRequest && revision === transactionRevision) clearTransactionSession();
+        if (request === transactionRequest && revision === transactionRevision) {
+          clearTransactionSession();
+          transactionsLoadError = safeError({ status: res.status });
+          publishTransactionStatus();
+        }
         return [];
       }
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          // A confirmed local save or newer fetch wins over an older response.
-          if (revision !== transactionRevision) return globalTransactions || [];
-          globalTransactions = [...data].sort((a, b) => new Date(b.createdAt ?? b.dateTime).getTime() - new Date(a.createdAt ?? a.dateTime).getTime());
-          globalReceipts = mapTransactionsToReceipts(globalTransactions);
-          lastTransactionsFetchedAt = Date.now();
-          saveLocalTransactions(globalTransactions);
-          notifyTransactions();
-          return globalTransactions;
-        }
-      }
+      const data = await readResponse(res, "Could not refresh transactions. Please try again.");
+      if (!Array.isArray(data)) throw new Error("Invalid transaction response. Please refresh transactions.");
+      // A confirmed local save or newer fetch wins over an older response.
+      if (revision !== transactionRevision) return globalTransactions || [];
+      globalTransactions = [...data].sort((a, b) => new Date(b.createdAt ?? b.dateTime).getTime() - new Date(a.createdAt ?? a.dateTime).getTime());
+      globalReceipts = mapTransactionsToReceipts(globalTransactions);
+      hasTransactionData = true;
+      transactionsLoadError = "";
+      lastTransactionsFetchedAt = Date.now();
+      saveLocalTransactions(globalTransactions);
+      return globalTransactions;
     } catch (err) {
-      console.warn("Transactions fetch notice:", err);
+      if (request === transactionRequest && revision === transactionRevision) {
+        transactionsLoadError = safeError(err, "Could not refresh transactions. Please try again.");
+      }
     } finally {
       if (request === transactionRequest) {
         isTransactionsLoading = false;
         transactionsInFlight = null;
+        publishTransactionStatus();
+        notifyTransactions();
       }
     }
     return globalTransactions || [];
   })();
   transactionsInFlight = requestPromise;
+  publishTransactionStatus();
   return requestPromise;
 }
 
@@ -315,6 +346,8 @@ export function clearTransactionSession() {
   lastTransactionsFetchedAt = 0;
   lastAuditFetchedAt = 0;
   isTransactionsLoading = false;
+  hasTransactionData = false;
+  transactionsLoadError = "";
   transactionsInFlight = null;
   auditInFlight = null;
   try {
@@ -323,6 +356,7 @@ export function clearTransactionSession() {
       sessionStorage.removeItem(key);
     }
   } catch {}
+  publishTransactionStatus();
   notifyTransactions();
 }
 
@@ -330,8 +364,11 @@ export function setCachedTransactions(transactions: any[]) {
   transactionRevision++;
   globalTransactions = transactions;
   globalReceipts = mapTransactionsToReceipts(transactions);
+  hasTransactionData = true;
+  transactionsLoadError = "";
   lastTransactionsFetchedAt = Date.now();
   saveLocalTransactions(transactions);
+  publishTransactionStatus();
   notifyTransactions();
 }
 
@@ -435,17 +472,15 @@ export function usePharmacyInventory() {
  * Hook for Transactions & Shift Receipts
  */
 export function usePharmacyTransactions() {
-  const [transactions, setTransactionsState] = useState<any[]>(() => globalTransactions ?? []);
-  const [receipts, setReceiptsState] = useState<ShiftReceipt[]>(() => globalReceipts ?? []);
+  const [transactions, setTransactionsState] = useState<any[]>(() => globalTransactions ?? emptyTransactions);
+  const [receipts, setReceiptsState] = useState<ShiftReceipt[]>(() => globalReceipts ?? emptyReceipts);
   const [loading, setLoading] = useState<boolean>(() => globalTransactions === null);
 
   useEffect(() => {
     const handler = () => {
-      if (globalTransactions) {
-        setTransactionsState([...globalTransactions]);
-        setReceiptsState([...(globalReceipts ?? [])]);
-        setLoading(false);
-      }
+      setTransactionsState(globalTransactions ?? emptyTransactions);
+      setReceiptsState(globalReceipts ?? emptyReceipts);
+      setLoading(false);
     };
     transactionListeners.add(handler);
     const refreshOnFocus = () => { void fetchTransactionsData(false); };
@@ -455,11 +490,7 @@ export function usePharmacyTransactions() {
     window.addEventListener("focus", refreshOnFocus);
     window.addEventListener("storage", refreshOnStorage);
 
-    fetchTransactionsData().then((data) => {
-      setTransactionsState([...data]);
-      setReceiptsState([...mapTransactionsToReceipts(data)]);
-      setLoading(false);
-    });
+    void fetchTransactionsData().then(handler);
 
     return () => {
       transactionListeners.delete(handler);
