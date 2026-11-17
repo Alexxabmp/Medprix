@@ -5,7 +5,8 @@
   padding: 0;
   min-width: 0;
 }
-.action-progress {
+.action-progress,
+.financial-status {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -17,7 +18,14 @@
 }
 .action-progress { margin-top: 4px; }
 .action-spinner,
+.financial-status > svg,
 .login-error > svg { flex: 0 0 auto; }
+.financial-pending {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  color: hsl(var(--muted));
+}
 .login-card .login-error {
   display: flex;
   align-items: flex-start;

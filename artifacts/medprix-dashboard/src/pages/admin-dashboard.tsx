@@ -5,6 +5,8 @@ import {
   BarChart3,
   Boxes,
   CircleDollarSign,
+  CircleAlert,
+  LoaderCircle,
   FileBarChart,
   Package,
 } from "lucide-react";
@@ -75,15 +77,18 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
         />
         <Kpi
           label="Financial · All Time"
+          busy={financial.status === "loading"}
           value={
             financial.status === "ready"
               ? formatPeso(financial.data.revenue.total)
-              : formatPeso(analytics.dailySales.totalSales)
+              : financial.status === "loading"
+                ? <span className="financial-pending" role="status"><LoaderCircle size={24} className="spin action-spinner" aria-hidden="true" /><span className="sr-only">Loading financial summary…</span></span>
+                : "Unavailable"
           }
           change={
             financial.status === "ready"
               ? financialArReviewMessage(financial.data)
-              : "All-time financial summary"
+              : <span className="financial-status">{financial.status === "error" && <CircleAlert size={13} aria-hidden="true" />}{financial.status === "loading" ? "Loading summary…" : "Open report to retry"}</span>
           }
           icon={CircleDollarSign}
           onClick={() => setReport("financial")}
