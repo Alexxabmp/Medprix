@@ -72,6 +72,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
   const [activityPage, setActivityPage] = useState(1);
 
   const [auditError, setAuditError] = useState("");
+  const [hasAuditData, setHasAuditData] = useState(() => getCachedSystemLogs() !== null && getCachedUserActivities() !== null);
   const [hasLoaded, setHasLoaded] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isBackingUp, setIsBackingUp] = useState(false);
@@ -87,17 +88,15 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
 
   const loadBackendData = async (force = false) => {
     if (force) setIsRefreshing(true);
-    setAuditError("");
+    if (!force) setAuditError("");
     void (force || transactions.length === 0 ? refreshLiveTransactions() : Promise.resolve(transactions));
     try {
       const audit = await fetchAuditRecords(force);
       setSystemLogs(audit.logs);
       setUserActivities(audit.activities);
+      setHasAuditData(true);
+      setAuditError("");
     } catch (error) {
-      if (force) {
-        setSystemLogs([]);
-        setUserActivities([]);
-      }
       setAuditError(safeError(error, "Audit records are unavailable. Refresh to retry."));
     } finally {
       setIsRefreshing(false);
@@ -257,13 +256,14 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
       )}
       {auditError && (
         <div role="alert" className="inline-error">
-          <span>{auditError}</span>
+          <span className="action-error-copy"><AlertCircle size={16} aria-hidden="true" /><span>{auditError}{hasAuditData ? " Showing previously loaded audit records." : ""}</span></span>
           <button
             type="button"
             className="button soft"
             disabled={isRefreshing}
             onClick={() => void loadBackendData(true)}>
-            Retry
+            <RefreshCw size={13} className={isRefreshing ? "spin action-spinner" : undefined} aria-hidden="true" />
+            {isRefreshing ? "Refreshing…" : "Retry"}
           </button>
         </div>
       )}
@@ -292,17 +292,17 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
         <div className="summary-strip">
           <Summary
             label="Total audit logs"
-            value={auditError ? "Unavailable" : String(systemLogs.length)}
+            value={auditError && !hasAuditData ? "Unavailable" : String(systemLogs.length)}
             caption="System & security events"
           />
           <Summary
             label="Successful events"
-            value={auditError ? "Unavailable" : String(systemLogs.filter((l) => l.status === "Success").length)}
+            value={auditError && !hasAuditData ? "Unavailable" : String(systemLogs.filter((l) => l.status === "Success").length)}
             caption="Executed normally"
           />
           <Summary
             label="Failed / Alerts"
-            value={auditError ? "Unavailable" : String(systemLogs.filter((l) => l.status !== "Success").length)}
+            value={auditError && !hasAuditData ? "Unavailable" : String(systemLogs.filter((l) => l.status !== "Success").length)}
             caption="Requires attention"
             tone={
               systemLogs.filter((l) => l.status === "Failed").length > 0 ? "warning" : "neutral"
@@ -314,17 +314,17 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
         <div className="summary-strip">
           <Summary
             label="Tracked activities"
-            value={auditError ? "Unavailable" : String(userActivities.length)}
+            value={auditError && !hasAuditData ? "Unavailable" : String(userActivities.length)}
             caption="Recorded across workspace"
           />
           <Summary
             label="Normal operations"
-            value={auditError ? "Unavailable" : String(userActivities.filter((a) => a.flag === "Normal").length)}
+            value={auditError && !hasAuditData ? "Unavailable" : String(userActivities.filter((a) => a.flag === "Normal").length)}
             caption="Standard user usage"
           />
           <Summary
             label="Suspicious / Flagged"
-            value={auditError ? "Unavailable" : String(userActivities.filter((a) => a.flag !== "Normal").length)}
+            value={auditError && !hasAuditData ? "Unavailable" : String(userActivities.filter((a) => a.flag !== "Normal").length)}
             caption="Detected security alerts"
             tone={
               userActivities.filter((a) => a.flag !== "Normal").length > 0
