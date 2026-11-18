@@ -46,6 +46,8 @@ export interface ProductItem {
   price: string;
   cost?: string;
   isDangerousDrug?: boolean;
+  /** Phase 2c: shows an Rx tag at the POS and reminds the cashier to check the prescription. */
+  requiresPrescription?: boolean;
   reorder: number;
   batches: ProductBatch[];
   stock?: number;
@@ -110,7 +112,14 @@ export interface UserTransaction {
   total: string;
   subtotal: string;
   discount: string;
+  discountType?: string;
   vat: string;
+  vatRelief?: string;
+  /** GCash / QR reference number or card approval code (retail sales from migration 0016 on). */
+  paymentReference?: string;
+  /** Senior citizen / PWD name and ID number as shown on the ID (discounted sales from migration 0017 on). */
+  discountHolderName?: string;
+  discountHolderId?: string;
   amountReceived: string;
   change: string;
   payment: string;
@@ -166,6 +175,11 @@ export interface ShiftReceipt {
   vat?: string;
   vatRelief?: string;
   discount?: string;
+  /** "Senior" or "PWD" when a 20% discount was applied; missing on older sales. */
+  discountType?: string;
+  paymentReference?: string;
+  discountHolderName?: string;
+  discountHolderId?: string;
   amountReceived?: string;
   change?: string;
   method: string;

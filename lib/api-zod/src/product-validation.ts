@@ -51,6 +51,7 @@ export function validateProductInput(input: Record<string, unknown>, options: { 
   if (supplied("initialPrice") && Number(parseProductMoney(input.initialPrice)) > 8928571428.56) errors.initialPrice = "Initial price must be at most 8,928,571,428.56 to allow VAT.";
   if (supplied("reorder") && !wholeNumber(input.reorder, 0, 2147483647)) errors.reorder = "Enter a nonnegative whole-number reorder level (maximum 2,147,483,647).";
   if (input.isDangerousDrug !== undefined && typeof input.isDangerousDrug !== "boolean") errors.isDangerousDrug = "Controlled item must be on or off.";
+  if (input.requiresPrescription !== undefined && typeof input.requiresPrescription !== "boolean") errors.requiresPrescription = "Prescription required must be on or off.";
   if (options.batch && PRODUCT_BATCH_FIELDS.some((key) => input[key] !== undefined && input[key] !== null)) {
     if (typeof input.batchNumber !== "string" || !input.batchNumber.trim() || input.batchNumber.trim().length > 100) errors.batchNumber = "Enter a batch number of at most 100 characters.";
     if (!wholeNumber(input.quantity, 1, 1000000)) errors.quantity = "Enter a whole-number quantity from 1 to 1,000,000.";

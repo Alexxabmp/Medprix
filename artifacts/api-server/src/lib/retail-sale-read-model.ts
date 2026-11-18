@@ -7,6 +7,7 @@ export async function readRetailSales(
 ) {
   const result = await query(
     `SELECT t.*,r.receipt_number,r.merchant_name_at_issue,
+    cust.customer_name AS customer_name,applied.discount_type AS applied_discount_type,applied.holder_name AS discount_holder_name,applied.holder_id_number AS discount_holder_id,
     COALESCE((SELECT jsonb_agg(lines ORDER BY lines.product_id) FROM (
       SELECT product_id,product_name_at_sale AS product,is_vat_exempt_at_sale,vat_rate_at_sale::text AS vat_rate,unit_price_at_sale::text AS unit_price,
         sum(quantity)::int AS quantity,sum(subtotal)::text AS subtotal,sum(vat_amount)::text AS vat,
@@ -16,6 +17,10 @@ export async function readRetailSales(
       GROUP BY product_id,product_name_at_sale,unit_price_at_sale,is_vat_exempt_at_sale,vat_rate_at_sale
     ) lines),'[]'::jsonb) AS receipt_items
     FROM transactions t JOIN receipts r ON r.transaction_id=t.id
+    LEFT JOIN customers cust ON cust.id=t.customer_id
+    -- The Senior/PWD discount row (older seeded sales also hold a separate "VAT Exemption" row).
+    LEFT JOIN LATERAL (SELECT d.discount_type,d.holder_name,d.holder_id_number FROM discounts d
+      WHERE d.transaction_id=t.id AND d.discount_type IN ('Senior','Senior Citizen','PWD') ORDER BY d.created_at,d.id LIMIT 1) applied ON true
     WHERE ($1::uuid IS NULL OR t.id=$1)
       AND ($2::uuid IS NULL OR t.cashier_id=$2)
     ORDER BY t.created_at DESC,t.id`,
@@ -31,10 +36,13 @@ export async function readRetailSales(
     dateTime: new Date(row.transaction_date).toISOString(),
     user: row.cashier_name_at_sale ?? "Cashier name not recorded",
     businessType: "Retail",
-    customer: "Walk-in Customer",
+    customer: row.customer_name ?? "Walk-in Customer",
     total: peso(row.net_amount),
     subtotal: peso(row.gross_amount),
     discount: peso(row.total_discount),
+    discountType: row.applied_discount_type === "Senior Citizen" ? "Senior" : row.applied_discount_type ?? undefined,
+    discountHolderName: row.discount_holder_name ?? undefined,
+    discountHolderId: row.discount_holder_id ?? undefined,
     vat: peso(row.vat_amount),
     vatRelief: row.calculation_version
       ? peso(
@@ -46,6 +54,9 @@ export async function readRetailSales(
     amountReceived: peso(row.amount_tendered),
     change: peso(row.change_amount),
     payment: row.payment_method,
+    paymentReference: row.payment_reference ?? undefined,
+    customerId: row.customer_id ?? undefined,
+    customerName: row.customer_name ?? undefined,
     status: row.status,
     merchantNameAtIssue: row.merchant_name_at_issue ?? "Merchant name not recorded",
     calculationVersion: row.calculation_version,

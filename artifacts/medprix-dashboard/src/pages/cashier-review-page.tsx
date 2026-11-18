@@ -240,7 +240,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
               <div style={{ background: "hsl(var(--surface-soft))", border: "1px solid hsl(var(--border))", borderRadius: 14, padding: "14px 16px" }}>
                 <span className="muted" style={{ fontSize: 12, display: "block" }}>Total shift sales</span>
                 <strong style={{ display: "block", fontSize: 20, marginTop: 4, color: "hsl(var(--foreground))", letterSpacing: "-.04em" }}>{formatPeso(totalSales)}</strong>
-                <span style={{ color: "#34C759", fontSize: 12, fontWeight: 600 }}>Across all payment modes</span>
+                <span style={{ color: "var(--success-text)", fontSize: 12, fontWeight: 600 }}>Across all payment modes</span>
               </div>
               <div style={{ background: "hsl(var(--surface-soft))", border: "1px solid hsl(var(--border))", borderRadius: 14, padding: "14px 16px" }}>
                 <span className="muted" style={{ fontSize: 12, display: "block" }}>Transactions</span>
