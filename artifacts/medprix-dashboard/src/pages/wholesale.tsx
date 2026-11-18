@@ -223,7 +223,12 @@ export default function WholesalePage({
     void submit({ key: crypto.randomUUID(), path, method, body });
   }
   function openDelivery(id: string, title = "Manage delivery") {
+    setDeliveryReceipt(null);
     deliveryRead.open(title, () => wholesaleGet<WholesaleOrderDetail & { order: WholesaleOrder }>("/orders/" + id, true));
+  }
+  function closeDeliveryRead() {
+    deliveryRead.close();
+    setDeliveryReceipt(null);
   }
   function open(next: Dialog) {
     if (
@@ -1116,11 +1121,11 @@ export default function WholesalePage({
           mutate={mutate}
         />
       )}
-      <ReadDialog task={deliveryRead} variant="form" busy={busy || printingReceipt}>
-        {detail => renderDelivery(detail.order, detail, deliveryRead.close, true)}
+      <ReadDialog task={{ ...deliveryRead, close: closeDeliveryRead }} variant="form" busy={busy || printingReceipt}>
+        {detail => renderDelivery(detail.order, detail, closeDeliveryRead, true)}
       </ReadDialog>
       {dialog?.kind === "delivery" && renderDelivery(dialog.order, dialog.detail, () => setDialog(null))}
-      {deliveryReceipt && dialog?.kind !== "delivery" && (
+      {deliveryReceipt && !deliveryRead.state && dialog?.kind !== "delivery" && (
         <DeliveryReceiptView
           receipt={deliveryReceipt}
           close={() => setDeliveryReceipt(null)}

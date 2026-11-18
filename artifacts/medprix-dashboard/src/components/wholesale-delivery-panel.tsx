@@ -77,7 +77,7 @@ export function WholesaleDeliveryPanel({
                     ? "Record failed delivery"
                     : "Cancel delivery attempt",
           variant: action === "deliver" ? "compact-table" : "form",
-          back: () => {
+          back: action === initialAction ? undefined : () => {
             setAction("");
             setValidation("");
           },

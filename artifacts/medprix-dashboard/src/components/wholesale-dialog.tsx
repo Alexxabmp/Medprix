@@ -109,7 +109,7 @@ export function WholesaleDialog({
       ? {
           title,
           variant: variant ?? "form",
-          back: back ?? close,
+          back,
           description,
           busy,
           className,
