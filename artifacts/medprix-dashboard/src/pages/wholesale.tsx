@@ -96,6 +96,7 @@ export default function WholesalePage({
     useState<WholesaleAccountFilter>("all");
   const [orderStatus, setOrderStatus] = useState("All statuses");
   const [deliveryHistoryOpen, setDeliveryHistoryOpen] = useState(false);
+  const [refreshTarget, setRefreshTarget] = useState<HTMLDivElement | null>(null);
   const [deliveryStatus, setDeliveryStatus] =
     useState<DeliveryQueueStatus>("all");
   const [vatFilter, setVatFilter] = useState("All VAT classifications");
@@ -614,6 +615,7 @@ export default function WholesalePage({
             />
           </div>
           <div className="table-tools-right">
+            {(tab === "deliveries" || tab === "accounts") && <div ref={setRefreshTarget} />}
             {activeResource && <SourceRefreshButton status={sources[activeResource]} label="wholesale records" onRefresh={() => retryResource(activeResource)} />}
             {tab === "deliveries" && (
               <SelectField
@@ -712,6 +714,7 @@ export default function WholesalePage({
               {tab === "deliveries" ? (
                 <WholesaleDeliveries
                   key={deliveryVersion}
+                  refreshTarget={refreshTarget}
                   search={search}
                   status={deliveryStatus}
                   busy={navigating}
@@ -721,6 +724,7 @@ export default function WholesalePage({
                 <div className="table-scroll">
                   {tab === "accounts" && (
                     <WholesaleReceivables
+                      refreshTarget={refreshTarget}
                       search={search}
                       role={role}
                       status={accountStatus}

@@ -1,5 +1,6 @@
 import { ReadDialog, useReadDialog } from "./read-dialog";
-import { SourceTableBody, SourceFeedback } from "./custom-ui/source-state";
+import { SourceTableBody, SourceFeedback, SourceRefreshButton } from "./custom-ui/source-state";
+import { createPortal } from "react-dom";
 import { SelectField } from "@/components/custom-ui/select-field";
 import { formatDisplayDate } from "@/lib/business-date";
 import {
@@ -45,6 +46,7 @@ export function WholesaleReceivables({
   embedded = false,
   onClose,
   onBack,
+  refreshTarget,
 }: {
   search: string;
   role: string;
@@ -55,6 +57,7 @@ export function WholesaleReceivables({
   embedded?: boolean;
   onClose?: () => void;
   onBack?: () => void;
+  refreshTarget?: HTMLElement | null;
 }) {
   const standard = !!usePageTableStandard() && !detailsOnly;
   const paging = useReceivablePages(standard, search, status);
@@ -101,7 +104,7 @@ export function WholesaleReceivables({
     const body = content?.closest(".wholesale-dialog-body");
     if (body) body.scrollTop = 0;
   }, [mode, selectedId]);
-  async function load() {
+  async function load(force = false) {
     if (standard) return paging.refresh();
     if (detailsOnly) return;
     const result = await wholesaleGet<WholesaleReceivablePage>(
@@ -111,6 +114,7 @@ export function WholesaleReceivables({
         page +
         "&status=" +
         status,
+      force,
     );
     setData(result);
     setDataPath(queryPath);
@@ -214,8 +218,27 @@ export function WholesaleReceivables({
   const listTotal = standard ? paging.total : items.length;
   const listPage = standard ? paging.page : safeSubPage;
   const listPages = standard ? paging.pages : totalPages;
+  function refreshList() {
+    if (standard) {
+      void paging.refresh();
+      return;
+    }
+    setLoading(true);
+    setLoadError("");
+    void load(true)
+      .catch(failure => setLoadError(safeError(failure)))
+      .finally(() => setLoading(false));
+  }
   return (
     <>
+      {!detailsOnly && refreshTarget && createPortal(
+        <SourceRefreshButton
+          status={{ hasData: listHasData, pending: listPending, error: listError }}
+          label="receivables"
+          onRefresh={refreshList}
+        />,
+        refreshTarget,
+      )}
       {!detailsOnly && (
         <>
           {!selectedId && <WholesaleRequestFeedback {...request} />}

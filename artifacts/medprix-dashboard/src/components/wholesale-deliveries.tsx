@@ -1,5 +1,6 @@
 import { WholesaleStatusPill } from "./wholesale-status-pill";
-import { SourceTableBody, SourceFeedback } from "./custom-ui/source-state";
+import { SourceTableBody, SourceFeedback, SourceRefreshButton } from "./custom-ui/source-state";
+import { createPortal } from "react-dom";
 import { CalendarDays, ClipboardCheck, Eye, History, Truck } from "lucide-react";
 import { useEffect } from "react";
 import { TableEmptyState } from "./custom-ui/empty-state";
@@ -33,11 +34,13 @@ export function WholesaleDeliveries({
   status,
   busy,
   open,
+  refreshTarget,
 }: {
   search: string;
   status: DeliveryQueueStatus;
   busy: boolean;
   open: (id: string, title: string, view?: "history") => void;
+  refreshTarget?: HTMLElement | null;
 }) {
   const list = useWholesalePages<DeliveryRow>(
     "/delivery-queue",
@@ -56,6 +59,14 @@ export function WholesaleDeliveries({
   }, [list.refresh]);
   return (
     <>
+      {refreshTarget && createPortal(
+        <SourceRefreshButton
+          status={{ hasData: list.hasData, pending: list.pending, error: list.error }}
+          label="deliveries"
+          onRefresh={list.refresh}
+        />,
+        refreshTarget,
+      )}
       <SourceFeedback status={{ hasData: list.hasData, pending: list.pending, error: list.error }} label="deliveries" onRetry={list.refresh} />
       <div className="table-scroll">
         <PageTableScroll>
