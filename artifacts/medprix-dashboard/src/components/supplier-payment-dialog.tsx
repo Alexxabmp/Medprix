@@ -226,36 +226,56 @@ export function SupplierPaymentDialog({
 
     const applyLocalPayment = (paidAmt: number) => {
       try {
+        const paymentRecord = {
+          id: draft.key,
+          amountPaid: paidAmt.toFixed(2),
+          paymentDate: draft.paymentDate,
+          notes: noteWithMode,
+        };
+        const perIdKey = `medprix_invoice_payments_${invoiceId}`;
+        const existingPerId = (() => {
+          try {
+            return JSON.parse(localStorage.getItem(perIdKey) || "[]");
+          } catch { return []; }
+        })();
+        localStorage.setItem(perIdKey, JSON.stringify([...existingPerId.filter((p: any) => p.id !== draft.key), paymentRecord]));
+
+        if (payable?.invoiceNumber) {
+          const perNumKey = `medprix_invoice_payments_${payable.invoiceNumber}`;
+          const existingPerNum = (() => {
+            try {
+              return JSON.parse(localStorage.getItem(perNumKey) || "[]");
+            } catch { return []; }
+          })();
+          localStorage.setItem(perNumKey, JSON.stringify([...existingPerNum.filter((p: any) => p.id !== draft.key), paymentRecord]));
+        }
+
         const storedRaw = localStorage.getItem("medprix_procurement_invoices");
-        if (!storedRaw) return;
-        const storedList = JSON.parse(storedRaw);
-        const updated = storedList.map((inv: any) => {
-          if (inv.id === invoiceId || (payable && inv.invoiceNumber === payable.invoiceNumber)) {
-            const currentPaid = Number(inv.totalPaid || 0);
-            const invTotal = Number(inv.invoiceAmount || 0);
-            const newPaid = Math.min(invTotal, currentPaid + paidAmt);
-            const newBal = Math.max(0, invTotal - newPaid);
-            const newStatus = newBal <= 0 ? "Settled" : "Partially paid";
-            const newPayments = [
-              ...(inv.payments || []),
-              {
-                id: draft.key,
-                amountPaid: paidAmt.toFixed(2),
-                paymentDate: draft.paymentDate,
-                notes: noteWithMode,
-              },
-            ];
-            return {
-              ...inv,
-              totalPaid: newPaid.toFixed(2),
-              balance: newBal.toFixed(2),
-              status: newStatus,
-              payments: newPayments,
-            };
-          }
-          return inv;
-        });
-        localStorage.setItem("medprix_procurement_invoices", JSON.stringify(updated));
+        if (storedRaw) {
+          const storedList = JSON.parse(storedRaw);
+          const updated = storedList.map((inv: any) => {
+            if (inv.id === invoiceId || (payable && inv.invoiceNumber === payable.invoiceNumber)) {
+              const currentPaid = Number(inv.totalPaid || 0);
+              const invTotal = Number(inv.invoiceAmount || 0);
+              const newPaid = Math.min(invTotal, currentPaid + paidAmt);
+              const newBal = Math.max(0, invTotal - newPaid);
+              const newStatus = newBal <= 0 ? "Settled" : "Partially paid";
+              const newPayments = [
+                ...(inv.payments || []).filter((p: any) => p.id !== draft.key),
+                paymentRecord,
+              ];
+              return {
+                ...inv,
+                totalPaid: newPaid.toFixed(2),
+                balance: newBal.toFixed(2),
+                status: newStatus,
+                payments: newPayments,
+              };
+            }
+            return inv;
+          });
+          localStorage.setItem("medprix_procurement_invoices", JSON.stringify(updated));
+        }
       } catch {}
     };
 

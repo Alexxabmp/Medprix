@@ -182,7 +182,11 @@ function toInvoice(row: SupplierPayableFact) {
     reviewReasons: row.findings,
     balance: row.recorded_balance,
     totalPaid: row.recorded_paid,
-    payments: (row as any).payment_records || [],
+    payments: Array.isArray((row as any).payment_records)
+      ? (row as any).payment_records
+      : typeof (row as any).payment_records === "string"
+        ? (() => { try { return JSON.parse((row as any).payment_records); } catch { return []; } })()
+        : [],
     status,
   };
 }

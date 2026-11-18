@@ -663,10 +663,81 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
     return "Bank Transfer";
   };
 
+  const getInvoicePayments = (invoice: Invoice): Array<{
+    id?: string;
+    amountPaid: number;
+    paymentDate: string;
+    notes?: string;
+    mode: string;
+  }> => {
+    const seen = new Set<string>();
+    const list: Array<{ id?: string; amountPaid: number; paymentDate: string; notes?: string; mode: string }> = [];
+
+    const add = (p: any) => {
+      if (!p) return;
+      const amt = Number(p.amountPaid ?? p.amount ?? 0);
+      if (!Number.isFinite(amt) || amt <= 0) return;
+      const id = String(p.id || `${p.paymentDate}_${amt}_${p.notes || ""}`);
+      if (seen.has(id)) return;
+      seen.add(id);
+      const rawNotes = String(p.notes || "");
+      let mode = "";
+      for (const m of PAYMENT_MODES) {
+        if (rawNotes.toLowerCase().includes(m.toLowerCase())) {
+          mode = m;
+          break;
+        }
+      }
+      if (!mode) mode = getInvoicePaymentMode(invoice);
+      list.push({
+        id,
+        amountPaid: amt,
+        paymentDate: p.paymentDate ? String(p.paymentDate).slice(0, 10) : pharmacyDate(),
+        notes: rawNotes,
+        mode,
+      });
+    };
+
+    if (Array.isArray(invoice.payments)) {
+      invoice.payments.forEach(add);
+    }
+
+    if (typeof window !== "undefined") {
+      try {
+        const perIdRaw = localStorage.getItem(`medprix_invoice_payments_${invoice.id}`);
+        if (perIdRaw) {
+          const parsed = JSON.parse(perIdRaw);
+          if (Array.isArray(parsed)) parsed.forEach(add);
+        }
+        if (invoice.invoiceNumber) {
+          const perNumRaw = localStorage.getItem(`medprix_invoice_payments_${invoice.invoiceNumber}`);
+          if (perNumRaw) {
+            const parsed = JSON.parse(perNumRaw);
+            if (Array.isArray(parsed)) parsed.forEach(add);
+          }
+        }
+        const storedRaw = localStorage.getItem("medprix_procurement_invoices");
+        if (storedRaw) {
+          const storedList = JSON.parse(storedRaw);
+          const match = storedList.find((li: any) => li.id === invoice.id || (invoice.invoiceNumber && li.invoiceNumber === invoice.invoiceNumber));
+          if (match && Array.isArray(match.payments)) {
+            match.payments.forEach(add);
+          }
+        }
+      } catch {}
+    }
+
+    list.sort((a, b) => new Date(a.paymentDate).getTime() - new Date(b.paymentDate).getTime());
+    return list;
+  };
+
   const getInvoiceInstallments = (invoice: Invoice): WholesaleInstallmentBalance[] => {
     const terms = getInvoicePaymentOption(invoice);
-    const numInstallments = terms === "Net 60" ? 2 : 1;
+    const payments = getInvoicePayments(invoice);
     const matchedOrder = orders.find((o) => o.poNumber === invoice.poNumber);
+    const poTotal = matchedOrder ? Number(matchedOrder.totalOrderAmount) : NaN;
+    const totalAmount = Number.isFinite(poTotal) ? poTotal : Math.max(0, Number(invoice.invoiceAmount || 0));
+
     let baseDate = matchedOrder?.orderDate ? String(matchedOrder.orderDate).slice(0, 10) : "";
     if (!baseDate && invoice.dueDate) {
       const due = new Date(`${String(invoice.dueDate).slice(0, 10)}T00:00:00`);
@@ -676,49 +747,64 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
     }
     if (!baseDate) baseDate = pharmacyDate();
 
-    const totalAmount = Math.max(0, Number(invoice.invoiceAmount || 0));
-    const normStatus = normalizeInvoiceStatus(invoice);
-    const rawBalance = invoice.balance !== undefined ? Number(invoice.balance) : (normStatus === "Settled" ? 0 : totalAmount);
-    const totalPaid = normStatus === "Settled"
-      ? totalAmount
-      : Math.max(0, Number(invoice.totalPaid ?? Math.max(0, totalAmount - rawBalance)));
-
-    const totalCents = Math.round(totalAmount * 100);
-    const baseCents = Math.floor(totalCents / numInstallments);
-    let remainingPaidCents = Math.round(totalPaid * 100);
+    let storedNext: string | null = null;
+    let storedFinal: string | null = null;
+    try {
+      storedNext = localStorage.getItem(`medprix_invoice_next_date_${invoice.id}`);
+      storedFinal = localStorage.getItem(`medprix_invoice_final_date_${invoice.id}`);
+    } catch {}
 
     const rows: WholesaleInstallmentBalance[] = [];
-    for (let i = 0; i < numInstallments; i++) {
-      const instCents = i === numInstallments - 1 ? totalCents - baseCents * (numInstallments - 1) : baseCents;
-      const paidCents = Math.min(instCents, Math.max(0, remainingPaidCents));
-      remainingPaidCents = Math.max(0, remainingPaidCents - paidCents);
-      const balanceCents = Math.max(0, instCents - paidCents);
-      let storedNext: string | null = null;
-      let storedFinal: string | null = null;
-      try {
-        storedNext = localStorage.getItem(`medprix_invoice_next_date_${invoice.id}`);
-        storedFinal = localStorage.getItem(`medprix_invoice_final_date_${invoice.id}`);
-      } catch {}
-      const dueDate = numInstallments === 1
-        ? (storedNext || computeNextPaymentDate(baseDate, "Net 30"))
-        : i === 0
-          ? (storedNext || computeNextPaymentDate(baseDate, "Net 30"))
-          : (storedFinal || computeNextPaymentDate(baseDate, "Net 60"));
-      const status: WholesaleInstallmentBalance["status"] =
-        balanceCents <= 0
-          ? "Paid"
-          : paidCents > 0
-          ? "Partially paid"
-          : "Unpaid";
-      rows.push({
-        sequenceNumber: i + 1,
-        dueDate,
-        amount: (instCents / 100).toFixed(2),
-        paid: (paidCents / 100).toFixed(2),
-        balance: (balanceCents / 100).toFixed(2),
-        status,
+
+    if (payments.length > 0) {
+      let accumulatedPaid = 0;
+      payments.forEach((p, idx) => {
+        accumulatedPaid += p.amountPaid;
+        rows.push({
+          sequenceNumber: idx + 1,
+          dueDate: p.paymentDate,
+          amount: p.amountPaid.toFixed(2),
+          paid: p.amountPaid.toFixed(2),
+          balance: "0.00",
+          status: "Paid",
+        });
       });
+
+      const remainingBalance = Math.max(0, totalAmount - accumulatedPaid);
+      if (remainingBalance > 0.009) {
+        const nextSeq = rows.length + 1;
+        const dueDate = storedFinal || storedNext || invoice.dueDate || computeNextPaymentDate(baseDate, "Net 60");
+        rows.push({
+          sequenceNumber: nextSeq,
+          dueDate,
+          amount: remainingBalance.toFixed(2),
+          paid: "0.00",
+          balance: remainingBalance.toFixed(2),
+          status: "Unpaid",
+        });
+      }
+    } else {
+      const numInstallments = terms === "Net 60" ? 2 : 1;
+      const totalCents = Math.round(totalAmount * 100);
+      const baseCents = Math.floor(totalCents / numInstallments);
+      for (let i = 0; i < numInstallments; i++) {
+        const instCents = i === numInstallments - 1 ? totalCents - baseCents * (numInstallments - 1) : baseCents;
+        const dueDate = numInstallments === 1
+          ? (storedNext || invoice.dueDate || computeNextPaymentDate(baseDate, "Net 30"))
+          : i === 0
+            ? (storedNext || computeNextPaymentDate(baseDate, "Net 30"))
+            : (storedFinal || invoice.dueDate || computeNextPaymentDate(baseDate, "Net 60"));
+        rows.push({
+          sequenceNumber: i + 1,
+          dueDate,
+          amount: (instCents / 100).toFixed(2),
+          paid: "0.00",
+          balance: (instCents / 100).toFixed(2),
+          status: "Unpaid",
+        });
+      }
     }
+
     return rows;
   };
 
@@ -951,20 +1037,24 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
     : [];
 
   const normalizedInvoices = invoices.map(invoice => {
+    const payments = getInvoicePayments(invoice);
+    const sumPaid = payments.reduce((acc, p) => acc + Number(p.amountPaid || 0), 0);
     const linkedOrder = orders.find((o) => o.poNumber === invoice.poNumber);
     const poTotal = linkedOrder ? Number(linkedOrder.totalOrderAmount) : NaN;
-    const paidSoFar = Number(
+    const invAmount = Number.isFinite(poTotal) ? poTotal : Number(invoice.invoiceAmount || 0);
+    const rawPaid = Number(
       invoice.totalPaid ??
       (invoice.balance !== undefined ? Number(invoice.invoiceAmount) - Number(invoice.balance) : 0),
     );
-    const synced = Number.isFinite(poTotal)
-      ? {
-          ...invoice,
-          invoiceAmount: poTotal.toFixed(2),
-          totalPaid: Math.max(0, paidSoFar).toFixed(2),
-          balance: Math.max(0, poTotal - Math.max(0, paidSoFar)).toFixed(2),
-        }
-      : invoice;
+    const effectivePaid = Math.max(sumPaid, rawPaid);
+    const effectiveBalance = Math.max(0, invAmount - effectivePaid);
+    const synced = {
+      ...invoice,
+      invoiceAmount: invAmount.toFixed(2),
+      totalPaid: effectivePaid.toFixed(2),
+      balance: effectiveBalance.toFixed(2),
+      payments,
+    };
     return {
       ...synced,
       supplier: resolveSupplierName(invoice.supplier, invoice.poNumber, invoice.supplierId),
@@ -4216,6 +4306,45 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               </table>
             </div>
 
+            {(() => {
+              const invoicePayments = getInvoicePayments(viewInvoice);
+              return (
+                <div className="modal-section" style={{ marginBottom: 16 }}>
+                  <h4 style={{ marginBottom: 8 }}>Recorded payments ({invoicePayments.length})</h4>
+                  {invoicePayments.length === 0 ? (
+                    <p className="muted" style={{ fontStyle: "italic", margin: "8px 0" }}>
+                      No payments recorded yet. Click &quot;Record payment&quot; in the invoice actions to record a payment.
+                    </p>
+                  ) : (
+                    <table className="data-table" style={{ width: "100%", minWidth: 0 }}>
+                      <thead>
+                        <tr>
+                          <th>#</th>
+                          <th>Payment date</th>
+                          <th>Amount paid</th>
+                          <th>Mode of payment</th>
+                          <th>Notes / Reference</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {invoicePayments.map((p, idx) => (
+                          <tr key={p.id || idx}>
+                            <td>{idx + 1}</td>
+                            <td>{formatDisplayDate(p.paymentDate)}</td>
+                            <td><strong>{money(p.amountPaid)}</strong></td>
+                            <td><span className="pill neutral">{p.mode}</span></td>
+                            <td className="muted">{p.notes || "Recorded payment"}</td>
+                            <td><span className="pill success">Paid</span></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              );
+            })()}
+
             <div className="modal-actions" style={{ display: "flex", justifyContent: "flex-end", alignItems: "center" }}>
               <button
                 type="button"
@@ -4233,7 +4362,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                     totalPaid: viewInvoice.totalPaid ?? 0,
                     balance: viewInvoice.balance ?? (viewInvoice.status === "Settled" ? 0 : viewInvoice.invoiceAmount),
                     status: viewInvoice.status,
-                    payments: viewInvoice.payments,
+                    payments: getInvoicePayments(viewInvoice),
                   });
                   onToast("Invoice PDF exported successfully.");
                 }}>
