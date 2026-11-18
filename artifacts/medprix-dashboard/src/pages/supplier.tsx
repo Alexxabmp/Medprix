@@ -33,7 +33,7 @@ import {
   X,
 } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
-import { Summary } from "@/components/custom-ui/summary-card";
+import { SourceSummary as Summary, SourceTableBody, SourceText, SourceRegion, SourceFeedback, SourceProgress, SourceRefreshButton } from "@/components/custom-ui/source-state";
 import {
   fetchAccountsPayable,
   fetchSupplierRecords,
@@ -206,12 +206,12 @@ export default function SupplierPage({
   const [suppliers, setSuppliers] = useState<Supplier[]>(
     () => getCachedSuppliers() || [],
   );
-  const [isLoading, setIsLoading] = useState(
-    () => false,
-  );
+  const [isLoading, setIsLoading] = useState(true);
+  const [directoryAvailable, setDirectoryAvailable] = useState(() => getCachedSuppliers() !== null);
   const [error, setError] = useState("");
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const supplierSaving = useRef(false);
   const [supplierForm, setSupplierForm] = useState(emptySupplier);
   const [supplierFormError, setSupplierFormError] = useState("");
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(
@@ -221,6 +221,7 @@ export default function SupplierPage({
   const historyRequest = useRef<AbortController | null>(null);
   useEffect(() => () => historyRequest.current?.abort(), []);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyAvailable, setHistoryAvailable] = useState(false);
   const [historyError, setHistoryError] = useState("");
   const [historyTab, setHistoryTab] = useState<
     "overview" | "orders" | "financial"
@@ -236,9 +237,8 @@ export default function SupplierPage({
         dueThisWeek: "0.00",
       },
   );
-  const [payablesLoading, setPayablesLoading] = useState(
-    () => false,
-  );
+  const [payablesLoading, setPayablesLoading] = useState(true);
+  const [payablesAvailable, setPayablesAvailable] = useState(() => getCachedPayables() !== null);
   const [payablesError, setPayablesError] = useState("");
   const [payableFilter, setPayableFilter] = useState("All");
   const [paymentPayable, setPaymentPayable] = useState<PaymentTarget | null>(
@@ -250,11 +250,11 @@ export default function SupplierPage({
   useDialogAccessibility(isAddOpen, '.supplier-form-modal', () => setIsAddOpen(false), isSaving);
   useDialogAccessibility(!!selectedSupplier, '.supplier-history-modal', () => closeHistory());
   const fetchSuppliers = useCallback(async () => {
-    const hasCachedData = getCachedSuppliers() !== null;
     try {
-      if (false && !hasCachedData) setIsLoading(true);
+      setIsLoading(true);
       setError("");
       setSuppliers(await fetchSupplierRecords());
+      setDirectoryAvailable(true);
     } catch (requestError) {
       const message =
         requestError instanceof Error
@@ -271,12 +271,12 @@ export default function SupplierPage({
   }, [fetchSuppliers]);
 
   const loadPayables = useCallback(async () => {
-    const hasCachedData = getCachedPayables() !== null;
     try {
-      if (false && !hasCachedData) setPayablesLoading(true);
+      setPayablesLoading(true);
       setPayablesError("");
       const data = await fetchAccountsPayable();
       setAccountsPayable(data.accountsPayable);
+      setPayablesAvailable(true);
       setPayableSummary(data.summary);
     } catch (requestError) {
       const message =
@@ -308,11 +308,12 @@ export default function SupplierPage({
     const cached = getCachedSupplierHistory<SupplierHistory>(supplier.id);
     if (cached) {
       setHistory(cached);
-      setHistoryLoading(false);
+      setHistoryAvailable(true);
     } else {
       setHistory(emptyHistory);
-      setHistoryLoading(true);
+      setHistoryAvailable(false);
     }
+    setHistoryLoading(true);
     setHistoryError("");
     try {
       const response = await fetch(`/api/suppliers/${supplier.id}/history`, {
@@ -326,6 +327,7 @@ export default function SupplierPage({
       if (historyRequest.current !== controller || controller.signal.aborted) return;
       const normalized = normalizeHistory(data);
       setHistory(normalized);
+      setHistoryAvailable(true);
       setCachedSupplierHistory(supplier.id, normalized);
     } catch (requestError) {
       const message =
@@ -365,6 +367,7 @@ export default function SupplierPage({
 
   const submitSupplier = async (event: FormEvent) => {
     event.preventDefault();
+    if (supplierSaving.current) return;
     const validationError = validateSupplier(supplierForm);
     if (validationError) {
       setSupplierFormError(validationError);
@@ -372,6 +375,7 @@ export default function SupplierPage({
     }
 
     setSupplierFormError("");
+    supplierSaving.current = true;
     setIsSaving(true);
     try {
       const response = await fetch("/api/suppliers", {
@@ -397,6 +401,7 @@ export default function SupplierPage({
     } catch (requestError) {
       setSupplierFormError(safeError(requestError, "Failed to add supplier."));
     } finally {
+      supplierSaving.current = false;
       setIsSaving(false);
     }
   };
@@ -462,6 +467,9 @@ export default function SupplierPage({
     0,
   );
 
+  const directoryState = { hasData: directoryAvailable, pending: isLoading, error };
+  const payableState = { hasData: payablesAvailable, pending: payablesLoading, error: payablesError };
+  const historyState = { hasData: historyAvailable, pending: historyLoading, error: historyError };
   return (
     <div>
       <PageHeading
@@ -479,42 +487,42 @@ export default function SupplierPage({
           ) : undefined
         }
       />
-      {error && <div className="inline-error" role="alert"><span>{error} Previously loaded supplier data may be out of date.</span><button className="button soft" onClick={() => void fetchSuppliers()}>Retry</button></div>}
-      {payablesError && <div className="inline-error" role="alert"><span>{payablesError} Previously loaded balances may be out of date.</span><button className="button soft" onClick={() => void loadPayables()}>Retry</button></div>}
+      <SourceFeedback status={directoryState} label="suppliers" />
+      <SourceFeedback status={payableState} label="balances" />
 
       {activeSection === "directory" ? (
         <div className="summary-strip">
-          <Summary
+          <Summary status={directoryState}
             label="Active suppliers"
-            value={isLoading ? "—" : String(activeSuppliers)}
+            value={String(activeSuppliers)}
             caption="Current supplier accounts"
           />
-          <Summary
+          <Summary status={directoryState}
             label="Purchase value"
-            value={isLoading ? "—" : peso(openPurchaseValue)}
+            value={peso(openPurchaseValue)}
             caption="Across recorded orders"
           />
-          <Summary
+          <Summary status={directoryState}
             label="Supplier records"
-            value={isLoading ? "—" : String(suppliers.length)}
+            value={String(suppliers.length)}
             caption="Available vendor profiles"
           />
         </div>
       ) : (
         <div className="summary-strip">
-          <Summary
+          <Summary status={payableState}
             label="Open balance"
-            value={payablesLoading ? "—" : peso(payableSummary.totalOpen)}
+            value={peso(payableSummary.totalOpen)}
             caption="Outstanding supplier invoices"
           />
-          <Summary
+          <Summary status={payableState}
             label="Overdue"
-            value={payablesLoading ? "—" : peso(payableSummary.overdue)}
+            value={peso(payableSummary.overdue)}
             caption="Past their payment due date"
           />
-          <Summary
+          <Summary status={payableState}
             label="Due within 7 days"
-            value={payablesLoading ? "—" : peso(payableSummary.dueThisWeek)}
+            value={peso(payableSummary.dueThisWeek)}
             caption="Upcoming supplier obligations"
           />
         </div>
@@ -566,6 +574,7 @@ export default function SupplierPage({
                 />
               </div>
               <div className="table-tools-right">
+                <SourceRefreshButton status={directoryState} label="suppliers" onRefresh={() => void fetchSuppliers()} />
                 <SelectField
                   className="select"
                   data-testid="select-supplier-filter"
@@ -594,28 +603,8 @@ export default function SupplierPage({
                     <th className="table-action-head">Action</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {isLoading ? (
-                    <tr>
-                      <td colSpan={6} className="muted">
-                        Loading suppliers...
-                      </td>
-                    </tr>
-                  ) : error && suppliers.length === 0 ? (
-                    <tr>
-                      <td colSpan={6}>
-                        <div className="supplier-empty">
-                          <span>{error}</span>
-                          <button
-                            className="button soft"
-                            onClick={() => void fetchSuppliers()}
-                          >
-                            Retry
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : filtered.length === 0 ? (
+                <SourceTableBody status={directoryState} label="Suppliers" colSpan={6}>
+                  {filtered.length === 0 ? (
                     <tr>
                       <TableEmptyState colSpan={6} icon={Building2}>
                         No suppliers found.
@@ -664,12 +653,12 @@ export default function SupplierPage({
                       </tr>
                     ))
                   )}
-                </tbody>
+                </SourceTableBody>
               </table>
             </div>
             <div className="table-pagination" role="navigation" aria-label="Supplier directory pagination">
               <span className="muted">
-                Page {safeDirectoryPage} of {totalDirectoryPages} ({filtered.length} suppliers)
+                <SourceText status={directoryState}>Page {safeDirectoryPage} of {totalDirectoryPages} ({filtered.length} suppliers)</SourceText>
               </span>
               <button
                 type="button"
@@ -710,6 +699,7 @@ export default function SupplierPage({
                 />
               </div>
               <div className="table-tools-right">
+                <SourceRefreshButton status={payableState} label="balances" onRefresh={() => void loadPayables()} />
                 <SelectField
                   className="select"
                   aria-label="Filter accounts payable"
@@ -741,29 +731,8 @@ export default function SupplierPage({
                     <th className="table-action-head">Action</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {payablesLoading ? (
-                    <tr>
-                      <td colSpan={8} className="muted">
-                        Loading accounts payable...
-                      </td>
-                    </tr>
-                  ) : payablesError && accountsPayable.length === 0 ? (
-                    <tr>
-                      <td colSpan={8}>
-                        <div className="supplier-empty">
-                          <span>{payablesError}</span>
-                          <button
-                            className="button soft"
-                            type="button"
-                            onClick={() => void loadPayables()}
-                          >
-                            Retry
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : filteredPayables.length === 0 ? (
+                <SourceTableBody status={payableState} label="Accounts payable" colSpan={8}>
+                  {filteredPayables.length === 0 ? (
                     <tr>
                       <TableEmptyState colSpan={8} icon={Building2}>
                         No supplier invoices match this status.
@@ -830,12 +799,12 @@ export default function SupplierPage({
                       </tr>
                     ))
                   )}
-                </tbody>
+                </SourceTableBody>
               </table>
             </div>
             <div className="table-pagination" role="navigation" aria-label="Accounts payable pagination">
               <span className="muted">
-                Page {safePayablePage} of {totalPayablePages} ({filteredPayables.length} invoices)
+                <SourceText status={payableState}>Page {safePayablePage} of {totalPayablePages} ({filteredPayables.length} invoices)</SourceText>
               </span>
               <button
                 type="button"
@@ -863,7 +832,7 @@ export default function SupplierPage({
           <div
             className="modal-backdrop"
             onMouseDown={(event) =>
-              event.currentTarget === event.target && setIsAddOpen(false)
+              event.currentTarget === event.target && !supplierSaving.current && setIsAddOpen(false)
             }
           >
             <form
@@ -882,12 +851,12 @@ export default function SupplierPage({
                   type="button"
                   className="modal-close"
                   aria-label="Close supplier form"
-                  onClick={() => setIsAddOpen(false)}
+                  onClick={() => { if (!supplierSaving.current) setIsAddOpen(false); }}
                 >
                   <X size={16} />
                 </button>
               </div>
-              <div className="form-grid">
+              <fieldset className="form-grid action-fields" disabled={isSaving}>
                 <div className="field full-width">
                   <label htmlFor="supplier-name">Supplier name *</label>
                   <input
@@ -991,7 +960,7 @@ export default function SupplierPage({
                     }
                   />
                 </div>
-              </div>
+              </fieldset>
               {supplierFormError && (
                 <div className="inline-error" role="alert">
                   {supplierFormError}
@@ -1001,7 +970,7 @@ export default function SupplierPage({
                 <button
                   className="button soft"
                   type="button"
-                  onClick={() => setIsAddOpen(false)}
+                  onClick={() => { if (!supplierSaving.current) setIsAddOpen(false); }}
                 >
                   Cancel
                 </button>
@@ -1011,7 +980,7 @@ export default function SupplierPage({
                   type="submit"
                   disabled={isSaving}
                 >
-                  <Check size={13} /> {isSaving ? "Saving..." : "Add supplier"}
+                  {isSaving ? <SourceProgress label="Saving supplier…" /> : <><Check size={13} /> Add supplier</>}
                 </button>
               </div>
             </form>
@@ -1082,22 +1051,8 @@ export default function SupplierPage({
                   Invoices & payments
                 </button>
               </div>
-              {historyLoading ? (
-                <div className="supplier-history-state">
-                  Loading supplier history...
-                </div>
-              ) : historyError ? (
-                <div className="inline-error" role="alert">
-                  <span>{historyError}</span>
-                  <button
-                    className="button soft"
-                    type="button"
-                    onClick={() => void loadHistory(selectedSupplier)}
-                  >
-                    Retry
-                  </button>
-                </div>
-              ) : (
+              <SourceFeedback status={historyState} label="supplier history" onRetry={() => void loadHistory(selectedSupplier)} />
+              <SourceRegion status={historyState} label="Supplier history">
                 <>
                   <div className="supplier-history-metrics">
                     <div>
@@ -1296,7 +1251,7 @@ export default function SupplierPage({
                     </div>
                   )}
                 </>
-              )}
+              </SourceRegion>
             </ModalTableDialog>
           </div>,
           document.body,
