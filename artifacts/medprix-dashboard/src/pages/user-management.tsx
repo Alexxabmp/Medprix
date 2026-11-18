@@ -17,7 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
-import { Summary } from "@/components/custom-ui/summary-card";
+import { SourceSummary as Summary, SourceFeedback, SourceTableBody, SourceText, SourceRefreshButton, type SourceState } from "@/components/custom-ui/source-state";
 import type { ToastFn, UserRecord } from "@/lib/types";
 
 type PendingAction = { kind: "create" | "edit" | "reset" | "role" | "status"; userId?: string };
@@ -27,11 +27,13 @@ export default function UserManagementPage({
   setUsers,
   onToast,
   refreshUsers,
+  usersSource,
 }: {
   users: UserRecord[];
   setUsers: (users: UserRecord[]) => void;
   onToast: ToastFn;
   refreshUsers?: () => void;
+  usersSource: SourceState;
 }) {
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("All roles");
@@ -356,18 +358,19 @@ export default function UserManagementPage({
           </button>
         }
       />
+      <SourceFeedback status={usersSource} label="user accounts" />
       <div className="summary-strip">
-        <Summary
+        <Summary status={usersSource}
           label="Team members"
           value={String(users.length)}
           caption="Across your workspace"
         />
-        <Summary
+        <Summary status={usersSource}
           label="Active accounts"
           value={String(users.filter((u) => u.status === "Active").length)}
           caption="Access is current"
         />
-        <Summary
+        <Summary status={usersSource}
           label="Inactive accounts"
           value={String(users.filter((u) => u.status === "Inactive").length)}
           caption="No workspace access"
@@ -391,6 +394,7 @@ export default function UserManagementPage({
             />
           </div>
           <div className="table-tools-right">
+              <SourceRefreshButton status={usersSource} label="user accounts" onRefresh={() => refreshUsers?.()} />
             <SelectField
               className="select"
               aria-label="Filter users by role"
@@ -419,7 +423,7 @@ export default function UserManagementPage({
                 <th className="table-action-head">Action</th>
               </tr>
             </thead>
-            <tbody>
+            <SourceTableBody status={usersSource} label="User accounts" colSpan={6}>
               {paginatedUsers.map((user) => {
                 const isCurrentUser = user.username === currentUsername;
 
@@ -533,7 +537,7 @@ export default function UserManagementPage({
                 </tr>
                 );
               })}
-            </tbody>
+            </SourceTableBody>
           </table>
           {shown.length === 0 && (
             <div className="empty-state">
@@ -544,7 +548,7 @@ export default function UserManagementPage({
         </div>
         <div className="table-pagination" role="navigation" aria-label="User accounts pagination">
           <span className="muted">
-            Page {safeUserPage} of {totalUserPages} ({shown.length} users)
+            <SourceText status={usersSource}>Page {safeUserPage} of {totalUserPages} ({shown.length} users)</SourceText>
           </span>
           <button
             type="button"
