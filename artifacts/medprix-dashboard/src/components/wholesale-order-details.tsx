@@ -1,3 +1,5 @@
+import { useReadDialog } from "./read-dialog";
+import { SourceProgress } from "./custom-ui/source-state";
 import { SelectField } from "@/components/custom-ui/select-field";
 import { ChevronDown } from "lucide-react";
 import { DeliveryReceiptView } from "./delivery-receipt-view";
@@ -96,12 +98,14 @@ export function WholesaleOrderDetails({
     const body = contentRef.current?.closest(".wholesale-dialog-body");
     if (body) body.scrollTop = 0;
   }, [showReceipt]);
-  const [detail, setDetail] = useState<WholesaleOrderDetail | null>(
+  const [cachedDetail] = useState<WholesaleOrderDetail | null>(
     () =>
       initialDetail ??
       getCachedWholesale<WholesaleOrderDetail>("/orders/" + order.id),
   );
-  const [loadError, setLoadError] = useState("");
+  const read = useReadDialog<WholesaleOrderDetail>();
+  const detail = read.state?.data ?? cachedDetail;
+  const loadError = read.state?.error ?? "";
   const [selected, setSelected] = useState<Record<string, string>>({});
   const [action, setAction] = useState<"confirm" | "cancel" | null>(() =>
     order.status === "Pending" ? (initialAction ?? null) : null,
@@ -121,15 +125,8 @@ export function WholesaleOrderDetails({
         }
       : null,
   );
-  async function load() {
-    setLoadError("");
-    try {
-      setDetail(
-        await wholesaleGet<WholesaleOrderDetail>("/orders/" + order.id),
-      );
-    } catch (failure) {
-      setLoadError(safeError(failure));
-    }
+  function load() {
+    read.open("Order details", () => wholesaleGet<WholesaleOrderDetail>("/orders/" + order.id));
   }
   useEffect(() => {
     if (!initialDetail) void load();
@@ -181,6 +178,7 @@ export function WholesaleOrderDetails({
           {error}
         </div>
       )}
+      {read.state?.pending && detail && <SourceProgress label={"Refreshing order details\u2026"} />}
       {loadError && (
         <div role="alert" className="inline-error">
           {loadError}

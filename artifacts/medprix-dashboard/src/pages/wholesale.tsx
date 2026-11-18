@@ -1,3 +1,4 @@
+import { ReadDialog, useReadDialog } from "@/components/read-dialog";
 import { SelectField } from "@/components/custom-ui/select-field";
 import {
   wholesaleClientContactsSchema,
@@ -87,13 +88,9 @@ export default function WholesalePage({
     getCachedWholesale<WholesaleOverview>("/overview"),
   );
   const [overviewError, setOverviewError] = useState("");
-  const [summary, setSummary] = useState<{
-    kind: WholesaleSummaryKind;
-    data: WholesalePageResult<WholesaleSummaryRow>;
-  } | null>(null);
-  const [openingSummary, setOpeningSummary] =
-    useState<WholesaleSummaryKind | null>(null);
-  const [openingAccount, setOpeningAccount] = useState(false);
+  const summaryRead = useReadDialog<{ kind: WholesaleSummaryKind; data: WholesalePageResult<WholesaleSummaryRow> }>();
+  const deliveryRead = useReadDialog<WholesaleOrderDetail & { order: WholesaleOrder }>();
+  const openingAccount = deliveryRead.state?.pending ?? false;
   const [accountStatus, setAccountStatus] =
     useState<WholesaleAccountFilter>("all");
   const [orderStatus, setOrderStatus] = useState("All statuses");
@@ -165,19 +162,9 @@ export default function WholesalePage({
       window.clearInterval(timer);
     };
   }, []);
-  async function openSummary(kind: WholesaleSummaryKind) {
-    setOpeningSummary(kind);
-    setError("");
-    try {
-      const data = await wholesaleGet<WholesalePageResult<WholesaleSummaryRow>>(
-        wholesaleSummaryPath(kind),
-      );
-      setSummary({ kind, data });
-    } catch (failure) {
-      setError(safeError(failure));
-    } finally {
-      setOpeningSummary(null);
-    }
+  function openSummary(kind: WholesaleSummaryKind) {
+    const title = { pending: "Pending orders", deliveries: "Active delivery attempts", outstanding: "Outstanding accounts", overdue: "Overdue accounts" }[kind];
+    summaryRead.open(title, async () => ({ kind, data: await wholesaleGet<WholesalePageResult<WholesaleSummaryRow>>(wholesaleSummaryPath(kind)) }));
   }
   async function submit(request: WholesaleRequest) {
     if (inFlight.current) return;
@@ -193,7 +180,8 @@ export default function WholesalePage({
       sessionStorage.removeItem(storageKey);
       setPending(null);
       setDialog(null);
-      setSummary(null);
+      summaryRead.close();
+      deliveryRead.close();
       onToast("Wholesale record saved.");
       setDeliveryVersion((version) => version + 1);
       const orderAction = request.path.match(
@@ -234,19 +222,8 @@ export default function WholesalePage({
     if (pending || inFlight.current) return;
     void submit({ key: crypto.randomUUID(), path, method, body });
   }
-  async function openDelivery(id: string) {
-    setOpeningAccount(true);
-    setFormError("");
-    try {
-      const detail = await wholesaleGet<
-        WholesaleOrderDetail & { order: WholesaleOrder }
-      >("/orders/" + id, true);
-      setDialog({ kind: "delivery", order: detail.order, detail });
-    } catch (failure) {
-      setError(safeError(failure));
-    } finally {
-      setOpeningAccount(false);
-    }
+  function openDelivery(id: string, title = "Manage delivery") {
+    deliveryRead.open(title, () => wholesaleGet<WholesaleOrderDetail & { order: WholesaleOrder }>("/orders/" + id, true));
   }
   function open(next: Dialog) {
     if (
@@ -280,8 +257,8 @@ export default function WholesalePage({
     );
   }
   const locked =
-    busy || pending !== null || openingAccount || openingSummary !== null;
-  const navigating = busy || openingAccount || openingSummary !== null;
+    busy || pending !== null || openingAccount || Boolean(summaryRead.state?.pending);
+  const navigating = busy || openingAccount || Boolean(summaryRead.state?.pending);
   const query = search.toLocaleLowerCase();
   const visibleOrders = useMemo(() => tab === "orders" ? orders.filter((order) => {
     const displayStatus = order.status === "Pending" ? "Draft" : order.status;
@@ -382,6 +359,73 @@ export default function WholesalePage({
 
   const activeResource: Resource | null = tab === "orders" ? "orders" : tab === "clients" ? "clients" : tab === "prices" ? "catalog" : tab === "receipts" ? "receipts" : null;
   const retryResource = (key: Resource) => { if (!resourceRequests.current[key]) void load(false, key, true); };
+  function renderDelivery(order: WholesaleOrder, detail: WholesaleOrderDetail, close: () => void, embedded = false) {
+    return (<WholesaleDialog embedded={embedded}
+          variant="form"
+          back={deliveryReceipt ? () => setDeliveryReceipt(null) : undefined}
+          title={
+            deliveryReceipt
+              ? "Delivery receipt details"
+              : "Delivery · " + order.orderNumber
+          }
+          description={
+            deliveryReceipt
+              ? deliveryReceipt.receiptNumber
+              : order.orderNumber
+          }
+          busy={busy || printingReceipt}
+          close={() => {
+            close();
+            setDeliveryReceipt(null);
+          }}
+        >
+          {deliveryReceipt ? (
+            <DeliveryReceiptView
+              receipt={deliveryReceipt}
+              onBusyChange={setPrintingReceipt}
+              close={() => {
+                close();
+                setDeliveryReceipt(null);
+              }}
+              embedded
+            />
+          ) : (
+            <>
+              <WholesaleRequestFeedback
+                error={formError}
+                pending={pending}
+                busy={busy}
+                retry={() => pending && void submit(pending)}
+              />
+              <WholesaleDeliveryPanel
+                key={order.id + ":" + order.revision}
+                order={order}
+                detail={detail}
+                busy={locked}
+                mutate={mutate}
+                initialAction={
+                  detail.attempts.some(
+                    (attempt) => attempt.status === "InTransit",
+                  )
+                    ? "deliver"
+                    : detail.attempts.some(
+                          (attempt) => attempt.status === "Scheduled",
+                        )
+                      ? "dispatch"
+                      : detail.receipt
+                        ? undefined
+                        : "schedule"
+                }
+                viewReceipt={() => {
+                  if (detail.receipt) {
+                    setDeliveryReceipt(detail.receipt.snapshot);
+                  }
+                }}
+              />
+            </>
+          )}
+        </WholesaleDialog>);
+  }
   return (
     <div className="wholesale-workspace">
       <PageHeading
@@ -431,7 +475,7 @@ export default function WholesalePage({
               disabled={navigating || !overview}
               onClick={() => void openSummary("pending")}
             >
-              {openingSummary === "pending" ? <SourceProgress label="Opening…" /> : "View"}
+              View
             </button>
           }
         />
@@ -445,7 +489,7 @@ export default function WholesalePage({
               disabled={navigating || !overview}
               onClick={() => void openSummary("deliveries")}
             >
-              {openingSummary === "deliveries" ? <SourceProgress label="Opening…" /> : "View"}
+              View
             </button>
           }
         />
@@ -459,7 +503,7 @@ export default function WholesalePage({
               disabled={navigating || !overview}
               onClick={() => void openSummary("outstanding")}
             >
-              {openingSummary === "outstanding" ? <SourceProgress label="Opening…" /> : "View"}
+              View
             </button>
           }
         />
@@ -483,7 +527,7 @@ export default function WholesalePage({
               disabled={navigating || !overview}
               onClick={() => void openSummary("overdue")}
             >
-              {openingSummary === "overdue" ? <SourceProgress label="Opening…" /> : "View"}
+              View
             </button>
           }
         />
@@ -493,20 +537,15 @@ export default function WholesalePage({
           {overviewError}
         </div>
       )}
-      {summary && (
-        <WholesaleSummaryModal
-          kind={summary.kind}
-          initialData={summary.data}
-          busy={busy || pending !== null || openingAccount}
-          submitting={busy || openingAccount}
-          close={() => setSummary(null)}
-          role={role}
-          mutate={mutate}
-          error={formError}
+      <ReadDialog task={summaryRead} busy={busy}>
+        {summary => <WholesaleSummaryModal
+          embedded kind={summary.kind} initialData={summary.data}
+          busy={busy || pending !== null} submitting={busy}
+          close={summaryRead.close} role={role} mutate={mutate} error={formError}
           retry={pending ? () => void submit(pending) : undefined}
           onAccountChanged={() => void refreshOverview()}
-        />
-      )}
+        />}
+      </ReadDialog>
       <div className="page-tabs" role="group" aria-label="Wholesale sections">
         {(
           [
@@ -666,7 +705,7 @@ export default function WholesalePage({
                   search={search}
                   status={deliveryStatus}
                   busy={navigating}
-                  open={(id) => void openDelivery(id)}
+                  open={(id, title) => openDelivery(id, title)}
                 />
               ) : (
                 <div className="table-scroll">
@@ -1077,73 +1116,10 @@ export default function WholesalePage({
           mutate={mutate}
         />
       )}
-      {dialog?.kind === "delivery" && (
-        <WholesaleDialog
-          variant="form"
-          back={deliveryReceipt ? () => setDeliveryReceipt(null) : undefined}
-          title={
-            deliveryReceipt
-              ? "Delivery receipt details"
-              : "Delivery · " + dialog.order.orderNumber
-          }
-          description={
-            deliveryReceipt
-              ? deliveryReceipt.receiptNumber
-              : dialog.order.orderNumber
-          }
-          busy={busy || printingReceipt}
-          close={() => {
-            setDialog(null);
-            setDeliveryReceipt(null);
-          }}
-        >
-          {deliveryReceipt ? (
-            <DeliveryReceiptView
-              receipt={deliveryReceipt}
-              onBusyChange={setPrintingReceipt}
-              close={() => {
-                setDialog(null);
-                setDeliveryReceipt(null);
-              }}
-              embedded
-            />
-          ) : (
-            <>
-              <WholesaleRequestFeedback
-                error={formError}
-                pending={pending}
-                busy={busy}
-                retry={() => pending && void submit(pending)}
-              />
-              <WholesaleDeliveryPanel
-                key={dialog.order.id + ":" + dialog.order.revision}
-                order={dialog.order}
-                detail={dialog.detail}
-                busy={locked}
-                mutate={mutate}
-                initialAction={
-                  dialog.detail.attempts.some(
-                    (attempt) => attempt.status === "InTransit",
-                  )
-                    ? "deliver"
-                    : dialog.detail.attempts.some(
-                          (attempt) => attempt.status === "Scheduled",
-                        )
-                      ? "dispatch"
-                      : dialog.detail.receipt
-                        ? undefined
-                        : "schedule"
-                }
-                viewReceipt={() => {
-                  if (dialog.detail.receipt) {
-                    setDeliveryReceipt(dialog.detail.receipt.snapshot);
-                  }
-                }}
-              />
-            </>
-          )}
-        </WholesaleDialog>
-      )}
+      <ReadDialog task={deliveryRead} variant="form" busy={busy || printingReceipt}>
+        {detail => renderDelivery(detail.order, detail, deliveryRead.close, true)}
+      </ReadDialog>
+      {dialog?.kind === "delivery" && renderDelivery(dialog.order, dialog.detail, () => setDialog(null))}
       {deliveryReceipt && dialog?.kind !== "delivery" && (
         <DeliveryReceiptView
           receipt={deliveryReceipt}

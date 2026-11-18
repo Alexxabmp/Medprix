@@ -1,4 +1,5 @@
-import { SourceTableBody, SourceProgress, SourceFeedback } from "./custom-ui/source-state";
+import { ReadContent, useReadDialog } from "./read-dialog";
+import { SourceTableBody, SourceFeedback } from "./custom-ui/source-state";
 import { SelectField } from "@/components/custom-ui/select-field";
 import { formatDisplayDate } from "@/lib/business-date";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
@@ -217,6 +218,7 @@ export function WholesaleSummaryModal({
   error,
   retry,
   onAccountChanged,
+  embedded = false,
 }: {
   kind: WholesaleSummaryKind;
   initialData: WholesalePageResult<WholesaleSummaryRow>;
@@ -228,56 +230,27 @@ export function WholesaleSummaryModal({
   error: string;
   retry?: () => void;
   onAccountChanged?: () => void;
+  embedded?: boolean;
 }) {
   const preview = useModalTableStandard();
-  const [selectedOrder, setSelectedOrder] = useState<
-    (WholesaleOrderDetail & { order: WholesaleOrder }) | null
-  >(null);
+  const read = useReadDialog<{ kind: "order"; detail: WholesaleOrderDetail & { order: WholesaleOrder } } | { kind: "account"; detail: WholesaleReceivableDetail }>();
+  const selectedOrder = read.state?.data?.kind === "order" ? read.state.data.detail : null;
+  const account = read.state?.data?.kind === "account" ? read.state.data.detail : null;
   const [receipt, setReceipt] = useState<DeliveryReceipt | null>(null);
-  const [account, setAccount] = useState<WholesaleReceivableDetail | null>(
-    null,
-  );
-  const [opening, setOpening] = useState(false);
   const [printing, setPrinting] = useState(false);
-  const [openError, setOpenError] = useState("");
   const contentRef = useRef<HTMLDivElement>(null);
   const listScroll = useRef({ body: 0, table: 0, orderId: "" });
-  async function viewAccount(id: string) {
-    setOpening(true);
-    setOpenError("");
-    try {
-      setAccount(
-        await wholesaleGet<WholesaleReceivableDetail>(
-          "/accounts-receivable/" + id,
-          true,
-        ),
-      );
-    } catch (failure) {
-      setOpenError(safeError(failure));
-    } finally {
-      setOpening(false);
-    }
+  function viewAccount(id: string) {
+    read.open("Account details", async () => ({ kind: "account", detail: await wholesaleGet<WholesaleReceivableDetail>("/accounts-receivable/" + id, true) }));
   }
-  async function reviewOrder(id: string) {
-    setOpening(true);
-    setOpenError("");
+  function reviewOrder(id: string) {
     const content = contentRef.current;
     listScroll.current = {
       body: content?.closest(".wholesale-dialog-body")?.scrollTop ?? 0,
       table: content?.querySelector(".wholesale-summary-table")?.scrollTop ?? 0,
       orderId: id,
     };
-    try {
-      setSelectedOrder(
-        await wholesaleGet<WholesaleOrderDetail & { order: WholesaleOrder }>(
-          "/orders/" + id,
-        ),
-      );
-    } catch (failure) {
-      setOpenError(safeError(failure));
-    } finally {
-      setOpening(false);
-    }
+    read.open("Wholesale order", async () => ({ kind: "order", detail: await wholesaleGet<WholesaleOrderDetail & { order: WholesaleOrder }>("/orders/" + id) }));
   }
   useLayoutEffect(() => {
     const content = contentRef.current;
@@ -303,7 +276,7 @@ export function WholesaleSummaryModal({
         ?.focus({ preventScroll: true });
     }
     return undefined;
-  }, [selectedOrder, receipt, account]);
+  }, [selectedOrder, receipt, account, Boolean(read.state)]);
   const summary = summaries[kind];
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState(summary.status);
@@ -335,10 +308,13 @@ export function WholesaleSummaryModal({
     : list.data?.items;
   return (
     <WholesaleDialog
-      focusOnViewChange={Boolean(selectedOrder || receipt || account)}
+      embedded={embedded}
+      focusOnViewChange={Boolean(read.state || receipt)}
       variant={receipt ? "form" : "table"}
       title={
-        receipt
+        read.state && !read.state.data
+          ? read.state.title
+          : receipt
           ? "Delivery receipt details"
           : selectedOrder
             ? "Wholesale order"
@@ -357,24 +333,21 @@ export function WholesaleSummaryModal({
             ? selectedOrder.order.orderNumber
             : summary.description
       }
-      busy={submitting || opening || printing}
+      busy={submitting || printing}
       close={close}
       back={
         receipt
           ? () => setReceipt(null)
-          : selectedOrder
-            ? () => setSelectedOrder(null)
+          : read.state
+            ? read.close
             : undefined
       }
       className="wholesale-summary-dialog"
     >
       <div ref={contentRef}>
-        {openError && (
-          <div className="inline-error" role="alert">
-            {openError}
-          </div>
-        )}
-        {account ? (
+        {read.state && !read.state.data ? (
+          <ReadContent task={read}>{() => null}</ReadContent>
+        ) : account ? (
           <WholesaleReceivables
             key={account.id}
             search=""
@@ -382,7 +355,7 @@ export function WholesaleSummaryModal({
             initialDetail={account}
             detailsOnly
             embedded
-            onBack={() => setAccount(null)}
+            onBack={read.close}
             onClose={close}
             onChanged={onAccountChanged}
           />
@@ -569,7 +542,7 @@ export function WholesaleSummaryModal({
                               >
                                 <button
                                   className="button soft table-action-btn"
-                                  disabled={busy || opening}
+                                  disabled={busy || Boolean(read.state?.pending)}
                                   aria-label={
                                     accounts ? "View account" : "Review order"
                                   }

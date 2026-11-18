@@ -27,12 +27,15 @@ type Presentation = {
   busy?: boolean;
   className?: string;
 };
-const ViewContext = createContext<((view: Presentation | null) => void) | null>(
-  null,
-);
+type ViewRegistration = { owner: symbol; depth: number; view: Presentation };
+type ViewHost = { update: (view: Presentation | null, owner: symbol, depth: number) => void; depth: number };
+const ViewContext = createContext<ViewHost | null>(null);
 /** Child tasks update their existing shell, never open a second dialog. */
 export function useWholesaleDialogView(view: Presentation | null) {
-  const update = useContext(ViewContext);
+  const host = useContext(ViewContext);
+  const update = host?.update;
+  const depth = host?.depth ?? 0;
+  const owner = useRef(Symbol("dialog-view"));
   const backRef = useRef(view?.back);
   backRef.current = view?.back;
   const back = useCallback(() => backRef.current?.(), []);
@@ -51,9 +54,9 @@ export function useWholesaleDialogView(view: Presentation | null) {
       description,
       busy,
       className,
-    });
-    return () => update(null);
-  }, [update, title, variant, back, hasBack, description, busy, className]);
+    }, owner.current, depth);
+    return () => update(null, owner.current, depth);
+  }, [update, depth, title, variant, back, hasBack, description, busy, className]);
 }
 
 export function WholesaleDialog({
@@ -88,9 +91,18 @@ export function WholesaleDialog({
   className?: string;
 }) {
   const preview = useModalTableStandard();
-  const [view, setView] = useState<Presentation | null>(null);
+  const parentHost = useContext(ViewContext);
+  const [views, setViews] = useState<ViewRegistration[]>([]);
+  const updateView = useCallback((view: Presentation | null, owner: symbol, depth: number) => {
+    setViews(current => {
+      const next = current.filter(entry => entry.owner !== owner);
+      if (view) next.push({ owner, depth, view });
+      return next.sort((a, b) => a.depth - b.depth);
+    });
+  }, []);
+  const view = views.at(-1)?.view;
   const effectiveVariant = view?.variant ?? variant ?? "form";
-  const effectiveBusy = busy || Boolean(view?.busy);
+  const effectiveBusy = busy || views.some(entry => entry.view.busy);
   const shownDescription = view?.description ?? description;
   useWholesaleDialogView(
     embedded && !hidden
@@ -144,7 +156,7 @@ export function WholesaleDialog({
     return () => cancelAnimationFrame(frame);
   }, [shownTitle, hidden, embedded, focusOnViewChange]);
   if (hidden) return null;
-  if (embedded) return <>{children}</>;
+  if (embedded) return <ViewContext.Provider value={parentHost ? { ...parentHost, depth: parentHost.depth + 1 } : null}>{children}</ViewContext.Provider>;
   return createPortal(
     <div
       className={
@@ -162,7 +174,7 @@ export function WholesaleDialog({
           (view?.className ? " " + view.className : "")
         }
       >
-        <ViewContext.Provider value={setView}>
+        <ViewContext.Provider value={{ update: updateView, depth: 0 }}>
           <ModalTableContext.Provider value={preview}>
             <ModalTableLayout>
               <div className="modal-header">

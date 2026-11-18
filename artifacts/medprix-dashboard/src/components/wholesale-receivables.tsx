@@ -1,3 +1,4 @@
+import { ReadDialog, useReadDialog } from "./read-dialog";
 import { SourceTableBody, SourceFeedback } from "./custom-ui/source-state";
 import { SelectField } from "@/components/custom-ui/select-field";
 import { formatDisplayDate } from "@/lib/business-date";
@@ -76,7 +77,8 @@ export function WholesaleReceivables({
   const [detail, setDetail] = useState<WholesaleReceivableDetail | null>(
     initialDetail ?? null,
   );
-  const [opening, setOpening] = useState(false);
+  const read = useReadDialog<WholesaleReceivableDetail>();
+  const opening = read.state?.pending ?? false;
   const [mode, setMode] = useState("view");
   const [method, setMethod] = useState("Cash");
   const [paymentAmount, setPaymentAmount] = useState("");
@@ -201,21 +203,8 @@ export function WholesaleReceivables({
       window.clearInterval(timer);
     };
   }, [search, page, status, selectedId, mode, request.locked]);
-  async function open(id: string) {
-    setOpening(true);
-    setLoadError("");
-    setValidation("");
-    setMode("view");
-    request.clearError();
-    try {
-      await loadDetail(id);
-      setSelectedId(id);
-    } catch (failure) {
-      if (selectedId) setValidation(safeError(failure));
-      else setLoadError(safeError(failure));
-    } finally {
-      setOpening(false);
-    }
+  function open(id: string) {
+    read.open("Accounts receivable", () => wholesaleGet<WholesaleReceivableDetail>("/accounts-receivable/" + id, true));
   }
   const listLoading = standard ? paging.loading : loading;
   const listHasData = standard ? paging.hasData : data !== null && dataPath === queryPath;
@@ -829,6 +818,11 @@ export function WholesaleReceivables({
           <WholesaleRequestFeedback {...request} />
         </WholesaleDialog>
       )}
+      <ReadDialog task={read}>
+        {account => <WholesaleReceivables key={account.id} search="" role={role}
+          detailsOnly embedded initialDetail={account} onClose={read.close}
+          onChanged={() => { void load(); onChanged?.(); }} />}
+      </ReadDialog>
     </>
   );
 }

@@ -36,7 +36,7 @@ export function WholesaleDeliveries({
   search: string;
   status: DeliveryQueueStatus;
   busy: boolean;
-  open: (id: string) => void;
+  open: (id: string, title: string) => void;
 }) {
   const list = useWholesalePages<DeliveryRow>(
     "/delivery-queue",
@@ -98,7 +98,7 @@ export function WholesaleDeliveries({
                             icon={<Icon size={13} />}
                             className="button soft table-action-btn"
                             disabled={busy}
-                            onClick={() => open(row.id)}
+                            onClick={() => open(row.id, label)}
                           >
                             <Icon size={13} />
                           </PageTableAction>
