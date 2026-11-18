@@ -16,7 +16,6 @@ import { Link } from "wouter";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { usePharmacyInventory, usePharmacyTransactions } from "@/lib/pharmacy-store";
 import {
-  Activity,
   AlertCircle,
   AlertTriangle,
   Archive,
@@ -38,7 +37,6 @@ import {
   Package,
   Pencil,
   Plus,
-  RefreshCw,
   Search,
   ShoppingCart,
   Tag,
@@ -48,7 +46,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
-import { Summary } from "@/components/custom-ui/summary-card";
+import { InventorySummary as Summary, InventoryFeedback, InventoryRefreshButton, InventoryTableBody, InventoryPaginationLabel, MovementTableBody, MovementFeedback, MovementPaginationLabel } from "@/components/custom-ui/inventory-loading";
 import { fetchSupplierRecords, type SupplierRecord } from "@/lib/supplier-store";
 import type { ProductItem, ProductBatch, ToastFn } from "@/lib/types";
 
@@ -266,7 +264,7 @@ export default function InventoryPage({
   }, [isCashier, onToast]);
 
   // Inventory items state from shared pharmacy store
-  const { items, setItems, loading: isLoading, refresh: fetchInventory, isBackendConnected, error: inventoryLoadError } = usePharmacyInventory();
+  const { items, setItems, refresh: fetchInventory, isBackendConnected } = usePharmacyInventory();
   const { transactions: posTransactions } = usePharmacyTransactions();
   const [activeTab, setActiveTab] = useState<"inventory" | "movements">("inventory");
   const [inventoryPage, setInventoryPage] = useState(1);
@@ -700,12 +698,13 @@ export default function InventoryPage({
     <div>
       {categoryManagerOpen && canEditProduct && <CategoryManagementDialog onToast={onToast} categories={categoryRecords} onSaved={async (rows) => { setCategoryRecords(rows); await fetchInventory(); }} onClose={() => setCategoryManagerOpen(false)} />}
       {categoryError && <div className="inline-error" role="alert">{categoryError}<button className="button soft" onClick={() => void loadCategories()}>Retry</button></div>}
-      {inventoryLoadError && <div className="inline-error" role="alert"><span>{inventoryLoadError} Previously loaded stock may be out of date.</span><button className="button soft" onClick={() => void fetchInventory()}>Retry</button></div>}
+      <InventoryFeedback />
       <PageHeading
         title="Inventory"
         description="Real-time stock levels, multi-batch tracking, expiry alerts, and stock movements."
         action={
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+            <InventoryRefreshButton />
             {canAddProduct && (
               <button
                 className="button dark"
@@ -850,12 +849,6 @@ export default function InventoryPage({
         </div>
 
         <div className="table-scroll">
-          {isLoading && items.length === 0 ? (
-            <div className="empty-state">
-              <RefreshCw size={25} className="animate-spin" />
-              <div>Loading inventory…</div>
-            </div>
-          ) : (
             <table data-page-table="inventory" className="data-table">
               <thead>
                 <tr>
@@ -870,7 +863,7 @@ export default function InventoryPage({
                   <th className="table-action-head">Action</th>
                 </tr>
               </thead>
-              <tbody>
+              <InventoryTableBody empty={filtered.length === 0}>
                 {paginatedInventory.map((product) => {
                   const info = getProductStatusData(product);
 
@@ -1080,21 +1073,13 @@ export default function InventoryPage({
                     </tr>
                   );
                 })}
-              </tbody>
+              </InventoryTableBody>
             </table>
-          )}
-
-          {!isLoading && filtered.length === 0 && (
-            <div className="empty-state">
-              <Package size={25} />
-              <div>No products match that search or filter.</div>
-            </div>
-          )}
         </div>
         <div className="table-pagination" role="navigation" aria-label="Inventory pagination">
-          <span className="muted">
+          <InventoryPaginationLabel>
             Page {safeInventoryPage} of {totalInventoryPages} ({filtered.length} products)
-          </span>
+          </InventoryPaginationLabel>
           <button
             type="button"
             className="button soft"
@@ -1118,6 +1103,7 @@ export default function InventoryPage({
       {/* ========================================================================= */}
       {activeTab === "movements" && (
         <section className="surface-card table-card">
+          <MovementFeedback />
           <div className="table-tools">
             <div className="search-wrap">
               <Search size={15} />
@@ -1164,7 +1150,7 @@ export default function InventoryPage({
                   <th>Processed By</th>
                 </tr>
               </thead>
-              <tbody>
+              <MovementTableBody empty={filteredMovements.length === 0}>
                 {paginatedMovements.map((mov) => (
                   <tr key={mov.id} data-testid={`row-movement-${mov.id}`}>
                     <td className="muted">{mov.formattedDate}</td>
@@ -1215,20 +1201,13 @@ export default function InventoryPage({
                     <td>{mov.user}</td>
                   </tr>
                 ))}
-              </tbody>
+              </MovementTableBody>
             </table>
-
-            {filteredMovements.length === 0 && (
-              <div className="empty-state">
-                <Activity size={25} />
-                <div>No stock movements found matching your search or filter.</div>
-              </div>
-            )}
           </div>
           <div className="table-pagination" role="navigation" aria-label="Stock movement pagination">
-            <span className="muted">
+            <MovementPaginationLabel>
               Page {safeMovementPage} of {totalMovementPages} ({filteredMovements.length} movements)
-            </span>
+            </MovementPaginationLabel>
             <button
               type="button"
               className="button soft"
