@@ -1576,7 +1576,8 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               </div>
               <div className="receiving-dialog-body" ref={receivingBody}>
               {receivingRecovery()}
-              <span className="sr-only" role="status" aria-live="polite">{showReceivingLoading && isPreparingReceiving ? "Loading purchase orders and inventory…" : receivingAccess === "loading" ? "Checking receiving access…" : ""}</span>
+              <span className="sr-only" role="status" aria-live="polite">{receivingAccess === "loading" ? "Checking receiving access…" : ""}</span>
+              {showReceivingLoading && isPreparingReceiving && <SourceProgress label="Loading purchase orders and inventory…" />}
               {receivingLoadError && <div className="inline-error receiving-load-error" role="alert"><span>{receivingLoadError}</span><button type="button" className="button soft" onClick={() => void openReceiving(deliveryForm.poId)}>Retry loading</button></div>}
               {receivingAccess === "failed" && !pendingReceiving && <div className="receiving-access-notice" role="status">
                 <p className="modal-sub">{receivingError || "Receiving access is unavailable. Retry to continue."}</p>
