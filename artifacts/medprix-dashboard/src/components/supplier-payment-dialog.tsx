@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { AlertTriangle, Check, X } from "lucide-react";
+import { SourceProgress } from "./custom-ui/source-state";
 import {
   fetchAccountsPayable,
   getCachedPayables,
@@ -51,6 +52,7 @@ export function SupplierPaymentDialog({
   const [uncertain, setUncertain] = useState(() => !!pending(invoiceId));
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(() => !initialTarget);
+  const [refreshing, setRefreshing] = useState(true);
   const [recorded, setRecorded] = useState(false);
   const [saving, setSaving] = useState(false);
   const busy = useRef(false);
@@ -58,6 +60,7 @@ export function SupplierPaymentDialog({
   const opener = useRef(document.activeElement as HTMLElement | null);
   const returnSection = useRef(opener.current?.closest("section"));
   async function load() {
+    setRefreshing(true);
     if (!payable) setLoading(true);
     setError("");
     try {
@@ -90,6 +93,7 @@ export function SupplierPaymentDialog({
       );
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }
   useEffect(() => {
@@ -240,10 +244,9 @@ export function SupplierPaymentDialog({
               <X size={16} />
             </button>
           </div>
+          {refreshing && !loading && <SourceProgress label="Refreshing current payable…" />}
           {loading ? (
-            <p className="modal-sub" role="status" style={{ marginBottom: 16 }}>
-              Loading current payable…
-            </p>
+            <div style={{ marginBottom: 16 }}><SourceProgress label="Loading current payable…" /></div>
           ) : (
             payable && (
               <div
