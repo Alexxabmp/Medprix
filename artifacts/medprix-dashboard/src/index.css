@@ -4745,6 +4745,31 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
 }
 
 /* Find customer dialog */
+.modal.find-customer-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(480px, 100%);
+  overflow: hidden;
+  color-scheme: light;
+}
+
+.dark .find-customer-dialog {
+  color-scheme: dark;
+}
+
+.find-customer-dialog > :not(.find-customer-results) {
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.find-customer-dialog .modal-header {
+  margin-bottom: 0;
+}
+
+.find-customer-dialog .modal-header > div {
+  min-width: 0;
+}
+
 .find-customer-search {
   display: flex;
   align-items: center;
@@ -4762,6 +4787,7 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
 .modal .find-customer-search input,
 .modal .find-customer-search input:focus {
   flex: 1;
+  min-width: 0;
   height: 100% !important;
   padding: 0 !important;
   border: 0 !important;
@@ -4781,17 +4807,27 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
 }
 
 .find-customer-results {
-  display: grid;
-  gap: 2px;
+  flex: 0 1 auto;
+  min-height: 0;
+  min-width: 0;
   max-height: 340px;
   margin: 0;
   padding: 0;
   overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted)) hsl(var(--surface-soft));
   list-style: none;
 }
 
+.find-customer-results > li + li {
+  margin-top: 2px;
+}
+
 .find-customer-result {
-  display: flex;
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   width: 100%;
@@ -4805,9 +4841,10 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
   cursor: pointer;
 }
 
-.find-customer-result.is-active {
+.find-customer-result:is(.is-active, :hover, :focus-visible) {
   background: hsl(var(--surface-soft));
   outline: 2px solid hsl(var(--border));
+  outline-offset: -2px;
 }
 
 .find-customer-text {
@@ -4824,11 +4861,13 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
   flex-wrap: wrap;
   font-size: 15px;
   font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
 .find-customer-detail {
   color: hsl(var(--muted));
   font-size: 13px;
+  overflow-wrap: anywhere;
 }
 
 .find-customer-usual {
@@ -4859,6 +4898,27 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
+}
+
+@media (max-width: 480px), (max-height: 480px) {
+  .modal.find-customer-dialog {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .find-customer-result {
+    grid-template-columns: 40px minmax(0, 1fr);
+    gap: 4px 10px;
+  }
+
+  .find-customer-result .customer-avatar {
+    grid-row: span 2;
+  }
+
+  .find-customer-usual {
+    grid-column: 2;
+  }
 }
 
 /* New customer dialog */
