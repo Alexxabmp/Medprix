@@ -1,3 +1,4 @@
+import { SourceProgress } from "@/components/custom-ui/source-state";
 import { SelectField } from "@/components/custom-ui/select-field";
 import type { ProductCategory } from "@/lib/types";
 import { CategoryManagementDialog } from "@/components/custom-ui/category-management-dialog";
@@ -16,7 +17,6 @@ import { Link } from "wouter";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { usePharmacyInventory, usePharmacyTransactions } from "@/lib/pharmacy-store";
 import {
-  Activity,
   AlertCircle,
   AlertTriangle,
   Archive,
@@ -38,7 +38,6 @@ import {
   Package,
   Pencil,
   Plus,
-  RefreshCw,
   Search,
   ShoppingCart,
   Tag,
@@ -48,7 +47,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
-import { Summary } from "@/components/custom-ui/summary-card";
+import { InventorySummary as Summary, InventoryFeedback, InventoryRefreshButton, InventoryTableBody, InventoryPaginationLabel, MovementTableBody, MovementFeedback, MovementPaginationLabel } from "@/components/custom-ui/inventory-loading";
 import { fetchSupplierRecords, type SupplierRecord } from "@/lib/supplier-store";
 import type { ProductItem, ProductBatch, ToastFn } from "@/lib/types";
 
@@ -250,23 +249,37 @@ export default function InventoryPage({
   const canRecordStockOut = isAdmin || isCashier;
 
   const [suppliers, setSuppliers] = useState<SupplierRecord[]>([]);
+  const [supplierLoading, setSupplierLoading] = useState(!isCashier);
+  const [supplierAvailable, setSupplierAvailable] = useState(false);
+  const [supplierError, setSupplierError] = useState("");
+  const [supplierRetry, setSupplierRetry] = useState(0);
   useEffect(() => {
     if (isCashier) return;
     let active = true;
+    setSupplierLoading(true);
     fetchSupplierRecords()
       .then((records) => {
-        if (active) setSuppliers(records);
+        if (active) {
+          setSuppliers(records);
+          setSupplierAvailable(true);
+          setSupplierError("");
+          setSupplierLoading(false);
+        }
       })
       .catch((failure) => {
-        if (active) onToast({ message: safeError(failure), variant: "error" });
+        if (active) {
+          setSupplierError(safeError(failure));
+          setSupplierLoading(false);
+          onToast({ message: safeError(failure), variant: "error" });
+        }
       });
     return () => {
       active = false;
     };
-  }, [isCashier, onToast]);
+  }, [isCashier, onToast, supplierRetry]);
 
   // Inventory items state from shared pharmacy store
-  const { items, setItems, loading: isLoading, refresh: fetchInventory, isBackendConnected, error: inventoryLoadError } = usePharmacyInventory();
+  const { items, setItems, refresh: fetchInventory, isBackendConnected } = usePharmacyInventory();
   const { transactions: posTransactions } = usePharmacyTransactions();
   const [activeTab, setActiveTab] = useState<"inventory" | "movements">("inventory");
   const [inventoryPage, setInventoryPage] = useState(1);
@@ -277,6 +290,7 @@ export default function InventoryPage({
   const [statusFilter, setStatusFilter] = useState("All statuses");
   const [categoryRecords, setCategoryRecords] = useState<ProductCategory[]>([]);
   const [categoryLoading, setCategoryLoading] = useState(true);
+  const [categoryAvailable, setCategoryAvailable] = useState(false);
   const [categoryError, setCategoryError] = useState("");
   const loadCategories = async () => {
     setCategoryLoading(true);
@@ -284,7 +298,9 @@ export default function InventoryPage({
       const response = await fetch("/api/inventory/categories");
       if (!response.ok) throw new Error();
       const data = await response.json();
+      if (!Array.isArray(data.categories)) throw new Error();
       setCategoryRecords(data.categories);
+      setCategoryAvailable(true);
       setCategoryError("");
     } catch { setCategoryError("Categories could not be loaded. Retry before editing products."); }
     finally { setCategoryLoading(false); }
@@ -348,7 +364,7 @@ export default function InventoryPage({
     }
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+      if (e.key === "Escape" && !movementBusy.current) {
         setViewProduct(null);
         setBatchProduct(null);
         setStockInProduct(null);
@@ -700,12 +716,13 @@ export default function InventoryPage({
     <div>
       {categoryManagerOpen && canEditProduct && <CategoryManagementDialog onToast={onToast} categories={categoryRecords} onSaved={async (rows) => { setCategoryRecords(rows); await fetchInventory(); }} onClose={() => setCategoryManagerOpen(false)} />}
       {categoryError && <div className="inline-error" role="alert">{categoryError}<button className="button soft" onClick={() => void loadCategories()}>Retry</button></div>}
-      {inventoryLoadError && <div className="inline-error" role="alert"><span>{inventoryLoadError} Previously loaded stock may be out of date.</span><button className="button soft" onClick={() => void fetchInventory()}>Retry</button></div>}
+      <InventoryFeedback />
       <PageHeading
         title="Inventory"
         description="Real-time stock levels, multi-batch tracking, expiry alerts, and stock movements."
         action={
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+            <InventoryRefreshButton />
             {canAddProduct && (
               <button
                 className="button dark"
@@ -850,12 +867,6 @@ export default function InventoryPage({
         </div>
 
         <div className="table-scroll">
-          {isLoading && items.length === 0 ? (
-            <div className="empty-state">
-              <RefreshCw size={25} className="animate-spin" />
-              <div>Loading inventory…</div>
-            </div>
-          ) : (
             <table data-page-table="inventory" className="data-table">
               <thead>
                 <tr>
@@ -870,7 +881,7 @@ export default function InventoryPage({
                   <th className="table-action-head">Action</th>
                 </tr>
               </thead>
-              <tbody>
+              <InventoryTableBody empty={filtered.length === 0}>
                 {paginatedInventory.map((product) => {
                   const info = getProductStatusData(product);
 
@@ -1081,21 +1092,13 @@ export default function InventoryPage({
                     </tr>
                   );
                 })}
-              </tbody>
+              </InventoryTableBody>
             </table>
-          )}
-
-          {!isLoading && filtered.length === 0 && (
-            <div className="empty-state">
-              <Package size={25} />
-              <div>No products match that search or filter.</div>
-            </div>
-          )}
         </div>
         <div className="table-pagination" role="navigation" aria-label="Inventory pagination">
-          <span className="muted">
+          <InventoryPaginationLabel>
             Page {safeInventoryPage} of {totalInventoryPages} ({filtered.length} products)
-          </span>
+          </InventoryPaginationLabel>
           <button
             type="button"
             className="button soft"
@@ -1119,6 +1122,7 @@ export default function InventoryPage({
       {/* ========================================================================= */}
       {activeTab === "movements" && (
         <section className="surface-card table-card">
+          <MovementFeedback />
           <div className="table-tools">
             <div className="search-wrap">
               <Search size={15} />
@@ -1165,7 +1169,7 @@ export default function InventoryPage({
                   <th>Processed By</th>
                 </tr>
               </thead>
-              <tbody>
+              <MovementTableBody empty={filteredMovements.length === 0}>
                 {paginatedMovements.map((mov) => (
                   <tr key={mov.id} data-testid={`row-movement-${mov.id}`}>
                     <td className="muted">{mov.formattedDate}</td>
@@ -1216,20 +1220,13 @@ export default function InventoryPage({
                     <td>{mov.user}</td>
                   </tr>
                 ))}
-              </tbody>
+              </MovementTableBody>
             </table>
-
-            {filteredMovements.length === 0 && (
-              <div className="empty-state">
-                <Activity size={25} />
-                <div>No stock movements found matching your search or filter.</div>
-              </div>
-            )}
           </div>
           <div className="table-pagination" role="navigation" aria-label="Stock movement pagination">
-            <span className="muted">
+            <MovementPaginationLabel>
               Page {safeMovementPage} of {totalMovementPages} ({filteredMovements.length} movements)
-            </span>
+            </MovementPaginationLabel>
             <button
               type="button"
               className="button soft"
@@ -1383,6 +1380,8 @@ export default function InventoryPage({
         product={editProduct ?? undefined}
         categories={categoryRecords}
         suppliers={suppliers.map((supplier) => supplier.name)}
+        categoryState={{ pending: categoryLoading, hasData: categoryAvailable, error: categoryError, onRetry: () => void loadCategories() }}
+        supplierState={{ pending: supplierLoading, hasData: supplierAvailable, error: supplierError, onRetry: () => { setSupplierLoading(true); setSupplierRetry(value => value + 1); } }}
         onClose={() => { setIsAddProductOpen(false); setEditProduct(null); }}
         onSaved={handleProductSaved}
       />}
@@ -1394,7 +1393,7 @@ export default function InventoryPage({
         createPortal(
           <div
             className="modal-backdrop"
-            onMouseDown={(e) => e.currentTarget === e.target && setBatchProduct(null)}
+            onMouseDown={(e) => e.currentTarget === e.target && !movementBusy.current && setBatchProduct(null)}
             data-testid="modal-add-batch">
             <div className="modal">
               <div className="modal-header">
@@ -1411,12 +1410,13 @@ export default function InventoryPage({
                 <button
                   type="button"
                   className="modal-close"
-                  onClick={() => setBatchProduct(null)}>
+                  onClick={() => { if (!movementBusy.current) setBatchProduct(null); }}>
                   <X size={15} />
                 </button>
               </div>
 
-              <form onSubmit={handleSaveAddBatch}>
+              <form onSubmit={handleSaveAddBatch} aria-busy={movementSaving}>
+                <fieldset className="action-fields" disabled={movementSaving}>
                 <div className="form-grid">
                   <div className="field">
                     <label>Batch Number *</label>
@@ -1514,13 +1514,14 @@ export default function InventoryPage({
                   )}
                 </div>
 
-                {movementSaving && <p role="status">Saving stock change…</p>}
+                {movementSaving && <SourceProgress label="Saving stock change…" />}
                 {movementError && <div className="inline-error" role="alert">{movementError}</div>}
                 <div className="modal-actions">
                   <button type="submit" disabled={movementSaving} className="button dark">
                     Record Batch
                   </button>
                 </div>
+              </fieldset>
               </form>
             </div>
           </div>,
@@ -1534,7 +1535,7 @@ export default function InventoryPage({
         createPortal(
           <div
             className="modal-backdrop"
-            onMouseDown={(e) => e.currentTarget === e.target && setStockInProduct(null)}
+            onMouseDown={(e) => e.currentTarget === e.target && !movementBusy.current && setStockInProduct(null)}
             data-testid="modal-stock-in">
             <div className="modal">
               <div className="modal-header">
@@ -1547,12 +1548,13 @@ export default function InventoryPage({
                 <button
                   type="button"
                   className="modal-close"
-                  onClick={() => setStockInProduct(null)}>
+                  onClick={() => { if (!movementBusy.current) setStockInProduct(null); }}>
                   <X size={15} />
                 </button>
               </div>
 
-              <form onSubmit={handleSaveStockIn}>
+              <form onSubmit={handleSaveStockIn} aria-busy={movementSaving}>
+                <fieldset className="action-fields" disabled={movementSaving}>
                 <div className="form-grid">
                   <div className="field full-width">
                     <label>Target Batch *</label>
@@ -1617,13 +1619,14 @@ export default function InventoryPage({
                   </div>
                 </div>
 
-                {movementSaving && <p role="status">Saving stock change…</p>}
+                {movementSaving && <SourceProgress label="Saving stock change…" />}
                 {movementError && <div className="inline-error" role="alert">{movementError}</div>}
                 <div className="modal-actions">
                   <button type="submit" disabled={movementSaving} className="button dark">
                     <ArrowDownLeft size={14} /> Confirm Stock In
                   </button>
                 </div>
+              </fieldset>
               </form>
             </div>
           </div>,
@@ -1637,7 +1640,7 @@ export default function InventoryPage({
         createPortal(
           <div
             className="modal-backdrop"
-            onMouseDown={(e) => e.currentTarget === e.target && setStockOutProduct(null)}
+            onMouseDown={(e) => e.currentTarget === e.target && !movementBusy.current && setStockOutProduct(null)}
             data-testid="modal-stock-out">
             <div className="modal">
               <div className="modal-header">
@@ -1651,12 +1654,13 @@ export default function InventoryPage({
                 <button
                   type="button"
                   className="modal-close"
-                  onClick={() => setStockOutProduct(null)}>
+                  onClick={() => { if (!movementBusy.current) setStockOutProduct(null); }}>
                   <X size={15} />
                 </button>
               </div>
 
-              <form onSubmit={handleSaveStockOut}>
+              <form onSubmit={handleSaveStockOut} aria-busy={movementSaving}>
+                <fieldset className="action-fields" disabled={movementSaving}>
                 <div className="form-grid">
                   <div className="field full-width">
                     <label>Source Batch *</label>
@@ -1739,7 +1743,7 @@ export default function InventoryPage({
                   </div>
                 </div>
 
-                {movementSaving && <p role="status">Saving stock change…</p>}
+                {movementSaving && <SourceProgress label="Saving stock change…" />}
                 {movementError && <div className="inline-error" role="alert">{movementError}</div>}
                 <div className="modal-actions">
                   <button
@@ -1749,6 +1753,7 @@ export default function InventoryPage({
                     <ArrowUpRight size={14} /> Confirm Stock Out
                   </button>
                 </div>
+              </fieldset>
               </form>
             </div>
           </div>,

@@ -1,3 +1,6 @@
+import { ReadDialog, useReadDialog } from "./read-dialog";
+import { SourceTableBody, SourceFeedback, SourceRefreshButton } from "./custom-ui/source-state";
+import { createPortal } from "react-dom";
 import { SelectField } from "@/components/custom-ui/select-field";
 import { formatDisplayDate } from "@/lib/business-date";
 import {
@@ -43,6 +46,7 @@ export function WholesaleReceivables({
   embedded = false,
   onClose,
   onBack,
+  refreshTarget,
 }: {
   search: string;
   role: string;
@@ -53,6 +57,7 @@ export function WholesaleReceivables({
   embedded?: boolean;
   onClose?: () => void;
   onBack?: () => void;
+  refreshTarget?: HTMLElement | null;
 }) {
   const standard = !!usePageTableStandard() && !detailsOnly;
   const paging = useReceivablePages(standard, search, status);
@@ -65,7 +70,9 @@ export function WholesaleReceivables({
   const [data, setData] = useState<WholesaleReceivablePage | null>(() =>
     getCachedWholesale<WholesaleReceivablePage>(initialCacheKey),
   );
-  const [loading, setLoading] = useState(false);
+  const queryPath = "/accounts-receivable?search=" + encodeURIComponent(search) + "&page=" + page + "&status=" + status;
+  const [dataPath, setDataPath] = useState(initialCacheKey);
+  const [loading, setLoading] = useState(() => getCachedWholesale(initialCacheKey) === null);
   const [loadError, setLoadError] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(
     initialDetail?.id ?? null,
@@ -73,7 +80,8 @@ export function WholesaleReceivables({
   const [detail, setDetail] = useState<WholesaleReceivableDetail | null>(
     initialDetail ?? null,
   );
-  const [opening, setOpening] = useState(false);
+  const read = useReadDialog<WholesaleReceivableDetail>();
+  const opening = read.state?.pending ?? false;
   const [mode, setMode] = useState("view");
   const [method, setMethod] = useState("Cash");
   const [paymentAmount, setPaymentAmount] = useState("");
@@ -96,7 +104,7 @@ export function WholesaleReceivables({
     const body = content?.closest(".wholesale-dialog-body");
     if (body) body.scrollTop = 0;
   }, [mode, selectedId]);
-  async function load() {
+  async function load(force = false) {
     if (standard) return paging.refresh();
     if (detailsOnly) return;
     const result = await wholesaleGet<WholesaleReceivablePage>(
@@ -106,8 +114,10 @@ export function WholesaleReceivables({
         page +
         "&status=" +
         status,
+      force,
     );
     setData(result);
+    setDataPath(queryPath);
   }
   async function loadDetail(id: string) {
     setDetail(
@@ -152,8 +162,9 @@ export function WholesaleReceivables({
     const cached = getCachedWholesale<WholesaleReceivablePage>(reqPath);
     if (cached) {
       setData(cached);
+      setDataPath(reqPath);
     }
-    setLoading(false);
+    setLoading(!cached);
     setLoadError("");
     const timer = setTimeout(() => {
       wholesaleGet<WholesaleReceivablePage>(
@@ -165,7 +176,7 @@ export function WholesaleReceivables({
           status,
       )
         .then((value) => {
-          if (active) setData(value);
+          if (active) { setData(value); setDataPath(reqPath); }
         })
         .catch((failure) => {
           if (active) setLoadError(safeError(failure));
@@ -196,47 +207,42 @@ export function WholesaleReceivables({
       window.clearInterval(timer);
     };
   }, [search, page, status, selectedId, mode, request.locked]);
-  async function open(id: string) {
-    setOpening(true);
-    setLoadError("");
-    setValidation("");
-    setMode("view");
-    request.clearError();
-    try {
-      await loadDetail(id);
-      setSelectedId(id);
-    } catch (failure) {
-      if (selectedId) setValidation(safeError(failure));
-      else setLoadError(safeError(failure));
-    } finally {
-      setOpening(false);
-    }
+  function open(id: string) {
+    read.open("Accounts receivable", () => wholesaleGet<WholesaleReceivableDetail>("/accounts-receivable/" + id, true));
   }
   const listLoading = standard ? paging.loading : loading;
+  const listHasData = standard ? paging.hasData : data !== null && dataPath === queryPath;
+  const listPending = standard ? paging.pending : loading;
   const listError = standard ? paging.error || loadError : loadError;
   const listItems = standard ? paging.items : paginatedItems;
   const listTotal = standard ? paging.total : items.length;
   const listPage = standard ? paging.page : safeSubPage;
   const listPages = standard ? paging.pages : totalPages;
+  function refreshList() {
+    if (standard) {
+      void paging.refresh();
+      return;
+    }
+    setLoading(true);
+    setLoadError("");
+    void load(true)
+      .catch(failure => setLoadError(safeError(failure)))
+      .finally(() => setLoading(false));
+  }
   return (
     <>
+      {!detailsOnly && refreshTarget && createPortal(
+        <SourceRefreshButton
+          status={{ hasData: listHasData, pending: listPending, error: listError }}
+          label="receivables"
+          onRefresh={refreshList}
+        />,
+        refreshTarget,
+      )}
       {!detailsOnly && (
         <>
           {!selectedId && <WholesaleRequestFeedback {...request} />}
-          {listError && (
-            <div role="alert" className="inline-error">
-              {listError}
-              {standard && paging.error && (
-                <button
-                  type="button"
-                  className="button soft"
-                  onClick={() => void paging.refresh()}
-                >
-                  Retry
-                </button>
-              )}
-            </div>
-          )}
+          <SourceFeedback status={{ hasData: listHasData, pending: listPending, error: listError }} label="receivables" onRetry={() => { if (standard) void paging.refresh(); else void load().catch(failure => setLoadError(safeError(failure))); }} />
           <PageTableScroll>
             <table
               data-page-table="wholesale-receivables"
@@ -255,9 +261,8 @@ export function WholesaleReceivables({
                   <th className="table-action-head">Action</th>
                 </tr>
               </thead>
-              <tbody>
-                {!listLoading &&
-                  listItems.map((item) => (
+              <SourceTableBody status={{ hasData: listHasData, pending: listPending, error: listError }} label="Receivables" colSpan={9}>
+                {listItems.map((item) => (
                     <tr key={item.id}>
                       <td>
                         <strong>{item.orderNumber}</strong>
@@ -324,25 +329,8 @@ export function WholesaleReceivables({
                       </td>
                     </tr>
                   ))}
-                {listLoading ? (
-                  <tr>
-                    <td colSpan={9}>
-                      <LoadingState label="Loading receivables…" />
-                    </td>
-                  </tr>
-                ) : (
-                  !listError &&
-                  !listTotal && (
-                    <tr>
-                      <TableEmptyState colSpan={9}>
-                        {search
-                          ? "No matching receivables."
-                          : "No delivered receivables found."}
-                      </TableEmptyState>
-                    </tr>
-                  )
-                )}
-              </tbody>
+                {!listTotal && <tr><TableEmptyState colSpan={9}>{search ? "No matching receivables." : "No delivered receivables found."}</TableEmptyState></tr>}
+              </SourceTableBody>
             </table>
           </PageTableScroll>
           <div
@@ -853,6 +841,11 @@ export function WholesaleReceivables({
           <WholesaleRequestFeedback {...request} />
         </WholesaleDialog>
       )}
+      <ReadDialog task={read}>
+        {account => <WholesaleReceivables key={account.id} search="" role={role}
+          detailsOnly embedded initialDetail={account} onClose={read.close}
+          onChanged={() => { void load(); onChanged?.(); }} />}
+      </ReadDialog>
     </>
   );
 }

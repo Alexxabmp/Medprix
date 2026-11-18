@@ -4,7 +4,6 @@ import { formatDisplayDateTime } from "@/lib/business-date";
 import { PageTableValue } from "@/components/page-table-context";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { ModalTableDialog, ModalDataTable } from "@/components/modal-data-table";
-import { LoadingState } from "@/components/custom-ui/loading-state";
 import { useState, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -25,7 +24,8 @@ import {
   X,
 } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
-import { Summary } from "@/components/custom-ui/summary-card";
+import { SourceSummary as Summary, SourceTableBody, SourceText, SourceFeedback, SourceRefreshButton } from "@/components/custom-ui/source-state";
+import { TransactionSummary, TransactionTableBody, TransactionText, PharmacyFeedback } from "@/components/custom-ui/pharmacy-source-state";
 import { readResponse, safeError } from "@/lib/feedback";
 import {
   usePharmacyTransactions,
@@ -73,8 +73,9 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
   const [activityPage, setActivityPage] = useState(1);
 
   const [auditError, setAuditError] = useState("");
+  const [hasAuditData, setHasAuditData] = useState(() => getCachedSystemLogs() !== null && getCachedUserActivities() !== null);
   const [hasLoaded, setHasLoaded] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(true);
   const [isBackingUp, setIsBackingUp] = useState(false);
 
   // Modal body scroll lock
@@ -87,18 +88,16 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
   }, [selectedTrx, selectedLog]);
 
   const loadBackendData = async (force = false) => {
-    if (force) setIsRefreshing(true);
-    setAuditError("");
+    setIsRefreshing(true);
+    if (!force) setAuditError("");
     void (force || transactions.length === 0 ? refreshLiveTransactions() : Promise.resolve(transactions));
     try {
       const audit = await fetchAuditRecords(force);
       setSystemLogs(audit.logs);
       setUserActivities(audit.activities);
+      setHasAuditData(true);
+      setAuditError("");
     } catch (error) {
-      if (force) {
-        setSystemLogs([]);
-        setUserActivities([]);
-      }
       setAuditError(safeError(error, "Audit records are unavailable. Refresh to retry."));
     } finally {
       setIsRefreshing(false);
@@ -249,43 +248,31 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
     [filteredActivities, safeActivityPage],
   );
 
+  const auditState = { hasData: hasAuditData, pending: isRefreshing, error: auditError };
   return (
     <div>
       <PageHeading
+        action={<SourceRefreshButton status={auditState} label="audit records" onRefresh={() => void loadBackendData(true)} />}
         title="System Administration"
         description="Monitor user sales transactions, audit system logs, and track user activities."
       />
 
-      {false && (
-        <LoadingState label="Loading System Administration records…" />
-      )}
-      {auditError && (
-        <div role="alert" className="inline-error">
-          <span>{auditError}</span>
-          <button
-            type="button"
-            className="button soft"
-            disabled={isRefreshing}
-            onClick={() => void loadBackendData(true)}>
-            Retry
-          </button>
-        </div>
-      )}
-
+      <PharmacyFeedback source="transactions" label="transactions" />
+      <SourceFeedback status={auditState} label="audit records" />
       {/* Summary strip on top of tab locations */}
       {hasLoaded && activeTab === "transactions" && (
         <div className="summary-strip">
-          <Summary
+          <TransactionSummary
             label="Total transactions"
             value={String(transactions.length)}
             caption="Recorded across channels"
           />
-          <Summary
+          <TransactionSummary
             label="Wholesale (Front desk)"
             value={String(transactions.filter((t) => t.businessType === "Wholesale").length)}
             caption="Bulk clinic & pharmacy orders"
           />
-          <Summary
+          <TransactionSummary
             label="Retail (Cashier)"
             value={String(transactions.filter((t) => t.businessType === "Retail").length)}
             caption="Walk-in POS transactions"
@@ -294,19 +281,19 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
       )}
       {hasLoaded && activeTab === "systemLogs" && (
         <div className="summary-strip">
-          <Summary
+          <Summary status={auditState}
             label="Total audit logs"
-            value={auditError ? "Unavailable" : String(systemLogs.length)}
+            value={auditError && !hasAuditData ? "Unavailable" : String(systemLogs.length)}
             caption="System & security events"
           />
-          <Summary
+          <Summary status={auditState}
             label="Successful events"
-            value={auditError ? "Unavailable" : String(systemLogs.filter((l) => l.status === "Success").length)}
+            value={auditError && !hasAuditData ? "Unavailable" : String(systemLogs.filter((l) => l.status === "Success").length)}
             caption="Executed normally"
           />
-          <Summary
+          <Summary status={auditState}
             label="Failed / Alerts"
-            value={auditError ? "Unavailable" : String(systemLogs.filter((l) => l.status !== "Success").length)}
+            value={auditError && !hasAuditData ? "Unavailable" : String(systemLogs.filter((l) => l.status !== "Success").length)}
             caption="Requires attention"
             tone={
               systemLogs.filter((l) => l.status === "Failed").length > 0 ? "warning" : "neutral"
@@ -316,19 +303,19 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
       )}
       {hasLoaded && activeTab === "userActivity" && (
         <div className="summary-strip">
-          <Summary
+          <Summary status={auditState}
             label="Tracked activities"
-            value={auditError ? "Unavailable" : String(userActivities.length)}
+            value={auditError && !hasAuditData ? "Unavailable" : String(userActivities.length)}
             caption="Recorded across workspace"
           />
-          <Summary
+          <Summary status={auditState}
             label="Normal operations"
-            value={auditError ? "Unavailable" : String(userActivities.filter((a) => a.flag === "Normal").length)}
+            value={auditError && !hasAuditData ? "Unavailable" : String(userActivities.filter((a) => a.flag === "Normal").length)}
             caption="Standard user usage"
           />
-          <Summary
+          <Summary status={auditState}
             label="Suspicious / Flagged"
-            value={auditError ? "Unavailable" : String(userActivities.filter((a) => a.flag !== "Normal").length)}
+            value={auditError && !hasAuditData ? "Unavailable" : String(userActivities.filter((a) => a.flag !== "Normal").length)}
             caption="Detected security alerts"
             tone={
               userActivities.filter((a) => a.flag !== "Normal").length > 0
@@ -435,7 +422,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                     <th className="table-action-head">Action</th>
                   </tr>
                 </thead>
-                <tbody>
+                <TransactionTableBody label="Transactions" colSpan={9}>
                   {paginatedTransactions.map((trx) => (
                     <tr key={trx.id} data-testid={`row-trx-${trx.id}`}>
                       <td>
@@ -483,7 +470,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                       </td>
                     </tr>
                   ))}
-                </tbody>
+                </TransactionTableBody>
               </table>
 
               {filteredTransactions.length === 0 && (
@@ -495,7 +482,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
             </div>
             <div className="table-pagination" role="navigation" aria-label="Transactions pagination">
               <span className="muted">
-                Page {safeTrxPage} of {totalTrxPages} ({filteredTransactions.length} transactions)
+                <TransactionText>Page {safeTrxPage} of {totalTrxPages} ({filteredTransactions.length} transactions)</TransactionText>
               </span>
               <button
                 type="button"
@@ -586,7 +573,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                     <th className="table-action-head">Action</th>
                   </tr>
                 </thead>
-                <tbody>
+                <SourceTableBody status={auditState} label="System logs" colSpan={5}>
                   {paginatedLogs.map((log) => (
                     <tr key={log.id} data-testid={`row-log-${log.id}`}>
                       <td className="muted">{eventTime(log.dateTime)}</td>
@@ -628,7 +615,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                       </td>
                     </tr>
                   ))}
-                </tbody>
+                </SourceTableBody>
               </table>
 
               {filteredLogs.length === 0 && !auditError && (
@@ -640,7 +627,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
             </div>
             <div className="table-pagination" role="navigation" aria-label="Audit log pagination">
               <span className="muted">
-                Page {safeLogPage} of {totalLogPages} ({filteredLogs.length} logs)
+                <SourceText status={auditState}>Page {safeLogPage} of {totalLogPages} ({filteredLogs.length} logs)</SourceText>
               </span>
               <button
                 type="button"
@@ -732,7 +719,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                     <th>Description</th>
                   </tr>
                 </thead>
-                <tbody>
+                <SourceTableBody status={auditState} label="User activity" colSpan={6}>
                   {paginatedActivities.map((act) => (
                     <tr key={act.id} data-testid={`row-activity-${act.id}`}>
                       <td className="muted">{eventTime(act.dateTime)}</td>
@@ -766,7 +753,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                       </td>
                     </tr>
                   ))}
-                </tbody>
+                </SourceTableBody>
               </table>
 
               {filteredActivities.length === 0 && !auditError && (
@@ -778,7 +765,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
             </div>
             <div className="table-pagination" role="navigation" aria-label="User activity pagination">
               <span className="muted">
-                Page {safeActivityPage} of {totalActivityPages} ({filteredActivities.length} activities)
+                <SourceText status={auditState}>Page {safeActivityPage} of {totalActivityPages} ({filteredActivities.length} activities)</SourceText>
               </span>
               <button
                 type="button"

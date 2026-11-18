@@ -1,5 +1,7 @@
-import { CalendarDays, ClipboardCheck, Eye, Truck } from "lucide-react";
-import { LoadingState } from "./custom-ui/loading-state";
+import { WholesaleStatusPill } from "./wholesale-status-pill";
+import { SourceTableBody, SourceFeedback, SourceRefreshButton } from "./custom-ui/source-state";
+import { createPortal } from "react-dom";
+import { CalendarDays, ClipboardCheck, Eye, History, Truck } from "lucide-react";
 import { useEffect } from "react";
 import { TableEmptyState } from "./custom-ui/empty-state";
 import {
@@ -32,11 +34,13 @@ export function WholesaleDeliveries({
   status,
   busy,
   open,
+  refreshTarget,
 }: {
   search: string;
   status: DeliveryQueueStatus;
   busy: boolean;
-  open: (id: string) => void;
+  open: (id: string, title: string, view?: "history") => void;
+  refreshTarget?: HTMLElement | null;
 }) {
   const list = useWholesalePages<DeliveryRow>(
     "/delivery-queue",
@@ -55,14 +59,15 @@ export function WholesaleDeliveries({
   }, [list.refresh]);
   return (
     <>
-      {list.error && (
-        <div className="inline-error" role="alert">
-          {list.error}
-          <button className="button soft" onClick={list.refresh}>
-            Retry loading
-          </button>
-        </div>
+      {refreshTarget && createPortal(
+        <SourceRefreshButton
+          status={{ hasData: list.hasData, pending: list.pending, error: list.error }}
+          label="deliveries"
+          onRefresh={list.refresh}
+        />,
+        refreshTarget,
       )}
+      <SourceFeedback status={{ hasData: list.hasData, pending: list.pending, error: list.error }} label="deliveries" onRetry={list.refresh} />
       <div className="table-scroll">
         <PageTableScroll>
           <table className="data-table" data-page-table="wholesale-deliveries">
@@ -72,20 +77,12 @@ export function WholesaleDeliveries({
                 <th>Client</th>
                 <th>Total</th>
                 <th>Scheduled date</th>
-                <th>Status</th>
+                <th>Delivery status</th>
                 <th className="table-action-head">Action</th>
               </tr>
             </thead>
-            <tbody>
-              {list.loading ? (
-                <tr>
-                  <td colSpan={6}>
-                    <LoadingState label="Loading deliveries…" />
-                  </td>
-                </tr>
-              ) : (
-                !list.error &&
-                list.items.map((row) => {
+            <SourceTableBody status={{ hasData: list.hasData, pending: list.pending, error: list.error }} label="Deliveries" colSpan={6}>
+              {list.items.map((row) => {
                   const { label, icon: Icon } = actions[row.status];
                   return (
                     <tr key={row.id}>
@@ -96,13 +93,7 @@ export function WholesaleDeliveries({
                       <td>{wholesalePeso(row.total)}</td>
                       <td>{row.date ? formatDisplayDate(row.date) : "—"}</td>
                       <td>
-                        {row.status === "Ready"
-                          ? "Needs scheduling"
-                          : row.status === "InTransit"
-                            ? "In transit"
-                            : row.status === "Completed"
-                              ? "Delivered"
-                              : row.status}
+                        <WholesaleStatusPill status={row.status} />
                       </td>
                       <td className="table-action-cell">
                         <div className="table-actions">
@@ -113,17 +104,27 @@ export function WholesaleDeliveries({
                             icon={<Icon size={13} />}
                             className="button soft table-action-btn"
                             disabled={busy}
-                            onClick={() => open(row.id)}
+                            onClick={() => open(row.id, label)}
                           >
                             <Icon size={13} />
+                          </PageTableAction>
+                          <PageTableAction
+                            type="button"
+                            label="View delivery history"
+                            aria-label="View delivery history"
+                            icon={<History size={13} />}
+                            className="button soft table-action-btn"
+                            disabled={busy}
+                            onClick={() => open(row.id, "Delivery history", "history")}
+                          >
+                            <History size={13} />
                           </PageTableAction>
                         </div>
                       </td>
                     </tr>
                   );
-                })
-              )}
-              {!list.loading && !list.error && !list.total && (
+                })}
+              {!list.total && (
                 <tr>
                   <TableEmptyState colSpan={6}>
                     {search || status !== "active"
@@ -132,7 +133,7 @@ export function WholesaleDeliveries({
                   </TableEmptyState>
                 </tr>
               )}
-            </tbody>
+            </SourceTableBody>
           </table>
         </PageTableScroll>
       </div>

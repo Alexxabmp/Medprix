@@ -1,3 +1,4 @@
+import { ReportRegion, usePharmacySourceStatus } from "./pharmacy-source-state";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -172,11 +173,13 @@ export function ReportModal({
   onRetryFinance?: () => void;
 }) {
   const preview = useModalTableStandard();
+  const reportStatus = usePharmacySourceStatus(type === "inventory" || type === "valuation" ? "inventory" : type === "movement" ? "both" : "transactions");
   const standard = type === "financial" ? null : preview;
   const [movementTab, setMovementTab] = useState<"fast" | "slow">("fast");
   const [cashDetailRow, setCashDetailRow] = useState<number | null>(
     initialCashDetailRow,
   );
+  const [enteredCashList] = useState(() => initialCashDetailRow === null);
 
   const analytics = useMemo(
     () =>
@@ -247,11 +250,11 @@ export function ReportModal({
           </div>
           {preview ? (
             <div className="wholesale-dialog-header-actions">
-              {activeCashRow && <button type="button" className="button soft wholesale-dialog-back" aria-label="Back" onClick={() => setCashDetailRow(null)}><ArrowLeft size={14} /> Back</button>}
+              {activeCashRow && enteredCashList && <button type="button" className="button soft wholesale-dialog-back" aria-label="Back" onClick={() => setCashDetailRow(null)}><ArrowLeft size={14} /> Back</button>}
               <button type="button" className="modal-close" aria-label="Close dialog" data-testid="button-close-modal" onClick={onClose}><X size={16} /></button>
             </div>
           ) : <>
-          {activeCashRow ? (
+          {activeCashRow && enteredCashList ? (
             <button
               className="button soft"
               style={{ marginRight: 8 }}
@@ -269,6 +272,7 @@ export function ReportModal({
         </div>
 
         <ModalTableBody>
+        <ReportRegion type={type}>
         {/* Sales */}
         {type === "sales" && (
           <>
@@ -592,13 +596,14 @@ export function ReportModal({
           </>
         )}
 
+        </ReportRegion>
         </ModalTableBody>
         <ModalTableFooter>
         <div className="modal-actions">
           <button
             className="button dark"
             data-testid="button-export-report"
-            disabled={type === "financial" && financial.status !== "ready"}
+            disabled={type === "financial" ? financial.status !== "ready" : !reportStatus.hasData}
             onClick={() => exportReport(type, onToast, analytics)}>
             <Download size={14} /> Export report
           </button>

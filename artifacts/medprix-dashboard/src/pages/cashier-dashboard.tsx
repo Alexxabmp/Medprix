@@ -1,3 +1,6 @@
+import { AsyncActionButton } from "@/components/custom-ui/async-action-button";
+import { PharmacyFeedback, PharmacyRefreshButton, TransactionTableBody, TransactionText } from "@/components/custom-ui/pharmacy-source-state";
+import { SourceProgress, SourceFeedback } from "@/components/custom-ui/source-state";
 import { SelectField } from "@/components/custom-ui/select-field";
 import { QuantityInput } from "@/components/custom-ui/quantity-input";
 import { FindCustomerDialog, CustomerDiscountBadge, initialsOf } from "@/components/custom-ui/find-customer-dialog";
@@ -145,6 +148,9 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
   if (!submitCheckout.current) submitCheckout.current = createCheckoutSubmitter();
   const [pendingCheckout, setPendingCheckout] = useState<PendingCheckout | null>(null);
   const [checkoutReady, setCheckoutReady] = useState(false);
+  const [checkoutInitializing, setCheckoutInitializing] = useState(true);
+  const [checkoutInitError, setCheckoutInitError] = useState("");
+  const [checkoutInitAttempt, setCheckoutInitAttempt] = useState(0);
   const [checkedMissing, setCheckedMissing] = useState(false);
   function closeReceipt() {
     setSelectedReceipt(null);
@@ -155,14 +161,16 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
   }, [pendingCheckout, isSubmitting]);
   useEffect(() => {
     let active=true;
+    setCheckoutInitializing(true);
+    setCheckoutInitError("");
     submitCheckout.current!.initialize().then(pending=>{
-      if(!active)return;setCheckoutReady(true);setPendingCheckout(pending??null);
+      if(!active)return;setCheckoutInitializing(false);setCheckoutReady(true);setPendingCheckout(pending??null);
       if(!pending)return;
       setCart(pending.payload.items.map(item=>({id:item.productId,name:item.product,sku:String(item.sku||''),qty:item.quantity,price:Number(item.unitPrice.replace(/[^0-9.]/g,'')),isVatExempt:item.isVatExempt===true})));
       setCashTendered(pending.payload.amountReceived.replace(/[^0-9.]/g,''));setPaymentMethod(pending.payload.payment);setPaymentReference(String(pending.payload.paymentReference ?? ""));setDiscountType(pending.payload.discountType);setDiscountHolderName(String(pending.payload.discountHolderName ?? ""));setDiscountHolderId(String(pending.payload.discountHolderId ?? ""));setSelectedCustomerId(pending.payload.customerId ? String(pending.payload.customerId) : null);
-    }).catch(failure=>{if(active)setCheckoutError(safeError(failure));});
+    }).catch(failure=>{if(active){setCheckoutInitializing(false);setCheckoutInitError(safeError(failure));}});
     return()=>{active=false;};
-  }, []);
+  }, [checkoutInitAttempt]);
 
   async function finishCheckout(saved: any) {
     recordTransaction(saved);
@@ -1212,6 +1220,10 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
               </div>
             )}
 
+            {!checkoutReady && <>
+              {checkoutInitializing && <SourceProgress label="Preparing checkout…" />}
+              <SourceFeedback status={{ hasData: false, pending: checkoutInitializing, error: checkoutInitError }} label="checkout access" onRetry={() => setCheckoutInitAttempt(value => value + 1)} />
+            </>}
             {/* Phase 2c: a reminder only; it never blocks the sale. */}
             {rxInCart.length > 0 && (
               <div className="pos-rx-reminder" role="note">
@@ -1243,6 +1255,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
         </div>
       </section>
 
+      <PharmacyFeedback source="transactions" label="shift receipts" showRetry={false} />
       {/* Recent Shift Receipts Section */}
       <section
         className="surface-card"
@@ -1266,22 +1279,25 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                 alignItems: "center",
                 gap: 8,
               }}>
-              <Receipt size={16} /> Recent Shift Receipts ({filteredReceipts.length})
+              <Receipt size={16} /> Recent Shift Receipts (<TransactionText>{filteredReceipts.length}</TransactionText>)
             </h3>
             <p className="card-subtitle" style={{ margin: "2px 0 0" }}>
               Receipts recorded on {formatCalendarDate(shiftDate)}.
             </p>
           </div>
-          <div className="search-wrap" style={{ width: 260 }}>
-            <Search size={14} />
-            <input
-              type="search"
-              placeholder="Search receipt #, method, item..."
-              aria-label="Search shift receipts"
-              value={searchReceipt}
-              onChange={(e) => setSearchReceipt(e.target.value)}
-              style={{ height: 34, fontSize: 12 }}
-            />
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, maxWidth: "100%" }}>
+            <div className="search-wrap" style={{ width: 260, minWidth: 0, maxWidth: "100%" }}>
+              <Search size={14} />
+              <input
+                type="search"
+                placeholder="Search receipt #, method, item..."
+                aria-label="Search shift receipts"
+                value={searchReceipt}
+                onChange={(e) => setSearchReceipt(e.target.value)}
+                style={{ height: 34, fontSize: 12 }}
+              />
+            </div>
+            <PharmacyRefreshButton source="transactions" label="shift receipts" />
           </div>
         </div>
 
@@ -1304,7 +1320,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                 <th style={{ textAlign: "center", width: 90 }}>Action</th>
               </tr>
             </thead>
-            <tbody>
+            <TransactionTableBody colSpan={7}>
               {visibleReceipts.map((r) => (
                 <tr key={r.id}>
                   <td>
@@ -1354,11 +1370,11 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                   </TableEmptyState>
                 </tr>
               )}
-            </tbody>
+            </TransactionTableBody>
           </table>
         </div>
         {standard && <nav className="table-pagination table-pagination--borderless" aria-label="Shift receipts pagination">
-          <span className="muted">Page {safeReceiptPage} of {receiptPages} ({filteredReceipts.length} receipts)</span>
+          <span className="muted"><TransactionText>Page {safeReceiptPage} of {receiptPages} ({filteredReceipts.length} receipts)</TransactionText></span>
           <button type="button" className="button soft" disabled={safeReceiptPage <= 1} onClick={() => setReceiptPage(p => Math.max(1, p - 1))}>Previous</button>
           <button type="button" className="button soft" disabled={safeReceiptPage >= receiptPages} onClick={() => setReceiptPage(p => Math.min(receiptPages, p + 1))}>Next</button>
         </nav>}
@@ -1547,18 +1563,14 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
               )}
             </div>
             <div className="modal-actions" style={{ marginTop: 16, display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <button
+              <AsyncActionButton
                 type="button"
                 className="button primary-action"
-                onClick={async () => {
-                  try {
-                    await printReceipt(selectedReceipt);
-                  } catch {
-                    onToast("Could not prepare the receipt. Please try printing again.");
-                  }
-                }}>
+                pendingLabel={"Preparing receipt\u2026"}
+                onAction={() => printReceipt(selectedReceipt)}
+                onError={() => onToast("Could not prepare the receipt. Please try printing again.")}>
                 <Download size={13} style={{ marginRight: 4 }} /> Print Receipt
-              </button>
+              </AsyncActionButton>
             </div>
           </div>
         </div>

@@ -16,6 +16,7 @@ import {
 import { sql } from "drizzle-orm";
 import { usersTable } from "./users";
 import { money } from "./_columns";
+import { paymentPlanEnum } from "./payment-plan";
 import { productsTable } from "./inventory";
 
 // ─── Enums ───────────────────────────────────────────────────────────────────
@@ -25,10 +26,6 @@ export const wholesaleOrderStatusEnum = pgEnum("wholesale_order_status_enum", [
   "Processing",
   "Delivered",
   "Cancelled",
-]);
-export const wholesalePaymentPlanEnum = pgEnum("wholesale_payment_plan_enum", [
-  "Net30",
-  "Net60",
 ]);
 export const deliveryScheduleStatusEnum = pgEnum("delivery_schedule_status_enum", [
   "Scheduled",
@@ -97,7 +94,7 @@ export const wholesaleOrdersTable = pgTable(
       onDelete: "set null",
     }),
 
-    paymentPlan: wholesalePaymentPlanEnum("payment_plan"),
+    paymentPlan: paymentPlanEnum("payment_plan"),
     confirmationSnapshot: jsonb("confirmation_snapshot"),
     confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
     confirmedBy: uuid("confirmed_by").references(() => usersTable.id, { onDelete: "restrict" }),

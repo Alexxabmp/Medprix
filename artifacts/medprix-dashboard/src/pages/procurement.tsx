@@ -1,3 +1,4 @@
+import { SourceProgress } from "@/components/custom-ui/source-state";
 import { SelectField } from "@/components/custom-ui/select-field";
 import { PageTableValue, PageTableRow, PageTableAction, usePageTableStandard } from "@/components/page-table-context";
 import { AppTooltip } from "@/components/ui/tooltip";
@@ -14,9 +15,9 @@ import { ReceivingReportDecisionDialog, type ReceivingDecision } from "@/compone
 import { safeError, readResponse } from "@/lib/feedback";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
-import { Check, Eye, Package, Plus, Trash2, X, PackagePlus, Search, LoaderCircle, Banknote } from "lucide-react";
+import { Check, Eye, Package, Plus, Trash2, X, PackagePlus, Search, LoaderCircle, Banknote, AlertCircle, RefreshCw } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
-import { Summary } from "@/components/custom-ui/summary-card";
+import { ProcurementFeedback, ProcurementRefreshButton, ProcurementSummary } from "@/components/custom-ui/procurement-loading";
 import type { ToastFn } from "@/lib/types";
 import { fetchInventoryData, usePharmacyInventory } from "@/lib/pharmacy-store";
 import { fetchAccountsPayable } from "@/lib/supplier-store";
@@ -106,7 +107,7 @@ function getStored<T>(key: string, fallback: T): T {
     const raw = localStorage.getItem(key);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed as T;
+      if (Array.isArray(parsed)) return parsed as T;
     }
   } catch {}
   return fallback;
@@ -184,10 +185,18 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
   const [error, setError] = useState("");
   const [receivingError, setReceivingError] = useState("");
   const [loadingSections, setLoadingSections] = useState({
-    orders: false,
-    deliveries: false,
-    invoices: false,
+    orders: true,
+    deliveries: true,
+    invoices: true,
   });
+  type Section = "orders" | "deliveries" | "invoices";
+  const [availableSections, setAvailableSections] = useState(() => ({
+    orders: getStored("medprix_procurement_orders", null) !== null,
+    deliveries: getStored("medprix_procurement_deliveries", null) !== null,
+    invoices: getStored("medprix_procurement_invoices", null) !== null,
+  }));
+  const [sectionErrors, setSectionErrors] = useState({ orders: "", deliveries: "", invoices: "" });
+  const sectionRequests = useRef({ orders: 0, deliveries: 0, invoices: 0 });
   const [isInvoiceRefreshing, setIsInvoiceRefreshing] = useState(false);
   const [invoiceRefreshError, setInvoiceRefreshError] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -221,8 +230,20 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
   }, [isDeliveryOpen]);
   const [isInvoiceOpen, setIsInvoiceOpen] = useState(false);
   const [selectedOrderForItems, setSelectedOrderForItems] = useState<PurchaseOrder | null>(null);
+  const [itemsLoading, setItemsLoading] = useState(false);
+  const [itemsError, setItemsError] = useState("");
+  const itemsRequest = useRef<AbortController | null>(null);
+  const closeItemsModal = () => {
+    itemsRequest.current?.abort();
+    itemsRequest.current = null;
+    setSelectedOrderForItems(null);
+    setItemsLoading(false);
+    setItemsError("");
+  };
+  useEffect(() => () => itemsRequest.current?.abort(), []);
   const [orderToCancel, setOrderToCancel] = useState<PurchaseOrder | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const ordinaryWriteBusy = useRef(false);
   const [supplierId, setSupplierId] = useState("");
   const [lineItems, setLineItems] = useState<LineItem[]>([
     { productId: "", quantityOrdered: "1", unitCost: "0" },
@@ -308,10 +329,21 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
   useDialogAccessibility(isDeliveryOpen, '[data-testid="modal-create-delivery"] .receiving-dialog-frame', () => setIsDeliveryOpen(false), isSaving);
   useDialogAccessibility(isInvoiceOpen, '[data-testid="modal-create-invoice"] .modal', () => setIsInvoiceOpen(false), isSaving);
   useDialogAccessibility(Boolean(orderToCancel), '[data-testid="modal-cancel-po"] .modal', () => setOrderToCancel(null), isSaving);
-  useDialogAccessibility(Boolean(selectedOrderForItems), '[data-testid="modal-po-items"] .modal', () => setSelectedOrderForItems(null), isSaving);
-  const loadData = async () => {
-    setError("");
-    setLoadingSections({ orders: true, deliveries: true, invoices: true });
+  useDialogAccessibility(Boolean(selectedOrderForItems), '[data-testid="modal-po-items"] .modal', closeItemsModal, isSaving);
+  const loadData = async (section?: Section) => {
+    if (!section) setError("");
+    const runSection = async (key: Section, read: () => Promise<void>) => {
+      sectionRequests.current[key]++;
+      setLoadingSections(current => ({ ...current, [key]: true }));
+      try {
+        await read();
+      } catch (failure) {
+        setSectionErrors(current => ({ ...current, [key]: safeError(failure) }));
+      } finally {
+        sectionRequests.current[key]--;
+        setLoadingSections(current => ({ ...current, [key]: sectionRequests.current[key] > 0 }));
+      }
+    };
 
     const loadSuppliers = async () => {
       const response = await fetch("/api/suppliers", { credentials: "include" });
@@ -346,33 +378,30 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
     };
 
     const loadOrders = async () => {
-      try {
-        const response = await fetch("/api/purchase-orders", { credentials: "include" });
-        if (!response.ok) throw new Error("Failed to refresh purchase orders.");
-        const d = await response.json();
-        if (!Array.isArray(d.purchaseOrders)) throw new Error("Invalid procurement response. Please refresh.");
-        if (Array.isArray(d.purchaseOrders)) {
-          setOrders(d.purchaseOrders);
-          saveStored("medprix_procurement_orders", d.purchaseOrders);
-        }
-      } finally {
-        setLoadingSections((current) => ({ ...current, orders: false }));
+      const response = await fetch("/api/purchase-orders", { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to refresh purchase orders.");
+      const d = await response.json();
+      if (!Array.isArray(d.purchaseOrders)) throw new Error("Invalid procurement response. Please refresh.");
+      if (Array.isArray(d.purchaseOrders)) {
+        setOrders(d.purchaseOrders);
+        setAvailableSections(current => ({ ...current, orders: true }));
+        setSectionErrors(current => ({ ...current, orders: "" }));
+        saveStored("medprix_procurement_orders", d.purchaseOrders);
       }
     };
 
     const loadDeliveries = async () => {
-      try {
-        const response = await fetch("/api/supplier-deliveries", { credentials: "include" });
-        if (!response.ok) throw new Error("Failed to refresh receiving reports.");
-        const d = await response.json();
-        if (!Array.isArray(d.deliveries)) throw new Error("Invalid procurement response. Please refresh.");
-        if (Array.isArray(d.deliveries)) {
-          setDeliveries(d.deliveries);
-          saveStored("medprix_procurement_deliveries", d.deliveries);
-        }
-      } finally {
-        setLoadingSections((current) => ({ ...current, deliveries: false }));
+      const response = await fetch("/api/supplier-deliveries", { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to refresh receiving reports.");
+      const d = await response.json();
+      if (!Array.isArray(d.deliveries)) throw new Error("Invalid procurement response. Please refresh.");
+      if (Array.isArray(d.deliveries)) {
+        setDeliveries(d.deliveries);
+        setAvailableSections(current => ({ ...current, deliveries: true }));
+        setSectionErrors(current => ({ ...current, deliveries: "" }));
+        saveStored("medprix_procurement_deliveries", d.deliveries);
       }
+
     };
 
     const loadInvoices = async () => {
@@ -384,20 +413,20 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
         if (!Array.isArray(d.invoices)) throw new Error("Invalid invoice response. Please refresh.");
         if (Array.isArray(d.invoices)) {
           setInvoices(d.invoices);
+          setAvailableSections(current => ({ ...current, invoices: true }));
+          setSectionErrors(current => ({ ...current, invoices: "" }));
           saveStored("medprix_procurement_invoices", d.invoices);
         }
       } finally {
-        setLoadingSections((current) => ({ ...current, invoices: false }));
         setIsInvoiceRefreshing(false);
       }
     };
 
     const results = await Promise.allSettled([
-      loadSuppliers(),
-      loadProducts(),
-      loadOrders(),
-      loadDeliveries(),
-      loadInvoices(),
+      ...(!section ? [loadSuppliers(), loadProducts()] : []),
+      ...(!section || section === "orders" ? [runSection("orders", loadOrders)] : []),
+      ...(!section || section === "deliveries" ? [runSection("deliveries", loadDeliveries)] : []),
+      ...(!section || section === "invoices" ? [runSection("invoices", loadInvoices)] : []),
     ]);
     if (results.some((result) => result.status === "rejected")) {
       setError("Some procurement data could not be refreshed. Cached data remains available.");
@@ -491,7 +520,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
     receivingPreparation.current = controller;
     setError("");
     setReceivingLoadError("");
-    setSelectedOrderForItems(null);
+    closeItemsModal();
     setIsDeliveryOpen(true);
     if (pendingReceiving) { setIsPreparingReceiving(false); return; }
     const cachedItem = orders.find(order => order.id === orderId)?.items?.find(item => item.quantityRemaining > 0);
@@ -533,28 +562,39 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
     }
   };
 
-  const openItemsModal = async (order: PurchaseOrder) => {
+  const openItemsModal = async (order: PurchaseOrder, retry = false) => {
+    itemsRequest.current?.abort();
+    itemsRequest.current = null;
     setReceivingError("");
     setSelectedOrderForItems(order);
-    if (!order.items || order.items.length === 0) {
-      try {
-        const res = await fetch(`/api/purchase-orders/${order.id}/items`, { credentials: "include" });
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data.items) && data.items.length > 0) {
-            const updatedOrder = { ...order, items: data.items, itemCount: data.items.length };
-            setSelectedOrderForItems(updatedOrder);
-            const updatedOrders = orders.map((o) => (o.id === order.id ? updatedOrder : o));
-            setOrders(updatedOrders);
-            saveStored("medprix_procurement_orders", updatedOrders);
-          }
-        }
-      } catch {}
+    setItemsError("");
+    setItemsLoading(false);
+    if (Array.isArray(order.items) && (order.items.length > 0 || order.itemCount === 0) && !retry) return;
+    const controller = new AbortController();
+    itemsRequest.current = controller;
+    setItemsLoading(true);
+    try {
+      const res = await fetch(`/api/purchase-orders/${order.id}/items`, { credentials: "include", signal: controller.signal });
+      const data = await readResponse(res, "Could not load purchase order items.");
+      if (!res.ok || !Array.isArray(data.items)) throw new Error(data.error || "Could not load purchase order items.");
+      if (itemsRequest.current !== controller || controller.signal.aborted) return;
+      const updatedOrder = { ...order, items: data.items, itemCount: data.items.length };
+      setSelectedOrderForItems(updatedOrder);
+      // Only enrich the matching current order; never replace a newer list snapshot.
+      setOrders(current => current.map(row => row === order ? updatedOrder : row));
+    } catch (failure) {
+      if (itemsRequest.current === controller && !controller.signal.aborted) setItemsError(safeError(failure));
+    } finally {
+      if (itemsRequest.current === controller) {
+        itemsRequest.current = null;
+        setItemsLoading(false);
+      }
     }
   };
 
   const submitPurchaseOrder = async (event: FormEvent) => {
     event.preventDefault();
+    if (ordinaryWriteBusy.current || isSaving) return;
     if (
       !supplierId ||
       lineItems.some(
@@ -576,6 +616,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
       `PO-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}-${String(orders.length + 1).padStart(3, "0")}`;
 
     try {
+      ordinaryWriteBusy.current = true;
       setIsSaving(true);
       const response = await fetch("/api/purchase-orders", {
         method: "POST",
@@ -603,6 +644,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
     } catch (requestError) {
       setPoError(safeError(requestError, "Failed to create purchase order."));
     } finally {
+      ordinaryWriteBusy.current = false;
       setIsSaving(false);
     }
   };
@@ -646,7 +688,9 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
 
   const submitInvoice = async (event: FormEvent) => {
     event.preventDefault();
+    if (ordinaryWriteBusy.current || isSaving) return;
     try {
+      ordinaryWriteBusy.current = true;
       setIsSaving(true);
       const autoInvoiceNumber = `INV-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}-${String(invoices.length + 1).padStart(3, "0")}`;
       const response = await fetch("/api/supplier-invoices", {
@@ -684,6 +728,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
     } catch (requestError) {
       setError(safeError(requestError, "Failed to create supplier invoice."));
     } finally {
+      ordinaryWriteBusy.current = false;
       setIsSaving(false);
     }
   };
@@ -700,6 +745,8 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
       if (!Array.isArray(data.invoices)) throw new Error("Invalid invoice response. Please refresh.");
       if (Array.isArray(data.invoices)) {
         setInvoices(data.invoices);
+        setAvailableSections(current => ({ ...current, invoices: true }));
+        setSectionErrors(current => ({ ...current, invoices: "" }));
         saveStored("medprix_procurement_invoices", data.invoices);
       }
       await fetchAccountsPayable();
@@ -714,24 +761,21 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
     }
   };
 
-  const tableMessage = (columns: number, loading: boolean, itemCount: number) => {
-    if (loading && itemCount === 0)
-      return (
-        <tr>
-          <td colSpan={columns} className="muted">
-            Loading procurement data...
-          </td>
-        </tr>
-      );
-    if (error && itemCount === 0)
-      return (
-        <tr>
-          <td colSpan={columns} className="muted">
-            {error}
-          </td>
-        </tr>
-      );
-    return null;
+  const tableMessage = (columns: number, section: Section) => {
+    if (availableSections[section]) return null;
+    const failed = Boolean(sectionErrors[section]);
+    return <tr><td colSpan={columns} className="empty-state-cell"><div className="empty-state" role="status">
+      {failed ? <AlertCircle size={25} aria-hidden="true" /> : <LoaderCircle size={25} className="spin action-spinner" aria-hidden="true" />}
+      <div>{failed ? "Data unavailable. Use Retry to recover." : "Loading procurement data…"}</div>
+    </div></td></tr>;
+  };
+  const sectionFeedback = (section: Section, label: string, controls = false) => {
+    const Component = controls ? ProcurementRefreshButton : ProcurementFeedback;
+    return <Component
+    label={label} pending={loadingSections[section]} hasData={availableSections[section]}
+    error={sectionErrors[section]} onRefresh={() => {
+      if (!sectionRequests.current[section]) void loadData(section);
+    }} />;
   };
 
   const receivingRecovery = () => pendingReceiving && (
@@ -773,20 +817,20 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
       {!isDeliveryOpen && receivingRecovery()}
       {(error || statusError || receivingError || receivingProblem) && <div className="inline-error" role="alert"><span>{statusError || receivingError || receivingProblem || error} Previously loaded data may be out of date.</span><button className="button soft" disabled={receivingAccess === "loading" || isSaving} onClick={() => { setReceivingError(""); if (!receivingReady) setReceivingAccessAttempt(attempt => attempt + 1); void loadData(); }}>{receivingAccess === "loading" ? "Checking receiving access..." : !receivingReady ? "Retry receiving access" : "Retry refresh"}</button></div>}
       <div className="summary-strip">
-        <Summary
+        <ProcurementSummary hasData={availableSections.orders} error={sectionErrors.orders}
           label="Open orders"
           value={String(
             orders.filter((order) => !["Fulfilled", "Cancelled"].includes(order.status)).length
           )}
           caption={`${money(totalOpenValue)} committed`}
         />
-        <Summary
+        <ProcurementSummary hasData={availableSections.orders} error={sectionErrors.orders}
           label="Awaiting approval"
           value={String(orders.filter((order) => order.status === "Pending").length)}
           caption="Needs your review"
           tone="warning"
         />
-        <Summary
+        <ProcurementSummary hasData={availableSections.deliveries} error={sectionErrors.deliveries}
           label="Received deliveries"
           value={String(deliveries.length)}
           caption="Recorded supplier deliveries"
@@ -808,6 +852,8 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
       </div>
 
       {activeSection === "Purchase Order Monitoring" && (
+        <>
+          {sectionFeedback("orders", "purchase orders")}
         <section className="surface-card table-card">
           <div className="table-tools">
             <div className="search-wrap">
@@ -823,6 +869,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 }} />
             </div>
             <div className="table-tools-right">
+              {sectionFeedback("orders", "purchase orders", true)}
               <SelectField
                 className="select"
                 data-testid="select-procurement-status"
@@ -853,7 +900,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 </tr>
               </thead>
               <tbody>
-                {tableMessage(7, loadingSections.orders, orders.length) ||
+                {tableMessage(7, "orders") ||
                   (filteredOrders.length === 0 ? (
                     <tr>
                       <TableEmptyState colSpan={7} icon={Package}>
@@ -927,7 +974,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
           </div>
           <div className="table-pagination" role="navigation" aria-label="Purchase orders pagination">
             <span className="muted">
-              Page {safeOrderPage} of {totalOrderPages} ({filteredOrders.length} orders)
+              {availableSections.orders ? <>Page {safeOrderPage} of {totalOrderPages} ({filteredOrders.length} orders)</> : sectionErrors.orders ? "Data unavailable" : "Loading…"}
             </span>
             <button
               type="button"
@@ -945,9 +992,12 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
             </button>
           </div>
         </section>
+        </>
       )}
 
       {activeSection === "Receiving Report Management" && (
+        <>
+          {sectionFeedback("deliveries", "receiving reports")}
         <section className="surface-card table-card">
           <div className="table-tools">
             <div className="search-wrap">
@@ -963,6 +1013,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 }} />
             </div>
             <div className="table-tools-right">
+              {sectionFeedback("deliveries", "receiving reports", true)}
               <SelectField
                 className="select"
                 aria-label="Filter receiving reports by status"
@@ -1006,7 +1057,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 </PageTableRow>
               </thead>
               <tbody>
-                {tableMessage(canManagePurchasing ? 9 : 8, loadingSections.deliveries, deliveries.length) ||
+                {tableMessage(canManagePurchasing ? 9 : 8, "deliveries") ||
                   (paginatedReceivingRows.length === 0 ? (
                     <tr>
                       <TableEmptyState colSpan={canManagePurchasing ? 9 : 8} icon={Package}>
@@ -1034,7 +1085,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
           </div>
           <div className="table-pagination" role="navigation" aria-label="Receiving reports pagination">
             <span className="muted">
-              Page {safeReceivingPage} of {totalReceivingPages} ({filteredReceivingRows.length} receiving items)
+              {availableSections.deliveries ? <>Page {safeReceivingPage} of {totalReceivingPages} ({filteredReceivingRows.length} receiving items)</> : sectionErrors.deliveries ? "Data unavailable" : "Loading…"}
             </span>
             <button
               type="button"
@@ -1052,9 +1103,12 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
             </button>
           </div>
         </section>
+        </>
       )}
 
       {activeSection === "Purchase Invoice Monitoring" && (
+        <>
+          {sectionFeedback("invoices", "invoices")}
         <section className="surface-card table-card">
           <div className="table-tools">
             <div className="search-wrap">
@@ -1070,6 +1124,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 }} />
             </div>
             <div className="table-tools-right">
+              {sectionFeedback("invoices", "invoices", true)}
               <SelectField
                 className="select"
                 aria-label="Filter supplier invoices by status"
@@ -1120,7 +1175,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 </PageTableRow>
               </thead>
               <tbody>
-                {tableMessage(7, loadingSections.invoices, invoices.length) ||
+                {tableMessage(7, "invoices") ||
                   (filteredInvoices.length === 0 ? (
                     <tr>
                       <TableEmptyState colSpan={7} icon={Package}>
@@ -1163,7 +1218,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
           </div>
           <div className="table-pagination" role="navigation" aria-label="Purchase invoices pagination">
             <span className="muted">
-              Page {safeInvoicePage} of {totalInvoicePages} ({filteredInvoices.length} invoices)
+              {availableSections.invoices ? <>Page {safeInvoicePage} of {totalInvoicePages} ({filteredInvoices.length} invoices)</> : sectionErrors.invoices ? "Data unavailable" : "Loading…"}
             </span>
             <button
               type="button"
@@ -1181,6 +1236,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
             </button>
           </div>
         </section>
+        </>
       )}
 
       {/* PO Items Modal */}
@@ -1190,9 +1246,9 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
             className="modal-backdrop"
             data-testid="modal-po-items"
             onMouseDown={(event) =>
-              event.currentTarget === event.target && setSelectedOrderForItems(null)
+              event.currentTarget === event.target && closeItemsModal()
             }>
-            <ModalTableDialog className="modal dialog"  close={() => setSelectedOrderForItems(null)}>
+            <ModalTableDialog className="modal dialog"  close={closeItemsModal}>
               <div className="modal-header">
                 <div>
                   <h2>Purchase order items</h2>
@@ -1203,7 +1259,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 <button
                   type="button"
                   className="modal-close"
-                  onClick={() => setSelectedOrderForItems(null)}>
+                  onClick={closeItemsModal}>
                   <X size={16} />
                 </button>
               </div>
@@ -1260,8 +1316,8 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                         <th>Line total</th>
                       </tr>
                     </thead>
-                    <tbody>
-                      {selectedOrderForItems.items && selectedOrderForItems.items.length > 0 ? (
+                    <tbody aria-busy={itemsLoading}>
+                      {itemsLoading ? <tr><td colSpan={5} className="empty-state-cell"><div className="empty-state" role="status"><LoaderCircle size={25} className="spin action-spinner" aria-hidden="true" /><div>Loading purchase order items…</div></div></td></tr> : itemsError ? <tr><td colSpan={5}><div className="inline-error" role="alert"><span className="action-error-copy" style={{ flexBasis: "auto" }}><AlertCircle size={16} aria-hidden="true" />{itemsError}</span><button className="button soft" onClick={() => void openItemsModal(selectedOrderForItems, true)}><RefreshCw size={14} aria-hidden="true" />Retry items</button></div></td></tr> : selectedOrderForItems.items && selectedOrderForItems.items.length > 0 ? (
                         selectedOrderForItems.items.map((item) => (
                           <tr key={item.id}>
                             <td>
@@ -1278,8 +1334,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                       ) : (
                         <tr>
                           <td colSpan={5} className="muted">
-                            {selectedOrderForItems.itemCount} item(s) ordered (Total:{" "}
-                            {money(selectedOrderForItems.totalOrderAmount)})
+                            No line items found.
                           </td>
                         </tr>
                       )}
@@ -1311,9 +1366,9 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
             className="modal-backdrop"
             data-testid="modal-create-po"
             onMouseDown={(event) =>
-              event.currentTarget === event.target && setIsCreateOpen(false)
+              event.currentTarget === event.target && !ordinaryWriteBusy.current && !isSaving && setIsCreateOpen(false)
             }>
-            <form className="modal dialog" onSubmit={submitPurchaseOrder}>
+            <form className="modal dialog" onSubmit={submitPurchaseOrder} aria-busy={isSaving}><fieldset className="action-fields" style={{ display: "contents" }} disabled={isSaving}>
               <div className="modal-header">
                 <div>
                   <h2>Create purchase order</h2>
@@ -1324,7 +1379,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 <button
                   type="button"
                   className="modal-close"
-                  onClick={() => setIsCreateOpen(false)}>
+                  onClick={() => { if (!ordinaryWriteBusy.current && !isSaving) setIsCreateOpen(false); }}>
                   <X size={16} />
                 </button>
               </div>
@@ -1469,10 +1524,10 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               <div className="modal-actions items-center">
                 <strong>Total: {money(runningTotal)}</strong>
                 <button className="button primary-action" type="submit" disabled={isSaving}>
-                  <Check size={13} /> {isSaving ? "Creating..." : "Create Draft Purchase Order"}
+                  {isSaving ? <SourceProgress label="Creating purchase order…" /> : <><Check size={13} /> Create Draft Purchase Order</>}
                 </button>
               </div>
-            </form>
+            </fieldset></form>
           </div>,
           document.body
         )}
@@ -1521,7 +1576,8 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               </div>
               <div className="receiving-dialog-body" ref={receivingBody}>
               {receivingRecovery()}
-              <span className="sr-only" role="status" aria-live="polite">{showReceivingLoading && isPreparingReceiving ? "Loading purchase orders and inventory…" : receivingAccess === "loading" ? "Checking receiving access…" : ""}</span>
+              <span className="sr-only" role="status" aria-live="polite">{receivingAccess === "loading" ? "Checking receiving access…" : ""}</span>
+              {showReceivingLoading && isPreparingReceiving && <SourceProgress label="Loading purchase orders and inventory…" />}
               {receivingLoadError && <div className="inline-error receiving-load-error" role="alert"><span>{receivingLoadError}</span><button type="button" className="button soft" onClick={() => void openReceiving(deliveryForm.poId)}>Retry loading</button></div>}
               {receivingAccess === "failed" && !pendingReceiving && <div className="receiving-access-notice" role="status">
                 <p className="modal-sub">{receivingError || "Receiving access is unavailable. Retry to continue."}</p>
@@ -1677,9 +1733,9 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
             className="modal-backdrop"
             data-testid="modal-create-invoice"
             onMouseDown={(event) =>
-              event.currentTarget === event.target && setIsInvoiceOpen(false)
+              event.currentTarget === event.target && !ordinaryWriteBusy.current && !isSaving && setIsInvoiceOpen(false)
             }>
-            <form className="modal dialog" onSubmit={submitInvoice}>
+            <form className="modal dialog" onSubmit={submitInvoice} aria-busy={isSaving}><fieldset className="action-fields" style={{ display: "contents" }} disabled={isSaving}>
               <div className="modal-header">
                 <div>
                   <h2>Add supplier invoice</h2>
@@ -1688,7 +1744,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 <button
                   type="button"
                   className="modal-close"
-                  onClick={() => setIsInvoiceOpen(false)}>
+                  onClick={() => { if (!ordinaryWriteBusy.current && !isSaving) setIsInvoiceOpen(false); }}>
                   <X size={16} />
                 </button>
               </div>
@@ -1782,10 +1838,10 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               {error && <div className="inline-error" role="alert">{error}</div>}
               <div className="modal-actions">
                 <button className="button primary-action" type="submit" disabled={isSaving}>
-                  <Check size={13} /> {isSaving ? "Saving..." : "Save invoice"}
+                  {isSaving ? <SourceProgress label="Saving invoice…" /> : <><Check size={13} /> Save invoice</>}
                 </button>
               </div>
-            </form>
+            </fieldset></form>
           </div>,
           document.body
         )}

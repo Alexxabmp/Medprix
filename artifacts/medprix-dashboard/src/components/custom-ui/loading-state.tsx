@@ -1,14 +1,5 @@
-import { LoaderCircle } from "lucide-react";
+import { SourceProgress } from "./source-state";
 
-export function LoadingState({ label }: { label: string }) {
-  return (
-    <div
-      className="surface-card loading-state"
-      role="status"
-      aria-live="polite"
-    >
-      <LoaderCircle className="spin" size={20} aria-hidden="true" />
-      <span>{label}</span>
-    </div>
-  );
+export function LoadingState({ label, compact = false }: { label: string; compact?: boolean }) {
+  return <div className={compact ? undefined : "surface-card loading-state"}><SourceProgress label={label} /></div>;
 }

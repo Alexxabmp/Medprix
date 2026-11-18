@@ -79,7 +79,7 @@ export function PageTableBoundary({ children }: { children: ReactNode }) {
   const root = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const host = root.current!;
-    type Entry = { table: HTMLTableElement; frame: HTMLElement; section: HTMLElement; toolbar: HTMLElement | null; mirror: HTMLDivElement; native: boolean };
+    type Entry = { table: HTMLTableElement; frame: HTMLElement; section: HTMLElement; toolbar: HTMLElement | null; mirror: HTMLDivElement; native: boolean; mirrorDirty: boolean };
     const entries = new Map<HTMLTableElement, Entry>();
     let frameId = 0;
     let dirty = true;
@@ -136,7 +136,7 @@ export function PageTableBoundary({ children }: { children: ReactNode }) {
         mirror.inert = true;
         mirror.hidden = true;
         document.body.append(mirror);
-        entries.set(table, { table, frame, section, toolbar, mirror, native: false });
+        entries.set(table, { table, frame, section, toolbar, mirror, native: false, mirrorDirty: true });
         resize.observe(frame); resize.observe(table); if (toolbar) resize.observe(toolbar);
       }
       // React can replace a tab's table between animation frames. Deferring its
@@ -150,7 +150,13 @@ export function PageTableBoundary({ children }: { children: ReactNode }) {
       frameId = 0;
       for (const entry of entries.values()) {
         const { table, frame, section, toolbar, mirror } = entry;
-        if (dirty) sizePageColumns(table, frame.clientWidth);
+        if (dirty) {
+          sizePageColumns(table, frame.clientWidth);
+          // Measurements can change while the floating header is hidden. Keep
+          // its invalidation until it is shown, rather than losing it when the
+          // shared dirty flag clears at the end of this update.
+          entry.mirrorDirty = true;
+        }
         const cart = pageTablePolicies[table.dataset.pageTable ?? ""]?.localScroll;
         // Existing cart scroll ownership is retained; every other table follows the document.
         const toolbarHeight = toolbar?.getBoundingClientRect().height ?? 0;
@@ -175,7 +181,7 @@ export function PageTableBoundary({ children }: { children: ReactNode }) {
         const active = needsSticky && tableBounds.top < top && tableBounds.bottom > 0 && bounds.right > 0 && bounds.left < innerWidth;
         mirror.hidden = !active || !!document.querySelector(".modal-backdrop, [role=dialog]");
         if (!active) continue;
-        if (dirty || !mirror.firstChild) {
+        if (entry.mirrorDirty || !mirror.firstChild) {
           const visualTable = document.createElement("table");
           visualTable.className = "data-table";
           visualTable.dataset.pageTable = "true";
@@ -185,6 +191,7 @@ export function PageTableBoundary({ children }: { children: ReactNode }) {
           [...head.rows[0].cells].forEach((cell, i) => cell.style.setProperty("width", table.tHead!.rows[0].cells[i].getBoundingClientRect().width + "px", "important"));
           visualTable.append(head);
           mirror.replaceChildren(visualTable);
+          entry.mirrorDirty = false;
         }
         Object.assign(mirror.style, { left: bounds.left + "px", top: top + "px", width: bounds.width + "px", height: headerHeight + "px" });
         const frameStyle = getComputedStyle(frame);

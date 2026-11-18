@@ -1,3 +1,4 @@
+import type { SourceState } from "./source-state";
 import { useState, useEffect } from "react";
 import { PageTables } from "@/components/page-tables";
 import { Link, Route, Switch, useLocation } from "wouter";
@@ -31,6 +32,7 @@ export function AppShell({
   users,
   setUsers,
   refreshUsers,
+  usersSource,
 }: {
   dark: boolean;
   setDark: (value: boolean) => void;
@@ -40,6 +42,7 @@ export function AppShell({
   users: UserRecord[];
   setUsers: (users: UserRecord[]) => void;
   refreshUsers: () => void;
+  usersSource: SourceState;
 }) {
   const [location] = useLocation();
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -230,6 +233,7 @@ export function AppShell({
                 setUsers={setUsers}
                 onToast={onToast}
                 refreshUsers={refreshUsers}
+                usersSource={usersSource}
               />
             </Route>
             <Route component={NotFound} />
