@@ -1,3 +1,4 @@
+import { PharmacyRegion, PharmacyFeedback } from "@/components/custom-ui/pharmacy-source-state";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { displayPeso } from "@/lib/currency";
 import { ModalTableDialog, ModalDataTable } from "@/components/modal-data-table";
@@ -38,7 +39,7 @@ const formatPeso = (amount: number) =>
 
 export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
   const [activeModal, setActiveModal] = useState<"sales" | "drawer" | "transactions" | "till" | null>(null);
-  const { receipts, loading: isLoading } = usePharmacyTransactions();
+  const { receipts } = usePharmacyTransactions();
   const { date: shiftDate, selectDate } = useBusinessDate();
   const shiftReceipts = recordsOnDate(receipts, shiftDate);
   const dateLabel = formatCalendarDate(shiftDate);
@@ -86,6 +87,8 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
         }
       />
 
+      <PharmacyFeedback source="transactions" label="shift receipts" />
+      <PharmacyRegion source="transactions" label="Shift receipts">
       {/* 4 Feature Boxes Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {/* 1. Today's Shift Sales */}
@@ -613,6 +616,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
           </div>,
           document.body,
         )}
+      </PharmacyRegion>
     </div>
   );
 }

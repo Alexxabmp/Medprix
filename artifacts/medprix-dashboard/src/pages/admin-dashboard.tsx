@@ -1,3 +1,4 @@
+import { PharmacyKpi, PharmacyRegion, PharmacyFeedback, PharmacyText } from "@/components/custom-ui/pharmacy-source-state";
 import { EmptyState } from "@/components/custom-ui/empty-state";
 import { useMemo, useState } from "react";
 import {
@@ -57,9 +58,11 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
         }
       />
 
+      <PharmacyFeedback source="inventory" label="stock" />
+      <PharmacyFeedback source="transactions" label="transactions" />
       {/* 4 KPI boxes — report summaries, click to open report */}
       <section className="kpi-grid">
-        <Kpi
+        <PharmacyKpi source="transactions"
           label="Daily sales"
           value={formatPeso(analytics.dailySales.totalSales)}
           change={`${analytics.dailySales.transactionCount} completed · ${analytics.salesDateLabel}`}
@@ -67,7 +70,7 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
           onClick={() => setReport("sales")}
           testId="card-report-sales"
         />
-        <Kpi
+        <PharmacyKpi source="inventory"
           label="Inventory"
           value={`${analytics.inventory.totalProducts} products`}
           change={`${analytics.inventory.lowStockCount} low stock`}
@@ -94,7 +97,7 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
           onClick={() => setReport("financial")}
           testId="card-report-financial"
         />
-        <Kpi
+        <PharmacyKpi source="inventory"
           label="Stock value"
           value={formatPeso(analytics.valuation.totalRetailValue)}
           change={`${analytics.valuation.totalUnits.toLocaleString()} units held`}
@@ -115,7 +118,7 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
             <h2 className="card-title">Product movement</h2>
             <p className="card-subtitle">
               Units sold · {analytics.periodLabel} (
-              {analytics.movement.totalUnitsSold.toLocaleString()} total units)
+              <PharmacyText source="both">{analytics.movement.totalUnitsSold.toLocaleString()} total units</PharmacyText>)
             </p>
           </div>
           <div className="chart-legend">
@@ -123,6 +126,7 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
             <ArrowUpRight size={13} />
           </div>
         </div>
+        <PharmacyRegion source="both" label="Product movement">
         <div className="bar-chart">
           {barItems.map((item, i) => (
             <div className="bar-wrap" key={`${item.name}-${i}`}>
@@ -138,12 +142,14 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
             </div>
           ))}
         </div>
+        </PharmacyRegion>
       </section>
 
       {/* Two list cards — cash mismatch + fast movers */}
       <div className="grid grid-cols-1 md:grid-cols-[1.45fr_1fr] gap-4">
         {/* Left: cash mismatch */}
         <section className="surface-card list-card">
+          <PharmacyRegion source="transactions" label="Cash records">
           <div className="card-header">
             <div>
               <h2 className="card-title">Cash mismatch</h2>
@@ -201,6 +207,7 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
               No cash discrepancies detected in recorded transactions.
             </EmptyState>
           )}
+          </PharmacyRegion>
         </section>
 
         {/* Right: Product movement line graph */}
@@ -221,10 +228,12 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
               View all
             </button>
           </div>
+          <PharmacyRegion source="both" label="Movement comparison">
           <MovementLineGraph
             fastMovers={analytics.movement.chartFast}
             slowMovers={analytics.movement.chartSlow}
           />
+          </PharmacyRegion>
         </section>
       </div>
 

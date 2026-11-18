@@ -1,3 +1,4 @@
+import { ReportRegion, usePharmacySourceStatus } from "./pharmacy-source-state";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -172,6 +173,7 @@ export function ReportModal({
   onRetryFinance?: () => void;
 }) {
   const preview = useModalTableStandard();
+  const reportStatus = usePharmacySourceStatus(type === "inventory" || type === "valuation" ? "inventory" : type === "movement" ? "both" : "transactions");
   const standard = type === "financial" ? null : preview;
   const [movementTab, setMovementTab] = useState<"fast" | "slow">("fast");
   const [cashDetailRow, setCashDetailRow] = useState<number | null>(
@@ -269,6 +271,7 @@ export function ReportModal({
         </div>
 
         <ModalTableBody>
+        <ReportRegion type={type}>
         {/* Sales */}
         {type === "sales" && (
           <>
@@ -592,13 +595,14 @@ export function ReportModal({
           </>
         )}
 
+        </ReportRegion>
         </ModalTableBody>
         <ModalTableFooter>
         <div className="modal-actions">
           <button
             className="button dark"
             data-testid="button-export-report"
-            disabled={type === "financial" && financial.status !== "ready"}
+            disabled={type === "financial" ? financial.status !== "ready" : !reportStatus.hasData}
             onClick={() => exportReport(type, onToast, analytics)}>
             <Download size={14} /> Export report
           </button>
