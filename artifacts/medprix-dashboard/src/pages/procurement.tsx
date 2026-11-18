@@ -244,7 +244,7 @@ function expiryStatus(date: string) {
 export default function ProcurementPage({ onToast, currentRole }: { onToast: ToastFn; currentRole: string }) {
   const pageTableStandard = usePageTableStandard();
   const canManagePurchasing = currentRole === "Admin" || currentRole === "FrontDesk";
-  const [activeSection, setActiveSection] = useState(currentRole === "Cashier" ? "Receiving Report Management" : "Purchase Order Monitoring");
+  const [activeSection, setActiveSection] = useState(currentRole === "Cashier" ? "Receiving Report Management" : "Purchase Order");
   const [status, setStatus] = useState("All orders");
   const [receivingStatusFilter, setReceivingStatusFilter] = useState("All statuses");
   const [expiryStatusFilter, setExpiryStatusFilter] = useState("All expiry statuses");
@@ -257,6 +257,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
   const [invoicePage, setInvoicePage] = useState(1);
   const [batchSearch, setBatchSearch] = useState("");
   const [batchStatusFilter, setBatchStatusFilter] = useState("All statuses");
+  const [batchPoFilter, setBatchPoFilter] = useState("All purchase orders");
   const [batchPage, setBatchPage] = useState(1);
   const [orderToApprove, setOrderToApprove] = useState<PurchaseOrder | null>(null);
   const [confirmApproveOrder, setConfirmApproveOrder] = useState(false);
@@ -846,7 +847,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
       };
     });
 
-  const filteredOrders = activeSection === "Purchase Order Monitoring" ? normalizedOrders.filter(
+  const filteredOrders = (activeSection === "Purchase Order" || activeSection === "Purchase Order Monitoring") ? normalizedOrders.filter(
     order => (status === "All orders" || status === "All statuses" || order.status === status) && matchesSearch(orderSearch,
       [order.poNumber, order.supplier, order.status, ...(order.items ?? []).flatMap(item => [item.product, item.sku, item.batchNumber])]),
   ) : [];
@@ -1063,7 +1064,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
     };
   });
 
-  const filteredInvoices = activeSection === "Purchase Invoice Monitoring" ? normalizedInvoices.filter(invoice => {
+  const filteredInvoices = (activeSection === "Invoice Monitoring" || activeSection === "Purchase Invoice Monitoring") ? normalizedInvoices.filter(invoice => {
     const matchesStatus =
       invoiceStatusFilter === "All statuses" ||
       invoice.status === invoiceStatusFilter;
@@ -1090,17 +1091,23 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
     return new Date(b.dueDate || 0).getTime() - new Date(a.dueDate || 0).getTime();
   });
 
-  // Batch Tracker records: connected across Purchase Order Monitoring, Receiving Report Management, and Purchase Invoice Monitoring
+  // Batch Tracking records: connected across Purchase Order, Receiving Report Management, and Invoice Monitoring
   const batchRecords: BatchRecord[] = [];
   allReceivingRows.forEach(({ delivery, poStatus }) => {
     const linkedInvoice = normalizedInvoices.find((inv) => inv.poNumber === delivery.poNumber);
     const recStatus = formatReceivingDeliveryStatus(delivery.deliveryStatus);
+    const effectiveStatus = (recStatus === "Successful" || recStatus === "Rejected")
+      ? recStatus
+      : (poStatus === "Pending" || poStatus === "Waiting for delivery")
+        ? poStatus
+        : recStatus || poStatus;
+
     (delivery.items || []).forEach((it, idx) => {
       const sku = resolveItemSku(it, idx);
       const itemBatch = getItemBatchNumber(delivery.poNumber, sku, idx);
       batchRecords.push({
         id: `${delivery.id}-${it.id || idx}`,
-        batchNumber: itemBatch,
+        batchNumber: it.batchNumber || itemBatch,
         product: it.product || "Product",
         sku,
         poNumber: delivery.poNumber,
@@ -1108,7 +1115,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
         date: delivery.deliveryDate,
         expirationDate: it.expirationDate || "2028-12-31",
         quantity: it.quantityDelivered,
-        status: poStatus,
+        status: effectiveStatus,
         receivingStatus: recStatus,
         invoiceNumber: linkedInvoice?.invoiceNumber || null,
         invoiceStatus: linkedInvoice ? `${linkedInvoice.status} (${linkedInvoice.paymentTerms})` : null,
@@ -1120,6 +1127,8 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
     "Pending": 1,
     "Waiting for delivery": 2,
     "Delivered": 3,
+    "Successful": 4,
+    "Rejected": 5,
   };
   batchRecords.sort((a, b) => {
     const prioA = statusPriority[a.status] ?? 99;
@@ -1128,11 +1137,17 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
     return new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime();
   });
 
-  const filteredBatches = activeSection === "Batch Tracker" ? batchRecords.filter(batch => {
+  const uniqueBatchPos = Array.from(new Set(batchRecords.map((b) => b.poNumber).filter(Boolean))).sort();
+
+  const isBatchTrackingActive = activeSection === "Batch Tracking" || activeSection === "Batch Tracker";
+  const filteredBatches = isBatchTrackingActive ? batchRecords.filter(batch => {
     const matchesStatus =
       batchStatusFilter === "All statuses" ||
       batch.status === batchStatusFilter;
-    return matchesStatus && matchesSearch(batchSearch,
+    const matchesPo =
+      batchPoFilter === "All purchase orders" ||
+      batch.poNumber === batchPoFilter;
+    return matchesStatus && matchesPo && matchesSearch(batchSearch,
       [batch.batchNumber, batch.product, batch.sku, batch.poNumber, batch.supplier, batch.status, batch.date, batch.expirationDate]);
   }) : [];
 
@@ -1721,21 +1736,21 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
       </div>
       <div className="page-tabs">
         {[
-          "Purchase Order Monitoring",
+          "Purchase Order",
           "Receiving Report Management",
-          "Purchase Invoice Monitoring",
-          "Batch Tracker",
-        ].filter((section) => canManagePurchasing || section === "Receiving Report Management" || section === "Batch Tracker").map((section) => (
+          "Invoice Monitoring",
+          "Batch Tracking",
+        ].filter((section) => canManagePurchasing || section === "Receiving Report Management" || section === "Batch Tracking" || section === "Batch Tracker").map((section) => (
           <button
             key={section}
-            className={`button ${activeSection === section ? "dark" : "soft"}`}
+            className={`button ${activeSection === section || (section === "Batch Tracking" && activeSection === "Batch Tracker") || (section === "Purchase Order" && activeSection === "Purchase Order Monitoring") || (section === "Invoice Monitoring" && activeSection === "Purchase Invoice Monitoring") ? "dark" : "soft"}`}
             onClick={() => setActiveSection(section)}>
             {section}
           </button>
         ))}
       </div>
 
-      {activeSection === "Purchase Order Monitoring" && (
+      {(activeSection === "Purchase Order" || activeSection === "Purchase Order Monitoring") && (
         <>
           {sectionFeedback("orders", "purchase orders")}
         <section className="surface-card table-card">
@@ -2107,7 +2122,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
         </>
       )}
 
-      {activeSection === "Purchase Invoice Monitoring" && (
+      {(activeSection === "Invoice Monitoring" || activeSection === "Purchase Invoice Monitoring") && (
         <>
           {sectionFeedback("invoices", "invoices")}
         <section className="surface-card table-card">
@@ -2261,7 +2276,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
         </>
       )}
 
-      {activeSection === "Batch Tracker" && (
+      {(activeSection === "Batch Tracking" || activeSection === "Batch Tracker") && (
         <section className="surface-card table-card">
           <div className="table-tools">
             <div className="search-wrap">
@@ -2279,6 +2294,19 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
             <div className="table-tools-right">
               <SelectField
                 className="select"
+                aria-label="Purchase order"
+                value={batchPoFilter}
+                onChange={(event) => {
+                  setBatchPoFilter(event.target.value);
+                  setBatchPage(1);
+                }}>
+                <option value="All purchase orders">All purchase orders</option>
+                {uniqueBatchPos.map((po) => (
+                  <option key={po} value={po}>{po}</option>
+                ))}
+              </SelectField>
+              <SelectField
+                className="select"
                 aria-label="Filter batches by status"
                 value={batchStatusFilter}
                 onChange={(event) => {
@@ -2289,6 +2317,8 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 <option value="Pending">Pending</option>
                 <option value="Waiting for delivery">Waiting for delivery</option>
                 <option value="Delivered">Delivered</option>
+                <option value="Successful">Successful</option>
+                <option value="Rejected">Rejected</option>
               </SelectField>
             </div>
           </div>
@@ -2319,7 +2349,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 ) : (filteredBatches.length === 0 ? (
                     <tr>
                       <TableEmptyState colSpan={8} icon={Package}>
-                        {batchSearch || batchStatusFilter !== "All statuses"
+                        {batchSearch || batchStatusFilter !== "All statuses" || batchPoFilter !== "All purchase orders"
                           ? "No batches match these filters."
                           : "No batches found."}
                       </TableEmptyState>
@@ -2334,7 +2364,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                         </td>
                         <td>{batch.poNumber}</td>
                         <td><PageTableValue value={batch.supplier} /></td>
-                        <td className="muted">{formatDisplayDate(batch.date)}</td>
+                        <td className="muted">{batch.status === "Pending" ? "—" : formatDisplayDate(batch.date)}</td>
                         <td>{batch.quantity}</td>
                         <td>
                           <span className={getStatusPillClass(batch.status)}>
@@ -2807,7 +2837,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               </div>}
               {!isPreparingReceiving && !receivingLoadError && receivingOrders.length === 0 && !pendingReceiving && <div className="receiving-empty" role="status">
                 <p className="modal-sub">No purchase orders found. Create a purchase order first.</p>
-                <button type="button" className="button soft" onClick={() => { setIsDeliveryOpen(false); setActiveSection("Purchase Order Monitoring"); setIsCreateOpen(true); }}>Create purchase order</button>
+                <button type="button" className="button soft" onClick={() => { setIsDeliveryOpen(false); setActiveSection("Purchase Order"); setIsCreateOpen(true); }}>Create purchase order</button>
               </div>}
               <fieldset className="form-grid receiving-fields" disabled={receivingFieldsDisabled}>
                 <div className="field">
@@ -3419,7 +3449,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               />
             </div>
             <p className="modal-sub" style={{ marginBottom: 20 }}>
-              Confirm that {orderToConfirmDelivery.poNumber} has arrived? This updates its status to <strong>Delivered</strong> in Purchase Order Monitoring, Receiving Report Management, and Batch Tracker.
+              Confirm that {orderToConfirmDelivery.poNumber} has arrived? This updates its status to <strong>Delivered</strong> in Purchase Order, Receiving Report Management, and Batch Tracking.
             </p>
             <div className="modal-actions" style={{ display: "flex", justifyContent: "flex-end", alignItems: "center" }}>
               <button
@@ -3466,8 +3496,8 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
         <div className="modal-backdrop" data-testid="modal-reject-po" onMouseDown={event => {
           if (event.currentTarget === event.target && !isSaving) setReportToReject(null);
         }}>
-          <div className="modal dialog modal-wide" style={{ maxHeight: "calc(100vh - 40px)", overflowY: "auto" }}>
-            <div className="modal-header">
+          <div className="modal dialog modal-wide" style={{ maxHeight: "calc(100vh - 40px)", display: "flex", flexDirection: "column" }}>
+            <div className="modal-header" style={{ flexShrink: 0 }}>
               <div>
                 <h2>Reject purchase order</h2>
                 <p className="modal-sub">
@@ -3478,71 +3508,73 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 <X size={16} />
               </button>
             </div>
-            <div className="product-details-overview" style={{ marginBottom: 14 }}>
-              <dl className="product-details-facts" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
-                <div>
-                  <dt>Purchase order</dt>
-                  <dd>{reportToReject.delivery.poNumber}</dd>
-                </div>
-                <div>
-                  <dt>Supplier</dt>
-                  <dd>{resolveSupplierName(reportToReject.delivery.supplier, reportToReject.delivery.poNumber)}</dd>
-                </div>
-                <div>
-                  <dt>Current delivery status</dt>
-                  <dd>
-                    <span className={getStatusPillClass(reportToReject.delivery.deliveryStatus)}>
-                      {reportToReject.delivery.deliveryStatus}
-                    </span>
-                  </dd>
-                </div>
-              </dl>
-            </div>
-            {(reportToReject.delivery.items || []).length > 0 && (
-              <div className="modal-section" style={{ marginBottom: 14 }}>
-                <h4 style={{ marginBottom: 8 }}>Order medicines ({(reportToReject.delivery.items || []).length})</h4>
-                <div style={{ maxHeight: 180, overflowY: "auto", border: "1px solid hsl(var(--border))", borderRadius: 8 }}>
-                  <table className="data-table" style={{ width: "100%", minWidth: 0, margin: 0 }}>
-                    <thead>
-                      <tr>
-                        <th>Product</th>
-                        <th>SKU</th>
-                        <th>Batch</th>
-                        <th>Quantity</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(reportToReject.delivery.items || []).map((it, idx) => {
-                        const sku = resolveItemSku(it, idx);
-                        return (
-                          <tr key={it.id}>
-                            <td><strong>{it.product}</strong></td>
-                            <td>{sku}</td>
-                            <td><strong>{getItemBatchNumber(reportToReject.delivery.poNumber, sku, idx)}</strong></td>
-                            <td>{it.quantityDelivered}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+            <div style={{ flex: "1 1 auto", overflowY: "auto", minHeight: 0, paddingRight: 4 }}>
+              <div className="product-details-overview" style={{ marginBottom: 14 }}>
+                <dl className="product-details-facts" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
+                  <div>
+                    <dt>Purchase order</dt>
+                    <dd>{reportToReject.delivery.poNumber}</dd>
+                  </div>
+                  <div>
+                    <dt>Supplier</dt>
+                    <dd>{resolveSupplierName(reportToReject.delivery.supplier, reportToReject.delivery.poNumber)}</dd>
+                  </div>
+                  <div>
+                    <dt>Current delivery status</dt>
+                    <dd>
+                      <span className={getStatusPillClass(reportToReject.delivery.deliveryStatus)}>
+                        {reportToReject.delivery.deliveryStatus}
+                      </span>
+                    </dd>
+                  </div>
+                </dl>
               </div>
-            )}
-            <p className="modal-sub" style={{ marginBottom: 12 }}>
-              Confirm rejection of purchase order <strong>{reportToReject.delivery.poNumber}</strong>? This will set its status to <strong>Rejected</strong> across all procurement tabs.
-            </p>
-            <div className="field" style={{ marginBottom: 16 }}>
-              <label htmlFor="reject-reason-note" style={{ fontWeight: 600 }}>Rejection note / reason</label>
-              <textarea
-                id="reject-reason-note"
-                rows={2}
-                placeholder="Enter notes or reason for rejection (e.g. damaged goods, wrong medicines, expired)..."
-                value={reportToReject.note}
-                onChange={(e) => setReportToReject({ ...reportToReject, note: e.target.value })}
-                style={{ width: "100%", padding: 10 }}
-              />
+              {(reportToReject.delivery.items || []).length > 0 && (
+                <div className="modal-section" style={{ marginBottom: 14 }}>
+                  <h4 style={{ marginBottom: 8 }}>Order medicines ({(reportToReject.delivery.items || []).length})</h4>
+                  <div style={{ maxHeight: 180, overflowY: "auto", border: "1px solid hsl(var(--border))", borderRadius: 8 }}>
+                    <table className="data-table" style={{ width: "100%", minWidth: 0, margin: 0 }}>
+                      <thead>
+                        <tr>
+                          <th>Product</th>
+                          <th>SKU</th>
+                          <th>Batch</th>
+                          <th>Quantity</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(reportToReject.delivery.items || []).map((it, idx) => {
+                          const sku = resolveItemSku(it, idx);
+                          return (
+                            <tr key={it.id}>
+                              <td><strong>{it.product}</strong></td>
+                              <td>{sku}</td>
+                              <td><strong>{getItemBatchNumber(reportToReject.delivery.poNumber, sku, idx)}</strong></td>
+                              <td>{it.quantityDelivered}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+              <p className="modal-sub" style={{ marginBottom: 12 }}>
+                Confirm rejection of purchase order <strong>{reportToReject.delivery.poNumber}</strong>? This will set its status to <strong>Rejected</strong> across all procurement tabs.
+              </p>
+              <div className="field" style={{ marginBottom: 8 }}>
+                <label htmlFor="reject-reason-note" style={{ fontWeight: 600 }}>Rejection note / reason</label>
+                <textarea
+                  id="reject-reason-note"
+                  rows={2}
+                  placeholder="Enter notes or reason for rejection (e.g. damaged goods, wrong medicines, expired)..."
+                  value={reportToReject.note}
+                  onChange={(e) => setReportToReject({ ...reportToReject, note: e.target.value })}
+                  style={{ width: "100%", padding: 10 }}
+                />
+              </div>
             </div>
-            <div className="modal-actions" style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10, flexWrap: "nowrap", marginTop: 16, paddingBottom: 12 }}>
+            <div className="modal-actions" style={{ flexShrink: 0, display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10, flexWrap: "nowrap", marginTop: 14, paddingTop: 12, borderTop: "1px solid hsl(var(--border))" }}>
               <button
                 type="button"
                 className="button soft"
@@ -3612,7 +3644,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                     setIsSaving(false);
                   }
                 }}>
-                <Ban size={14} /> {isSaving ? "Rejecting..." : "Confirm rejection"}
+                <Ban size={14} /> {isSaving ? "Rejecting..." : "Reject purchase order"}
               </button>
             </div>
           </div>
@@ -4398,7 +4430,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                     <dd>{viewBatch.batchNumber}</dd>
                   </div>
                   <div>
-                    <dt>PO Status</dt>
+                    <dt>Status</dt>
                     <dd>
                       <span className={getStatusPillClass(viewBatch.status)}>
                         {viewBatch.status}
