@@ -1152,6 +1152,32 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
     try {
       const matchedOrder = orders.find((o) => o.poNumber === delivery.poNumber || o.id === delivery.poId);
       const targetId = matchedOrder?.id || delivery.poId || delivery.id.replace(/^po-receiving-/, "");
+      const itemsPayload = (delivery.items && delivery.items.length > 0)
+        ? delivery.items.map((it, idx) => {
+            const sku = resolveItemSku(it, idx);
+            return {
+              productId: it.productId || products.find((p) => p.name === it.product || p.sku === sku)?.id || "",
+              product: it.product,
+              sku,
+              batchNumber: it.batchNumber || getItemBatchNumber(delivery.poNumber, sku, idx),
+              expirationDate: it.expirationDate && it.expirationDate !== "N/A" ? it.expirationDate : (item.expirationDate || "2028-12-31"),
+              quantity: Number(it.quantityDelivered) || 1,
+            };
+          })
+        : (matchedOrder?.items && matchedOrder.items.length > 0)
+          ? matchedOrder.items.map((it, idx) => {
+              const sku = resolveItemSku(it, idx);
+              return {
+                productId: it.productId || products.find((p) => p.name === it.product || p.sku === sku)?.id || "",
+                product: it.product,
+                sku,
+                batchNumber: getItemBatchNumber(delivery.poNumber, sku, idx),
+                expirationDate: item.expirationDate && item.expirationDate !== "N/A" ? item.expirationDate : "2028-12-31",
+                quantity: Number(it.quantityOrdered) || 1,
+              };
+            })
+          : [];
+
       const response = await fetch(`/api/purchase-orders/${targetId}/mark-successful`, {
         method: "POST",
         credentials: "include",
@@ -1162,6 +1188,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
           batchNumber: item.batchNumber,
           expirationDate: item.expirationDate,
           notes: delivery.notes || "",
+          items: itemsPayload,
         }),
       });
       if (!response.ok) {
@@ -2190,8 +2217,16 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 </tr>
               </thead>
               <tbody>
-                {tableMessage(8, loadingSections.orders || loadingSections.deliveries, batchRecords.length) ||
-                  (filteredBatches.length === 0 ? (
+                {(!availableSections.orders && !availableSections.deliveries) ? (
+                  <tr>
+                    <td colSpan={8} className="empty-state-cell">
+                      <div className="empty-state" role="status">
+                        <LoaderCircle size={25} className="spin action-spinner" aria-hidden="true" />
+                        <div>Loading procurement data…</div>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (filteredBatches.length === 0 ? (
                     <tr>
                       <TableEmptyState colSpan={8} icon={Package}>
                         {batchSearch || batchStatusFilter !== "All statuses"

@@ -554,7 +554,7 @@ router.patch("/supplier-deliveries/:id", async (req: Request, res: Response) => 
 router.post("/purchase-orders/:id/mark-successful", async (req: Request, res: Response) => {
   res.set("Cache-Control", "no-store");
   const rawId = asId(req.params.id).replace(/^po-receiving-/, "");
-  const { poNumber, deliveryDate, batchNumber, expirationDate, notes } = req.body as any;
+  const { poNumber, deliveryDate, batchNumber, expirationDate, notes, items } = req.body as any;
   try {
     const order = (await findOrder(rawId)) || (poNumber ? await findOrder(poNumber) : null);
     if (!order) {
@@ -592,44 +592,90 @@ router.post("/purchase-orders/:id/mark-successful", async (req: Request, res: Re
         .from(stockMovementsTable)
         .where(and(eq(stockMovementsTable.referenceId, delivery.id), eq(stockMovementsTable.movementType, "StockIn")));
 
-      if (existingMovements.length === 0) {
-        const existingDelivItems = await tx
+      const existingDelivItems = await tx
+        .select()
+        .from(deliveryItemsTable)
+        .where(eq(deliveryItemsTable.deliveryId, delivery.id));
+
+      const targetItems: Array<{
+        productId?: string;
+        product?: string;
+        sku?: string;
+        quantity: number;
+        batchNumber?: string;
+        expirationDate?: string;
+      }> = (Array.isArray(items) && items.length > 0)
+        ? items.map((it: any) => ({
+            productId: it.productId,
+            product: it.product,
+            sku: it.sku,
+            quantity: Math.max(1, Number(it.quantity || it.quantityDelivered || 1)),
+            batchNumber: it.batchNumber,
+            expirationDate: it.expirationDate,
+          }))
+        : (poItems.length > 0)
+          ? poItems.map((pi: any) => ({
+              productId: pi.productId,
+              quantity: Math.max(1, Number(pi.quantityOrdered || 1)),
+            }))
+          : existingDelivItems.map((di: any) => ({
+              productId: di.productId,
+              quantity: Math.max(1, Number(di.quantityDelivered || 1)),
+              batchNumber: di.batchNumber,
+              expirationDate: di.expirationDate,
+            }));
+
+      for (let idx = 0; idx < targetItems.length; idx++) {
+        const tItem = targetItems[idx]!;
+        let product = null;
+        if (tItem.productId) {
+          const [p] = await tx.select().from(productsTable).where(eq(productsTable.id, tItem.productId));
+          product = p;
+        }
+        if (!product && tItem.sku) {
+          const [p] = await tx.select().from(productsTable).where(eq(productsTable.sku, tItem.sku));
+          product = p;
+        }
+        if (!product && tItem.product) {
+          const [p] = await tx.select().from(productsTable).where(eq(productsTable.productName, tItem.product));
+          product = p;
+        }
+        if (!product) continue;
+
+        const delivItem = existingDelivItems.find((di) => di.productId === product.id);
+        const qtyToAdd = tItem.quantity;
+        const itemBatch = tItem.batchNumber
+          ? String(tItem.batchNumber).trim().toUpperCase()
+          : generateItemBatchNumber(order.poNumber, product.sku, idx);
+        const itemExpiry = (tItem.expirationDate && tItem.expirationDate !== "N/A" && tItem.expirationDate !== "—")
+          ? String(tItem.expirationDate)
+          : (delivItem?.expirationDate || effectiveExpiry);
+
+        if (!delivItem) {
+          await tx.insert(deliveryItemsTable).values({
+            deliveryId: delivery.id,
+            productId: product.id,
+            batchNumber: itemBatch,
+            expirationDate: itemExpiry,
+            quantityDelivered: qtyToAdd,
+          });
+        } else {
+          await tx.update(deliveryItemsTable)
+            .set({ batchNumber: itemBatch, expirationDate: itemExpiry, quantityDelivered: qtyToAdd })
+            .where(eq(deliveryItemsTable.id, delivItem.id));
+        }
+
+        const allProductBatches = await tx
           .select()
-          .from(deliveryItemsTable)
-          .where(eq(deliveryItemsTable.deliveryId, delivery.id));
+          .from(batchInfoTable)
+          .where(eq(batchInfoTable.productId, product.id));
+        const matchingBatch = allProductBatches.find(
+          (b) => b.batchNumber.trim().toUpperCase() === itemBatch.trim().toUpperCase(),
+        );
 
-        for (let idx = 0; idx < poItems.length; idx++) {
-          const poItem = poItems[idx]!;
-          const [product] = await tx
-            .select()
-            .from(productsTable)
-            .where(eq(productsTable.id, poItem.productId));
-          if (!product) continue;
+        const alreadyMoved = existingMovements.some((m) => m.productId === product.id && m.movementType === "StockIn");
 
-          const delivItem = existingDelivItems.find((di) => di.productId === poItem.productId);
-          const qtyToAdd = delivItem ? delivItem.quantityDelivered : poItem.quantityOrdered;
-          const itemBatch = generateItemBatchNumber(order.poNumber, product.sku, idx);
-          const itemExpiry = delivItem?.expirationDate || effectiveExpiry;
-
-          if (!delivItem) {
-            await tx.insert(deliveryItemsTable).values({
-              deliveryId: delivery.id,
-              productId: poItem.productId,
-              batchNumber: itemBatch,
-              expirationDate: itemExpiry,
-              quantityDelivered: qtyToAdd,
-            });
-          }
-
-          const allProductBatches = await tx
-            .select()
-            .from(batchInfoTable)
-            .where(eq(batchInfoTable.productId, poItem.productId));
-          const physicalStock = allProductBatches.reduce((sum, b) => sum + b.quantityRemaining, 0);
-          const matchingBatch = allProductBatches.find(
-            (b) => b.batchNumber.trim().toUpperCase() === itemBatch.trim().toUpperCase(),
-          );
-
+        if (!alreadyMoved) {
           const [savedBatch] = matchingBatch
             ? await tx
                 .update(batchInfoTable)
@@ -642,7 +688,7 @@ router.post("/purchase-orders/:id/mark-successful", async (req: Request, res: Re
             : await tx
                 .insert(batchInfoTable)
                 .values({
-                  productId: poItem.productId,
+                  productId: product.id,
                   batchNumber: itemBatch,
                   expirationDate: itemExpiry,
                   quantityRemaining: qtyToAdd,
@@ -650,16 +696,22 @@ router.post("/purchase-orders/:id/mark-successful", async (req: Request, res: Re
                 })
                 .returning();
 
+          const updatedBatches = await tx
+            .select()
+            .from(batchInfoTable)
+            .where(eq(batchInfoTable.productId, product.id));
+          const totalStock = updatedBatches.reduce((sum, b) => sum + b.quantityRemaining, 0);
+
           await tx
             .update(productsTable)
             .set({
-              currentStock: physicalStock + qtyToAdd,
+              currentStock: totalStock,
               updatedAt: new Date(),
             })
-            .where(eq(productsTable.id, poItem.productId));
+            .where(eq(productsTable.id, product.id));
 
           await tx.insert(stockMovementsTable).values({
-            productId: poItem.productId,
+            productId: product.id,
             batchId: savedBatch.id,
             referenceId: delivery.id,
             movementType: "StockIn",
@@ -676,9 +728,11 @@ router.post("/purchase-orders/:id/mark-successful", async (req: Request, res: Re
 
       deliveryCustomStatusMap.set(order.id, "Successful");
       deliveryCustomStatusMap.set(delivery.id, "Successful");
+      deliveryCustomStatusMap.set(order.poNumber, "Successful");
       if (notes) {
         deliveryNotesMap.set(order.id, String(notes));
         deliveryNotesMap.set(delivery.id, String(notes));
+        deliveryNotesMap.set(order.poNumber, String(notes));
       }
     });
 
