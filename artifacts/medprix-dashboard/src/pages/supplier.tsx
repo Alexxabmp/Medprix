@@ -12,6 +12,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
 } from "react";
@@ -217,6 +218,8 @@ export default function SupplierPage({
     null,
   );
   const [history, setHistory] = useState<SupplierHistory>(emptyHistory);
+  const historyRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => historyRequest.current?.abort(), []);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState("");
   const [historyTab, setHistoryTab] = useState<
@@ -245,7 +248,7 @@ export default function SupplierPage({
     currentRole === "Admin" || currentRole === "FrontDesk";
 
   useDialogAccessibility(isAddOpen, '.supplier-form-modal', () => setIsAddOpen(false), isSaving);
-  useDialogAccessibility(!!selectedSupplier, '.supplier-history-modal', () => setSelectedSupplier(null));
+  useDialogAccessibility(!!selectedSupplier, '.supplier-history-modal', () => closeHistory());
   const fetchSuppliers = useCallback(async () => {
     const hasCachedData = getCachedSuppliers() !== null;
     try {
@@ -299,6 +302,9 @@ export default function SupplierPage({
   }, [isAddOpen, selectedSupplier, paymentPayable]);
 
   const loadHistory = async (supplier: Supplier) => {
+    historyRequest.current?.abort();
+    const controller = new AbortController();
+    historyRequest.current = controller;
     const cached = getCachedSupplierHistory<SupplierHistory>(supplier.id);
     if (cached) {
       setHistory(cached);
@@ -311,11 +317,13 @@ export default function SupplierPage({
     try {
       const response = await fetch(`/api/suppliers/${supplier.id}/history`, {
         credentials: "include",
+        signal: controller.signal,
       });
       const data = await readResponse(response, "Could not load or save supplier data. Please try again.");
       if (!response.ok)
         throw new Error(data.error || "Failed to load supplier history.");
       if (![data.orders, data.invoices, data.payables, data.payments].every(Array.isArray) || !data.summary) throw new Error("Invalid supplier history response. Please refresh.");
+      if (historyRequest.current !== controller || controller.signal.aborted) return;
       const normalized = normalizeHistory(data);
       setHistory(normalized);
       setCachedSupplierHistory(supplier.id, normalized);
@@ -324,9 +332,12 @@ export default function SupplierPage({
         requestError instanceof Error
           ? requestError.message
           : "Failed to load supplier history.";
-      setHistoryError(safeError(message));
+      if (historyRequest.current === controller && !controller.signal.aborted) setHistoryError(safeError(message));
     } finally {
-      setHistoryLoading(false);
+      if (historyRequest.current === controller) {
+        historyRequest.current = null;
+        setHistoryLoading(false);
+      }
     }
   };
 
@@ -337,6 +348,8 @@ export default function SupplierPage({
   };
 
   const closeHistory = () => {
+    historyRequest.current?.abort();
+    historyRequest.current = null;
     setPaymentPayable(null);
     setSelectedSupplier(null);
     setHistory(emptyHistory);
