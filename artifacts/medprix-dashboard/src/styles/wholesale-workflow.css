@@ -141,6 +141,31 @@
 .wholesale-account-dialog .wholesale-payment-history {
   min-width: 0;
 }
+.wholesale-payment-summary,
+.wholesale-payment-metadata {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.wholesale-review-summary.wholesale-payment-summary > :last-child {
+  grid-column: auto;
+}
+.modal.modal-table-standard.modal-table-standard.wholesale-dialog
+  .wholesale-payment-history td.modal-table-text-cell {
+  width: 18%;
+}
+.modal.modal-table-standard.modal-table-standard.wholesale-dialog
+  .wholesale-payment-history td.wholesale-payment-reference {
+  width: 26%;
+  max-width: 0;
+}
+.wholesale-payment-notes p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .wholesale-payment-metadata {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 .wholesale-dialog .wholesale-receipt-meta {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

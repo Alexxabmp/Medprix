@@ -11,11 +11,11 @@ import {
 import { useReceivablePages } from "./use-receivable-pages";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { ModalDataTable } from "./modal-data-table";
-import { ModalTableFooter } from "./modal-table-layout";
+import { ModalTableValue, ModalTableFooter } from "./modal-table-layout";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Eye, RotateCcw } from "lucide-react";
-import { LoadingState } from "./custom-ui/loading-state";
+import { WholesalePaymentDetails } from "./wholesale-payment-details";
 import { WholesaleDialog } from "./wholesale-dialog";
 import { WholesaleRequestFeedback } from "./wholesale-request-feedback";
 import { useWholesaleRequest } from "@/lib/use-wholesale-request";
@@ -83,6 +83,8 @@ export function WholesaleReceivables({
   const read = useReadDialog<WholesaleReceivableDetail>();
   const opening = read.state?.pending ?? false;
   const [mode, setMode] = useState("view");
+  const [paymentDetailId, setPaymentDetailId] = useState<string | null>(null);
+  const viewedPayment = detail?.payments.find(payment => payment.id === paymentDetailId);
   const [method, setMethod] = useState("Cash");
   const [paymentAmount, setPaymentAmount] = useState("");
   const [validation, setValidation] = useState("");
@@ -382,7 +384,7 @@ export function WholesaleReceivables({
               ? "Accounts receivable"
               : mode === "payment"
                 ? "Record payment"
-                : "Reverse payment"
+                : mode === "history" ? "Payment details" : "Reverse payment"
           }
           back={
             mode !== "view"
@@ -403,7 +405,7 @@ export function WholesaleReceivables({
             setSelectedId(null);
             onClose?.();
           }}
-          variant={mode === "view" ? "table" : "form"}
+          variant={mode === "view" ? "table" : mode === "history" ? "compact-table" : "form"}
           className="wholesale-account-dialog"
         >
           {validation && (
@@ -459,6 +461,8 @@ export function WholesaleReceivables({
                     <p className="pill success">Fully paid</p>
                   )}
                 </>
+              ) : mode === "history" ? (
+                viewedPayment ? <WholesalePaymentDetails payment={viewedPayment} /> : <p className="muted">This payment is no longer available.</p>
               ) : mode === "payment" ? (
                 <section
                   className="wholesale-context wholesale-payment-context"
@@ -526,7 +530,7 @@ export function WholesaleReceivables({
                           <th>Method / reference</th>
                           <th>Collector</th>
                           <th>Status</th>
-                          {role === "Admin" && <th className="table-action-head">Action</th>}
+                          <th className="table-action-head">Action</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -534,54 +538,18 @@ export function WholesaleReceivables({
                           <tr key={payment.id}>
                             <td data-label="Collected">
                               {wholesaleDateTime(payment.collectedAt)}
-                              <details>
-                                <summary>Payment details</summary>
-                                {payment.notes && <p>{payment.notes}</p>}
-                                <dl
-                                  className="wholesale-allocation-list"
-                                  aria-label="Installment allocations"
-                                >
-                                  {payment.allocations?.map((allocation) => (
-                                    <div key={allocation.sequenceNumber}>
-                                      <dt>
-                                        Installment {allocation.sequenceNumber}
-                                      </dt>
-                                      <dd>
-                                        {wholesalePeso(allocation.amount)}
-                                      </dd>
-                                    </div>
-                                  ))}
-                                </dl>
-                                {payment.reversalId && (
-                                  <>
-                                    <p>
-                                      Reversal reason: {payment.reversalReason}
-                                    </p>
-                                    {payment.reversedAt && (
-                                      <p>
-                                        Reversed{" "}
-                                        {wholesaleDateTime(payment.reversedAt)}
-                                      </p>
-                                    )}
-                                    <p className="muted">
-                                      Original allocations retained; payment
-                                      reversed.
-                                    </p>
-                                  </>
-                                )}
-                              </details>
                             </td>
                             <td data-label="Amount">
-                              {wholesalePeso(payment.amount)}
+                              <strong>{wholesalePeso(payment.amount)}</strong>
                             </td>
-                            <td data-label="Method / reference">
+                            <td data-label="Method / reference" className="wholesale-payment-reference">
                               {payment.method}
                               <div className="muted">
-                                {payment.reference || "?"}
+                                <ModalTableValue value={payment.reference || "No reference"} />
                               </div>
                             </td>
                             <td data-label="Collector">
-                              {payment.collectorName}
+                              <ModalTableValue value={payment.collectorName} />
                             </td>
                             <td data-label="Status">
                               <span
@@ -593,40 +561,42 @@ export function WholesaleReceivables({
                                 {payment.reversalId ? "Reversed" : "Recorded"}
                               </span>
                             </td>
-                            {role === "Admin" && (
-                              <td
-                                data-label="Action"
-                                className="table-action-cell"
-                              >
-                                {!payment.reversalId && (
-                                  <div className="table-actions">
-                                    <AppTooltip content="Reverse payment">
-                                      <button
-                                        type="button"
-                                        className="button soft table-action-btn"
-                                        aria-label={
-                                          "Reverse payment of " +
-                                          wholesalePeso(payment.amount)
-                                        }
-                                        disabled={request.locked}
-                                        onClick={() => {
-                                          setMode(payment.id);
-                                          setValidation("");
-                                          request.clearError();
-                                        }}
-                                      >
-                                        <RotateCcw size={14} />
-                                      </button>
-                                    </AppTooltip>
-                                  </div>
+                            <td data-label="Action" className="table-action-cell">
+                              <div className="table-actions">
+                                <AppTooltip content="View payment">
+                                  <button type="button" className="button soft table-action-btn"
+                                    aria-label={"View payment of " + wholesalePeso(payment.amount)}
+                                    disabled={request.locked}
+                                    onClick={() => {
+                                      setPaymentDetailId(payment.id);
+                                      setMode("history");
+                                      setValidation("");
+                                      request.clearError();
+                                    }}>
+                                    <Eye size={14} aria-hidden="true" />
+                                  </button>
+                                </AppTooltip>
+                                {role === "Admin" && !payment.reversalId && (
+                                  <AppTooltip content="Reverse payment">
+                                    <button type="button" className="button soft table-action-btn"
+                                      aria-label={"Reverse payment of " + wholesalePeso(payment.amount)}
+                                      disabled={request.locked}
+                                      onClick={() => {
+                                        setMode(payment.id);
+                                        setValidation("");
+                                        request.clearError();
+                                      }}>
+                                      <RotateCcw size={14} aria-hidden="true" />
+                                    </button>
+                                  </AppTooltip>
                                 )}
-                              </td>
-                            )}
+                              </div>
+                            </td>
                           </tr>
                         ))}
                         {!detail.payments.length && (
                           <tr>
-                            <TableEmptyState colSpan={role === "Admin" ? 6 : 5}>
+                            <TableEmptyState colSpan={6}>
                               No payments recorded.
                             </TableEmptyState>
                           </tr>
@@ -791,7 +761,7 @@ export function WholesaleReceivables({
                     </ModalTableFooter>
                   </fieldset>
                 </form>
-              ) : (
+              ) : mode === "history" ? null : (
                 <form
                   key="reversal"
                   id="wholesale-reversal-form"

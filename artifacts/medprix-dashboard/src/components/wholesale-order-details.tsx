@@ -1,10 +1,9 @@
 import { useReadDialog } from "./read-dialog";
-import { SourceProgress } from "./custom-ui/source-state";
+import { SourceProgress, SourceFeedback, SourcePlaceholder } from "./custom-ui/source-state";
 import { SelectField } from "@/components/custom-ui/select-field";
 import { ChevronDown, Info } from "lucide-react";
 import { DeliveryReceiptView } from "./delivery-receipt-view";
 import { WholesaleDeliveryPanel } from "./wholesale-delivery-panel";
-import { LoadingState } from "@/components/custom-ui/loading-state";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { WholesaleDialog, useWholesaleDialogView } from "./wholesale-dialog";
 import {
@@ -216,15 +215,8 @@ export function WholesaleOrderDetails({
         </div>
       )}
       {read.state?.pending && detail && <SourceProgress label={"Refreshing order details\u2026"} />}
-      {loadError && (
-        <div role="alert" className="inline-error">
-          {loadError}
-          <button className="button soft" onClick={() => void load()}>
-            Retry loading
-          </button>
-        </div>
-      )}
-      {!detail && !loadError && <LoadingState label="Loading order details…" />}
+      <SourceFeedback status={{ hasData: detail !== null, pending: read.state?.pending ?? false, error: loadError }} label="order details" onRetry={read.retry} />
+      {!detail && <SourcePlaceholder status={{ hasData: false, pending: read.state?.pending ?? true, error: loadError }} label="Order details" />}
       {detail && (
         <div className="wholesale-details">
           {action !== "cancel" && !deliveryTask && (
