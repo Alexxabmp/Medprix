@@ -1,3 +1,4 @@
+import { WholesaleStatusPill } from "./wholesale-status-pill";
 import { SourceTableBody, SourceFeedback } from "./custom-ui/source-state";
 import { CalendarDays, ClipboardCheck, Eye, Truck } from "lucide-react";
 import { useEffect } from "react";
@@ -65,7 +66,7 @@ export function WholesaleDeliveries({
                 <th>Client</th>
                 <th>Total</th>
                 <th>Scheduled date</th>
-                <th>Status</th>
+                <th>Delivery status</th>
                 <th className="table-action-head">Action</th>
               </tr>
             </thead>
@@ -81,13 +82,7 @@ export function WholesaleDeliveries({
                       <td>{wholesalePeso(row.total)}</td>
                       <td>{row.date ? formatDisplayDate(row.date) : "—"}</td>
                       <td>
-                        {row.status === "Ready"
-                          ? "Needs scheduling"
-                          : row.status === "InTransit"
-                            ? "In transit"
-                            : row.status === "Completed"
-                              ? "Delivered"
-                              : row.status}
+                        <WholesaleStatusPill status={row.status} />
                       </td>
                       <td className="table-action-cell">
                         <div className="table-actions">

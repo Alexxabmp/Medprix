@@ -1,3 +1,4 @@
+import { WholesaleStatusPill } from "./wholesale-status-pill";
 import { ReadContent, useReadDialog } from "./read-dialog";
 import { SourceTableBody, SourceFeedback } from "./custom-ui/source-state";
 import { SelectField } from "@/components/custom-ui/select-field";
@@ -504,26 +505,7 @@ export function WholesaleSummaryModal({
                             </td>
                           )}
                           <td data-label="Status">
-                            <span
-                              className={
-                                "pill " +
-                                (row.status === "Completed" ||
-                                row.status === "Paid"
-                                  ? "success"
-                                  : row.status === "Failed" ||
-                                      row.status === "Overdue"
-                                    ? "danger"
-                                    : "neutral")
-                              }
-                            >
-                              {row.status === "Pending"
-                                ? "Draft"
-                                : row.status === "Completed"
-                                  ? "Delivered"
-                                  : row.status === "InTransit"
-                                    ? "In transit"
-                                    : row.status}
-                            </span>
+                            <WholesaleStatusPill status={row.status} />
                             {accounts && row.finalDeadlineBreached && (
                               <div className="muted">Final deadline passed</div>
                             )}

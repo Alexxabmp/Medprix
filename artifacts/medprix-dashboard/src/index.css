@@ -786,6 +786,16 @@ a {
   border: 1px solid hsl(var(--border));
 }
 
+.pill.info {
+  background: #e8f1ff;
+  color: #2457a7;
+}
+
+.dark .pill.info {
+  background: #1c3150;
+  color: #91baff;
+}
+
 .reports-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

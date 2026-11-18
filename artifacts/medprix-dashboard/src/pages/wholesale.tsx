@@ -1,3 +1,4 @@
+import { WholesaleStatusPill } from "@/components/wholesale-status-pill";
 import { ReadDialog, useReadDialog } from "@/components/read-dialog";
 import { SelectField } from "@/components/custom-ui/select-field";
 import {
@@ -642,6 +643,7 @@ export default function WholesalePage({
                 <option value="All statuses">All statuses</option>
                 <option value="Draft">Draft</option>
                 <option value="Confirmed">Confirmed</option>
+                <option value="Processing">Processing</option>
                 <option value="Delivered">Delivered</option>
                 <option value="Cancelled">Cancelled</option>
               </SelectField>
@@ -740,7 +742,7 @@ export default function WholesalePage({
                           <th>Order</th>
                           <th>Client</th>
                           <th>Total including VAT</th>
-                          <th>Status</th>
+                          <th>Order status</th>
                           <th className="table-action-head">Action</th>
                         </tr>
                       </thead>
@@ -753,9 +755,7 @@ export default function WholesalePage({
                             </td>
                             <td>{wholesalePeso(order.total)}</td>
                             <td>
-                              {order.status === "Pending"
-                                ? "Draft"
-                                : order.status}
+                              <WholesaleStatusPill status={order.status} />
                             </td>
                             <td className="table-action-cell">
                               <div className="table-actions">
