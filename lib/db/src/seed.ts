@@ -91,7 +91,7 @@ const past = (off: number, hour = 12, minute = 0) => {
 const dateStr = (off: number) => new Date(Date.UTC(TODAY.y, TODAY.m, TODAY.d + off)).toISOString().slice(0, 10);
 const ymd = (off: number) => dateStr(off).replaceAll("-", "");
 const pad = (n: number, w: number) => String(n).padStart(w, "0");
-const termsDays = (terms: string) => Number(/Net\s+(\d+)/i.exec(terms)?.[1] ?? 0);
+const termsDays = (terms: string) => Number(/Net\s*(\d+)/i.exec(terms)?.[1] ?? 0);
 /** Philippine mobile in international format (+639XXXXXXXXX) — matches the users.contact_number CHECK. */
 const phone = () => `+639${randInt(100_000_000, 999_999_999)}`;
 
@@ -176,11 +176,11 @@ const PRODUCT_DEFS: ProductDef[] = [
 ];
 
 const SUPPLIER_DEFS = [
-  { name: "Mindanao MedSupply Corp.", person: "Ramon Aquino", terms: "Net 30", code: "MMS", address: "Lanang, Davao City", domain: "mindanaomedsupply.example" },
-  { name: "Davao Pharma Distributors Inc.", person: "Teresita Lim", terms: "Net 15", code: "DPD", address: "Ilustre St., Davao City", domain: "davaopharma.example" },
-  { name: "Southern Health Wholesale", person: "Antonio Uy", terms: "Net 45", code: "SHW", address: "Bajada, Davao City", domain: "southernhealth.example" },
-  { name: "Visayas-Mindanao Drug Trading", person: "Corazon Tan", terms: "COD", code: "VMD", address: "Carmen, Cagayan de Oro City", domain: "vmdrugtrading.example" },
-  { name: "Prime Generics Trading", person: "Benjamin Ocampo", terms: "Net 30", code: "PGT", address: "Mandaue City, Cebu", domain: "primegenerics.example" },
+  { name: "Mindanao MedSupply Corp.", person: "Ramon Aquino", terms: "Net30", code: "MMS", address: "Lanang, Davao City", domain: "mindanaomedsupply.example" },
+  { name: "Davao Pharma Distributors Inc.", person: "Teresita Lim", terms: "Net30", code: "DPD", address: "Ilustre St., Davao City", domain: "davaopharma.example" },
+  { name: "Southern Health Wholesale", person: "Antonio Uy", terms: "Net60", code: "SHW", address: "Bajada, Davao City", domain: "southernhealth.example" },
+  { name: "Visayas-Mindanao Drug Trading", person: "Corazon Tan", terms: "Net30", code: "VMD", address: "Carmen, Cagayan de Oro City", domain: "vmdrugtrading.example" },
+  { name: "Prime Generics Trading", person: "Benjamin Ocampo", terms: "Net30", code: "PGT", address: "Mandaue City, Cebu", domain: "primegenerics.example" },
 ] as const;
 const CATEGORY_SUPPLIER: Record<string, number> = {
   Analgesic: 0, Antibiotic: 1, "Controlled Substance": 1,

@@ -27,6 +27,7 @@
     { "idx": 16, "version": "7", "when": 1794873600000, "tag": "0016_payment_references", "breakpoints": true },
     { "idx": 17, "version": "7", "when": 1794960000000, "tag": "0017_discount_holders", "breakpoints": true },
     { "idx": 18, "version": "7", "when": 1795046400000, "tag": "0018_returning_customers", "breakpoints": true },
-    { "idx": 19, "version": "7", "when": 1795132800000, "tag": "0019_prescription_required", "breakpoints": true }
+    { "idx": 19, "version": "7", "when": 1795132800000, "tag": "0019_prescription_required", "breakpoints": true },
+    { "idx": 20, "version": "7", "when": 1795219200000, "tag": "0020_shared_payment_plan", "breakpoints": true }
   ]
 }

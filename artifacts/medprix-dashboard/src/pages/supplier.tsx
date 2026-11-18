@@ -183,8 +183,8 @@ function validateSupplier(draft: SupplierDraft) {
     return "Enter a valid email address.";
   if (draft.address.trim().length > 500)
     return "Address must be 500 characters or fewer.";
-  if (draft.paymentTerms.trim().length > 100)
-    return "Payment terms must be 100 characters or fewer.";
+  if (!["Net30", "Net60"].includes(draft.paymentTerms))
+    return "Choose Net 30 or Net 60 payment terms.";
   return "";
 }
 
@@ -928,12 +928,11 @@ export default function SupplierPage({
                   />
                 </div>
                 <div className="field">
-                  <label htmlFor="supplier-terms">Payment terms</label>
-                  <input
+                  <label htmlFor="supplier-terms">Payment terms *</label>
+                  <SelectField
                     id="supplier-terms"
                     data-testid="input-supplier-terms"
-                    maxLength={100}
-                    placeholder="e.g. Net 30"
+                    required
                     value={supplierForm.paymentTerms}
                     onChange={(event) =>
                       setSupplierForm({
@@ -941,7 +940,11 @@ export default function SupplierPage({
                         paymentTerms: event.target.value,
                       })
                     }
-                  />
+                  >
+                    <option value="" disabled>Select payment terms</option>
+                    <option value="Net30">Net 30</option>
+                    <option value="Net60">Net 60</option>
+                  </SelectField>
                 </div>
                 <div className="field full-width">
                   <label htmlFor="supplier-address">Business address</label>

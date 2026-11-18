@@ -42,8 +42,9 @@ export class SchemaReadinessError extends Error {
     this.name = "SchemaReadinessError";
   }
 }
-export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | "cashier" | "legacy-runtime" | "audit-runtime" | "identifier-runtime" | "pre-retail-runtime" | "pre-retirement-runtime" | "pre-delivery-runtime" | "pre-wholesale-runtime" | "wholesale-draft-runtime" | "wholesale-reservation-runtime" | "wholesale-fulfillment-runtime" | "wholesale-collections-runtime" | "pre-category-runtime" | "pre-payment-reference-runtime" | "pre-discount-holder-runtime" | "pre-returning-customer-runtime" | "pre-prescription-runtime" | "runtime" = "runtime", namespace = "public", existingTablesOnly = false) {
-  const prescriptions = scope === "runtime";
+export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | "cashier" | "legacy-runtime" | "audit-runtime" | "identifier-runtime" | "pre-retail-runtime" | "pre-retirement-runtime" | "pre-delivery-runtime" | "pre-wholesale-runtime" | "wholesale-draft-runtime" | "wholesale-reservation-runtime" | "wholesale-fulfillment-runtime" | "wholesale-collections-runtime" | "pre-category-runtime" | "pre-payment-reference-runtime" | "pre-discount-holder-runtime" | "pre-returning-customer-runtime" | "pre-prescription-runtime" | "pre-payment-plan-runtime" | "runtime" = "runtime", namespace = "public", existingTablesOnly = false) {
+  const sharedPaymentPlan = scope === "runtime";
+  const prescriptions = sharedPaymentPlan || scope === "pre-payment-plan-runtime";
   const returningCustomers = prescriptions || scope === "pre-prescription-runtime";
   const discountHolders = returningCustomers || scope === "pre-returning-customer-runtime";
   const paymentReferences = discountHolders || scope === "pre-discount-holder-runtime";
@@ -56,7 +57,7 @@ export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | 
   const calendar = wholesale || scope === "pre-wholesale-runtime";
   const retiredSales = calendar || scope === "pre-delivery-runtime";
   const retail = retiredSales || scope === "pre-retirement-runtime";
-  if (["pre-retail-runtime", "pre-retirement-runtime", "pre-delivery-runtime", "pre-wholesale-runtime", "wholesale-draft-runtime", "wholesale-reservation-runtime", "wholesale-fulfillment-runtime", "wholesale-collections-runtime", "pre-category-runtime", "pre-payment-reference-runtime", "pre-discount-holder-runtime", "pre-returning-customer-runtime", "pre-prescription-runtime"].includes(scope)) scope = "runtime";
+  if (["pre-retail-runtime", "pre-retirement-runtime", "pre-delivery-runtime", "pre-wholesale-runtime", "wholesale-draft-runtime", "wholesale-reservation-runtime", "wholesale-fulfillment-runtime", "wholesale-collections-runtime", "pre-category-runtime", "pre-payment-reference-runtime", "pre-discount-holder-runtime", "pre-returning-customer-runtime", "pre-prescription-runtime", "pre-payment-plan-runtime"].includes(scope)) scope = "runtime";
   const actual = await inspectSchema(query, namespace);
   const issues: string[] = [];
   const normalize = (v: unknown) => typeof v === "string" ? v.replaceAll(`"${namespace}".`, "public.").replaceAll(`${namespace}.`, "public.") : v;
@@ -72,7 +73,7 @@ export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | 
       for (const field of ["type", "not_null", "default_value"] as const)
         if (normalize(found[field]) !== normalize(calendar && expected.table_name === 'supplier_deliveries' && expected.name === 'delivery_date'
           ? field === 'type' ? 'date' : field === 'default_value' ? null : expected[field]
-          : expected[field])) issues.push(`incompatible ${expected.table_name}.${expected.name} ${field}`);
+          : sharedPaymentPlan && expected.table_name === 'suppliers' && expected.name === 'payment_terms' ? field === 'type' ? 'payment_plan_enum' : field === 'not_null' ? true : expected[field] : expected[field])) issues.push(`incompatible ${expected.table_name}.${expected.name} ${field}`);
     }
     for (const expected of contract.constraints) {
       if (retired(expected.table_name) || absent(expected.table_name) || replaced(expected.name)) continue;
@@ -152,7 +153,7 @@ export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | 
   if (reservations) await assertWholesaleReservationsReady(query, actual, namespace, existingTablesOnly, issues);
   if (fulfillment) await assertWholesaleFulfillmentReady(query, actual, namespace, existingTablesOnly, issues);
   if (collections) await assertWholesaleCollectionsReady(query, actual, namespace, existingTablesOnly, issues);
-  if (installments) await assertWholesaleInstallmentsReady(query, actual, namespace, existingTablesOnly, issues);
+  if (installments) await assertWholesaleInstallmentsReady(query, actual, namespace, existingTablesOnly, issues, sharedPaymentPlan ? "payment_plan_enum" : "wholesale_payment_plan_enum");
   if (categoryPricing && !existingTablesOnly) {
     for (const [table, name, type] of [["product_categories", "id", "uuid"], ["product_categories", "name", "character varying(100)"], ["product_categories", "is_vat", "boolean"], ["products", "initial_price", "numeric(12,2)"]]) {
       if (!actual.columns.some(column => column.table_name === table && column.name === name && column.type === type)) issues.push("missing/incompatible category pricing column " + table + "." + name);

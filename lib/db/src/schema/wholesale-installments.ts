@@ -12,7 +12,8 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 import { money } from "./_columns";
-import { arPaymentsTable, wholesalePaymentPlanEnum } from "./wholesale";
+import { paymentPlanEnum } from "./payment-plan";
+import { arPaymentsTable } from "./wholesale";
 import { wholesaleCollectionsTable } from "./wholesale-collections";
 import { wholesaleFulfillmentsTable } from "./wholesale-fulfillment";
 
@@ -25,7 +26,7 @@ export const wholesaleInstallmentSchedulesTable = pgTable(
       .references(() => wholesaleFulfillmentsTable.arId, {
         onDelete: "restrict",
       }),
-    paymentPlan: wholesalePaymentPlanEnum("payment_plan").notNull(),
+    paymentPlan: paymentPlanEnum("payment_plan").notNull(),
     planVersion: varchar("plan_version", { length: 32 }).notNull(),
     principal: money("principal").notNull(),
     installmentCount: integer("installment_count").notNull(),

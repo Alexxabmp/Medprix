@@ -124,6 +124,11 @@ router.post(
     const supplierAddress = typeof address === "string" ? address.trim() : "";
     const terms = typeof paymentTerms === "string" ? paymentTerms.trim() : "";
 
+    if (terms !== "Net30" && terms !== "Net60")
+      return res.status(400).json({ error: "Payment terms must be Net30 or Net60." });
+    if (paymentTerms != null && typeof paymentTerms !== "string")
+      return res.status(400).json({ error: "Payment terms must be Net30 or Net60." });
+
     if (!name)
       return res.status(400).json({ error: "Supplier name is required." });
     if (
@@ -173,7 +178,7 @@ router.post(
           contactNumber: phone || null,
           email: emailAddress || null,
           address: supplierAddress || null,
-          paymentTerms: terms || null,
+          paymentTerms: terms,
         })
         .returning();
       return res.status(201).json({ success: true, supplier });
