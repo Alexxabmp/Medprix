@@ -1,7 +1,7 @@
 import { useReadDialog } from "./read-dialog";
 import { SourceProgress } from "./custom-ui/source-state";
 import { SelectField } from "@/components/custom-ui/select-field";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Info } from "lucide-react";
 import { DeliveryReceiptView } from "./delivery-receipt-view";
 import { WholesaleDeliveryPanel } from "./wholesale-delivery-panel";
 import { LoadingState } from "@/components/custom-ui/loading-state";
@@ -19,7 +19,14 @@ import {
 import { safeError } from "@/lib/feedback";
 import { formatDisplayDate } from "@/lib/business-date";
 import {
+  wholesaleMoneyInputSchema,
+  wholesaleCents,
+  wholesaleAmount,
+  WHOLESALE_MAX_CENTS,
+} from "@workspace/api-zod";
+import {
   ModalTableValue,
+  ModalTableHint,
   useModalTableStandard,
   ModalTableFrame,
   ModalTablePager,
@@ -44,21 +51,35 @@ export function WholesalePriceApproval({
   change: (id: string) => void;
 }) {
   if (!approvals.length) return <span className="muted">Saved price</span>;
+  const optionLabel = (approval: (typeof approvals)[number], index: number) =>
+    wholesalePeso(approval.price) +
+    (approvals.filter((item) => item.price === approval.price).length > 1
+      ? ` (${index + 1})`
+      : "");
   return (
-    <SelectField
-      aria-label={"Price approval for " + name}
-      disabled={busy}
-      value={value}
-      onChange={(event) => change(event.target.value)}
-    >
-      <option value="">Saved wholesale price</option>
-      {approvals.map((approval) => (
-        <option key={approval.id} value={approval.id}>
-          {wholesalePeso(approval.price)} · {approval.reason} ·{" "}
-          {approval.approvedByName}
-        </option>
-      ))}
-    </SelectField>
+    <div className="wholesale-price-selection">
+      <SelectField
+        aria-label={"Price selection for " + name}
+        disabled={busy}
+        value={value}
+        onChange={(event) => change(event.target.value)}
+        style={{ width: "100%", minWidth: 0, maxWidth: "100%" }}
+      >
+        <option value="">Saved price</option>
+        {approvals.map((approval, index) => (
+          <option key={approval.id} value={approval.id}>
+            {optionLabel(approval, index)}
+          </option>
+        ))}
+      </SelectField>
+      <ModalTableHint value={approvals.map((approval, index) =>
+        `${optionLabel(approval, index)}: ${approval.reason}. Approved by ${approval.approvedByName}.`,
+      ).join("\n")}>
+        <button type="button" className="button soft table-action-btn" aria-label={"View price approval details for " + name}>
+          <Info size={14} aria-hidden="true" />
+        </button>
+      </ModalTableHint>
+    </div>
   );
 }
 
@@ -107,6 +128,19 @@ export function WholesaleOrderDetails({
   const detail = read.state?.data ?? cachedDetail;
   const loadError = read.state?.error ?? "";
   const [selected, setSelected] = useState<Record<string, string>>({});
+  const [overrideProductId, setOverrideProductId] = useState("");
+  const [overridePrice, setOverridePrice] = useState("");
+  const overrideLine = order.lines.find(
+    line => line.productId === (overrideProductId || order.lines[0]?.productId),
+  );
+  const validOverridePrice = wholesaleMoneyInputSchema.safeParse(overridePrice);
+  const overrideLineCents = overrideLine && validOverridePrice.success
+    ? wholesaleCents(validOverridePrice.data) * BigInt(overrideLine.quantity)
+    : null;
+  const overrideTotalTooLarge = overrideLineCents !== null && overrideLineCents > WHOLESALE_MAX_CENTS;
+  const overrideLineTotal = overrideLineCents !== null && !overrideTotalTooLarge
+    ? wholesaleAmount(overrideLineCents)
+    : null;
   const [action, setAction] = useState<"confirm" | "cancel" | null>(() =>
     order.status === "Pending" ? (initialAction ?? null) : null,
   );
@@ -117,7 +151,7 @@ export function WholesaleOrderDetails({
             action === "confirm"
               ? "Confirm wholesale order"
               : "Cancel wholesale order",
-          variant: action === "confirm" ? "table" : "form",
+          variant: action === "confirm" ? "compact-table" : "form",
           back:
             initialAction === "confirm" && action === "confirm"
               ? undefined
@@ -140,6 +174,9 @@ export function WholesaleOrderDetails({
       ));
   const current =
     detail?.overrides.filter((item) => item.revision === order.revision) ?? [];
+  const showPriceSelection = draft && current.some(item =>
+    item.approvedBy && order.lines.some(line => line.productId === item.productId),
+  );
   const displayLines =
     detail?.snapshot?.lines ??
     order.lines.map((line) => ({
@@ -253,6 +290,9 @@ export function WholesaleOrderDetails({
               </section>
               <section className="wholesale-review-items">
                 <h3>Order items</h3>
+                {showPriceSelection && (
+                  <p className="field-hint">Use the saved price or choose an approved override. The info button shows the approval details.</p>
+                )}
                 <ModalTableFrame>
                   <div
                     className="table-scroll"
@@ -265,9 +305,9 @@ export function WholesaleOrderDetails({
                     tabIndex={tablePreview ? 0 : undefined}
                   >
                     <table
-                      className="data-table wholesale-task-table"
+                      className="data-table wholesale-order-items-table"
                       data-modal-table={
-                        tablePreview ? (draft ? "draft" : "items") : undefined
+                        tablePreview ? (showPriceSelection ? "draft" : "items") : undefined
                       }
                     >
                       {tablePreview && (
@@ -276,7 +316,7 @@ export function WholesaleOrderDetails({
                           <col />
                           <col />
                           <col />
-                          {draft && (
+                          {showPriceSelection && (
                             <col className="modal-table-approval-column" />
                           )}
                         </colgroup>
@@ -287,7 +327,7 @@ export function WholesaleOrderDetails({
                           <th>Quantity</th>
                           <th>Unit price</th>
                           <th>Line total</th>
-                          {draft && <th>Price approval</th>}
+                          {showPriceSelection && <th>Price selection</th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -324,8 +364,8 @@ export function WholesaleOrderDetails({
                                   (Number(price) * line.quantity).toFixed(2),
                                 )}
                               </td>
-                              {draft && (
-                                <td data-label="Price approval">
+                              {showPriceSelection && (
+                                <td data-label="Price selection">
                                   <WholesalePriceApproval
                                     name={line.name}
                                     approvals={approvals}
@@ -391,6 +431,8 @@ export function WholesaleOrderDetails({
                             searchable
                             required
                             name="productId"
+                            value={overrideLine?.productId ?? ""}
+                            onChange={event => setOverrideProductId(event.target.value)}
                           >
                             {order.lines.map((line) => (
                               <option
@@ -414,16 +456,34 @@ export function WholesaleOrderDetails({
                             min="0"
                             max="9999999999.99"
                             step="0.01"
+                            value={overridePrice}
+                            onChange={event => setOverridePrice(event.target.value)}
+                            aria-describedby="wholesale-override-total"
                           />
+                        </div>
+                      </div>
+                      <div className="form-grid" aria-live="polite" aria-atomic="true">
+                        <div className="field">
+                          <span className="field-label">Order quantity</span>
+                          <strong>{overrideLine ? `${overrideLine.quantity} units` : "—"}</strong>
+                        </div>
+                        <div className="field" id="wholesale-override-total">
+                          <span className="field-label">Requested line total (incl. VAT where applicable)</span>
+                          <strong>{overrideLineTotal === null ? "—" : wholesalePeso(overrideLineTotal)}</strong>
+                          <span className={overrideTotalTooLarge ? "field-error" : "field-hint"}>
+                            {overrideTotalTooLarge
+                              ? "The requested line total exceeds the supported amount."
+                              : "Order quantity × requested unit price. Subject to Admin approval."}
+                          </span>
                         </div>
                       </div>
                       <div className="field">
                         <label htmlFor={"wholesale-override-reason"}>
                           Request reason *
                         </label>
-                        <input
+                        <textarea
                           id={"wholesale-override-reason"}
-                          type="text"
+                          rows={3}
                           required
                           name="reason"
                           maxLength={500}

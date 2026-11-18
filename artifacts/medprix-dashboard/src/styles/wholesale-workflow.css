@@ -270,7 +270,19 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
-/* Order, delivery and receipt tables share one responsive presentation. */
+/* Price selectors stay inside their column; approval notes live in a tooltip. */
+.wholesale-price-selection {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.wholesale-order-items-table td:first-child > strong {
+  display: block;
+  min-width: 0;
+}
+/* Delivery and receipt task tables retain their responsive presentation. */
 .modal.modal-table-standard.modal-table-standard.wholesale-dialog
   .wholesale-task-table[data-modal-table] {
   width: 100%;
