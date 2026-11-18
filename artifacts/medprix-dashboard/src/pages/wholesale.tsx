@@ -1,3 +1,5 @@
+import { WholesaleStatusPill } from "@/components/wholesale-status-pill";
+import { ReadDialog, useReadDialog } from "@/components/read-dialog";
 import { SelectField } from "@/components/custom-ui/select-field";
 import {
   wholesaleClientContactsSchema,
@@ -16,8 +18,7 @@ import {
   type WholesaleSummaryRow,
 } from "@/components/wholesale-workspace-tables";
 import { WholesaleReceivables } from "@/components/wholesale-receivables";
-import { Summary } from "@/components/custom-ui/summary-card";
-import { LoadingState } from "@/components/custom-ui/loading-state";
+import { SourceSummary as Summary, SourceTableBody, SourceFeedback, SourceRefreshButton, SourceProgress, SourceText, type SourceState } from "@/components/custom-ui/source-state";
 import { WholesaleDeliveryReceipts } from "@/components/wholesale-delivery-receipts";
 import { WholesaleOrderDetails } from "@/components/wholesale-order-details";
 import {
@@ -27,7 +28,7 @@ import {
 import { WholesaleDeliveryPanel } from "@/components/wholesale-delivery-panel";
 import { WholesaleRequestFeedback } from "@/components/wholesale-request-feedback";
 import { DeliveryReceiptView } from "@/components/delivery-receipt-view";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Eye, Pencil, Plus, Search, Truck } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import { WholesaleDialog } from "@/components/wholesale-dialog";
@@ -88,19 +89,17 @@ export default function WholesalePage({
     getCachedWholesale<WholesaleOverview>("/overview"),
   );
   const [overviewError, setOverviewError] = useState("");
-  const [summary, setSummary] = useState<{
-    kind: WholesaleSummaryKind;
-    data: WholesalePageResult<WholesaleSummaryRow>;
-  } | null>(null);
-  const [openingSummary, setOpeningSummary] =
-    useState<WholesaleSummaryKind | null>(null);
-  const [openingAccount, setOpeningAccount] = useState(false);
+  const summaryRead = useReadDialog<{ kind: WholesaleSummaryKind; data: WholesalePageResult<WholesaleSummaryRow> }>();
+  const deliveryRead = useReadDialog<WholesaleOrderDetail & { order: WholesaleOrder }>();
+  const openingAccount = deliveryRead.state?.pending ?? false;
   const [accountStatus, setAccountStatus] =
     useState<WholesaleAccountFilter>("all");
   const [orderStatus, setOrderStatus] = useState("All statuses");
+  const [deliveryHistoryOpen, setDeliveryHistoryOpen] = useState(false);
+  const [refreshTarget, setRefreshTarget] = useState<HTMLDivElement | null>(null);
   const [deliveryStatus, setDeliveryStatus] =
     useState<DeliveryQueueStatus>("all");
-  const [vatFilter, setVatFilter] = useState("All VAT classifications");
+  const [vatFilter, setVatFilter] = useState("All VAT statuses");
   const [orderPage, setOrderPage] = useState(1);
   const [clientPage, setClientPage] = useState(1);
   const [pricePage, setPricePage] = useState(1);
@@ -111,8 +110,12 @@ export default function WholesalePage({
   const [priceInput, setPriceInput] = useState("");
   const [printingReceipt, setPrintingReceipt] = useState(false);
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [ready, setReady] = useState(true);
+  type Resource = "clients" | "catalog" | "orders" | "receipts" | "overview";
+  const [sources, setSources] = useState<Record<Resource, SourceState>>(() => Object.fromEntries(
+    [["clients", "/clients"], ["catalog", "/catalog"], ["orders", "/orders"], ["receipts", "/delivery-receipts"], ["overview", "/overview"]]
+      .map(([key, path]) => [key, { hasData: getCachedWholesale(path) !== null, pending: true, error: "" }]),
+  ) as Record<Resource, SourceState>);
+  const resourceRequests = useRef<Record<Resource, number>>({ clients: 0, catalog: 0, orders: 0, receipts: 0, overview: 0 });
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
   const [deliveryVersion, setDeliveryVersion] = useState(0);
@@ -128,51 +131,31 @@ export default function WholesalePage({
     }
   });
 
-  async function load(background = false) {
-    if (!background) setLoading(true);
-    setError("");
-    try {
-      const [
-        nextClients,
-        nextProducts,
-        nextOrders,
-        nextReceipts,
-        nextOverview,
-      ] = await Promise.all([
-        wholesaleGet<WholesaleClient[]>("/clients"),
-        wholesaleGet<WholesaleProduct[]>("/catalog"),
-        wholesaleGet<WholesaleOrder[]>("/orders"),
-        wholesaleGet<DeliveryReceiptSummary[]>("/delivery-receipts"),
-        wholesaleGet<WholesaleOverview>("/overview"),
-      ]);
-      setOverview(nextOverview);
-      setOverviewError("");
-      setClients(nextClients);
-      setProducts(nextProducts);
-      setOrders(nextOrders);
-      setReceipts(nextReceipts);
-      setReady(true);
-    } catch (failure) {
-      if (!background) setReady(false);
-      setOverview(null);
-      setError(safeError(failure));
-    } finally {
-      if (!background) setLoading(false);
+  async function load(_background = false, only?: Resource, force = false) {
+    async function read<T>(key: Resource, path: string, receive: (data: T) => void) {
+      resourceRequests.current[key]++;
+      setSources(current => ({ ...current, [key]: { ...current[key], pending: true } }));
+      try {
+        const result = await wholesaleGet<T>(path, force);
+        receive(result);
+        setSources(current => ({ ...current, [key]: { hasData: true, pending: resourceRequests.current[key] > 1, error: "" } }));
+      } catch (failure) {
+        setSources(current => ({ ...current, [key]: { ...current[key], pending: resourceRequests.current[key] > 1, error: safeError(failure) } }));
+      } finally { resourceRequests.current[key]--; }
     }
+    await Promise.all([
+      ...(!only || only === "clients" ? [read<WholesaleClient[]>("clients", "/clients", setClients)] : []),
+      ...(!only || only === "catalog" ? [read<WholesaleProduct[]>("catalog", "/catalog", setProducts)] : []),
+      ...(!only || only === "orders" ? [read<WholesaleOrder[]>("orders", "/orders", setOrders)] : []),
+      ...(!only || only === "receipts" ? [read<DeliveryReceiptSummary[]>("receipts", "/delivery-receipts", setReceipts)] : []),
+      ...(!only || only === "overview" ? [read<WholesaleOverview>("overview", "/overview", setOverview)] : []),
+    ]);
   }
   useEffect(() => {
     void load(true);
   }, []);
 
-  async function refreshOverview() {
-    try {
-      setOverview(await wholesaleGet<WholesaleOverview>("/overview"));
-      setOverviewError("");
-    } catch (failure) {
-      setOverview(null);
-      setOverviewError(safeError(failure));
-    }
-  }
+  async function refreshOverview() { await load(true, "overview"); }
   useEffect(() => {
     const refresh = () => {
       if (document.visibilityState === "visible") void load(true);
@@ -182,19 +165,9 @@ export default function WholesalePage({
       window.clearInterval(timer);
     };
   }, []);
-  async function openSummary(kind: WholesaleSummaryKind) {
-    setOpeningSummary(kind);
-    setError("");
-    try {
-      const data = await wholesaleGet<WholesalePageResult<WholesaleSummaryRow>>(
-        wholesaleSummaryPath(kind),
-      );
-      setSummary({ kind, data });
-    } catch (failure) {
-      setError(safeError(failure));
-    } finally {
-      setOpeningSummary(null);
-    }
+  function openSummary(kind: WholesaleSummaryKind) {
+    const title = { pending: "Pending orders", deliveries: "Active delivery attempts", outstanding: "Outstanding accounts", overdue: "Overdue accounts" }[kind];
+    summaryRead.open(title, async () => ({ kind, data: await wholesaleGet<WholesalePageResult<WholesaleSummaryRow>>(wholesaleSummaryPath(kind)) }));
   }
   async function submit(request: WholesaleRequest) {
     if (inFlight.current) return;
@@ -210,7 +183,8 @@ export default function WholesalePage({
       sessionStorage.removeItem(storageKey);
       setPending(null);
       setDialog(null);
-      setSummary(null);
+      summaryRead.close();
+      deliveryRead.close();
       onToast("Wholesale record saved.");
       setDeliveryVersion((version) => version + 1);
       const orderAction = request.path.match(
@@ -251,19 +225,14 @@ export default function WholesalePage({
     if (pending || inFlight.current) return;
     void submit({ key: crypto.randomUUID(), path, method, body });
   }
-  async function openDelivery(id: string) {
-    setOpeningAccount(true);
-    setFormError("");
-    try {
-      const detail = await wholesaleGet<
-        WholesaleOrderDetail & { order: WholesaleOrder }
-      >("/orders/" + id, true);
-      setDialog({ kind: "delivery", order: detail.order, detail });
-    } catch (failure) {
-      setError(safeError(failure));
-    } finally {
-      setOpeningAccount(false);
-    }
+  function openDelivery(id: string, title = "Manage delivery", view?: "history") {
+    setDeliveryHistoryOpen(view === "history");
+    setDeliveryReceipt(null);
+    deliveryRead.open(title, () => wholesaleGet<WholesaleOrderDetail & { order: WholesaleOrder }>("/orders/" + id, true));
+  }
+  function closeDeliveryRead() {
+    deliveryRead.close();
+    setDeliveryReceipt(null);
   }
   function open(next: Dialog) {
     if (
@@ -297,10 +266,10 @@ export default function WholesalePage({
     );
   }
   const locked =
-    busy || pending !== null || openingAccount || openingSummary !== null;
-  const navigating = busy || openingAccount || openingSummary !== null;
+    busy || pending !== null || openingAccount || Boolean(summaryRead.state?.pending);
+  const navigating = busy || openingAccount || Boolean(summaryRead.state?.pending);
   const query = search.toLocaleLowerCase();
-  const visibleOrders = orders.filter((order) => {
+  const visibleOrders = useMemo(() => tab === "orders" ? orders.filter((order) => {
     const displayStatus = order.status === "Pending" ? "Draft" : order.status;
     const matchesStatus =
       orderStatus === "All statuses" ||
@@ -310,26 +279,26 @@ export default function WholesalePage({
       .toLocaleLowerCase()
       .includes(query);
     return matchesStatus && matchesQuery;
-  });
-  const visibleClients = clients.filter((client) =>
+  }) : [], [tab, orders, orderStatus, query]);
+  const visibleClients = useMemo(() => tab === "clients" ? clients.filter((client) =>
     (client.name + " " + (client.address ?? ""))
       .toLocaleLowerCase()
       .includes(query),
-  );
-  const visibleProducts = products.filter((product) => {
+  ) : [], [tab, clients, query]);
+  const visibleProducts = useMemo(() => tab === "prices" ? products.filter((product) => {
     const vatLabel =
       product.isVatExempt === null
         ? "Needs classification"
         : product.isVatExempt
-          ? "Exempt"
-          : "VATable";
+          ? "Non-VAT"
+          : "VAT";
     const matchesVat =
-      vatFilter === "All VAT classifications" || vatLabel === vatFilter;
+      vatFilter === "All VAT statuses" || vatLabel === vatFilter;
     const matchesQuery = (product.name + " " + product.sku)
       .toLocaleLowerCase()
       .includes(query);
     return matchesVat && matchesQuery;
-  });
+  }) : [], [tab, products, vatFilter, query]);
 
   const WHOLESALE_PAGE_SIZE = 15;
   const totalOrderPages = Math.max(
@@ -397,6 +366,76 @@ export default function WholesalePage({
     },
   }[tab];
 
+  const activeResource: Resource | null = tab === "orders" ? "orders" : tab === "clients" ? "clients" : tab === "prices" ? "catalog" : tab === "receipts" ? "receipts" : null;
+  const retryResource = (key: Resource) => { if (!resourceRequests.current[key]) void load(false, key, true); };
+  function renderDelivery(order: WholesaleOrder, detail: WholesaleOrderDetail, close: () => void, embedded = false) {
+    return (<WholesaleDialog embedded={embedded}
+          variant="form"
+          back={deliveryReceipt ? () => setDeliveryReceipt(null) : undefined}
+          title={
+            deliveryReceipt
+              ? "Delivery receipt details"
+              : (deliveryHistoryOpen ? "Delivery history · " : "Delivery · ") + order.orderNumber
+          }
+          description={
+            deliveryReceipt
+              ? deliveryReceipt.receiptNumber
+              : order.orderNumber
+          }
+          busy={busy || printingReceipt}
+          close={() => {
+            close();
+            setDeliveryReceipt(null);
+          }}
+        >
+          {deliveryReceipt ? (
+            <DeliveryReceiptView
+              receipt={deliveryReceipt}
+              onBusyChange={setPrintingReceipt}
+              close={() => {
+                close();
+                setDeliveryReceipt(null);
+              }}
+              embedded
+            />
+          ) : (
+            <>
+              <WholesaleRequestFeedback
+                error={formError}
+                pending={pending}
+                busy={busy}
+                retry={() => pending && void submit(pending)}
+              />
+              <WholesaleDeliveryPanel
+                key={order.id + ":" + order.revision}
+                order={order}
+                detail={detail}
+                busy={locked}
+                mutate={mutate}
+                initialHistoryOpen={deliveryHistoryOpen}
+                initialAction={
+                  deliveryHistoryOpen ? undefined : detail.attempts.some(
+                    (attempt) => attempt.status === "InTransit",
+                  )
+                    ? "deliver"
+                    : detail.attempts.some(
+                          (attempt) => attempt.status === "Scheduled",
+                        )
+                      ? "dispatch"
+                      : detail.receipt
+                        ? undefined
+                        : "schedule"
+                }
+                viewReceipt={() => {
+                  if (detail.receipt) {
+                    setDeliveryReceipt(detail.receipt.snapshot);
+                  }
+                }}
+              />
+            </>
+          )}
+        </WholesaleDialog>);
+  }
   return (
     <div className="wholesale-workspace">
       <PageHeading
@@ -406,13 +445,15 @@ export default function WholesalePage({
       {error && (
         <div role="alert" className="inline-error">
           {error}
-          {!loading && (
+          {!(Object.values(sources).some(source => source.pending)) && (
             <button className="button soft" onClick={() => void load()}>
               Retry loading
             </button>
           )}
         </div>
       )}
+      <SourceFeedback status={sources.overview} label="wholesale summary" onRetry={() => retryResource("overview")} />
+      {activeResource && <SourceFeedback status={sources[activeResource]} label="wholesale records" />}
       {pending && (
         <div className="inline-error" role="status">
           <span>
@@ -432,9 +473,9 @@ export default function WholesalePage({
       <div
         className="summary-strip wholesale-summary-strip"
         aria-label="Wholesale summary"
-        aria-busy={loading}
+        aria-busy={sources.overview.pending}
       >
-        <Summary
+        <Summary status={sources.overview}
           label="Pending Orders"
           value={overview ? String(overview.openOrders) : "—"}
           caption="Orders awaiting delivery"
@@ -444,11 +485,11 @@ export default function WholesalePage({
               disabled={navigating || !overview}
               onClick={() => void openSummary("pending")}
             >
-              {openingSummary === "pending" ? "Opening..." : "View"}
+              View
             </button>
           }
         />
-        <Summary
+        <Summary status={sources.overview}
           label="Deliveries"
           value={overview ? String(overview.activeDeliveries) : "—"}
           caption="Scheduled or in transit"
@@ -458,11 +499,11 @@ export default function WholesalePage({
               disabled={navigating || !overview}
               onClick={() => void openSummary("deliveries")}
             >
-              {openingSummary === "deliveries" ? "Opening..." : "View"}
+              View
             </button>
           }
         />
-        <Summary
+        <Summary status={sources.overview}
           label="Outstanding Balance"
           value={overview ? wholesalePeso(overview.outstanding) : "—"}
           caption="Unpaid client balances"
@@ -472,11 +513,11 @@ export default function WholesalePage({
               disabled={navigating || !overview}
               onClick={() => void openSummary("outstanding")}
             >
-              {openingSummary === "outstanding" ? "Opening..." : "View"}
+              View
             </button>
           }
         />
-        <Summary
+        <Summary status={sources.overview}
           label="Overdue Balance"
           value={overview ? wholesalePeso(overview.overdue) : "—"}
           caption={
@@ -496,7 +537,7 @@ export default function WholesalePage({
               disabled={navigating || !overview}
               onClick={() => void openSummary("overdue")}
             >
-              {openingSummary === "overdue" ? "Opening..." : "View"}
+              View
             </button>
           }
         />
@@ -506,20 +547,15 @@ export default function WholesalePage({
           {overviewError}
         </div>
       )}
-      {summary && (
-        <WholesaleSummaryModal
-          kind={summary.kind}
-          initialData={summary.data}
-          busy={busy || pending !== null || openingAccount}
-          submitting={busy || openingAccount}
-          close={() => setSummary(null)}
-          role={role}
-          mutate={mutate}
-          error={formError}
+      <ReadDialog task={summaryRead} busy={busy}>
+        {summary => <WholesaleSummaryModal
+          embedded kind={summary.kind} initialData={summary.data}
+          busy={busy || pending !== null} submitting={busy}
+          close={summaryRead.close} role={role} mutate={mutate} error={formError}
           retry={pending ? () => void submit(pending) : undefined}
           onAccountChanged={() => void refreshOverview()}
-        />
-      )}
+        />}
+      </ReadDialog>
       <div className="page-tabs" role="group" aria-label="Wholesale sections">
         {(
           [
@@ -541,7 +577,7 @@ export default function WholesalePage({
               setAccountStatus("all");
               setOrderStatus("All statuses");
               setDeliveryStatus("all");
-              setVatFilter("All VAT classifications");
+              setVatFilter("All VAT statuses");
               setOrderPage(1);
               setClientPage(1);
               setPricePage(1);
@@ -579,6 +615,8 @@ export default function WholesalePage({
             />
           </div>
           <div className="table-tools-right">
+            {(tab === "deliveries" || tab === "accounts") && <div ref={setRefreshTarget} />}
+            {activeResource && <SourceRefreshButton status={sources[activeResource]} label="wholesale records" onRefresh={() => retryResource(activeResource)} />}
             {tab === "deliveries" && (
               <SelectField
                 className="select"
@@ -610,6 +648,7 @@ export default function WholesalePage({
                 <option value="All statuses">All statuses</option>
                 <option value="Draft">Draft</option>
                 <option value="Confirmed">Confirmed</option>
+                <option value="Processing">Processing</option>
                 <option value="Delivered">Delivered</option>
                 <option value="Cancelled">Cancelled</option>
               </SelectField>
@@ -617,7 +656,7 @@ export default function WholesalePage({
             {tab === "prices" && (
               <SelectField
                 className="select"
-                aria-label="Filter wholesale prices by VAT classification"
+                aria-label="Filter wholesale prices by VAT status"
                 value={vatFilter}
                 onChange={(event) => {
                   setVatFilter(event.target.value);
@@ -625,11 +664,11 @@ export default function WholesalePage({
                 }}
                 data-testid="select-wholesale-vat-filter"
               >
-                <option value="All VAT classifications">
-                  All VAT classifications
+                <option value="All VAT statuses">
+                  All VAT statuses
                 </option>
-                <option value="VATable">VATable</option>
-                <option value="Exempt">Exempt</option>
+                <option value="VAT">VAT</option>
+                <option value="Non-VAT">Non-VAT</option>
                 <option value="Needs classification">
                   Needs classification
                 </option>
@@ -654,7 +693,7 @@ export default function WholesalePage({
             {tab === "orders" && (
               <button
                 className="button primary-action"
-                disabled={locked || !ready || loading || !clients.length}
+                disabled={locked || !sources.clients.hasData || !sources.catalog.hasData || !clients.length}
                 onClick={() => open({ kind: "order", order: null })}
               >
                 <Plus size={14} /> New draft
@@ -663,7 +702,7 @@ export default function WholesalePage({
             {tab === "clients" && (
               <button
                 className="button primary-action"
-                disabled={locked || !ready || loading}
+                disabled={locked}
                 onClick={() => open({ kind: "client" })}
               >
                 <Plus size={14} /> Add client
@@ -671,23 +710,21 @@ export default function WholesalePage({
             )}
           </div>
         </div>
-        {loading ? (
-          <LoadingState label="Loading wholesale records…" />
-        ) : (
-          ready && (
-            <>
+        <>
               {tab === "deliveries" ? (
                 <WholesaleDeliveries
                   key={deliveryVersion}
+                  refreshTarget={refreshTarget}
                   search={search}
                   status={deliveryStatus}
                   busy={navigating}
-                  open={(id) => void openDelivery(id)}
+                  open={(id, title, view) => openDelivery(id, title, view)}
                 />
               ) : (
                 <div className="table-scroll">
                   {tab === "accounts" && (
                     <WholesaleReceivables
+                      refreshTarget={refreshTarget}
                       search={search}
                       role={role}
                       status={accountStatus}
@@ -699,6 +736,7 @@ export default function WholesalePage({
                       receipts={receipts}
                       search={search}
                       disabled={navigating}
+                      source={sources.receipts}
                     />
                   )}
                   {tab === "orders" && (
@@ -711,11 +749,11 @@ export default function WholesalePage({
                           <th>Order</th>
                           <th>Client</th>
                           <th>Total including VAT</th>
-                          <th>Status</th>
+                          <th>Order status</th>
                           <th className="table-action-head">Action</th>
                         </tr>
                       </thead>
-                      <tbody>
+                      <SourceTableBody status={sources.orders} label="Wholesale orders" colSpan={5}>
                         {paginatedOrders.map((order) => (
                           <tr key={order.id}>
                             <td>{order.orderNumber}</td>
@@ -724,9 +762,7 @@ export default function WholesalePage({
                             </td>
                             <td>{wholesalePeso(order.total)}</td>
                             <td>
-                              {order.status === "Pending"
-                                ? "Draft"
-                                : order.status}
+                              <WholesaleStatusPill status={order.status} />
                             </td>
                             <td className="table-action-cell">
                               <div className="table-actions">
@@ -807,7 +843,7 @@ export default function WholesalePage({
                             </TableEmptyState>
                           </tr>
                         )}
-                      </tbody>
+                      </SourceTableBody>
                     </table>
                   )}
                   {tab === "clients" && (
@@ -822,7 +858,7 @@ export default function WholesalePage({
                           <th className="table-action-head">Action</th>
                         </tr>
                       </thead>
-                      <tbody>
+                      <SourceTableBody status={sources.clients} label="Wholesale clients" colSpan={3}>
                         {paginatedClients.map((client) => (
                           <tr key={client.id}>
                             <td>
@@ -869,7 +905,7 @@ export default function WholesalePage({
                             </TableEmptyState>
                           </tr>
                         )}
-                      </tbody>
+                      </SourceTableBody>
                     </table>
                   )}
                   {tab === "prices" && (
@@ -881,7 +917,7 @@ export default function WholesalePage({
                         <tr>
                           <th>Product / SKU</th>
                           <th>Wholesale unit price</th>
-                          <th>VAT classification</th>
+                          <th>VAT Status</th>
                           <th>Physical</th>
                           <th>Reserved</th>
                           <th>Available</th>
@@ -890,7 +926,7 @@ export default function WholesalePage({
                           )}
                         </tr>
                       </thead>
-                      <tbody>
+                      <SourceTableBody status={sources.catalog} label="Wholesale products" colSpan={role === "Admin" ? 7 : 6}>
                         {paginatedProducts.map((product) => (
                           <tr key={product.id}>
                             <td>
@@ -902,8 +938,8 @@ export default function WholesalePage({
                               {product.isVatExempt === null
                                 ? "Needs classification"
                                 : product.isVatExempt
-                                  ? "Exempt"
-                                  : "VATable"}
+                                  ? "Non-VAT"
+                                  : "VAT"}
                             </td>
                             <td>{product.physicalStock}</td>
                             <td>{product.reservedStock}</td>
@@ -938,7 +974,7 @@ export default function WholesalePage({
                             </TableEmptyState>
                           </tr>
                         )}
-                      </tbody>
+                      </SourceTableBody>
                     </table>
                   )}
                 </div>
@@ -949,10 +985,10 @@ export default function WholesalePage({
                   role="navigation"
                   aria-label="Wholesale orders pagination"
                 >
-                  <span className="muted">
+                  <span className="muted"><SourceText status={sources.orders}>
                     Page {safeOrderPage} of {totalOrderPages} (
                     {visibleOrders.length} orders)
-                  </span>
+                  </SourceText></span>
                   <button
                     type="button"
                     className="button soft"
@@ -979,10 +1015,10 @@ export default function WholesalePage({
                   role="navigation"
                   aria-label="Wholesale clients pagination"
                 >
-                  <span className="muted">
+                  <span className="muted"><SourceText status={sources.clients}>
                     Page {safeClientPage} of {totalClientPages} (
                     {visibleClients.length} clients)
-                  </span>
+                  </SourceText></span>
                   <button
                     type="button"
                     className="button soft"
@@ -1009,10 +1045,10 @@ export default function WholesalePage({
                   role="navigation"
                   aria-label="Wholesale prices pagination"
                 >
-                  <span className="muted">
+                  <span className="muted"><SourceText status={sources.catalog}>
                     Page {safePricePage} of {totalPricePages} (
                     {visibleProducts.length} products)
-                  </span>
+                  </SourceText></span>
                   <button
                     type="button"
                     className="button soft"
@@ -1033,9 +1069,7 @@ export default function WholesalePage({
                   </button>
                 </div>
               )}
-            </>
-          )
-        )}
+        </>
       </section>
       {pageTableStandard && viewClient && (
         <WholesaleDialog
@@ -1094,74 +1128,11 @@ export default function WholesalePage({
           mutate={mutate}
         />
       )}
-      {dialog?.kind === "delivery" && (
-        <WholesaleDialog
-          variant="form"
-          back={deliveryReceipt ? () => setDeliveryReceipt(null) : undefined}
-          title={
-            deliveryReceipt
-              ? "Delivery receipt details"
-              : "Delivery · " + dialog.order.orderNumber
-          }
-          description={
-            deliveryReceipt
-              ? deliveryReceipt.receiptNumber
-              : dialog.order.orderNumber
-          }
-          busy={busy || printingReceipt}
-          close={() => {
-            setDialog(null);
-            setDeliveryReceipt(null);
-          }}
-        >
-          {deliveryReceipt ? (
-            <DeliveryReceiptView
-              receipt={deliveryReceipt}
-              onBusyChange={setPrintingReceipt}
-              close={() => {
-                setDialog(null);
-                setDeliveryReceipt(null);
-              }}
-              embedded
-            />
-          ) : (
-            <>
-              <WholesaleRequestFeedback
-                error={formError}
-                pending={pending}
-                busy={busy}
-                retry={() => pending && void submit(pending)}
-              />
-              <WholesaleDeliveryPanel
-                key={dialog.order.id + ":" + dialog.order.revision}
-                order={dialog.order}
-                detail={dialog.detail}
-                busy={locked}
-                mutate={mutate}
-                initialAction={
-                  dialog.detail.attempts.some(
-                    (attempt) => attempt.status === "InTransit",
-                  )
-                    ? "deliver"
-                    : dialog.detail.attempts.some(
-                          (attempt) => attempt.status === "Scheduled",
-                        )
-                      ? "dispatch"
-                      : dialog.detail.receipt
-                        ? undefined
-                        : "schedule"
-                }
-                viewReceipt={() => {
-                  if (dialog.detail.receipt) {
-                    setDeliveryReceipt(dialog.detail.receipt.snapshot);
-                  }
-                }}
-              />
-            </>
-          )}
-        </WholesaleDialog>
-      )}
-      {deliveryReceipt && dialog?.kind !== "delivery" && (
+      <ReadDialog task={{ ...deliveryRead, close: closeDeliveryRead }} variant="form" busy={busy || printingReceipt}>
+        {detail => renderDelivery(detail.order, detail, closeDeliveryRead, true)}
+      </ReadDialog>
+      {dialog?.kind === "delivery" && renderDelivery(dialog.order, dialog.detail, () => setDialog(null))}
+      {deliveryReceipt && !deliveryRead.state && dialog?.kind !== "delivery" && (
         <DeliveryReceiptView
           receipt={deliveryReceipt}
           close={() => setDeliveryReceipt(null)}
@@ -1386,10 +1357,10 @@ export default function WholesalePage({
                       <span>
                         {dialog.product.sku} ·{" "}
                         {dialog.product.isVatExempt === null
-                          ? "VAT classification missing"
+                          ? "VAT status missing"
                           : dialog.product.isVatExempt
-                            ? "VAT-exempt"
-                            : "VATable"}
+                            ? "Non-VAT"
+                            : "VAT"}
                       </span>
                       <span>
                         Current price:{" "}

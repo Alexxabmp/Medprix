@@ -27,7 +27,7 @@ export function Summary({
         {action}
       </div>
       <strong>{value}</strong>
-      <small style={tone === "warning" ? { color: "#ad7f16" } : undefined}>
+      <small style={tone === "muted" ? { color: "hsl(var(--muted))" } : tone === "warning" ? { color: "#ad7f16" } : undefined}>
         {caption}
       </small>
     </div>

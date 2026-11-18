@@ -27,7 +27,7 @@ export const TABLE_ORDER = [
   "users",
   "system_logs", "user_activities", "backup_records",
   "product_categories", "products", "batch_info", "stock_movements", "inventory_alerts",
-  "customers", "transactions", "transaction_items", "discounts", "receipts",
+  "customers", "customer_usual_items", "transactions", "transaction_items", "discounts", "receipts",
   "suppliers", "purchase_orders", "po_items", "supplier_deliveries", "delivery_items",
   "supplier_invoices", "accounts_payable", "supplier_payments",
   "reports", "cash_reconciliations", "dashboards",
@@ -94,7 +94,7 @@ const past = (off: number, hour = 12, minute = 0) => {
 const dateStr = (off: number) => new Date(Date.UTC(TODAY.y, TODAY.m, TODAY.d + off)).toISOString().slice(0, 10);
 const ymd = (off: number) => dateStr(off).replaceAll("-", "");
 const pad = (n: number, w: number) => String(n).padStart(w, "0");
-const termsDays = (terms: string) => Number(/Net\s+(\d+)/i.exec(terms)?.[1] ?? 0);
+const termsDays = (terms: string) => Number(/Net\s*(\d+)/i.exec(terms)?.[1] ?? 0);
 /** Philippine mobile in international format (+639XXXXXXXXX) — matches the users.contact_number CHECK. */
 const phone = () => `+639${randInt(100_000_000, 999_999_999)}`;
 
@@ -179,11 +179,11 @@ const PRODUCT_DEFS: ProductDef[] = [
 ];
 
 const SUPPLIER_DEFS = [
-  { name: "Mindanao MedSupply Corp.", person: "Ramon Aquino", terms: "Net 30", code: "MMS", address: "Lanang, Davao City", domain: "mindanaomedsupply.example" },
-  { name: "Davao Pharma Distributors Inc.", person: "Teresita Lim", terms: "Net 15", code: "DPD", address: "Ilustre St., Davao City", domain: "davaopharma.example" },
-  { name: "Southern Health Wholesale", person: "Antonio Uy", terms: "Net 45", code: "SHW", address: "Bajada, Davao City", domain: "southernhealth.example" },
-  { name: "Visayas-Mindanao Drug Trading", person: "Corazon Tan", terms: "COD", code: "VMD", address: "Carmen, Cagayan de Oro City", domain: "vmdrugtrading.example" },
-  { name: "Prime Generics Trading", person: "Benjamin Ocampo", terms: "Net 30", code: "PGT", address: "Mandaue City, Cebu", domain: "primegenerics.example" },
+  { name: "Mindanao MedSupply Corp.", person: "Ramon Aquino", terms: "Net30", code: "MMS", address: "Lanang, Davao City", domain: "mindanaomedsupply.example" },
+  { name: "Davao Pharma Distributors Inc.", person: "Teresita Lim", terms: "Net30", code: "DPD", address: "Ilustre St., Davao City", domain: "davaopharma.example" },
+  { name: "Southern Health Wholesale", person: "Antonio Uy", terms: "Net60", code: "SHW", address: "Bajada, Davao City", domain: "southernhealth.example" },
+  { name: "Visayas-Mindanao Drug Trading", person: "Corazon Tan", terms: "Net30", code: "VMD", address: "Carmen, Cagayan de Oro City", domain: "vmdrugtrading.example" },
+  { name: "Prime Generics Trading", person: "Benjamin Ocampo", terms: "Net30", code: "PGT", address: "Mandaue City, Cebu", domain: "primegenerics.example" },
 ] as const;
 const CATEGORY_SUPPLIER: Record<string, number> = {
   Analgesic: 0, Antibiotic: 1, "Controlled Substance": 1,
@@ -433,7 +433,7 @@ export function buildData(passwordHash: string) {
   buildPO({ supplierIdx: 0, orderOff: -20, status: "Cancelled", lines: byS(0).slice(0, 3).map((p) => line(p, 100, "B")) });
 
   // ── Customers ────────────────────────────────────────────────────────────
-  const customers: { id: string; discountType: string }[] = [];
+  const customers: { id: string; discountType: string; name: string; idNumber: string | null }[] = [];
   const usedNames = new Set<string>();
   let scSeq = 0;
   let pwdSeq = 0;
@@ -444,11 +444,22 @@ export function buildData(passwordHash: string) {
     const discountType = weighted(["Regular", "Senior Citizen", "PWD"], [60, 27, 13]);
     const idNumber = discountType === "Senior Citizen" ? `SC-${pad(++scSeq, 6)}` : discountType === "PWD" ? `PWD-${pad(++pwdSeq, 6)}` : null;
     const id = randomUUID();
-    customers.push({ id, discountType });
+    customers.push({ id, discountType, name, idNumber });
+    const createdAt = at(-randInt(30, 110), 10);
     T.customers.push({
       id, customer_name: name, discount_type: discountType, id_number: idNumber, contact_number: phone(),
-      created_at: at(-randInt(30, 110), 10), updated_at: at(-randInt(0, 29), 10),
+      // Sample consent, recorded by a cashier when the profile was created.
+      consent_at: createdAt, consent_recorded_by: pick(cashiers).id,
+      created_at: createdAt, updated_at: at(-randInt(0, 29), 10),
     });
+  }
+  // Sample usual orders for about a third of the customers (never controlled drugs).
+  const usualChoices = products.filter((p) => !p.def.dd);
+  for (const cust of customers.slice(0, 10)) {
+    const picked = new Set<string>();
+    for (let n = randInt(1, 3); picked.size < n; ) picked.add(pick(usualChoices).id);
+    for (const productId of picked)
+      T.customer_usual_items.push({ id: randomUUID(), customer_id: cust.id, product_id: productId, quantity: pick([10, 14, 20, 30, 60]), created_at: day0 });
   }
 
   // ── Stock allocation (FEFO) ──────────────────────────────────────────────
@@ -476,6 +487,7 @@ export function buildData(passwordHash: string) {
   const cashByDayCashier = new Map<string, number>();
   const activeCashiers = new Map<number, Set<string>>();
   const receiptSeq = new Map<number, number>();
+  let paymentReferenceSeq = 0;
   const openLowAlerts = new Map<string, Row>();
   const popWeights = products.map((p) => p.def.pop);
   const qtyFor = (p: Product) =>
@@ -573,12 +585,15 @@ export function buildData(passwordHash: string) {
         id: txId, cashier_id: cashier.id, customer_id: cust?.id ?? null, transaction_date: when, status,
         gross_amount: gross, total_discount: totalDiscount, vat_amount: vat, net_amount: net,
         amount_tendered: tendered, change_amount: change, payment_method: method, void_reason: voidReason,
+        // Sample proof of payment: unique 13-digit GCash references and 6-character card approval codes.
+        payment_reference: method === "GCash" ? `100${pad(++paymentReferenceSeq, 10)}`
+          : method === "Card" ? (++paymentReferenceSeq).toString(36).toUpperCase().padStart(6, "0") : null,
         created_at: when, updated_at: when,
       });
       T.transaction_items.push(...items);
       if (isSeniorPwd) {
         T.discounts.push({ id: randomUUID(), transaction_id: txId, discount_type: "VAT Exemption", discount_rate: VAT_RATE * 100, discount_amount: vatExempt, created_at: when });
-        T.discounts.push({ id: randomUUID(), transaction_id: txId, discount_type: discountType, discount_rate: SENIOR_PWD_DISCOUNT * 100, discount_amount: scDiscount, created_at: when });
+        T.discounts.push({ id: randomUUID(), transaction_id: txId, discount_type: discountType, discount_rate: SENIOR_PWD_DISCOUNT * 100, discount_amount: scDiscount, holder_name: cust!.name, holder_id_number: cust!.idNumber, created_at: when });
       }
 
       let receiptNo: string | null = null;
@@ -673,6 +688,8 @@ export function buildData(passwordHash: string) {
   for (const p of products)
     T.products.push({
       id: p.id, sku: p.sku, product_name: p.def.name, generic_name: p.def.generic, category: p.def.cat, is_dangerous_drug: !!p.def.dd,
+      // Sample prescription tags: antibiotics, maintenance medicines and controlled drugs.
+      requires_prescription: !!p.def.dd || ["Antibiotic", "Antihypertensive", "Antidiabetic", "Cholesterol"].includes(p.def.cat),
       initial_price: p.def.initialPrice,
       wholesale_price: r2(Math.max(p.def.cost * 1.08, p.def.sellingPrice * 0.88)),
       cost_price: p.def.cost, minimum_stock_level: p.minStock,

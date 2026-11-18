@@ -16,16 +16,27 @@ import {
 } from "@/lib/product-form";
 import type { ProductItem, ProductCategory } from "@/lib/types";
 
+type ProductOptionState = {
+  pending: boolean;
+  hasData: boolean;
+  error: string;
+  onRetry: () => void;
+};
+
 export function ProductDialog({
   product,
   categories,
   suppliers,
+  categoryState,
+  supplierState,
   onClose,
   onSaved,
 }: {
   product?: ProductItem;
   categories: ProductCategory[];
   suppliers: string[];
+  categoryState?: ProductOptionState;
+  supplierState?: ProductOptionState;
   onClose: () => void;
   onSaved: (product: ProductItem) => void;
 }) {
@@ -41,6 +52,7 @@ export function ProductDialog({
           costPrice: parseProductMoney(product.cost) ?? "",
           reorder: String(product.reorder),
           isDangerousDrug: product.isDangerousDrug ?? false,
+          requiresPrescription: product.requiresPrescription ?? product.isDangerousDrug ?? false,
         }
       : emptyProductForm(),
   );
@@ -93,6 +105,7 @@ export function ProductDialog({
     } = {},
   ) => {
     const id = `${prefix}-${key}`;
+    const optionState = key === "category" ? categoryState : key === "supplier" ? supplierState : undefined;
     const errorKey = key;
     const props = {
       id,
@@ -120,7 +133,11 @@ export function ProductDialog({
           {label} {options.required ? "*" : ""}
         </label>
         {options.choices ? (
-          <SelectField {...props}>
+          <SelectField {...props}
+            optionsLoading={optionState ? optionState.pending && !optionState.hasData : undefined}
+            aria-busy={optionState?.pending}
+            optionsError={optionState?.error}
+            onRetryOptions={optionState?.onRetry}>
             <option value="">Select {label.toLowerCase()}</option>
             {[
               ...new Set([
@@ -356,15 +373,34 @@ export function ProductDialog({
                       <label className="inventory-checkbox-row full-width">
                         <input
                           type="checkbox"
-                          checked={values.isDangerousDrug}
+                          checked={values.requiresPrescription || values.isDangerousDrug}
+                          disabled={values.isDangerousDrug}
                           onChange={(event) =>
-                            update("isDangerousDrug", event.target.checked)
+                            update("requiresPrescription", event.target.checked)
                           }
+                        />
+                        <span>
+                          <strong>Prescription required (Rx)</strong>
+                          <span className="field-hint">
+                            {values.isDangerousDrug
+                              ? "Always on for dangerous drugs."
+                              : "Shows an Rx tag at the POS and reminds the cashier to check the prescription."}
+                          </span>
+                        </span>
+                      </label>
+                      <label className="inventory-checkbox-row full-width">
+                        <input
+                          type="checkbox"
+                          checked={values.isDangerousDrug}
+                          onChange={(event) => {
+                            update("isDangerousDrug", event.target.checked);
+                            if (event.target.checked) update("requiresPrescription", true);
+                          }}
                         />
                         <span>
                           <strong>Dangerous drug</strong>
                           <span className="field-hint">
-                            Requires controlled tracking.
+                            Requires controlled tracking. Also turns on "Prescription required", and keeps it out of usual orders.
                           </span>
                         </span>
                       </label>

@@ -1,7 +1,9 @@
+import { safeError } from "@/lib/feedback";
+import type { SourceState } from "@/components/custom-ui/source-state";
 import { clearTransactionSession } from "@/lib/pharmacy-store";
 import { formatDisplayDateTime } from "@/lib/business-date";
 import { createFeedbackNotifier, type Feedback } from "@/lib/feedback";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, AlertTriangle, CircleAlert, X } from "lucide-react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router as WouterRouter, useLocation } from "wouter";
@@ -53,16 +55,26 @@ function AppContent() {
     return [];
   });
 
+  const usersRequest = useRef(false);
+  const [usersSource, setUsersSource] = useState<SourceState>(() => {
+    let hasData = false;
+    try { hasData = Array.isArray(JSON.parse(localStorage.getItem("medprix_cached_users") || "null")); } catch {}
+    return { hasData, pending: true, error: "" };
+  });
+
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
     localStorage.setItem("medprix-theme", dark ? "dark" : "light");
   }, [dark]);
 
   const fetchUsers = () => {
+    if (usersRequest.current) return;
+    usersRequest.current = true;
+    setUsersSource(previous => previous.pending && !previous.error ? previous : { ...previous, pending: true, error: "" });
     fetch("/api/users", { credentials: "include" })
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
       .then((data: any[]) => {
-        if (!Array.isArray(data)) return;
+        if (!Array.isArray(data)) throw new Error("Invalid user list response.");
         const mapped: UserRecord[] = data.map((user) => {
           const name = user.fullName || user.username;
           const initials = name
@@ -90,10 +102,17 @@ function AppContent() {
           };
         });
         setUsers(mapped);
+        usersRequest.current = false;
+        setUsersSource({ hasData: true, pending: false, error: "" });
         try { localStorage.setItem("medprix_cached_users", JSON.stringify(mapped)); } catch {}
       })
-      .catch(() => {
-        // Backend offline — users list stays empty
+      .catch((failure) => {
+        usersRequest.current = false;
+        setUsersSource(previous => ({
+          ...previous,
+          pending: false,
+          error: safeError(failure, "User accounts are unavailable."),
+        }));
       });
   };
 
@@ -198,6 +217,7 @@ function AppContent() {
           users={users}
           setUsers={setUsers}
           refreshUsers={fetchUsers}
+          usersSource={usersSource}
         />
       </ErrorBoundary>
       {toast && (

@@ -47,3 +47,30 @@ export function batchAllocations(product: ProductItem, quantity: number) {
   }
   return remaining === 0 ? allocations : null;
 }
+
+/**
+ * Batches the next `quantity` units would come from, after the units already in the cart.
+ * Checkout sells earliest-expiring stock first, so the cart's units use up the earliest batches.
+ */
+export function nextSaleBatches(product: ProductItem, inCart: number, quantity: number) {
+  const all = batchAllocations(product, inCart + quantity);
+  if (!all) return null;
+  const expiry = new Map(eligible(product).map((batch) => [batch.batchNumber, batch.expiryDate]));
+  let skip = inCart;
+  const next: { batchNumber: string; quantity: number; expiryDate: string }[] = [];
+  for (const allocation of all) {
+    const used = Math.min(skip, allocation.quantity);
+    skip -= used;
+    if (allocation.quantity > used)
+      next.push({ ...allocation, quantity: allocation.quantity - used, expiryDate: expiry.get(allocation.batchNumber) ?? "" });
+  }
+  return next;
+}
+
+/** "2027-02-15" → "Feb 2027" without shifting the calendar date through local time zones. */
+export function formatExpiryMonth(date: string) {
+  const match = /^(\d{4})-(\d{2})/.exec(date);
+  if (!match) return date || "unknown";
+  return new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric", timeZone: "UTC" })
+    .format(new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, 1)));
+}

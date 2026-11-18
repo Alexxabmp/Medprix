@@ -1,3 +1,5 @@
+import { AsyncActionButton } from "@/components/custom-ui/async-action-button";
+import { PharmacyRegion, PharmacyFeedback } from "@/components/custom-ui/pharmacy-source-state";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { displayPeso } from "@/lib/currency";
 import { ModalTableDialog, ModalDataTable } from "@/components/modal-data-table";
@@ -38,7 +40,7 @@ const formatPeso = (amount: number) =>
 
 export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
   const [activeModal, setActiveModal] = useState<"sales" | "drawer" | "transactions" | "till" | null>(null);
-  const { receipts, loading: isLoading } = usePharmacyTransactions();
+  const { receipts } = usePharmacyTransactions();
   const { date: shiftDate, selectDate } = useBusinessDate();
   const shiftReceipts = recordsOnDate(receipts, shiftDate);
   const dateLabel = formatCalendarDate(shiftDate);
@@ -86,6 +88,8 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
         }
       />
 
+      <PharmacyFeedback source="transactions" label="shift receipts" />
+      <PharmacyRegion source="transactions" label="Shift receipts">
       {/* 4 Feature Boxes Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {/* 1. Today's Shift Sales */}
@@ -240,7 +244,7 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
               <div style={{ background: "hsl(var(--surface-soft))", border: "1px solid hsl(var(--border))", borderRadius: 14, padding: "14px 16px" }}>
                 <span className="muted" style={{ fontSize: 12, display: "block" }}>Total shift sales</span>
                 <strong style={{ display: "block", fontSize: 20, marginTop: 4, color: "hsl(var(--foreground))", letterSpacing: "-.04em" }}>{formatPeso(totalSales)}</strong>
-                <span style={{ color: "#34C759", fontSize: 12, fontWeight: 600 }}>Across all payment modes</span>
+                <span style={{ color: "var(--success-text)", fontSize: 12, fontWeight: 600 }}>Across all payment modes</span>
               </div>
               <div style={{ background: "hsl(var(--surface-soft))", border: "1px solid hsl(var(--border))", borderRadius: 14, padding: "14px 16px" }}>
                 <span className="muted" style={{ fontSize: 12, display: "block" }}>Transactions</span>
@@ -596,23 +600,20 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                 </div>
               </div>
               <div className="modal-actions" style={{ marginTop: 16, display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                <button
+                <AsyncActionButton
                   type="button"
                   className="button dark"
-                  onClick={async () => {
-                    try {
-                      await printReceipt(selectedReceipt);
-                    } catch {
-                      onToast("Could not prepare the receipt. Please try printing again.");
-                    }
-                  }}>
+                  pendingLabel={"Preparing receipt\u2026"}
+                  onAction={() => printReceipt(selectedReceipt)}
+                  onError={() => onToast("Could not prepare the receipt. Please try printing again.")}>
                   <Download size={13} /> Re-print Receipt
-                </button>
+                </AsyncActionButton>
               </div>
             </div>
           </div>,
           document.body,
         )}
+      </PharmacyRegion>
     </div>
   );
 }

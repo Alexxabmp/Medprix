@@ -1,3 +1,5 @@
+import { ReadDialog, useReadDialog } from "./read-dialog";
+import { SourceTableBody, type SourceState } from "./custom-ui/source-state";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { PageTableValue, PageTableScroll } from "@/components/page-table-context";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
@@ -9,7 +11,6 @@ import {
   type DeliveryReceipt,
   type DeliveryReceiptSummary,
 } from "@/lib/wholesale-api";
-import { safeError } from "@/lib/feedback";
 
 const PAGE_SIZE = 15;
 
@@ -17,14 +18,16 @@ export function WholesaleDeliveryReceipts({
   receipts,
   search,
   disabled,
+  source,
 }: {
   receipts: DeliveryReceiptSummary[];
   search: string;
   disabled: boolean;
+  source: SourceState;
 }) {
-  const [receipt, setReceipt] = useState<DeliveryReceipt | null>(null);
-  const [opening, setOpening] = useState(false);
-  const [error, setError] = useState("");
+  const read = useReadDialog<DeliveryReceipt>();
+  const [printing, setPrinting] = useState(false);
+  const opening = read.state?.pending ?? false;
   const [page, setPage] = useState(1);
 
   useEffect(() => {
@@ -44,11 +47,6 @@ export function WholesaleDeliveryReceipts({
   );
   return (
     <>
-      {error && (
-        <div role="alert" className="inline-error">
-          {error}
-        </div>
-      )}
       <PageTableScroll><table data-page-table="wholesale-receipts" className="data-table">
         <thead>
           <tr>
@@ -58,7 +56,7 @@ export function WholesaleDeliveryReceipts({
             <th className="table-action-head">Action</th>
           </tr>
         </thead>
-        <tbody>
+        <SourceTableBody status={source} label="Delivery receipts" colSpan={4}>
           {paginated.map((row) => (
             <tr key={row.id}>
               <td>{row.receiptNumber}</td>
@@ -72,21 +70,7 @@ export function WholesaleDeliveryReceipts({
                     aria-label="View receipt"
 
                     disabled={disabled || opening}
-                    onClick={async () => {
-                      setOpening(true);
-                      setError("");
-                      try {
-                        setReceipt(
-                          await wholesaleGet<DeliveryReceipt>(
-                            "/delivery-receipts/" + row.id,
-                          ),
-                        );
-                      } catch (failure) {
-                        setError(safeError(failure));
-                      } finally {
-                        setOpening(false);
-                      }
-                    }}
+                    onClick={() => read.open("Delivery receipt details", () => wholesaleGet<DeliveryReceipt>("/delivery-receipts/" + row.id))}
                   >
                     <Eye size={13} />
                   </button></AppTooltip>
@@ -103,7 +87,7 @@ export function WholesaleDeliveryReceipts({
               </TableEmptyState>
             </tr>
           )}
-        </tbody>
+        </SourceTableBody>
       </table></PageTableScroll>
       <div className="table-pagination" role="navigation" aria-label="Delivery receipts pagination">
         <span className="muted">
@@ -126,9 +110,9 @@ export function WholesaleDeliveryReceipts({
           Next
         </button>
       </div>
-      {receipt && (
-        <DeliveryReceiptView receipt={receipt} close={() => setReceipt(null)} />
-      )}
+      <ReadDialog task={read} variant="form" busy={printing} description={receipt => receipt.receiptNumber}>
+        {receipt => <DeliveryReceiptView receipt={receipt} close={read.close} embedded onBusyChange={setPrinting} />}
+      </ReadDialog>
     </>
   );
 }

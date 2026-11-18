@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   wholesaleGet,
+  getCachedWholesale,
   type WholesaleReceivable,
   type WholesalePageResult,
 } from "@/lib/wholesale-api";
@@ -38,8 +39,13 @@ export function useWholesalePages<T>(
     total: number;
     items: T[];
     loading: boolean;
+    hasData: boolean;
+    pending: boolean;
     error: string;
-  }>({ key: "", page: 1, total: 0, items: [], loading: true, error: "" });
+  }>(() => {
+    const cached = getCachedWholesale<WholesalePageResult<T>>(endpoint + "?search=" + encodeURIComponent(search) + "&page=1&status=" + status);
+    return { key, page: 1, total: cached?.total ?? 0, items: cached?.items.slice(0, 15) ?? [], loading: !cached, hasData: cached !== null, pending: true, error: "" };
+  });
   const refresh = useCallback(async () => {
     setRevision((value) => value + 1);
   }, []);
@@ -49,7 +55,8 @@ export function useWholesalePages<T>(
     // Refresh the current page in place; only a different query/page needs a placeholder.
     setResult((previous) => ({
       ...previous,
-      loading: previous.key !== key || previous.page !== page,
+      loading: !previous.hasData || previous.key !== key || previous.page !== page,
+      pending: true,
       error: "",
     }));
     const path = (block: number) =>
@@ -89,6 +96,7 @@ export function useWholesalePages<T>(
           total: first.total,
           items,
           loading: false,
+          hasData: true, pending: false,
           error: "",
         });
     }
@@ -103,6 +111,7 @@ export function useWholesalePages<T>(
               ? previous.items
               : [],
           loading: false,
+          hasData: previous.key === key && previous.page === page && previous.hasData, pending: false,
           error: safeError(error),
         }));
     });
@@ -115,6 +124,8 @@ export function useWholesalePages<T>(
     items: current ? result.items : [],
     total: current ? result.total : 0,
     loading: !current || result.loading,
+    hasData: current && result.hasData,
+    pending: !current || result.pending,
     error: current ? result.error : "",
     page,
     pages: Math.max(1, Math.ceil(result.total / 15)),

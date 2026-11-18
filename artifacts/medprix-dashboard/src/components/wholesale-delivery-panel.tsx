@@ -1,4 +1,5 @@
-import { useLayoutEffect, useId, useState } from "react";
+import { WholesaleStatusPill } from "./wholesale-status-pill";
+import { useLayoutEffect, useId, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import {
   pharmacyDate,
@@ -25,6 +26,7 @@ export function WholesaleDeliveryPanel({
   mutate,
   viewReceipt,
   initialAction,
+  initialHistoryOpen = false,
   showTotal = true,
   onTaskChange,
 }: {
@@ -34,6 +36,7 @@ export function WholesaleDeliveryPanel({
   mutate: (path: string, method: string, body: unknown) => void;
   viewReceipt: () => void;
   initialAction?: "dispatch" | "deliver" | "schedule";
+  initialHistoryOpen?: boolean;
   showTotal?: boolean;
   onTaskChange?: (active: boolean) => void;
 }) {
@@ -43,7 +46,11 @@ export function WholesaleDeliveryPanel({
     initialAction === "deliver" ? wholesaleManilaInput() : "",
   );
   const [validation, setValidation] = useState("");
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(initialHistoryOpen);
+  const historyRef = useRef<HTMLDetailsElement>(null);
+  useLayoutEffect(() => {
+    if (initialHistoryOpen) historyRef.current?.focus();
+  }, [initialHistoryOpen]);
   const active = detail.attempts.find((item) =>
     ["Scheduled", "InTransit"].includes(item.status),
   );
@@ -77,7 +84,7 @@ export function WholesaleDeliveryPanel({
                     ? "Record failed delivery"
                     : "Cancel delivery attempt",
           variant: action === "deliver" ? "compact-table" : "form",
-          back: () => {
+          back: action === initialAction ? undefined : () => {
             setAction("");
             setValidation("");
           },
@@ -98,15 +105,9 @@ export function WholesaleDeliveryPanel({
       {!action && (
         <dl className="wholesale-review-summary">
           <div>
-            <dt>Status</dt>
+            <dt>Delivery status</dt>
             <dd>
-              {detail.receipt
-                ? "Delivered"
-                : active?.status === "InTransit"
-                  ? "In transit"
-                  : active?.status === "Scheduled"
-                    ? "Scheduled"
-                    : "Needs scheduling"}
+              <WholesaleStatusPill status={detail.receipt ? "Completed" : active?.status ?? "Ready"} />
             </dd>
           </div>
           {showTotal && (
@@ -414,9 +415,15 @@ export function WholesaleDeliveryPanel({
           </button>
         </ModalTableFooter>
       )}
+      {initialHistoryOpen && !detail.attempts.length && (
+        <p className="muted">No delivery attempts have been recorded yet.</p>
+      )}
       {!!detail.attempts.length && (
         <details
+          ref={historyRef}
+          tabIndex={-1}
           className="wholesale-review-overrides"
+          open={historyOpen}
           onToggle={(event) => setHistoryOpen(event.currentTarget.open)}
         >
           <summary>
@@ -430,7 +437,7 @@ export function WholesaleDeliveryPanel({
                   <tr>
                     <th>Scheduled date</th>
                     <th>Dispatched</th>
-                    <th>Status</th>
+                    <th>Delivery status</th>
                     <th>Notes</th>
                   </tr>
                 </thead>
@@ -445,12 +452,8 @@ export function WholesaleDeliveryPanel({
                           ? wholesaleDateTime(item.dispatchedAt)
                           : "—"}
                       </td>
-                      <td data-label="Status">
-                        {item.status === "InTransit"
-                          ? "In transit"
-                          : item.status === "Completed"
-                            ? "Delivered"
-                            : item.status}
+                      <td data-label="Delivery status">
+                        <WholesaleStatusPill status={item.status} />
                       </td>
                       <td data-label="Notes">{item.notes || "—"}</td>
                     </tr>

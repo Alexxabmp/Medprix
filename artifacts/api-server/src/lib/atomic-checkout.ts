@@ -4,6 +4,12 @@ import {
   pharmacyDate,
   calculateRetailLine,
   allocateRetailAmount,
+  cleanPaymentReference,
+  paymentReferenceError,
+  cleanDiscountHolderName,
+  cleanDiscountHolderId,
+  discountHolderNameError,
+  discountHolderIdError,
 } from "@workspace/api-zod";
 import { PaymentError } from "./cashier-payments";
 import { writeAuditEvent } from "./audit-events";
@@ -105,12 +111,34 @@ function normalize(body: any, actor: CheckoutActor) {
     body.dateTime.length > 100
   )
     throw new CheckoutError(400, "A checkout date is required.");
+  // GCash / QR and Card sales must carry proof of payment; Cash sales never do.
+  const paymentReference = cleanPaymentReference(body.payment, body.paymentReference);
+  const referenceError = paymentReferenceError(body.payment, paymentReference);
+  if (referenceError)
+    throw new CheckoutError(400, referenceError, { code: "payment_reference" });
+  // Senior/PWD sales record the name and ID number shown on the ID (BIR record of discounted sales).
+  let discountHolder: { name: string; idNumber: string } | null = null;
+  if (body.discountType !== "None") {
+    const name = cleanDiscountHolderName(body.discountHolderName);
+    const idNumber = cleanDiscountHolderId(body.discountHolderId);
+    const holderError = discountHolderNameError(name) ?? discountHolderIdError(body.discountType, idNumber);
+    if (holderError)
+      throw new CheckoutError(400, holderError, { code: "discount_holder" });
+    discountHolder = { name, idNumber };
+  }
+  // Optional returning customer (Phase 2a); walk-in sales send none.
+  const customerId = body.customerId === undefined || body.customerId === null || body.customerId === "" ? null : String(body.customerId);
+  if (customerId && !uuid.test(customerId))
+    throw new CheckoutError(400, "The selected customer is not valid. Remove them from the sale and try again.", { code: "customer" });
   return {
     version: 3,
     userId: actor.id,
     dateTime: body.dateTime,
     payment: body.payment,
+    paymentReference: paymentReference || null,
     discountType: body.discountType,
+    discountHolder,
+    customerId,
     amountReceived: cents(body.amountReceived).toString(),
     quotedTotal: cents(body.total).toString(),
     items,
@@ -322,6 +350,28 @@ export function createAtomicCheckout(transaction: Transaction, read: Query) {
           400,
           "Cash tendered is less than the total amount due.",
         );
+      if (payload.customerId) {
+        // Before a receipt number is taken, like the reference check below.
+        const [customer] = (await query("SELECT id FROM customers WHERE id=$1", [payload.customerId])).rows;
+        if (!customer)
+          throw new CheckoutError(409, "This customer's profile was deleted. Remove the customer from the sale and try again.", { code: "customer_missing" });
+      }
+      if (payload.paymentReference) {
+        // Checked before a receipt number is taken, so a rejected reference never leaves a gap in TRX numbers.
+        // Runs under the retail numbering lock, so two sales cannot claim the same reference at once.
+        const [used] = (
+          await query(
+            "SELECT r.receipt_number FROM transactions t LEFT JOIN receipts r ON r.transaction_id=t.id WHERE t.payment_method=$1 AND t.payment_reference=$2 LIMIT 1",
+            [payload.payment, payload.paymentReference],
+          )
+        ).rows;
+        if (used)
+          throw new CheckoutError(
+            409,
+            `This ${payload.payment === "Card" ? "approval code" : "reference number"} was already used on ${used.receipt_number ?? "another sale"}. Check the number and try again.`,
+            { code: "payment_reference_used" },
+          );
+      }
       const decimal = (n: bigint) =>
         n / 100n + "." + String(n % 100n).padStart(2, "0");
       // One canonical numbering authority under the transaction-scoped numbering lock.
@@ -359,8 +409,8 @@ export function createAtomicCheckout(transaction: Transaction, read: Query) {
           "Receipt numbering needs administrator review.",
         );
       await query(
-        `INSERT INTO transactions(id,cashier_id,gross_amount,total_discount,vat_amount,net_amount,amount_tendered,change_amount,payment_method,checkout_payload,cashier_name_at_sale,calculation_version)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::text::jsonb,$11,'retail-inclusive-v1')`,
+        `INSERT INTO transactions(id,cashier_id,gross_amount,total_discount,vat_amount,net_amount,amount_tendered,change_amount,payment_method,checkout_payload,cashier_name_at_sale,calculation_version,payment_reference,customer_id)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::text::jsonb,$11,'retail-inclusive-v1',$12,$13)`,
         [
           key,
           actor.id,
@@ -373,6 +423,8 @@ export function createAtomicCheckout(transaction: Transaction, read: Query) {
           payload.payment,
           JSON.stringify(payload),
           cashier.full_name.trim(),
+          payload.paymentReference,
+          payload.customerId,
         ],
       );
       for (const allocation of allocations) {
@@ -413,8 +465,8 @@ export function createAtomicCheckout(transaction: Transaction, read: Query) {
       }
       if (payload.discountType !== "None")
         await query(
-          "INSERT INTO discounts(transaction_id,discount_type,discount_rate,discount_amount) VALUES($1,$2,20,$3)",
-          [key, payload.discountType, decimal(discount)],
+          "INSERT INTO discounts(transaction_id,discount_type,discount_rate,discount_amount,holder_name,holder_id_number) VALUES($1,$2,20,$3,$4,$5)",
+          [key, payload.discountType, decimal(discount), payload.discountHolder?.name ?? null, payload.discountHolder?.idNumber ?? null],
         );
       await query(
         "INSERT INTO receipts(transaction_id,receipt_number,merchant_name_at_issue) VALUES($1,$2,$3)",

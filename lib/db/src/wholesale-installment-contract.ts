@@ -7,9 +7,10 @@ export async function assertWholesaleInstallmentsReady(
   namespace: string,
   existingTablesOnly: boolean,
   issues: string[],
+  paymentPlanType = "payment_plan_enum",
 ) {
   const columns = [
-    ["wholesale_orders", "payment_plan", "wholesale_payment_plan_enum", false, null],
+    ["wholesale_orders", "payment_plan", paymentPlanType, false, null],
     [
       "delivery_schedules",
       "dispatched_at",
@@ -35,7 +36,7 @@ export async function assertWholesaleInstallmentsReady(
     [
       "wholesale_installment_schedules",
       "payment_plan",
-      "wholesale_payment_plan_enum",
+      paymentPlanType,
       true,
       null,
     ],
@@ -100,9 +101,9 @@ export async function assertWholesaleInstallmentsReady(
     )
       issues.push(`missing/incompatible installment column ${table}.${name}`);
   }
-  const planEnum = actual.enums.find((row) => row.name === "wholesale_payment_plan_enum");
+  const planEnum = actual.enums.find((row) => row.name === paymentPlanType);
   if (!planEnum || JSON.stringify(planEnum.labels) !== JSON.stringify(["Net30", "Net60"]))
-    issues.push("missing/incompatible enum wholesale_payment_plan_enum");
+    issues.push(`missing/incompatible enum ${paymentPlanType}`);
   const constraints = [
     ["wholesale_orders", "wholesale_confirmed_agreement_check", "c"],
     ["accounts_receivable", "wholesale_ar_balance_equation_check", "c"],

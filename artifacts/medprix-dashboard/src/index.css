@@ -3,6 +3,8 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  /* Green text (discounts, savings, change due): passes 4.5:1 contrast on white. */
+  --success-text: #1b7a40;
   --background: 0 0% 100%;
   --foreground: 240 6% 9%;
   --surface: 0 0% 100%;
@@ -31,6 +33,7 @@
 }
 
 .dark {
+  --success-text: #30d158;
   --background: 0 0% 7%;
   --foreground: 240 10% 96%;
   --surface: 240 4% 11%;
@@ -131,6 +134,104 @@ textarea {
   font-weight: 700;
   text-align: center;
   appearance: textfield;
+}
+
+/* POS quantity entry: − [qty] + */
+.pos-quantity-stepper {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 4px;
+  height: 39px;
+  padding: 0 3px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 11px;
+  background: hsl(var(--surface));
+}
+
+.pos-quantity-stepper .icon-button {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+}
+
+.pos-quantity-stepper .icon-button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.pos-quantity-input {
+  width: 100%;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: hsl(var(--foreground));
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}
+
+/* Typed quantity went above available stock: brief red flash while the box resets. */
+@keyframes quantity-flash {
+  0%,
+  35% {
+    background: hsl(var(--danger) / 0.18);
+    box-shadow: 0 0 0 2px hsl(var(--danger));
+    color: hsl(var(--danger));
+  }
+  100% {
+    background: transparent;
+    box-shadow: 0 0 0 2px transparent;
+  }
+}
+
+@keyframes quantity-flash-static {
+  0%,
+  100% {
+    background: hsl(var(--danger) / 0.18);
+    box-shadow: 0 0 0 2px hsl(var(--danger));
+    color: hsl(var(--danger));
+  }
+}
+
+.quantity-flash {
+  animation: quantity-flash 1s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quantity-flash {
+    animation: quantity-flash-static 1s steps(1);
+  }
+}
+
+/* Stock line under the POS product bar. */
+.pos-product-bar > .pos-stock-info {
+  grid-column: 1 / -1;
+  margin: -4px 0 0;
+  color: hsl(var(--muted));
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.pos-stock-info strong {
+  color: hsl(var(--foreground));
+  font-weight: 700;
+}
+
+/* Same amber as the app's existing warning pills. */
+.pos-stock-info.is-low strong {
+  color: #8b4500;
+}
+
+.dark .pos-stock-info.is-low strong {
+  color: #ff9f0a;
+}
+
+.pos-stock-info.is-unavailable {
+  color: hsl(var(--danger));
+  font-weight: 600;
 }
 
 .cart-quantity-input::-webkit-inner-spin-button,
@@ -467,7 +568,7 @@ a {
   flex: flex-col;
   flex-direction: items-center;
   font-size: var(--text-xs);
-  color: #34c759;
+  color: var(--success-text);
   letter-spacing: 0;
   font-family: var(--app-font-sans);
   font-weight: 600;
@@ -694,6 +795,16 @@ a {
   background: hsl(var(--surface-soft));
   color: hsl(var(--muted));
   border: 1px solid hsl(var(--border));
+}
+
+.pill.info {
+  background: #e8f1ff;
+  color: #2457a7;
+}
+
+.dark .pill.info {
+  background: #1c3150;
+  color: #91baff;
 }
 
 .reports-grid {
@@ -975,7 +1086,7 @@ a {
 }
 
 .summary-box small {
-  color: #34c759;
+  color: var(--success-text);
   font-weight: 600;
   font-size: var(--text-xs);
 }
@@ -1753,7 +1864,7 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
 
 .pos-product-bar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 90px auto;
+  grid-template-columns: minmax(0, 1fr) 140px auto;
   gap: 12px;
   align-items: end;
   padding: 14px 16px;
@@ -4105,4 +4216,823 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
   .summary-strip.wholesale-summary-strip {
     grid-template-columns: 1fr;
   }
+}
+
+/* POS order summary breakdown (labels come from lib/retail-summary.ts). */
+.pos-summary-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: hsl(var(--muted));
+}
+
+.pos-summary-line .pos-summary-strong {
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
+.pos-summary-line.is-deduction {
+  color: var(--success-text);
+  font-weight: 700;
+}
+
+/* Proof of payment field (GCash / QR reference no. or card approval code). */
+.payment-reference-field {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  background: hsl(var(--surface));
+}
+
+.payment-reference-field label {
+  font-size: 12px;
+  font-weight: 600;
+  color: hsl(var(--muted));
+}
+
+.payment-reference-field input {
+  width: 100%;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  background: hsl(var(--surface-soft));
+  color: hsl(var(--foreground));
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.payment-reference-field input[aria-invalid="true"] {
+  border-color: hsl(var(--danger));
+}
+
+.payment-reference-hint {
+  margin: 0;
+  color: hsl(var(--muted));
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.payment-reference-hint.is-error {
+  color: hsl(var(--danger));
+  font-weight: 600;
+}
+
+.payment-reference-preview {
+  font-size: 15px;
+  letter-spacing: 0.06em;
+  color: hsl(var(--foreground));
+}
+
+/* Senior/PWD ID details (shown only when a 20% discount is chosen). */
+.discount-holder-field {
+  margin: 0;
+  display: grid;
+  gap: 10px;
+  padding: 10px 14px 14px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  background: hsl(var(--surface));
+}
+
+.discount-holder-field legend {
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: hsl(var(--muted));
+}
+
+.discount-holder-input {
+  display: grid;
+  gap: 4px;
+}
+
+.discount-holder-input label {
+  font-size: 12px;
+  font-weight: 600;
+  color: hsl(var(--muted));
+}
+
+.discount-holder-input input {
+  width: 100%;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  background: hsl(var(--surface-soft));
+  color: hsl(var(--foreground));
+  font-size: 14px;
+}
+
+.discount-holder-input input[aria-invalid="true"] {
+  border-color: hsl(var(--danger));
+}
+
+.discount-holder-error {
+  color: hsl(var(--danger));
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.discount-holder-hint {
+  margin: 0;
+  color: hsl(var(--muted));
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+/* Screen-reader-only text. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── Returning customers (Phase 2a) ─────────────────────────────────────── */
+.pos-customer-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  padding: 12px 16px;
+  border: 1px dashed hsl(var(--border));
+  border-radius: 14px;
+  background: hsl(var(--surface));
+}
+
+.pos-customer-bar.is-selected {
+  border-style: solid;
+}
+
+.customer-avatar {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #e8f1ff;
+  color: #0a4fb5;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.customer-avatar.is-empty {
+  background: hsl(var(--surface-soft));
+  color: hsl(var(--muted));
+}
+
+.dark .customer-avatar:not(.is-empty) {
+  background: #12305c;
+  color: #cfe1ff;
+}
+
+.pos-customer-text {
+  display: grid;
+  gap: 2px;
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.pos-customer-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.pos-customer-detail {
+  color: hsl(var(--muted));
+  font-size: 13px;
+}
+
+.pos-customer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pos-customer-actions .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  font-size: 13px;
+}
+
+.customer-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  background: #f0f0f3;
+  color: #4a4a52;
+}
+
+.customer-badge.is-senior {
+  background: #fff1d6;
+  color: #8b4500;
+}
+
+.customer-badge.is-pwd {
+  background: #e8f1ff;
+  color: #0a4fb5;
+}
+
+.dark .customer-badge {
+  background: hsl(var(--surface-soft));
+  color: hsl(var(--foreground));
+}
+
+.pos-usual-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #fff7e8;
+  color: #6b3a00;
+  font-size: 13px;
+}
+
+.dark .pos-usual-notice {
+  background: #3a2a10;
+  color: #ffd9a0;
+}
+
+.pos-usual-notice span {
+  flex: 1;
+}
+
+.pos-usual-notice button {
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.pos-usual-notice button[aria-label] {
+  text-decoration: none;
+}
+
+.pos-save-usual {
+  min-height: 32px;
+  font-size: 12px;
+}
+
+.discount-holder-save {
+  justify-self: start;
+  min-height: 32px;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: hsl(var(--foreground));
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Find customer dialog */
+.find-customer-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  margin-top: 12px;
+  padding: 0 12px;
+  border: 2px solid hsl(var(--foreground));
+  border-radius: 11px;
+  color: hsl(var(--muted));
+}
+
+/* The surrounding box is the field, so the dialog's own input box is switched off here
+   (same approach as .modal .search-wrap input, which also has to beat the general .modal input rule). */
+.modal .find-customer-search input,
+.modal .find-customer-search input:focus {
+  flex: 1;
+  height: 100% !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  color: hsl(var(--foreground));
+  font-size: 15px !important;
+}
+
+.find-customer-count,
+.find-customer-hint {
+  margin: 8px 4px 4px;
+  color: hsl(var(--muted));
+  font-size: 12px;
+}
+
+.find-customer-results {
+  display: grid;
+  gap: 2px;
+  max-height: 340px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.find-customer-result {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 60px;
+  padding: 10px;
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  color: hsl(var(--foreground));
+  text-align: left;
+  cursor: pointer;
+}
+
+.find-customer-result.is-active {
+  background: hsl(var(--surface-soft));
+  outline: 2px solid hsl(var(--border));
+}
+
+.find-customer-text {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.find-customer-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.find-customer-detail {
+  color: hsl(var(--muted));
+  font-size: 13px;
+}
+
+.find-customer-usual {
+  color: hsl(var(--muted));
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.find-customer-empty {
+  padding: 14px 10px;
+  color: hsl(var(--muted));
+  font-size: 14px;
+}
+
+.find-customer-new {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 8px;
+  padding: 10px;
+  border: 0;
+  border-top: 1px solid hsl(var(--border));
+  background: none;
+  color: hsl(var(--foreground));
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* New customer dialog */
+.new-customer-form {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.customer-field {
+  display: grid;
+  gap: 5px;
+}
+
+.customer-field label,
+.customer-field-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: hsl(var(--muted));
+}
+
+.customer-field-optional {
+  font-weight: 500;
+}
+
+.customer-field input {
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  background: hsl(var(--surface-soft));
+  color: hsl(var(--foreground));
+  font-size: 14px;
+}
+
+.customer-field input[aria-invalid="true"] {
+  border-color: hsl(var(--danger));
+}
+
+.customer-field-error {
+  color: hsl(var(--danger));
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.customer-field-note {
+  margin: 0;
+  color: hsl(var(--muted));
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.customer-discount-group {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.customer-discount-group .button {
+  justify-content: center;
+  min-height: 40px;
+  font-size: 13px;
+}
+
+.usual-lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+}
+
+.usual-lines li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 8px 12px;
+  font-size: 14px;
+}
+
+.usual-lines li + li {
+  border-top: 1px solid hsl(var(--border));
+}
+
+.usual-line-name {
+  flex: 1;
+  font-weight: 600;
+}
+
+.usual-line-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 8px;
+  background: hsl(var(--surface-soft));
+}
+
+.usual-line-stepper span {
+  min-width: 30px;
+  text-align: center;
+  font-weight: 700;
+}
+
+.usual-line-stepper button,
+.usual-line-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 6px;
+  background: hsl(var(--surface));
+  color: hsl(var(--foreground));
+  cursor: pointer;
+}
+
+.usual-line-remove {
+  background: none;
+  color: hsl(var(--muted));
+}
+
+.usual-line-stepper button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.usual-lines.is-readonly {
+  margin-top: 12px;
+}
+
+.customer-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: hsl(var(--surface-soft));
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.customer-consent input {
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  flex: none;
+}
+
+.usual-choice-actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.usual-choice-actions .button {
+  justify-content: center;
+  min-height: 44px;
+}
+
+/* ── Customer profile panel (Phase 2b) ──────────────────────────────────── */
+.customer-profile-backdrop {
+  justify-content: flex-end;
+  align-items: stretch;
+  padding: 0;
+}
+
+.customer-profile-panel {
+  width: min(460px, 100%);
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 24px;
+  overflow-y: auto;
+  background: hsl(var(--surface));
+  color: hsl(var(--foreground));
+  box-shadow: -12px 0 40px rgba(0, 0, 0, 0.12);
+}
+
+.customer-profile-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.customer-avatar.is-large {
+  width: 48px;
+  height: 48px;
+  font-size: 16px;
+}
+
+.customer-profile-title {
+  display: grid;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.customer-profile-title h2 {
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: -0.02em;
+}
+
+.customer-profile-title span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  color: hsl(var(--muted));
+  font-size: 13px;
+}
+
+.customer-profile-section {
+  display: grid;
+  gap: 8px;
+}
+
+.customer-profile-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.customer-profile-section-head h3 {
+  margin: 0;
+  color: hsl(var(--muted));
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.text-button {
+  min-height: 32px;
+  padding: 4px 6px;
+  border: 0;
+  background: none;
+  color: hsl(var(--foreground));
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.customer-profile-details {
+  margin: 0;
+  padding: 2px 14px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  font-size: 14px;
+}
+
+.customer-profile-details div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+}
+
+.customer-profile-details div + div {
+  border-top: 1px solid hsl(var(--border));
+}
+
+.customer-profile-details dt {
+  color: hsl(var(--muted));
+}
+
+.customer-profile-details dd {
+  margin: 0;
+  text-align: right;
+}
+
+.customer-profile-details dd.is-id {
+  letter-spacing: 0.04em;
+}
+
+.customer-profile-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.usual-line-add {
+  padding: 8px 10px !important;
+}
+
+.usual-line-add input {
+  width: 100%;
+  height: 36px;
+  box-sizing: border-box;
+  padding: 0 10px;
+  border: 1px dashed hsl(var(--border));
+  border-radius: 10px;
+  background: none;
+  color: hsl(var(--foreground));
+  font-size: 14px;
+}
+
+.usual-add-results {
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+}
+
+.usual-add-results button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: hsl(var(--foreground));
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.usual-add-results button:hover,
+.usual-add-results button:focus-visible {
+  background: hsl(var(--surface-soft));
+}
+
+.customer-profile-footer {
+  display: grid;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+.button.danger-outline {
+  justify-content: center;
+  min-height: 44px;
+  border: 1px solid #f2b8b2;
+  background: hsl(var(--surface));
+  color: #b42318;
+}
+
+.dark .button.danger-outline {
+  border-color: #7a2a24;
+  color: #ff8a80;
+}
+
+.customer-delete-confirm {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid #f2b8b2;
+  border-radius: 12px;
+  background: #fff5f4;
+  font-size: 14px;
+}
+
+.dark .customer-delete-confirm {
+  background: #2a1513;
+  border-color: #7a2a24;
+}
+
+.customer-delete-confirm p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ── Prescription tag (Phase 2c) ────────────────────────────────────────── */
+.rx-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border: 1px solid #c9dcf7;
+  border-radius: 999px;
+  color: #0a4fb5;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  vertical-align: middle;
+}
+
+.dark .rx-tag {
+  border-color: #2a4a7a;
+  color: #9cc2ff;
+}
+
+.pos-rx-reminder {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #eef4fe;
+  color: #0a3d8a;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.dark .pos-rx-reminder {
+  background: #12233d;
+  color: #cfe1ff;
 }

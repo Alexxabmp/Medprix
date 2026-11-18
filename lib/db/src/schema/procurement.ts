@@ -14,6 +14,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { money } from "./_columns";
+import { paymentPlanEnum } from "./payment-plan";
 import { productsTable } from "./inventory";
 
 // ─── Enums ───────────────────────────────────────────────────────────────────
@@ -41,7 +42,7 @@ export const suppliersTable = pgTable("suppliers", {
   contactNumber: varchar("contact_number", { length: 50 }),
   email: varchar("email", { length: 255 }),
   address: text("address"),
-  paymentTerms: varchar("payment_terms", { length: 100 }),
+  paymentTerms: paymentPlanEnum("payment_terms").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

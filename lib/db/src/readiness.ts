@@ -42,8 +42,13 @@ export class SchemaReadinessError extends Error {
     this.name = "SchemaReadinessError";
   }
 }
-export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | "cashier" | "legacy-runtime" | "audit-runtime" | "identifier-runtime" | "pre-retail-runtime" | "pre-retirement-runtime" | "pre-delivery-runtime" | "pre-wholesale-runtime" | "wholesale-draft-runtime" | "wholesale-reservation-runtime" | "wholesale-fulfillment-runtime" | "wholesale-collections-runtime" | "pre-category-runtime" | "runtime" = "runtime", namespace = "public", existingTablesOnly = false) {
-  const categoryPricing = scope === "runtime";
+export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | "cashier" | "legacy-runtime" | "audit-runtime" | "identifier-runtime" | "pre-retail-runtime" | "pre-retirement-runtime" | "pre-delivery-runtime" | "pre-wholesale-runtime" | "wholesale-draft-runtime" | "wholesale-reservation-runtime" | "wholesale-fulfillment-runtime" | "wholesale-collections-runtime" | "pre-category-runtime" | "pre-payment-reference-runtime" | "pre-discount-holder-runtime" | "pre-returning-customer-runtime" | "pre-prescription-runtime" | "pre-payment-plan-runtime" | "runtime" = "runtime", namespace = "public", existingTablesOnly = false) {
+  const sharedPaymentPlan = scope === "runtime";
+  const prescriptions = sharedPaymentPlan || scope === "pre-payment-plan-runtime";
+  const returningCustomers = prescriptions || scope === "pre-prescription-runtime";
+  const discountHolders = returningCustomers || scope === "pre-returning-customer-runtime";
+  const paymentReferences = discountHolders || scope === "pre-discount-holder-runtime";
+  const categoryPricing = paymentReferences || scope === "pre-payment-reference-runtime";
   const installments = categoryPricing || scope === "pre-category-runtime";
   const collections = installments || scope === "wholesale-collections-runtime";
   const fulfillment = collections || scope === "wholesale-fulfillment-runtime";
@@ -52,7 +57,7 @@ export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | 
   const calendar = wholesale || scope === "pre-wholesale-runtime";
   const retiredSales = calendar || scope === "pre-delivery-runtime";
   const retail = retiredSales || scope === "pre-retirement-runtime";
-  if (["pre-retail-runtime", "pre-retirement-runtime", "pre-delivery-runtime", "pre-wholesale-runtime", "wholesale-draft-runtime", "wholesale-reservation-runtime", "wholesale-fulfillment-runtime", "wholesale-collections-runtime", "pre-category-runtime"].includes(scope)) scope = "runtime";
+  if (["pre-retail-runtime", "pre-retirement-runtime", "pre-delivery-runtime", "pre-wholesale-runtime", "wholesale-draft-runtime", "wholesale-reservation-runtime", "wholesale-fulfillment-runtime", "wholesale-collections-runtime", "pre-category-runtime", "pre-payment-reference-runtime", "pre-discount-holder-runtime", "pre-returning-customer-runtime", "pre-prescription-runtime", "pre-payment-plan-runtime"].includes(scope)) scope = "runtime";
   const actual = await inspectSchema(query, namespace);
   const issues: string[] = [];
   const normalize = (v: unknown) => typeof v === "string" ? v.replaceAll(`"${namespace}".`, "public.").replaceAll(`${namespace}.`, "public.") : v;
@@ -68,7 +73,7 @@ export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | 
       for (const field of ["type", "not_null", "default_value"] as const)
         if (normalize(found[field]) !== normalize(calendar && expected.table_name === 'supplier_deliveries' && expected.name === 'delivery_date'
           ? field === 'type' ? 'date' : field === 'default_value' ? null : expected[field]
-          : expected[field])) issues.push(`incompatible ${expected.table_name}.${expected.name} ${field}`);
+          : sharedPaymentPlan && expected.table_name === 'suppliers' && expected.name === 'payment_terms' ? field === 'type' ? 'payment_plan_enum' : field === 'not_null' ? true : expected[field] : expected[field])) issues.push(`incompatible ${expected.table_name}.${expected.name} ${field}`);
     }
     for (const expected of contract.constraints) {
       if (retired(expected.table_name) || absent(expected.table_name) || replaced(expected.name)) continue;
@@ -148,7 +153,7 @@ export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | 
   if (reservations) await assertWholesaleReservationsReady(query, actual, namespace, existingTablesOnly, issues);
   if (fulfillment) await assertWholesaleFulfillmentReady(query, actual, namespace, existingTablesOnly, issues);
   if (collections) await assertWholesaleCollectionsReady(query, actual, namespace, existingTablesOnly, issues);
-  if (installments) await assertWholesaleInstallmentsReady(query, actual, namespace, existingTablesOnly, issues);
+  if (installments) await assertWholesaleInstallmentsReady(query, actual, namespace, existingTablesOnly, issues, sharedPaymentPlan ? "payment_plan_enum" : "wholesale_payment_plan_enum");
   if (categoryPricing && !existingTablesOnly) {
     for (const [table, name, type] of [["product_categories", "id", "uuid"], ["product_categories", "name", "character varying(100)"], ["product_categories", "is_vat", "boolean"], ["products", "initial_price", "numeric(12,2)"]]) {
       if (!actual.columns.some(column => column.table_name === table && column.name === name && column.type === type)) issues.push("missing/incompatible category pricing column " + table + "." + name);
@@ -156,6 +161,56 @@ export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | 
     for (const name of ["derive_product_category_price", "refresh_category_prices"]) {
       if (!actual.triggers.some(trigger => trigger.name === name && trigger.enabled === "O")) issues.push("missing category pricing trigger " + name);
     }
+  }
+  if (paymentReferences && !existingTablesOnly) {
+    // Migration 0016: proof of non-cash payment.
+    if (!actual.columns.some(column => column.table_name === "transactions" && column.name === "payment_reference" && column.type === "character varying(32)" && !column.not_null))
+      issues.push("missing/incompatible payment reference column transactions.payment_reference");
+    const check = actual.constraints.find(constraint => constraint.table_name === "transactions" && constraint.name === "transactions_payment_reference_check");
+    if (!check || check.type !== "c" || !check.validated || normalize(check.definition) !== "CHECK (payment_reference IS NULL OR payment_method::text = 'GCash'::text AND payment_reference::text ~ '^[0-9]{10,13}$'::text OR payment_method::text = 'Card'::text AND payment_reference::text ~ '^[A-Z0-9]{6}$'::text)")
+      issues.push("missing/incompatible payment reference constraint transactions_payment_reference_check");
+    const unique = actual.indexes.find(index => index.table_name === "transactions" && index.name === "uq_transactions_payment_reference");
+    if (!unique || !unique.valid || !unique.ready || normalize(unique.definition) !== "CREATE UNIQUE INDEX uq_transactions_payment_reference ON public.transactions USING btree (payment_method, payment_reference) WHERE (payment_reference IS NOT NULL)")
+      issues.push("missing/incompatible payment reference index uq_transactions_payment_reference");
+  }
+  if (discountHolders && !existingTablesOnly) {
+    // Migration 0017: Senior citizen / PWD name and ID number on discounted sales.
+    for (const [name, type] of [["holder_name", "character varying(120)"], ["holder_id_number", "character varying(40)"]])
+      if (!actual.columns.some(column => column.table_name === "discounts" && column.name === name && column.type === type && !column.not_null))
+        issues.push("missing/incompatible discount holder column discounts." + name);
+    const check = actual.constraints.find(constraint => constraint.table_name === "discounts" && constraint.name === "discounts_holder_check");
+    if (!check || check.type !== "c" || !check.validated || normalize(check.definition) !== "CHECK (holder_name IS NULL AND holder_id_number IS NULL OR btrim(holder_name::text) <> ''::text AND btrim(holder_id_number::text) <> ''::text)")
+      issues.push("missing/incompatible discount holder constraint discounts_holder_check");
+  }
+  if (returningCustomers && !existingTablesOnly) {
+    // Migration 0018: consent record and usual-order items for returning customers.
+    const hasColumn = (table: string, name: string, type: string, notNull: boolean) =>
+      actual.columns.some(column => column.table_name === table && column.name === name && column.type === type && column.not_null === notNull);
+    for (const [table, name, type, notNull] of [
+      ["customers", "consent_at", "timestamp with time zone", false], ["customers", "consent_recorded_by", "uuid", false],
+      ["customer_usual_items", "id", "uuid", true], ["customer_usual_items", "customer_id", "uuid", true],
+      ["customer_usual_items", "product_id", "uuid", true], ["customer_usual_items", "quantity", "integer", true],
+      ["customer_usual_items", "created_at", "timestamp with time zone", true],
+    ] as const)
+      if (!hasColumn(table, name, type, notNull)) issues.push(`missing/incompatible returning customer column ${table}.${name}`);
+    for (const [table, name, definition] of [
+      ["customers", "customers_consent_recorded_by_fkey", "FOREIGN KEY (consent_recorded_by) REFERENCES users(id) ON DELETE SET NULL"],
+      ["customer_usual_items", "customer_usual_items_customer_fkey", "FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE"],
+      ["customer_usual_items", "customer_usual_items_product_fkey", "FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE"],
+      ["customer_usual_items", "customer_usual_items_quantity_check", "CHECK (quantity >= 1 AND quantity <= 100000)"],
+      ["customer_usual_items", "uq_customer_usual_items", "UNIQUE (customer_id, product_id)"],
+    ] as const) {
+      const found = actual.constraints.find(constraint => constraint.table_name === table && constraint.name === name);
+      if (!found || !found.validated || normalize(found.definition) !== definition) issues.push(`missing/incompatible returning customer constraint ${name}`);
+    }
+  }
+  if (prescriptions && !existingTablesOnly) {
+    // Migration 0019: prescription-required flag; controlled drugs always need it.
+    if (!actual.columns.some(column => column.table_name === "products" && column.name === "requires_prescription" && column.type === "boolean" && column.not_null && normalize(column.default_value ?? "") === "false"))
+      issues.push("missing/incompatible prescription column products.requires_prescription");
+    const rxCheck = actual.constraints.find(constraint => constraint.table_name === "products" && constraint.name === "products_dangerous_requires_prescription_check");
+    if (!rxCheck || !rxCheck.validated || normalize(rxCheck.definition) !== "CHECK (NOT is_dangerous_drug OR requires_prescription)")
+      issues.push("missing/incompatible prescription constraint products_dangerous_requires_prescription_check");
   }
   if (issues.length) throw new SchemaReadinessError(issues);
   return actual;

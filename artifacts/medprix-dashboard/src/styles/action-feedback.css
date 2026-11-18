@@ -1,0 +1,47 @@
+/* Local progress uses the existing control shapes and theme tokens. */
+.action-fields {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.action-progress,
+.financial-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: hsl(var(--muted));
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  font-weight: 500;
+}
+.action-progress { margin-top: 4px; }
+.action-error-copy {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.action-error-copy > svg { flex: 0 0 auto; margin-top: 1px; }
+.action-spinner,
+.financial-status > svg,
+.login-error > svg { flex: 0 0 auto; }
+.financial-pending {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  color: hsl(var(--muted));
+}
+.login-card .login-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: hsl(var(--danger));
+  margin: 10px 0 0;
+}
+.login-error > svg { margin-top: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .action-spinner.spin { animation: none; }
+}

@@ -1,3 +1,6 @@
+import { WholesaleStatusPill } from "./wholesale-status-pill";
+import { ReadContent, useReadDialog } from "./read-dialog";
+import { SourceTableBody, SourceFeedback } from "./custom-ui/source-state";
 import { SelectField } from "@/components/custom-ui/select-field";
 import { formatDisplayDate } from "@/lib/business-date";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
@@ -22,7 +25,6 @@ import {
   ModalTablePager,
   ModalTableHint,
 } from "./modal-table-layout";
-import { LoadingState } from "./custom-ui/loading-state";
 import { safeError } from "@/lib/feedback";
 import {
   wholesaleGet,
@@ -57,6 +59,10 @@ export function useWorkspaceList<T>(
     () => !initialData && getCachedWholesale(initialQueryPath) === null,
   );
   const firstLoad = useRef(true);
+  const [revision, setRevision] = useState(0);
+  const currentPath = path + "?search=" + encodeURIComponent(search) + "&page=" + page + "&status=" + encodeURIComponent(status);
+  const [dataPath, setDataPath] = useState(initialQueryPath);
+  const [errorPath, setErrorPath] = useState("");
   const [error, setError] = useState("");
   useEffect(() => {
     setPage(1);
@@ -65,6 +71,7 @@ export function useWorkspaceList<T>(
     let active = true;
     const load = async () => {
       setError("");
+      setLoading(true);
       try {
         const result = await wholesaleGet<WholesalePageResult<T>>(
           path +
@@ -75,9 +82,9 @@ export function useWorkspaceList<T>(
             "&status=" +
             encodeURIComponent(status),
         );
-        if (active) setData(result);
+        if (active) { setData(result); setDataPath(reqPath); }
       } catch (failure) {
-        if (active) setError(safeError(failure));
+        if (active) { setError(safeError(failure)); setErrorPath(reqPath); }
       } finally {
         if (active) setLoading(false);
       }
@@ -91,7 +98,7 @@ export function useWorkspaceList<T>(
       "&status=" +
       encodeURIComponent(status);
     const cached = getCachedWholesale<WholesalePageResult<T>>(reqPath);
-    if (cached) setData(cached);
+    if (cached) { setData(cached); setDataPath(reqPath); }
     const seeded = (firstLoad.current && initialData) || cached !== null;
     firstLoad.current = false;
     if (!seeded) setLoading(true);
@@ -107,8 +114,8 @@ export function useWorkspaceList<T>(
       window.clearInterval(interval);
       window.removeEventListener("focus", refresh);
     };
-  }, [path, search, page, status]);
-  return { page, setPage, data, loading, error };
+  }, [path, search, page, status, revision]);
+  return { page, setPage, data, loading, refresh: () => setRevision(value => value + 1), hasData: data !== null && dataPath === currentPath, error: errorPath === currentPath ? error : "" };
 }
 
 function Pagination({
@@ -212,6 +219,7 @@ export function WholesaleSummaryModal({
   error,
   retry,
   onAccountChanged,
+  embedded = false,
 }: {
   kind: WholesaleSummaryKind;
   initialData: WholesalePageResult<WholesaleSummaryRow>;
@@ -223,56 +231,27 @@ export function WholesaleSummaryModal({
   error: string;
   retry?: () => void;
   onAccountChanged?: () => void;
+  embedded?: boolean;
 }) {
   const preview = useModalTableStandard();
-  const [selectedOrder, setSelectedOrder] = useState<
-    (WholesaleOrderDetail & { order: WholesaleOrder }) | null
-  >(null);
+  const read = useReadDialog<{ kind: "order"; detail: WholesaleOrderDetail & { order: WholesaleOrder } } | { kind: "account"; detail: WholesaleReceivableDetail }>();
+  const selectedOrder = read.state?.data?.kind === "order" ? read.state.data.detail : null;
+  const account = read.state?.data?.kind === "account" ? read.state.data.detail : null;
   const [receipt, setReceipt] = useState<DeliveryReceipt | null>(null);
-  const [account, setAccount] = useState<WholesaleReceivableDetail | null>(
-    null,
-  );
-  const [opening, setOpening] = useState(false);
   const [printing, setPrinting] = useState(false);
-  const [openError, setOpenError] = useState("");
   const contentRef = useRef<HTMLDivElement>(null);
   const listScroll = useRef({ body: 0, table: 0, orderId: "" });
-  async function viewAccount(id: string) {
-    setOpening(true);
-    setOpenError("");
-    try {
-      setAccount(
-        await wholesaleGet<WholesaleReceivableDetail>(
-          "/accounts-receivable/" + id,
-          true,
-        ),
-      );
-    } catch (failure) {
-      setOpenError(safeError(failure));
-    } finally {
-      setOpening(false);
-    }
+  function viewAccount(id: string) {
+    read.open("Account details", async () => ({ kind: "account", detail: await wholesaleGet<WholesaleReceivableDetail>("/accounts-receivable/" + id, true) }));
   }
-  async function reviewOrder(id: string) {
-    setOpening(true);
-    setOpenError("");
+  function reviewOrder(id: string) {
     const content = contentRef.current;
     listScroll.current = {
       body: content?.closest(".wholesale-dialog-body")?.scrollTop ?? 0,
       table: content?.querySelector(".wholesale-summary-table")?.scrollTop ?? 0,
       orderId: id,
     };
-    try {
-      setSelectedOrder(
-        await wholesaleGet<WholesaleOrderDetail & { order: WholesaleOrder }>(
-          "/orders/" + id,
-        ),
-      );
-    } catch (failure) {
-      setOpenError(safeError(failure));
-    } finally {
-      setOpening(false);
-    }
+    read.open("Wholesale order", async () => ({ kind: "order", detail: await wholesaleGet<WholesaleOrderDetail & { order: WholesaleOrder }>("/orders/" + id) }));
   }
   useLayoutEffect(() => {
     const content = contentRef.current;
@@ -298,7 +277,7 @@ export function WholesaleSummaryModal({
         ?.focus({ preventScroll: true });
     }
     return undefined;
-  }, [selectedOrder, receipt, account]);
+  }, [selectedOrder, receipt, account, Boolean(read.state)]);
   const summary = summaries[kind];
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState(summary.status);
@@ -330,10 +309,13 @@ export function WholesaleSummaryModal({
     : list.data?.items;
   return (
     <WholesaleDialog
-      focusOnViewChange={Boolean(selectedOrder || receipt || account)}
+      embedded={embedded}
+      focusOnViewChange={Boolean(read.state || receipt)}
       variant={receipt ? "form" : "table"}
       title={
-        receipt
+        read.state && !read.state.data
+          ? read.state.title
+          : receipt
           ? "Delivery receipt details"
           : selectedOrder
             ? "Wholesale order"
@@ -352,24 +334,21 @@ export function WholesaleSummaryModal({
             ? selectedOrder.order.orderNumber
             : summary.description
       }
-      busy={submitting || opening || printing}
+      busy={submitting || printing}
       close={close}
       back={
         receipt
           ? () => setReceipt(null)
-          : selectedOrder
-            ? () => setSelectedOrder(null)
+          : read.state
+            ? read.close
             : undefined
       }
       className="wholesale-summary-dialog"
     >
       <div ref={contentRef}>
-        {openError && (
-          <div className="inline-error" role="alert">
-            {openError}
-          </div>
-        )}
-        {account ? (
+        {read.state && !read.state.data ? (
+          <ReadContent task={read}>{() => null}</ReadContent>
+        ) : account ? (
           <WholesaleReceivables
             key={account.id}
             search=""
@@ -377,7 +356,7 @@ export function WholesaleSummaryModal({
             initialDetail={account}
             detailsOnly
             embedded
-            onBack={() => setAccount(null)}
+            onBack={read.close}
             onClose={close}
             onChanged={onAccountChanged}
           />
@@ -431,11 +410,7 @@ export function WholesaleSummaryModal({
                 </SelectField>
               )}
             </div>
-            {list.error && (
-              <div className="inline-error" role="alert">
-                {list.error}
-              </div>
-            )}
+            <SourceFeedback status={{ hasData: list.hasData, pending: list.loading, error: list.error }} label="records" onRetry={list.refresh} />
             <ModalTableFrame>
               <div
                 className="wholesale-summary-table"
@@ -469,16 +444,8 @@ export function WholesaleSummaryModal({
                       <th className="table-action-head">Action</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    {list.loading || previewBlockPending ? (
-                      <tr>
-                        <td colSpan={columns}>
-                          <LoadingState label="Loading records..." />
-                        </td>
-                      </tr>
-                    ) : (
-                      !list.error &&
-                      visibleRows?.map((row) => (
+                  <SourceTableBody status={{ hasData: list.hasData && !previewBlockPending, pending: list.loading || previewBlockPending, error: list.error }} label="Records" colSpan={columns}>
+                    {visibleRows?.map((row) => (
                         <tr key={row.id}>
                           <td data-label="Order / client">
                             <strong>{row.orderNumber}</strong>
@@ -538,26 +505,7 @@ export function WholesaleSummaryModal({
                             </td>
                           )}
                           <td data-label="Status">
-                            <span
-                              className={
-                                "pill " +
-                                (row.status === "Completed" ||
-                                row.status === "Paid"
-                                  ? "success"
-                                  : row.status === "Failed" ||
-                                      row.status === "Overdue"
-                                    ? "danger"
-                                    : "neutral")
-                              }
-                            >
-                              {row.status === "Pending"
-                                ? "Draft"
-                                : row.status === "Completed"
-                                  ? "Delivered"
-                                  : row.status === "InTransit"
-                                    ? "In transit"
-                                    : row.status}
-                            </span>
+                            <WholesaleStatusPill status={row.status} />
                             {accounts && row.finalDeadlineBreached && (
                               <div className="muted">Final deadline passed</div>
                             )}
@@ -576,7 +524,7 @@ export function WholesaleSummaryModal({
                               >
                                 <button
                                   className="button soft table-action-btn"
-                                  disabled={busy || opening}
+                                  disabled={busy || Boolean(read.state?.pending)}
                                   aria-label={
                                     accounts ? "View account" : "Review order"
                                   }
@@ -607,11 +555,8 @@ export function WholesaleSummaryModal({
                             </div>
                           </td>
                         </tr>
-                      ))
-                    )}
-                    {!list.loading &&
-                      !list.error &&
-                      !list.data?.items.length && (
+                      ))}
+                    {!list.data?.items.length && (
                         <tr>
                           <TableEmptyState colSpan={columns}>
                             {search
@@ -624,7 +569,7 @@ export function WholesaleSummaryModal({
                           </TableEmptyState>
                         </tr>
                       )}
-                  </tbody>
+                  </SourceTableBody>
                 </table>
               </div>
             </ModalTableFrame>
@@ -633,7 +578,7 @@ export function WholesaleSummaryModal({
                 <ModalTablePager
                   page={previewPage}
                   total={list.data?.total ?? 0}
-                  loading={list.loading || previewBlockPending}
+                  loading={(!list.hasData && list.loading) || previewBlockPending}
                   change={setPreviewPage}
                   label={summary.title}
                 />
@@ -642,7 +587,7 @@ export function WholesaleSummaryModal({
               <Pagination
                 page={list.page}
                 total={list.data?.total ?? 0}
-                loading={list.loading}
+                loading={!list.hasData && list.loading}
                 change={list.setPage}
               />
             )}

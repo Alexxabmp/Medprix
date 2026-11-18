@@ -1,5 +1,7 @@
 ﻿import type { LucideIcon } from "lucide-react";
 
+import type { ReactNode } from "react";
+
 export function Kpi({
   label,
   value,
@@ -7,18 +9,21 @@ export function Kpi({
   icon: Icon,
   onClick,
   testId,
+  busy,
 }: {
   label: string;
-  value: string;
-  change: string;
+  value: ReactNode;
+  change: ReactNode;
   icon: LucideIcon;
   onClick?: () => void;
   testId?: string;
+  busy?: boolean;
 }) {
   return (
     <div
       className="surface-card kpi-card"
       data-testid={testId ?? `metric-${label.toLowerCase()}`}
+      aria-busy={busy}
       onClick={onClick}
       style={
         onClick

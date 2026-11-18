@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { SourceProgress } from "./custom-ui/source-state";
 import { Printer } from "lucide-react";
 import { WholesaleDialog } from "./wholesale-dialog";
 import { wholesalePeso, type DeliveryReceipt } from "@/lib/wholesale-api";
@@ -137,8 +138,7 @@ export function DeliveryReceiptView({
               }
             }}
           >
-            <Printer size={14} />
-            {printing ? "Preparing receipt…" : "Print delivery receipt"}
+            {printing ? <SourceProgress label="Preparing receipt…" /> : <><Printer size={14} />Print delivery receipt</>}
           </button>
         </div>
       </ModalTableFooter>
