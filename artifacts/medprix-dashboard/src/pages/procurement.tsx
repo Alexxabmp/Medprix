@@ -1,3 +1,4 @@
+import { SourceProgress } from "@/components/custom-ui/source-state";
 import { SelectField } from "@/components/custom-ui/select-field";
 import { PageTableValue, PageTableRow, PageTableAction, usePageTableStandard } from "@/components/page-table-context";
 import { AppTooltip } from "@/components/ui/tooltip";
@@ -242,6 +243,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
   useEffect(() => () => itemsRequest.current?.abort(), []);
   const [orderToCancel, setOrderToCancel] = useState<PurchaseOrder | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const ordinaryWriteBusy = useRef(false);
   const [supplierId, setSupplierId] = useState("");
   const [lineItems, setLineItems] = useState<LineItem[]>([
     { productId: "", quantityOrdered: "1", unitCost: "0" },
@@ -592,6 +594,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
 
   const submitPurchaseOrder = async (event: FormEvent) => {
     event.preventDefault();
+    if (ordinaryWriteBusy.current || isSaving) return;
     if (
       !supplierId ||
       lineItems.some(
@@ -613,6 +616,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
       `PO-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}-${String(orders.length + 1).padStart(3, "0")}`;
 
     try {
+      ordinaryWriteBusy.current = true;
       setIsSaving(true);
       const response = await fetch("/api/purchase-orders", {
         method: "POST",
@@ -640,6 +644,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
     } catch (requestError) {
       setPoError(safeError(requestError, "Failed to create purchase order."));
     } finally {
+      ordinaryWriteBusy.current = false;
       setIsSaving(false);
     }
   };
@@ -683,7 +688,9 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
 
   const submitInvoice = async (event: FormEvent) => {
     event.preventDefault();
+    if (ordinaryWriteBusy.current || isSaving) return;
     try {
+      ordinaryWriteBusy.current = true;
       setIsSaving(true);
       const autoInvoiceNumber = `INV-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}-${String(invoices.length + 1).padStart(3, "0")}`;
       const response = await fetch("/api/supplier-invoices", {
@@ -721,6 +728,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
     } catch (requestError) {
       setError(safeError(requestError, "Failed to create supplier invoice."));
     } finally {
+      ordinaryWriteBusy.current = false;
       setIsSaving(false);
     }
   };
@@ -1358,9 +1366,9 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
             className="modal-backdrop"
             data-testid="modal-create-po"
             onMouseDown={(event) =>
-              event.currentTarget === event.target && setIsCreateOpen(false)
+              event.currentTarget === event.target && !ordinaryWriteBusy.current && !isSaving && setIsCreateOpen(false)
             }>
-            <form className="modal dialog" onSubmit={submitPurchaseOrder}>
+            <form className="modal dialog" onSubmit={submitPurchaseOrder} aria-busy={isSaving}><fieldset className="action-fields" style={{ display: "contents" }} disabled={isSaving}>
               <div className="modal-header">
                 <div>
                   <h2>Create purchase order</h2>
@@ -1371,7 +1379,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 <button
                   type="button"
                   className="modal-close"
-                  onClick={() => setIsCreateOpen(false)}>
+                  onClick={() => { if (!ordinaryWriteBusy.current && !isSaving) setIsCreateOpen(false); }}>
                   <X size={16} />
                 </button>
               </div>
@@ -1516,10 +1524,10 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               <div className="modal-actions items-center">
                 <strong>Total: {money(runningTotal)}</strong>
                 <button className="button primary-action" type="submit" disabled={isSaving}>
-                  <Check size={13} /> {isSaving ? "Creating..." : "Create Draft Purchase Order"}
+                  {isSaving ? <SourceProgress label="Creating purchase order…" /> : <><Check size={13} /> Create Draft Purchase Order</>}
                 </button>
               </div>
-            </form>
+            </fieldset></form>
           </div>,
           document.body
         )}
@@ -1724,9 +1732,9 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
             className="modal-backdrop"
             data-testid="modal-create-invoice"
             onMouseDown={(event) =>
-              event.currentTarget === event.target && setIsInvoiceOpen(false)
+              event.currentTarget === event.target && !ordinaryWriteBusy.current && !isSaving && setIsInvoiceOpen(false)
             }>
-            <form className="modal dialog" onSubmit={submitInvoice}>
+            <form className="modal dialog" onSubmit={submitInvoice} aria-busy={isSaving}><fieldset className="action-fields" style={{ display: "contents" }} disabled={isSaving}>
               <div className="modal-header">
                 <div>
                   <h2>Add supplier invoice</h2>
@@ -1735,7 +1743,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 <button
                   type="button"
                   className="modal-close"
-                  onClick={() => setIsInvoiceOpen(false)}>
+                  onClick={() => { if (!ordinaryWriteBusy.current && !isSaving) setIsInvoiceOpen(false); }}>
                   <X size={16} />
                 </button>
               </div>
@@ -1829,10 +1837,10 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               {error && <div className="inline-error" role="alert">{error}</div>}
               <div className="modal-actions">
                 <button className="button primary-action" type="submit" disabled={isSaving}>
-                  <Check size={13} /> {isSaving ? "Saving..." : "Save invoice"}
+                  {isSaving ? <SourceProgress label="Saving invoice…" /> : <><Check size={13} /> Save invoice</>}
                 </button>
               </div>
-            </form>
+            </fieldset></form>
           </div>,
           document.body
         )}
