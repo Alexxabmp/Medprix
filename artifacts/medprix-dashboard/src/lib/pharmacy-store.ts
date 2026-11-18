@@ -57,9 +57,13 @@ export function mapTransactionsToReceipts(data: any[]): ShiftReceipt[] {
       vat: t.vat,
       vatRelief: t.vatRelief,
       discount: t.discount,
+      discountType: t.discountType,
       amountReceived: t.amountReceived,
       change: t.change,
       method: t.payment || "Cash",
+      paymentReference: t.paymentReference,
+      discountHolderName: t.discountHolderName,
+      discountHolderId: t.discountHolderId,
       cashier: t.user || "Cashier Staff",
       status: t.status || "Completed",
     };

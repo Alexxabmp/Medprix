@@ -47,6 +47,8 @@ export const productsTable = pgTable(
         initialPrice: money("initial_price").notNull(),
         isVatExempt: boolean("is_vat_exempt"),
         isDangerousDrug: boolean("is_dangerous_drug").notNull().default(false),
+        /** Phase 2c: shows an Rx tag at the POS. Controlled (dangerous) drugs always need it. */
+        requiresPrescription: boolean("requires_prescription").notNull().default(false),
         sellingPrice: money("selling_price").notNull().default("0.00"),
         wholesalePrice: money("wholesale_price"),
         costPrice: money("cost_price").notNull().default("0.00"),
@@ -58,6 +60,7 @@ export const productsTable = pgTable(
     (t) => [
         uniqueIndex("uq_products_sku_ci").on(sql`upper(btrim(${t.sku}))`),
         check("products_selling_price_check", sql`${t.sellingPrice} >= 0`),
+        check("products_dangerous_requires_prescription_check", sql`NOT ${t.isDangerousDrug} OR ${t.requiresPrescription}`),
         check("products_wholesale_price_check", sql`${t.wholesalePrice} >= 0`),
         check("products_cost_price_check", sql`${t.costPrice} >= 0`),
         check("products_minimum_stock_level_check", sql`${t.minimumStockLevel} >= 0`),

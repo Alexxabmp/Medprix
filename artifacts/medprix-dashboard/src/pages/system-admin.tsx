@@ -34,6 +34,7 @@ import {
   getCachedUserActivities,
 } from "@/lib/pharmacy-store";
 import type { SystemLog, UserActivity, UserTransaction, ToastFn } from "@/lib/types";
+import { paymentMethodLabel, paymentReferenceLine, discountHolderLines } from "@/lib/payment-display";
 
 const normalizeModuleName = (mod: string) =>
   String(mod || "").replace(/^[^\p{L}\p{N}]+/u, "").trim() || String(mod || "");
@@ -170,7 +171,10 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
         trx.transactionNumber.toLowerCase().includes(q) ||
         trx.user.toLowerCase().includes(q) ||
         trx.customer.toLowerCase().includes(q) ||
-        trx.payment.toLowerCase().includes(q);
+        trx.payment.toLowerCase().includes(q) ||
+        (!!trx.paymentReference && trx.paymentReference.toLowerCase().includes(q.replace(/[\s-]/g, ""))) ||
+        (!!trx.discountHolderName && trx.discountHolderName.toLowerCase().includes(q)) ||
+        (!!trx.discountHolderId && trx.discountHolderId.toLowerCase().includes(q));
       return matchesUser && matchesType && matchesSearch;
     });
   }, [transactions, trxFilterUser, trxFilterType, trxSearch]);
@@ -358,7 +362,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                 <Search size={15} />
                 <input
                   type="search"
-                  placeholder="Search TRX #, customer, user..."
+                  placeholder="Search TRX #, user, payment ref, Senior/PWD name or ID..."
                   aria-label="Search transactions"
                   value={trxSearch}
                   onChange={(e) => {
@@ -438,7 +442,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                       <td style={{ textAlign: "right" }}>
                         <strong>{displayPeso(trx.total)}</strong>
                       </td>
-                      <td className="muted">{trx.payment}</td>
+                      <td className="muted">{paymentMethodLabel(trx.payment)}</td>
                       <td>
                         <span
                           className={`pill ${
@@ -1021,9 +1025,29 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
                     <span className="muted">Payment Method:</span>
                     <strong style={{ color: "hsl(var(--foreground))" }}>
-                      {selectedTrx.payment}
+                      {paymentMethodLabel(selectedTrx.payment)}
                     </strong>
                   </div>
+                  {(() => {
+                    const reference = paymentReferenceLine(selectedTrx.payment, selectedTrx.paymentReference);
+                    const holder = discountHolderLines(selectedTrx.discountType, selectedTrx.discountHolderName, selectedTrx.discountHolderId);
+                    return (reference || holder) && (<>{holder && (<>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                        <span className="muted">{holder.nameLabel}:</span>
+                        <strong style={{ color: selectedTrx.discountHolderName ? "hsl(var(--foreground))" : "hsl(var(--muted))", textAlign: "right" }}>{holder.name}</strong>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                        <span className="muted">{holder.idLabel}:</span>
+                        <strong style={{ color: selectedTrx.discountHolderId ? "hsl(var(--foreground))" : "hsl(var(--muted))", letterSpacing: ".04em" }}>{holder.idNumber}</strong>
+                      </div></>)}{reference && (
+                      <div style={{ display: "flex", justifyContent: "space-between" }}>
+                        <span className="muted">{reference.label}:</span>
+                        <strong style={{ color: selectedTrx.paymentReference ? "hsl(var(--foreground))" : "hsl(var(--muted))", letterSpacing: ".04em" }}>
+                          {reference.value}
+                        </strong>
+                      </div>
+                    )}</>);
+                  })()}
                 </div>
               </div>
             </ModalTableDialog>
