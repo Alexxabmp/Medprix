@@ -95,6 +95,7 @@ function toApiProduct(product: typeof productsTable.$inferSelect, batches: (type
     initialPrice: product.initialPrice,
     cost: `₱${Number(product.costPrice).toFixed(2)}`,
     isDangerousDrug: product.isDangerousDrug,
+    requiresPrescription: product.requiresPrescription,
     isVatExempt: product.isVatExempt,
     reorder: product.minimumStockLevel,
     batches: batches.map((b) => ({
@@ -243,6 +244,8 @@ router.post("/inventory/products", async (req: Request, res: Response) => {
         sku, productName: body.name.trim(), genericName: body.genericName.trim(), category: (body.category ?? "").trim(),
         initialPrice: parseProductMoney(body.initialPrice)!, costPrice: parseProductMoney(body.costPrice)!,
         isDangerousDrug: body.isDangerousDrug ?? false, minimumStockLevel: Number(body.reorder),
+        // Controlled drugs always need a prescription (the database enforces this too).
+        requiresPrescription: (body.requiresPrescription ?? false) || (body.isDangerousDrug ?? false),
         currentStock: hasBatch ? Number(body.quantity) : 0,
       }).returning();
       if (hasBatch) await tx.insert(batchInfoTable).values({
@@ -275,6 +278,9 @@ router.put("/inventory/products/:id", async (req: Request, res: Response) => {
   if (body.initialPrice !== undefined) updates.initialPrice = parseProductMoney(body.initialPrice)!;
   if (body.costPrice !== undefined) updates.costPrice = parseProductMoney(body.costPrice)!;
   if (body.isDangerousDrug !== undefined) updates.isDangerousDrug = body.isDangerousDrug;
+  if (body.requiresPrescription !== undefined) updates.requiresPrescription = body.requiresPrescription;
+  // Controlled drugs always need a prescription (the database enforces this too).
+  if (updates.isDangerousDrug ?? product.isDangerousDrug) updates.requiresPrescription = true;
   if (body.reorder !== undefined) updates.minimumStockLevel = Number(body.reorder);
   try {
     await db.update(productsTable).set(updates).where(eq(productsTable.id, product.id));

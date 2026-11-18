@@ -11,6 +11,7 @@ import {
     numeric,
     timestamp,
     index,
+    uniqueIndex,
     check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
@@ -33,9 +34,28 @@ export const customersTable = pgTable("customers", {
     discountType: varchar("discount_type", { length: 100 }).default("Regular"),
     idNumber: varchar("id_number", { length: 100 }),
     contactNumber: varchar("contact_number", { length: 50 }),
+    /** When the customer agreed to have their details and usual medicines kept, and who recorded it. */
+    consentAt: timestamp("consent_at", { withTimezone: true }),
+    consentRecordedBy: uuid("consent_recorded_by").references(() => usersTable.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ─── Customer usual orders (quantities only; prices come from the product at checkout) ───
+export const customerUsualItemsTable = pgTable(
+    "customer_usual_items",
+    {
+        id: uuid("id").primaryKey().defaultRandom(),
+        customerId: uuid("customer_id").notNull().references(() => customersTable.id, { onDelete: "cascade" }),
+        productId: uuid("product_id").notNull().references(() => productsTable.id, { onDelete: "cascade" }),
+        quantity: integer("quantity").notNull(),
+        createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    },
+    (t) => [
+        check("customer_usual_items_quantity_check", sql`${t.quantity} BETWEEN 1 AND 100000`),
+        uniqueIndex("uq_customer_usual_items").on(t.customerId, t.productId),
+    ],
+);
 
 // ─── Transactions ────────────────────────────────────────────────────────────
 export const transactionsTable = pgTable(
@@ -53,6 +73,8 @@ export const transactionsTable = pgTable(
         amountTendered: money("amount_tendered").notNull().default("0.00"),
         changeAmount: money("change_amount").notNull().default("0.00"),
         paymentMethod: varchar("payment_method", { length: 50 }).notNull().default("Cash"),
+        /** GCash / QR reference number (10–13 digits) or card terminal approval code (6 characters). */
+        paymentReference: varchar("payment_reference", { length: 32 }),
         checkoutPayload: jsonb("checkout_payload"),
         cashierNameAtSale: varchar("cashier_name_at_sale", {length:255}),
         calculationVersion: varchar("calculation_version", {length:32}),
@@ -66,6 +88,8 @@ export const transactionsTable = pgTable(
         index("idx_transactions_customer_id").on(t.customerId),
         index("idx_transactions_date").on(t.transactionDate),
         index("idx_transactions_status").on(t.status),
+        check("transactions_payment_reference_check", sql`payment_reference IS NULL OR (payment_method = 'GCash' AND payment_reference ~ '^[0-9]{10,13}$') OR (payment_method = 'Card' AND payment_reference ~ '^[A-Z0-9]{6}$')`),
+        uniqueIndex("uq_transactions_payment_reference").on(t.paymentMethod, t.paymentReference).where(sql`payment_reference IS NOT NULL`),
     ],
 );
 
@@ -113,10 +137,14 @@ export const discountsTable = pgTable(
         discountType: varchar("discount_type", { length: 100 }).notNull(),
         discountRate: numeric("discount_rate", { precision: 5, scale: 2 }).notNull().default("0.00"),
         discountAmount: money("discount_amount").notNull().default("0.00"),
+        /** Senior citizen / PWD name and OSCA or PWD ID number as shown on the ID (BIR discount record). */
+        holderName: varchar("holder_name", { length: 120 }),
+        holderIdNumber: varchar("holder_id_number", { length: 40 }),
         createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     },
     (t) => [
         check("discounts_discount_rate_check", sql`${t.discountRate} >= 0`),
+        check("discounts_holder_check", sql`(holder_name IS NULL AND holder_id_number IS NULL) OR (btrim(holder_name) <> '' AND btrim(holder_id_number) <> '')`),
         check("discounts_discount_amount_check", sql`${t.discountAmount} >= 0`),
         index("idx_discounts_transaction_id").on(t.transactionId),
     ],

@@ -898,6 +898,7 @@ export default function InventoryPage({
                                 DD
                               </span>
                             )}
+                            {product.requiresPrescription && <span className="rx-tag" title="Prescription required">Rx</span>}
                             <div className="muted" style={{ fontSize: 12 }}>
                               <PageTableValue value={product.genericName || ""} />
                             </div>
@@ -1271,6 +1272,9 @@ export default function InventoryPage({
                       style={{ fontSize: 12, padding: "2px 8px", marginTop: 4, display: "inline-block" }}>
                       DANGEROUS DRUG
                     </span>
+                  )}
+                  {viewProduct.requiresPrescription && (
+                    <span className="rx-tag" style={{ marginTop: 4 }}>Prescription required (Rx)</span>
                   )}
                 </div>
                 <button

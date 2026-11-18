@@ -1,6 +1,8 @@
 import type { ShiftReceipt } from "./types";
 import { formatDisplayDateTime } from "./business-date";
 import { displayPeso } from "./currency";
+import { receiptSummaryLines, formatSummaryAmount } from "./retail-summary";
+import { paymentMethodLabel, paymentReferenceLine, discountHolderLines } from "./payment-display";
 
 const escapeHtml = (value: unknown) => String(value ?? "").replace(/[&<>"']/g,
   (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]!);
@@ -40,18 +42,30 @@ export function receiptDocument(receipt: ShiftReceipt): string {
       .item { margin: 3mm 0; break-inside: avoid; }
       .item .row { padding-left: 2mm; }
       .total { font-size: 16px; font-weight: bold; border-block: 2px solid #555; margin: 3mm 0; padding: 1mm 0; }
+      .holder { padding-bottom: 3mm; margin-bottom: 3mm; border-bottom: 1px dashed #666; }
+      .sign { display: flex; gap: 3mm; align-items: flex-end; margin-top: 5mm; }
+      .sign .line { flex: 1; border-bottom: 1px solid #333; height: 1.2em; }
       .thanks { text-align: center; margin: 4mm 0 0; font-weight: bold; letter-spacing: 1px; }
       @media print { body { padding: 0; } }
     </style></head><body><article class="paper" aria-label="Transaction receipt">
     <h1>${escapeHtml(source?.merchantNameAtIssue ?? "MEDPRIX")}</h1><div class="meta">
       ${row("Receipt no.", number)}${row("Date", date)}
-      ${row("Cashier", source ? source.user : receipt.cashier)}${row("Payment", source ? source.payment : receipt.method)}
+      ${row("Cashier", source ? source.user : receipt.cashier)}${row("Payment", paymentMethodLabel(source ? source.payment : receipt.method))}${(() => {
+        const reference = paymentReferenceLine(source ? source.payment : receipt.method, receipt.paymentReference);
+        return reference ? row(reference.label, reference.value) : "";
+      })()}
       ${row("Status", source ? source.status : receipt.status)}</div>
     <div class="items"><div class="row"><strong>ITEM</strong><strong>AMOUNT</strong></div>${items}</div>
-    <div class="totals">${row("Subtotal", receipt.subtotal && displayPeso(receipt.subtotal))}${row(source?.calculationVersion ? "VAT (included)" : "VAT", receipt.vat && displayPeso(receipt.vat))}${row("VAT exemption", receipt.vatRelief && displayPeso(receipt.vatRelief))}
-      ${row("Discount", receipt.discount && displayPeso(receipt.discount))}
+    <div class="totals">${receiptSummaryLines(receipt).map((line) => row(line.label, formatSummaryAmount(line))).join("")}
       ${row("TOTAL", displayPeso(source ? source.total : (receipt.totalFormatted || receipt.total)), "total")}
       ${row("Amount received", receipt.amountReceived && displayPeso(receipt.amountReceived))}${row("Change", receipt.change && displayPeso(receipt.change))}</div>
+    ${(() => {
+      // BIR: discounted sales show the Senior/PWD name, ID number, TIN and signature.
+      const holder = discountHolderLines(receipt.discountType, receipt.discountHolderName, receipt.discountHolderId);
+      return holder ? `<div class="holder">${row(holder.nameLabel, holder.name)}${row(holder.idLabel, holder.idNumber)}
+        <div class="sign"><span>TIN</span><span class="line"></span></div>
+        <div class="sign"><span>Signature</span><span class="line"></span></div></div>` : "";
+    })()}
     <p class="thanks">THANK YOU!</p></article></body></html>`;
 }
 
