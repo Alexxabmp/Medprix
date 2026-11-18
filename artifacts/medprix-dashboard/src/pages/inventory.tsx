@@ -1,3 +1,4 @@
+import { SourceProgress } from "@/components/custom-ui/source-state";
 import { SelectField } from "@/components/custom-ui/select-field";
 import type { ProductCategory } from "@/lib/types";
 import { CategoryManagementDialog } from "@/components/custom-ui/category-management-dialog";
@@ -363,7 +364,7 @@ export default function InventoryPage({
     }
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+      if (e.key === "Escape" && !movementBusy.current) {
         setViewProduct(null);
         setBatchProduct(null);
         setStockInProduct(null);
@@ -1388,7 +1389,7 @@ export default function InventoryPage({
         createPortal(
           <div
             className="modal-backdrop"
-            onMouseDown={(e) => e.currentTarget === e.target && setBatchProduct(null)}
+            onMouseDown={(e) => e.currentTarget === e.target && !movementBusy.current && setBatchProduct(null)}
             data-testid="modal-add-batch">
             <div className="modal">
               <div className="modal-header">
@@ -1405,12 +1406,13 @@ export default function InventoryPage({
                 <button
                   type="button"
                   className="modal-close"
-                  onClick={() => setBatchProduct(null)}>
+                  onClick={() => { if (!movementBusy.current) setBatchProduct(null); }}>
                   <X size={15} />
                 </button>
               </div>
 
-              <form onSubmit={handleSaveAddBatch}>
+              <form onSubmit={handleSaveAddBatch} aria-busy={movementSaving}>
+                <fieldset className="action-fields" disabled={movementSaving}>
                 <div className="form-grid">
                   <div className="field">
                     <label>Batch Number *</label>
@@ -1508,13 +1510,14 @@ export default function InventoryPage({
                   )}
                 </div>
 
-                {movementSaving && <p role="status">Saving stock change…</p>}
+                {movementSaving && <SourceProgress label="Saving stock change…" />}
                 {movementError && <div className="inline-error" role="alert">{movementError}</div>}
                 <div className="modal-actions">
                   <button type="submit" disabled={movementSaving} className="button dark">
                     Record Batch
                   </button>
                 </div>
+              </fieldset>
               </form>
             </div>
           </div>,
@@ -1528,7 +1531,7 @@ export default function InventoryPage({
         createPortal(
           <div
             className="modal-backdrop"
-            onMouseDown={(e) => e.currentTarget === e.target && setStockInProduct(null)}
+            onMouseDown={(e) => e.currentTarget === e.target && !movementBusy.current && setStockInProduct(null)}
             data-testid="modal-stock-in">
             <div className="modal">
               <div className="modal-header">
@@ -1541,12 +1544,13 @@ export default function InventoryPage({
                 <button
                   type="button"
                   className="modal-close"
-                  onClick={() => setStockInProduct(null)}>
+                  onClick={() => { if (!movementBusy.current) setStockInProduct(null); }}>
                   <X size={15} />
                 </button>
               </div>
 
-              <form onSubmit={handleSaveStockIn}>
+              <form onSubmit={handleSaveStockIn} aria-busy={movementSaving}>
+                <fieldset className="action-fields" disabled={movementSaving}>
                 <div className="form-grid">
                   <div className="field full-width">
                     <label>Target Batch *</label>
@@ -1611,13 +1615,14 @@ export default function InventoryPage({
                   </div>
                 </div>
 
-                {movementSaving && <p role="status">Saving stock change…</p>}
+                {movementSaving && <SourceProgress label="Saving stock change…" />}
                 {movementError && <div className="inline-error" role="alert">{movementError}</div>}
                 <div className="modal-actions">
                   <button type="submit" disabled={movementSaving} className="button dark">
                     <ArrowDownLeft size={14} /> Confirm Stock In
                   </button>
                 </div>
+              </fieldset>
               </form>
             </div>
           </div>,
@@ -1631,7 +1636,7 @@ export default function InventoryPage({
         createPortal(
           <div
             className="modal-backdrop"
-            onMouseDown={(e) => e.currentTarget === e.target && setStockOutProduct(null)}
+            onMouseDown={(e) => e.currentTarget === e.target && !movementBusy.current && setStockOutProduct(null)}
             data-testid="modal-stock-out">
             <div className="modal">
               <div className="modal-header">
@@ -1645,12 +1650,13 @@ export default function InventoryPage({
                 <button
                   type="button"
                   className="modal-close"
-                  onClick={() => setStockOutProduct(null)}>
+                  onClick={() => { if (!movementBusy.current) setStockOutProduct(null); }}>
                   <X size={15} />
                 </button>
               </div>
 
-              <form onSubmit={handleSaveStockOut}>
+              <form onSubmit={handleSaveStockOut} aria-busy={movementSaving}>
+                <fieldset className="action-fields" disabled={movementSaving}>
                 <div className="form-grid">
                   <div className="field full-width">
                     <label>Source Batch *</label>
@@ -1733,7 +1739,7 @@ export default function InventoryPage({
                   </div>
                 </div>
 
-                {movementSaving && <p role="status">Saving stock change…</p>}
+                {movementSaving && <SourceProgress label="Saving stock change…" />}
                 {movementError && <div className="inline-error" role="alert">{movementError}</div>}
                 <div className="modal-actions">
                   <button
@@ -1743,6 +1749,7 @@ export default function InventoryPage({
                     <ArrowUpRight size={14} /> Confirm Stock Out
                   </button>
                 </div>
+              </fieldset>
               </form>
             </div>
           </div>,
