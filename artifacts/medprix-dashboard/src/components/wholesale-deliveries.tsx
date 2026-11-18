@@ -1,6 +1,6 @@
 import { WholesaleStatusPill } from "./wholesale-status-pill";
 import { SourceTableBody, SourceFeedback } from "./custom-ui/source-state";
-import { CalendarDays, ClipboardCheck, Eye, Truck } from "lucide-react";
+import { CalendarDays, ClipboardCheck, Eye, History, Truck } from "lucide-react";
 import { useEffect } from "react";
 import { TableEmptyState } from "./custom-ui/empty-state";
 import {
@@ -37,7 +37,7 @@ export function WholesaleDeliveries({
   search: string;
   status: DeliveryQueueStatus;
   busy: boolean;
-  open: (id: string, title: string) => void;
+  open: (id: string, title: string, view?: "history") => void;
 }) {
   const list = useWholesalePages<DeliveryRow>(
     "/delivery-queue",
@@ -96,6 +96,17 @@ export function WholesaleDeliveries({
                             onClick={() => open(row.id, label)}
                           >
                             <Icon size={13} />
+                          </PageTableAction>
+                          <PageTableAction
+                            type="button"
+                            label="View delivery history"
+                            aria-label="View delivery history"
+                            icon={<History size={13} />}
+                            className="button soft table-action-btn"
+                            disabled={busy}
+                            onClick={() => open(row.id, "Delivery history", "history")}
+                          >
+                            <History size={13} />
                           </PageTableAction>
                         </div>
                       </td>

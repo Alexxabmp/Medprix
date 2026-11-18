@@ -95,6 +95,7 @@ export default function WholesalePage({
   const [accountStatus, setAccountStatus] =
     useState<WholesaleAccountFilter>("all");
   const [orderStatus, setOrderStatus] = useState("All statuses");
+  const [deliveryHistoryOpen, setDeliveryHistoryOpen] = useState(false);
   const [deliveryStatus, setDeliveryStatus] =
     useState<DeliveryQueueStatus>("all");
   const [vatFilter, setVatFilter] = useState("All VAT classifications");
@@ -223,7 +224,8 @@ export default function WholesalePage({
     if (pending || inFlight.current) return;
     void submit({ key: crypto.randomUUID(), path, method, body });
   }
-  function openDelivery(id: string, title = "Manage delivery") {
+  function openDelivery(id: string, title = "Manage delivery", view?: "history") {
+    setDeliveryHistoryOpen(view === "history");
     setDeliveryReceipt(null);
     deliveryRead.open(title, () => wholesaleGet<WholesaleOrderDetail & { order: WholesaleOrder }>("/orders/" + id, true));
   }
@@ -372,7 +374,7 @@ export default function WholesalePage({
           title={
             deliveryReceipt
               ? "Delivery receipt details"
-              : "Delivery · " + order.orderNumber
+              : (deliveryHistoryOpen ? "Delivery history · " : "Delivery · ") + order.orderNumber
           }
           description={
             deliveryReceipt
@@ -409,8 +411,9 @@ export default function WholesalePage({
                 detail={detail}
                 busy={locked}
                 mutate={mutate}
+                initialHistoryOpen={deliveryHistoryOpen}
                 initialAction={
-                  detail.attempts.some(
+                  deliveryHistoryOpen ? undefined : detail.attempts.some(
                     (attempt) => attempt.status === "InTransit",
                   )
                     ? "deliver"
@@ -712,7 +715,7 @@ export default function WholesalePage({
                   search={search}
                   status={deliveryStatus}
                   busy={navigating}
-                  open={(id, title) => openDelivery(id, title)}
+                  open={(id, title, view) => openDelivery(id, title, view)}
                 />
               ) : (
                 <div className="table-scroll">

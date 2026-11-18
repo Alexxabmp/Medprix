@@ -1,5 +1,5 @@
 import { WholesaleStatusPill } from "./wholesale-status-pill";
-import { useLayoutEffect, useId, useState } from "react";
+import { useLayoutEffect, useId, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import {
   pharmacyDate,
@@ -26,6 +26,7 @@ export function WholesaleDeliveryPanel({
   mutate,
   viewReceipt,
   initialAction,
+  initialHistoryOpen = false,
   showTotal = true,
   onTaskChange,
 }: {
@@ -35,6 +36,7 @@ export function WholesaleDeliveryPanel({
   mutate: (path: string, method: string, body: unknown) => void;
   viewReceipt: () => void;
   initialAction?: "dispatch" | "deliver" | "schedule";
+  initialHistoryOpen?: boolean;
   showTotal?: boolean;
   onTaskChange?: (active: boolean) => void;
 }) {
@@ -44,7 +46,11 @@ export function WholesaleDeliveryPanel({
     initialAction === "deliver" ? wholesaleManilaInput() : "",
   );
   const [validation, setValidation] = useState("");
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(initialHistoryOpen);
+  const historyRef = useRef<HTMLDetailsElement>(null);
+  useLayoutEffect(() => {
+    if (initialHistoryOpen) historyRef.current?.focus();
+  }, [initialHistoryOpen]);
   const active = detail.attempts.find((item) =>
     ["Scheduled", "InTransit"].includes(item.status),
   );
@@ -409,9 +415,15 @@ export function WholesaleDeliveryPanel({
           </button>
         </ModalTableFooter>
       )}
+      {initialHistoryOpen && !detail.attempts.length && (
+        <p className="muted">No delivery attempts have been recorded yet.</p>
+      )}
       {!!detail.attempts.length && (
         <details
+          ref={historyRef}
+          tabIndex={-1}
           className="wholesale-review-overrides"
+          open={historyOpen}
           onToggle={(event) => setHistoryOpen(event.currentTarget.open)}
         >
           <summary>
