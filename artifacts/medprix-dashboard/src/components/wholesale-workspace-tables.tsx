@@ -103,16 +103,9 @@ export function useWorkspaceList<T>(
     firstLoad.current = false;
     if (!seeded) setLoading(true);
     const timer = window.setTimeout(load, search ? 150 : 0);
-    const refresh = () => {
-      if (document.visibilityState === "visible") void load();
-    };
-    window.addEventListener("focus", refresh);
-    const interval = window.setInterval(refresh, 60000);
     return () => {
       active = false;
       window.clearTimeout(timer);
-      window.clearInterval(interval);
-      window.removeEventListener("focus", refresh);
     };
   }, [path, search, page, status, revision]);
   return { page, setPage, data, loading, refresh: () => setRevision(value => value + 1), hasData: data !== null && dataPath === currentPath, error: errorPath === currentPath ? error : "" };

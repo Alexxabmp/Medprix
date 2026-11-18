@@ -715,14 +715,13 @@ export default function InventoryPage({
   return (
     <div>
       {categoryManagerOpen && canEditProduct && <CategoryManagementDialog onToast={onToast} categories={categoryRecords} onSaved={async (rows) => { setCategoryRecords(rows); await fetchInventory(); }} onClose={() => setCategoryManagerOpen(false)} />}
-      {categoryError && <div className="inline-error" role="alert">{categoryError}<button className="button soft" onClick={() => void loadCategories()}>Retry</button></div>}
+      {categoryError && <div className="inline-error" role="alert">{categoryError}</div>}
       <InventoryFeedback />
       <PageHeading
         title="Inventory"
         description="Real-time stock levels, multi-batch tracking, expiry alerts, and stock movements."
         action={
           <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
-            <InventoryRefreshButton />
             {canAddProduct && (
               <button
                 className="button dark"

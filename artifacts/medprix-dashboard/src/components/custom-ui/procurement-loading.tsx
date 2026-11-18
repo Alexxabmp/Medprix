@@ -9,6 +9,6 @@ export function ProcurementSummary({ hasData, error, ...props }: ComponentProps<
 export function ProcurementFeedback({ label, ...status }: FeedbackProps) {
   return <SourceFeedback label={label} status={status} />;
 }
-export function ProcurementRefreshButton({ label, onRefresh, ...status }: FeedbackProps) {
-  return <SourceRefreshButton label={label} status={status} onRefresh={onRefresh} />;
+export function ProcurementRefreshButton(_props?: any) {
+  return null;
 }

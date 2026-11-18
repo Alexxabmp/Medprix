@@ -192,23 +192,6 @@ export function WholesaleReceivables({
       clearTimeout(timer);
     };
   }, [search, page, status, detailsOnly, standard]);
-  useEffect(() => {
-    if (request.locked) return;
-    const refresh = async () => {
-      if (document.visibilityState !== "visible") return;
-      try {
-        await load();
-        if (selectedId && mode === "view") await loadDetail(selectedId);
-        setLoadError("");
-      } catch (failure) {
-        setLoadError(safeError(failure));
-      }
-    };
-    const timer = window.setInterval(refresh, 60000);
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [search, page, status, selectedId, mode, request.locked]);
   function open(id: string) {
     read.open("Accounts receivable", () => wholesaleGet<WholesaleReceivableDetail>("/accounts-receivable/" + id, true));
   }
@@ -233,18 +216,10 @@ export function WholesaleReceivables({
   }
   return (
     <>
-      {!detailsOnly && refreshTarget && createPortal(
-        <SourceRefreshButton
-          status={{ hasData: listHasData, pending: listPending, error: listError }}
-          label="receivables"
-          onRefresh={refreshList}
-        />,
-        refreshTarget,
-      )}
       {!detailsOnly && (
         <>
           {!selectedId && <WholesaleRequestFeedback {...request} />}
-          <SourceFeedback status={{ hasData: listHasData, pending: listPending, error: listError }} label="receivables" onRetry={() => { if (standard) void paging.refresh(); else void load().catch(failure => setLoadError(safeError(failure))); }} />
+          <SourceFeedback status={{ hasData: listHasData, pending: listPending, error: listError }} label="receivables" />
           <PageTableScroll>
             <table
               data-page-table="wholesale-receivables"

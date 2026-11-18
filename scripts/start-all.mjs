@@ -7,7 +7,7 @@ const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 console.log("[DEV] Starting API server on port 5000...");
 const api = spawn(process.execPath, [path.join(rootDir, "artifacts/api-server/dev.mjs")], {
   cwd: rootDir,
-  env: { ...process.env, PORT: "5000", NODE_ENV: "development" },
+  env: { ...process.env, PORT: "5000", NODE_ENV: "development", USE_LOCAL_DB: "1" },
   stdio: ["inherit", "pipe", "pipe"],
 });
 

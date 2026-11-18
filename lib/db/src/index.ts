@@ -124,6 +124,18 @@ export async function ensureDbReady(): Promise<void> {
 }
 
 function initDb(): DrizzleInstance {
+  const pgDir = findLocalPgDir();
+  if (pgDir && (process.env.USE_LOCAL_DB === "1" || !isPgUrl)) {
+    const client = new PGlite(pgDir);
+    rawClient = client;
+    activeMode = "pglite";
+    activeDrizzle = drizzlePglite(client, { schema }) as unknown as DrizzleInstance;
+    checkFn = () => assertSchemaReady((text, params = []) => client.query(text, params)).then(() => {});
+    readinessVerified = true;
+    console.log(`[DB] Using local embedded database directly (${pgDir})`);
+    return activeDrizzle;
+  }
+
   if (isPgUrl) {
     const client = postgres(dbUrl, { prepare: false, connect_timeout: 3, idle_timeout: 20, max_lifetime: 300, max: 10 });
     rawClient = client;
@@ -134,7 +146,6 @@ function initDb(): DrizzleInstance {
     return activeDrizzle;
   }
 
-  const pgDir = findLocalPgDir();
   if (!pgDir) {
     throw new Error("Configure DATABASE_URL or an existing PGLITE_DATA_DIR. Database startup never creates or seeds application schema.");
   }

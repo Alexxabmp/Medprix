@@ -16,7 +16,7 @@ import { ReceivingReportDecisionDialog, type ReceivingDecision } from "@/compone
 import { safeError, readResponse } from "@/lib/feedback";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
-import { Check, Eye, Package, Plus, Trash2, X, PackagePlus, Search, LoaderCircle, Banknote, CheckCircle, Ban, Pencil, Download, Layers, Truck, AlertCircle, RefreshCw } from "lucide-react";
+import { Check, Eye, Package, Plus, Trash2, X, PackagePlus, Search, LoaderCircle, Banknote, CheckCircle, Ban, Pencil, Download, Layers, Truck, AlertCircle } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import { ProcurementFeedback, ProcurementRefreshButton, ProcurementSummary } from "@/components/custom-ui/procurement-loading";
 import type { ToastFn } from "@/lib/types";
@@ -1581,7 +1581,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
         ) : undefined}
       />
       {!isDeliveryOpen && receivingRecovery()}
-      {(error || statusError || receivingError || receivingProblem) && <div className="inline-error" role="alert"><span>{statusError || receivingError || receivingProblem || error} Previously loaded data may be out of date.</span><button className="button soft" disabled={receivingAccess === "loading" || isSaving} onClick={() => { setReceivingError(""); if (!receivingReady) setReceivingAccessAttempt(attempt => attempt + 1); void loadData(); }}>{receivingAccess === "loading" ? "Checking receiving access..." : !receivingReady ? "Retry receiving access" : "Retry refresh"}</button></div>}
+      {(error || statusError || receivingError || receivingProblem) && <div className="inline-error" role="alert"><span>{statusError || receivingError || receivingProblem || error} Previously loaded data may be out of date.</span></div>}
       <div className="summary-strip">
         <ProcurementSummary hasData={availableSections.orders} error={sectionErrors.orders}
           label="Open orders"
@@ -2045,13 +2045,6 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
           {invoiceRefreshError && (
             <div className="inline-error" role="alert">
               <span>{invoiceRefreshError} Cached invoice data remains available.</span>
-              <button
-                type="button"
-                className="button soft"
-                disabled={isInvoiceRefreshing}
-                onClick={() => void refreshInvoicesAndPayables()}>
-                Retry
-              </button>
             </div>
           )}
           <div className="table-scroll">
@@ -2360,9 +2353,6 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                               <AlertCircle size={16} aria-hidden="true" />
                               {itemsError}
                             </span>
-                            <button className="button soft" onClick={() => void openItemsModal(selectedOrderForItems, true)}>
-                              <RefreshCw size={14} aria-hidden="true" />Retry items
-                            </button>
                           </div>
                         </td>
                       </tr>
@@ -2686,10 +2676,9 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
               {receivingRecovery()}
               <span className="sr-only" role="status" aria-live="polite">{receivingAccess === "loading" ? "Checking receiving access…" : ""}</span>
               {showReceivingLoading && isPreparingReceiving && <SourceProgress label="Loading purchase orders and inventory…" />}
-              {receivingLoadError && <div className="inline-error receiving-load-error" role="alert"><span>{receivingLoadError}</span><button type="button" className="button soft" onClick={() => void openReceiving(deliveryForm.poId)}>Retry loading</button></div>}
+              {receivingLoadError && <div className="inline-error receiving-load-error" role="alert"><span>{receivingLoadError}</span></div>}
               {receivingAccess === "failed" && !pendingReceiving && <div className="receiving-access-notice" role="status">
-                <p className="modal-sub">{receivingError || "Receiving access is unavailable. Retry to continue."}</p>
-                <button type="button" className="button soft" onClick={() => setReceivingAccessAttempt(attempt => attempt + 1)}>Retry receiving access</button>
+                <p className="modal-sub">{receivingError || "Receiving access is unavailable."}</p>
               </div>}
               {!isPreparingReceiving && !receivingLoadError && receivingOrders.length === 0 && !pendingReceiving && <div className="receiving-empty" role="status">
                 <p className="modal-sub">No purchase orders found. Create a purchase order first.</p>
