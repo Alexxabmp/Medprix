@@ -46,6 +46,7 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
   return (
     <div className="grid grid-cols-1 gap-5">
       <PageHeading
+        className="date-page-heading"
         title="Hello, Admin!"
         description="Here's the shape of your pharmacy today."
         action={

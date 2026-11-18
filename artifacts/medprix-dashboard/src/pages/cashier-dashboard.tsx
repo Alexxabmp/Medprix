@@ -580,10 +580,11 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
   return (
     <div className="cashier-page" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       <PageHeading
+        className="date-page-heading"
         title="Cashier Terminal & Register"
         description="Shift 1 (08:00 AM – 04:00 PM) · Active Terminal #01"
         action={
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div className="date-page-actions">
             <span
               className="pill success"
               style={{ padding: "6px 12px", fontSize: 12 }}>
