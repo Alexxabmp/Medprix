@@ -1,5 +1,5 @@
 import type { ComponentProps, ReactNode } from "react";
-import { AlertCircle, LoaderCircle, Package, RefreshCw } from "lucide-react";
+import { Package } from "lucide-react";
 import {
   fetchInventoryData,
   fetchTransactionsData,
@@ -10,92 +10,14 @@ import {
   type PharmacySourceStatus,
 } from "@/lib/pharmacy-store";
 import { Summary } from "./summary-card";
+import { SourceSummary, SourceFeedback, SourceRefreshButton, SourceTableBody as SharedTableBody } from "./source-state";
 
 // Status subscriptions stay below the page's expensive list calculations.
 export function InventorySummary(props: ComponentProps<typeof Summary>) {
-  const { hasData, error } = usePharmacyInventoryStatus();
-  return (
-    <Summary
-      {...props}
-      value={hasData ? props.value : "—"}
-      caption={
-        hasData ? props.caption : error ? "Stock unavailable" : "Loading stock…"
-      }
-      tone={hasData ? props.tone : "muted"}
-      action={
-        hasData ? (
-          props.action
-        ) : error ? (
-          <AlertCircle size={14} aria-hidden="true" />
-        ) : (
-          <LoaderCircle
-            size={14}
-            className="spin action-spinner"
-            aria-hidden="true"
-          />
-        )
-      }
-    />
-  );
+  return <SourceSummary {...props} status={usePharmacyInventoryStatus()} />;
 }
-
 export function InventoryRefreshButton() {
-  const { pending } = usePharmacyInventoryStatus();
-  return (
-    <button
-      type="button"
-      className="button soft"
-      disabled={pending}
-      aria-busy={pending}
-      aria-label={pending ? "Updating stock" : "Refresh stock"}
-      onClick={() => void refreshStock()}
-    >
-      <RefreshCw
-        size={14}
-        className={pending ? "spin action-spinner" : undefined}
-        aria-hidden="true"
-      />
-      Refresh stock
-    </button>
-  );
-}
-
-function SourceFeedback({
-  status,
-  refresh,
-  label,
-}: {
-  status: PharmacySourceStatus;
-  refresh: () => Promise<unknown>;
-  label: string;
-}) {
-  if (!status.error) return null;
-  return (
-    <div className="inline-error" role="alert">
-      <span className="action-error-copy">
-        <AlertCircle size={16} aria-hidden="true" />
-        <span>
-          {status.error}
-          {status.hasData ? ` Showing previously loaded ${label}.` : ""}
-        </span>
-      </span>
-      <button
-        type="button"
-        className="button soft"
-        disabled={status.pending}
-        aria-busy={status.pending}
-        aria-label={status.pending ? `Refreshing ${label}` : `Retry ${label}`}
-        onClick={() => void refresh()}
-      >
-        <RefreshCw
-          size={13}
-          className={status.pending ? "spin action-spinner" : undefined}
-          aria-hidden="true"
-        />
-        Retry
-      </button>
-    </div>
-  );
+  return <SourceRefreshButton status={usePharmacyInventoryStatus()} label="stock" retryOnError={false} onRefresh={() => void refreshStock()} />;
 }
 
 const refreshStock = () =>
@@ -110,7 +32,7 @@ export function InventoryFeedback() {
   return (
     <SourceFeedback
       status={usePharmacyInventoryStatus()}
-      refresh={refreshStock}
+      onRetry={() => void refreshStock()}
       label="stock"
     />
   );
@@ -119,7 +41,7 @@ export function MovementFeedback() {
   return (
     <SourceFeedback
       status={usePharmacyTransactionsStatus()}
-      refresh={refreshMovements}
+      onRetry={() => void refreshMovements()}
       label="movements"
     />
   );
@@ -139,40 +61,11 @@ function SourceTableBody({
   label: string;
   emptyMessage: string;
 }) {
-  return (
-    <tbody aria-busy={!status.hasData && (status.pending || !status.error)}>
-      {status.hasData && !empty ? (
-        children
-      ) : (
-        <tr>
-          <td colSpan={colSpan} className="empty-state-cell">
-            <div className="empty-state" role="status">
-              {!status.hasData ? (
-                status.error ? (
-                  <AlertCircle size={25} aria-hidden="true" />
-                ) : (
-                  <LoaderCircle
-                    size={25}
-                    className="spin action-spinner"
-                    aria-hidden="true"
-                  />
-                )
-              ) : (
-                <Package size={25} aria-hidden="true" />
-              )}
-              <div>
-                {!status.hasData
-                  ? status.error
-                    ? `${label} unavailable. Use Retry to recover.`
-                    : `Loading ${label.toLowerCase()}…`
-                  : emptyMessage}
-              </div>
-            </div>
-          </td>
-        </tr>
-      )}
-    </tbody>
-  );
+  return <SharedTableBody status={status} label={label} colSpan={colSpan}>
+    {!empty ? children : <tr><td colSpan={colSpan} className="empty-state-cell"><div className="empty-state" role="status">
+      <Package size={25} aria-hidden="true" /><div>{emptyMessage}</div>
+    </div></td></tr>}
+  </SharedTableBody>;
 }
 
 export function InventoryTableBody(props: BodyProps) {
