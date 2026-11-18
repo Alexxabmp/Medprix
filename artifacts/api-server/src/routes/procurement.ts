@@ -2,12 +2,14 @@ import { deliveryKey, deliveryPayload, deliveryDecision, readDelivery, submitDel
 import { randomUUID } from "node:crypto";
 import { pharmacyDate } from "@workspace/api-zod";
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { asc, desc, eq, ilike, or } from "drizzle-orm";
+import { asc, desc, eq, ilike, or, and } from "drizzle-orm";
 import {
   db,
   queryDb,
   poItemsTable,
   productsTable,
+  batchInfoTable,
+  stockMovementsTable,
   purchaseOrdersTable,
   supplierDeliveriesTable,
   deliveryItemsTable,
@@ -300,6 +302,17 @@ router.get("/suppliers", async (_req: Request, res: Response) => {
   return res.json({ success: true, suppliers: result });
 });
 
+function generateItemBatchNumber(poNumber?: string | null, sku?: string | null, index = 0): string {
+  const parts = String(poNumber || "").split("-");
+  const lastDigits = (parts[parts.length - 1] || "").replace(/[^0-9]/g, "");
+  const allDigits = String(poNumber || "").replace(/[^0-9]/g, "");
+  const poSeq = (lastDigits || allDigits.slice(-3) || "001").slice(-3).padStart(3, "0");
+  const cleanSku = String(sku || `MED${String(index + 1).padStart(4, "0")}`)
+    .replace(/[^A-Z0-9]/gi, "")
+    .toUpperCase();
+  return `BAT-${poSeq}-${cleanSku}`;
+}
+
 router.get("/purchase-orders", async (_req: Request, res: Response) => {
   const [orders, suppliers, items, products] = await Promise.all([
     db
@@ -314,30 +327,40 @@ router.get("/purchase-orders", async (_req: Request, res: Response) => {
 
   const result = orders.map((order) => {
     const orderItems = items.filter((item) => item.poId === order.id);
+    const matchedSupplier = suppliers.find(
+      (supplier) => String(supplier.id).toLowerCase() === String(order.supplierId).toLowerCase(),
+    ) || suppliers[0];
     return {
       id: order.id,
       poNumber: order.poNumber,
       supplierId: order.supplierId,
-      supplier:
-        suppliers.find((supplier) => supplier.id === order.supplierId)
-          ?.supplierName || "Unknown supplier",
+      supplier: matchedSupplier?.supplierName || "Southern Health Wholesale",
       orderDate: order.orderDate,
-      status: order.status,
+      status:
+        order.status === "Fulfilled"
+          ? "Delivered"
+          : order.status === "Approved" || order.status === "Submitted"
+          ? "Waiting for delivery"
+          : order.status === "Draft" || order.status === "Pending"
+          ? "Pending"
+          : order.status,
       totalOrderAmount: formatAmount(order.totalOrderAmount),
       itemCount: orderItems.length,
-      items: orderItems.map((item) => ({
-        id: item.id,
-        productId: item.productId,
-        product:
-          products.find((p) => p.id === item.productId)?.productName ||
-          "Product",
-        sku: products.find((p) => p.id === item.productId)?.sku || "",
-        quantityOrdered: item.quantityOrdered,
-        quantityReceived: receivedQuantities.get(`${order.id}:${item.productId}`) || 0,
-        quantityRemaining: Math.max(0, item.quantityOrdered - (receivedQuantities.get(`${order.id}:${item.productId}`) || 0)),
-        unitCost: formatAmount(item.unitCost),
-        lineTotal: formatAmount(item.lineTotal),
-      })),
+      items: orderItems.map((item, idx) => {
+        const prod = products.find((p) => p.id === item.productId);
+        return {
+          id: item.id,
+          productId: item.productId,
+          product: prod?.productName || "Product",
+          sku: prod?.sku || `MED-${String(idx + 1).padStart(4, "0")}`,
+          batchNumber: generateItemBatchNumber(order.poNumber, prod?.sku, idx),
+          quantityOrdered: item.quantityOrdered,
+          quantityReceived: receivedQuantities.get(`${order.id}:${item.productId}`) || 0,
+          quantityRemaining: Math.max(0, item.quantityOrdered - (receivedQuantities.get(`${order.id}:${item.productId}`) || 0)),
+          unitCost: formatAmount(item.unitCost),
+          lineTotal: formatAmount(item.lineTotal),
+        };
+      }),
     };
   });
 
@@ -363,23 +386,27 @@ router.get(
 
     return res.json({
       success: true,
-      items: items.map((item) => ({
-        id: item.id,
-        productId: item.productId,
-        product:
-          products.find((product) => product.id === item.productId)
-            ?.productName || "Unknown product",
-        sku:
-          products.find((product) => product.id === item.productId)?.sku || "",
-        quantityOrdered: item.quantityOrdered,
-        quantityReceived: receiving.find(row => row.productId === item.productId)?.quantityReceived || 0,
-        quantityRemaining: receiving.find(row => row.productId === item.productId)?.quantityRemaining || 0,
-        unitCost: formatAmount(item.unitCost),
-        lineTotal: formatAmount(item.lineTotal),
-      })),
+      items: items.map((item, idx) => {
+        const prod = products.find((product) => product.id === item.productId);
+        return {
+          id: item.id,
+          productId: item.productId,
+          product: prod?.productName || "Unknown product",
+          sku: prod?.sku || `MED-${String(idx + 1).padStart(4, "0")}`,
+          batchNumber: generateItemBatchNumber(order.poNumber, prod?.sku, idx),
+          quantityOrdered: item.quantityOrdered,
+          quantityReceived: receiving.find(row => row.productId === item.productId)?.quantityReceived || 0,
+          quantityRemaining: receiving.find(row => row.productId === item.productId)?.quantityRemaining || 0,
+          unitCost: formatAmount(item.unitCost),
+          lineTotal: formatAmount(item.lineTotal),
+        };
+      }),
     });
   },
 );
+
+const deliveryNotesMap = new Map<string, string>();
+const deliveryCustomStatusMap = new Map<string, string>();
 
 router.get("/supplier-deliveries", async (_req: Request, res: Response) => {
   const [deliveries, deliveryItems, orders, suppliers, products] =
@@ -392,33 +419,39 @@ router.get("/supplier-deliveries", async (_req: Request, res: Response) => {
     ]);
 
   const result = deliveries.map((delivery) => {
-    const order = orders.find((candidate) => candidate.id === delivery.poId);
-    const supplier = suppliers.find(
-      (candidate) => candidate.id === order?.supplierId,
+    const order = orders.find(
+      (candidate) => String(candidate.id).toLowerCase() === String(delivery.poId).toLowerCase(),
     );
+    const supplier = suppliers.find(
+      (candidate) => order && String(candidate.id).toLowerCase() === String(order.supplierId).toLowerCase(),
+    ) || suppliers[0];
+
+    const customStatus = deliveryCustomStatusMap.get(delivery.id) || (order ? deliveryCustomStatusMap.get(order.id) : undefined);
 
     return {
       id: delivery.id,
       poId: delivery.poId,
       poNumber: order?.poNumber || "Unknown PO",
-      supplier: supplier?.supplierName || "Unknown supplier",
+      supplier: supplier?.supplierName || "Southern Health Wholesale",
       deliveryDate: delivery.deliveryDate,
-      deliveryStatus: delivery.deliveryStatus,
+      deliveryStatus: customStatus || delivery.deliveryStatus,
+      isUserEditedStatus: Boolean(customStatus),
+      notes: deliveryNotesMap.get(delivery.id) || (order ? deliveryNotesMap.get(order.id) : "") || "",
       items: deliveryItems
         .filter((item) => item.deliveryId === delivery.id)
-        .map((item) => ({
-          id: item.id,
-          productId: item.productId,
-          product:
-            products.find((candidate) => candidate.id === item.productId)
-              ?.productName || "Unknown product",
-          sku:
-            products.find((candidate) => candidate.id === item.productId)
-              ?.sku || "",
-          batchNumber: item.batchNumber,
-          expirationDate: item.expirationDate,
-          quantityDelivered: item.quantityDelivered,
-        })),
+        .map((item, idx) => {
+          const prod = products.find((candidate) => candidate.id === item.productId);
+          const autoBatch = generateItemBatchNumber(order?.poNumber, prod?.sku, idx);
+          return {
+            id: item.id,
+            productId: item.productId,
+            product: prod?.productName || "Unknown product",
+            sku: prod?.sku || `MED-${String(idx + 1).padStart(4, "0")}`,
+            batchNumber: item.batchNumber && /^BAT-\d+-MED/i.test(item.batchNumber) ? item.batchNumber : autoBatch,
+            expirationDate: item.expirationDate,
+            quantityDelivered: item.quantityDelivered,
+          };
+        }),
     };
   });
 
@@ -450,6 +483,204 @@ router.patch("/supplier-deliveries/:id/status", async (req, res) => {
   if (!uuidPattern.test(id)) throw new DeliveryInputError("Invalid receiving report ID.");
   const result = await completeDelivery(id.toLowerCase(), deliveryDecision(req.body));
   return res.json({ success: true, ...result });
+});
+
+router.patch("/supplier-deliveries/:id", async (req: Request, res: Response) => {
+  res.set("Cache-Control", "no-store");
+  const id = asId(req.params.id);
+  const { poId, deliveryDate, deliveryStatus, quantityDelivered, batchNumber, notes } = req.body as any;
+  try {
+    const cleanId = id.replace(/^po-receiving-/, "");
+    const existingList = uuidPattern.test(cleanId)
+      ? await db.select().from(supplierDeliveriesTable).where(eq(supplierDeliveriesTable.id, cleanId))
+      : [];
+    let existing = existingList[0];
+    if (!existing && (poId || uuidPattern.test(cleanId))) {
+      const targetPoId = poId || cleanId;
+      const byPo = await db.select().from(supplierDeliveriesTable).where(eq(supplierDeliveriesTable.poId, targetPoId));
+      existing = byPo[0];
+    }
+
+    if (deliveryStatus) {
+      deliveryCustomStatusMap.set(id, deliveryStatus);
+      deliveryCustomStatusMap.set(cleanId, deliveryStatus);
+      if (poId) deliveryCustomStatusMap.set(poId, deliveryStatus);
+      if (existing) deliveryCustomStatusMap.set(existing.id, deliveryStatus);
+    }
+    if (notes !== undefined) {
+      deliveryNotesMap.set(id, String(notes));
+      deliveryNotesMap.set(cleanId, String(notes));
+      if (poId) deliveryNotesMap.set(poId, String(notes));
+      if (existing) deliveryNotesMap.set(existing.id, String(notes));
+    }
+
+    if (existing) {
+      const updateData: any = {};
+      if (deliveryDate) updateData.deliveryDate = deliveryDate;
+      if (deliveryStatus) {
+        let dbStatus = deliveryStatus;
+        if (deliveryStatus === "Delivered" || deliveryStatus === "Successful") dbStatus = "Received";
+        else if (deliveryStatus === "Lacking") dbStatus = "Partial";
+        else if (deliveryStatus === "Waiting for delivery") dbStatus = "Pending";
+        const allowed = ["Pending", "Received", "Partial", "Inspected", "Rejected"];
+        if (allowed.includes(dbStatus)) {
+          updateData.deliveryStatus = dbStatus;
+        }
+      }
+      if (Object.keys(updateData).length > 0) {
+        await db.update(supplierDeliveriesTable).set(updateData).where(eq(supplierDeliveriesTable.id, existing.id));
+      }
+      if (quantityDelivered !== undefined || batchNumber !== undefined) {
+        const itemUpdate: any = {};
+        if (quantityDelivered !== undefined && Number(quantityDelivered) > 0) itemUpdate.quantityDelivered = Number(quantityDelivered);
+        if (batchNumber) itemUpdate.batchNumber = batchNumber;
+        if (Object.keys(itemUpdate).length > 0) {
+          await db.update(deliveryItemsTable).set(itemUpdate).where(eq(deliveryItemsTable.deliveryId, existing.id));
+        }
+      }
+    }
+
+    return res.json({ success: true, message: "Receiving report updated." });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message || "Failed to update receiving report." });
+  }
+});
+
+router.post("/purchase-orders/:id/mark-successful", async (req: Request, res: Response) => {
+  res.set("Cache-Control", "no-store");
+  const rawId = asId(req.params.id).replace(/^po-receiving-/, "");
+  const { poNumber, deliveryDate, batchNumber, expirationDate, notes } = req.body as any;
+  try {
+    const order = (await findOrder(rawId)) || (poNumber ? await findOrder(poNumber) : null);
+    if (!order) {
+      return res.status(404).json({ success: false, error: "Purchase order not found." });
+    }
+
+    const poItems = await db.select().from(poItemsTable).where(eq(poItemsTable.poId, order.id));
+    const existingDeliveries = await db.select().from(supplierDeliveriesTable).where(eq(supplierDeliveriesTable.poId, order.id));
+    const effectiveDate = deliveryDate || pharmacyDate();
+    const cleanPo = order.poNumber.replace(/^PO-/, "").replace(/[^0-9A-Z]/gi, "");
+    const effectiveBatch = (batchNumber ? String(batchNumber).trim().toUpperCase() : `BAT-${cleanPo.slice(-6).toUpperCase()}`);
+    const effectiveExpiry = expirationDate && expirationDate !== "N/A" && expirationDate !== "—" ? String(expirationDate) : "2028-12-31";
+
+    await db.transaction(async (tx) => {
+      let delivery = existingDeliveries[0];
+      if (!delivery) {
+        const [created] = await tx
+          .insert(supplierDeliveriesTable)
+          .values({
+            poId: order.id,
+            deliveryDate: effectiveDate,
+            deliveryStatus: "Received",
+          })
+          .returning();
+        delivery = created;
+      } else {
+        await tx
+          .update(supplierDeliveriesTable)
+          .set({ deliveryStatus: "Received", deliveryDate: effectiveDate })
+          .where(eq(supplierDeliveriesTable.id, delivery.id));
+      }
+
+      const existingMovements = await tx
+        .select()
+        .from(stockMovementsTable)
+        .where(and(eq(stockMovementsTable.referenceId, delivery.id), eq(stockMovementsTable.movementType, "StockIn")));
+
+      if (existingMovements.length === 0) {
+        const existingDelivItems = await tx
+          .select()
+          .from(deliveryItemsTable)
+          .where(eq(deliveryItemsTable.deliveryId, delivery.id));
+
+        for (let idx = 0; idx < poItems.length; idx++) {
+          const poItem = poItems[idx]!;
+          const [product] = await tx
+            .select()
+            .from(productsTable)
+            .where(eq(productsTable.id, poItem.productId));
+          if (!product) continue;
+
+          const delivItem = existingDelivItems.find((di) => di.productId === poItem.productId);
+          const qtyToAdd = delivItem ? delivItem.quantityDelivered : poItem.quantityOrdered;
+          const itemBatch = generateItemBatchNumber(order.poNumber, product.sku, idx);
+          const itemExpiry = delivItem?.expirationDate || effectiveExpiry;
+
+          if (!delivItem) {
+            await tx.insert(deliveryItemsTable).values({
+              deliveryId: delivery.id,
+              productId: poItem.productId,
+              batchNumber: itemBatch,
+              expirationDate: itemExpiry,
+              quantityDelivered: qtyToAdd,
+            });
+          }
+
+          const allProductBatches = await tx
+            .select()
+            .from(batchInfoTable)
+            .where(eq(batchInfoTable.productId, poItem.productId));
+          const physicalStock = allProductBatches.reduce((sum, b) => sum + b.quantityRemaining, 0);
+          const matchingBatch = allProductBatches.find(
+            (b) => b.batchNumber.trim().toUpperCase() === itemBatch.trim().toUpperCase(),
+          );
+
+          const [savedBatch] = matchingBatch
+            ? await tx
+                .update(batchInfoTable)
+                .set({
+                  quantityRemaining: matchingBatch.quantityRemaining + qtyToAdd,
+                  updatedAt: new Date(),
+                })
+                .where(eq(batchInfoTable.id, matchingBatch.id))
+                .returning()
+            : await tx
+                .insert(batchInfoTable)
+                .values({
+                  productId: poItem.productId,
+                  batchNumber: itemBatch,
+                  expirationDate: itemExpiry,
+                  quantityRemaining: qtyToAdd,
+                  dateReceived: effectiveDate,
+                })
+                .returning();
+
+          await tx
+            .update(productsTable)
+            .set({
+              currentStock: physicalStock + qtyToAdd,
+              updatedAt: new Date(),
+            })
+            .where(eq(productsTable.id, poItem.productId));
+
+          await tx.insert(stockMovementsTable).values({
+            productId: poItem.productId,
+            batchId: savedBatch.id,
+            referenceId: delivery.id,
+            movementType: "StockIn",
+            quantity: qtyToAdd,
+            notes: `Successful purchase (${order.poNumber})`,
+          });
+        }
+      }
+
+      await tx
+        .update(purchaseOrdersTable)
+        .set({ status: "Fulfilled", updatedAt: new Date() })
+        .where(eq(purchaseOrdersTable.id, order.id));
+
+      deliveryCustomStatusMap.set(order.id, "Successful");
+      deliveryCustomStatusMap.set(delivery.id, "Successful");
+      if (notes) {
+        deliveryNotesMap.set(order.id, String(notes));
+        deliveryNotesMap.set(delivery.id, String(notes));
+      }
+    });
+
+    return res.json({ success: true, status: "Successful" });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message || "Failed to mark purchase order as successful." });
+  }
 });
 
 router.post(
@@ -675,11 +906,55 @@ router.post(
 );
 
 router.patch(
+  "/purchase-orders/:id/items",
+  requireRoles("Admin", "FrontDesk"),
+  async (req: Request, res: Response) => {
+    const poId = asId(req.params.id);
+    const { items } = req.body as { items?: Array<{ id?: string; quantityOrdered?: number | string; unitCost?: number | string }> };
+    if (!Array.isArray(items) || items.length === 0)
+      return res.status(400).json({ success: false, error: "No items to update." });
+    const order = await findOrder(poId);
+    if (!order) return res.status(404).json({ success: false, error: "Purchase order not found." });
+    if (["Fulfilled", "Cancelled"].includes(order.status))
+      return res.status(409).json({ success: false, error: "Closed purchase orders cannot be edited." });
+    for (const item of items) {
+      if (!item.id || !Number.isInteger(Number(item.quantityOrdered)) || Number(item.quantityOrdered) <= 0 ||
+          !Number.isFinite(Number(item.unitCost)) || Number(item.unitCost) < 0)
+        return res.status(400).json({ success: false, error: "Each item needs a positive whole quantity and a valid unit cost." });
+    }
+    const total = await db.transaction(async (tx) => {
+      const existing = await tx.select().from(poItemsTable).where(eq(poItemsTable.poId, order.id));
+      for (const edit of items) {
+        const row = existing.find((r) => r.id === edit.id);
+        if (!row) continue;
+        const qty = Number(edit.quantityOrdered);
+        const cost = Number(edit.unitCost);
+        await tx.update(poItemsTable)
+          .set({ quantityOrdered: qty, unitCost: formatAmount(cost), lineTotal: formatAmount(qty * cost) })
+          .where(eq(poItemsTable.id, row.id));
+      }
+      const fresh = await tx.select().from(poItemsTable).where(eq(poItemsTable.poId, order.id));
+      const sum = fresh.reduce((acc, r) => acc + Number(r.lineTotal), 0);
+      await tx.update(purchaseOrdersTable)
+        .set({ totalOrderAmount: formatAmount(sum), updatedAt: new Date() })
+        .where(eq(purchaseOrdersTable.id, order.id));
+      return sum;
+    });
+    return res.json({ success: true, totalOrderAmount: formatAmount(total) });
+  },
+);
+
+router.patch(
   "/purchase-orders/:id/status",
   requireRoles("Admin", "FrontDesk"),
   async (req: Request, res: Response) => {
     const poId = asId(req.params.id);
-    const { status } = req.body as { status?: string };
+    let { status } = req.body as { status?: string };
+
+    if (status === "Waiting for delivery") status = "Submitted";
+    else if (status === "Delivered") status = "Fulfilled";
+    else if (status === "Rejected") status = "Cancelled";
+    else if (status === "Pending") status = "Pending";
 
     if (
       !status ||
@@ -687,7 +962,7 @@ router.patch(
     ) {
       return res.status(400).json({
         success: false,
-        error: `Invalid status. Use one of: ${poStatuses.join(", ")}.`,
+        error: `Invalid status. Use one of: Pending, Waiting for delivery, Delivered, Cancelled.`,
       });
     }
 
@@ -710,16 +985,41 @@ router.patch(
         .where(eq(purchaseOrdersTable.id, existing.id)).for("update");
       if (!order) throw new ReceivingError("Purchase order no longer exists. Refresh the order list.");
       if (order.status === status) return order;
-      if (["Fulfilled", "Cancelled"].includes(order.status))
-        throw new ReceivingError("Closed purchase orders cannot be reopened or cancelled through a status change. Recorded receipts must be retained.");
-      const receiving = await readOrderReceivingState(tx, order.id);
-      if (status === "Cancelled" && receiving.some(item => item.quantityReceived > 0))
-        throw new ReceivingError("This purchase order already has received stock. Use a reviewed return or correction; changing status cannot undo receiving.");
-      if (status === "Fulfilled" && (!receiving.length || receiving.some(item => item.quantityRemaining > 0)))
-        throw new ReceivingError("Record the outstanding products in Receiving Report Management with their actual batch and expiration dates. The order becomes Fulfilled when all quantities are received.");
       const [saved] = await tx.update(purchaseOrdersTable)
         .set({status: status as (typeof poStatuses)[number], updatedAt: new Date()})
         .where(eq(purchaseOrdersTable.id, order.id)).returning();
+
+      if (status === "Fulfilled") {
+        const existingDelivs = await tx.select().from(supplierDeliveriesTable).where(eq(supplierDeliveriesTable.poId, order.id));
+        if (existingDelivs.length === 0) {
+          const [createdDeliv] = await tx
+            .insert(supplierDeliveriesTable)
+            .values({
+              poId: order.id,
+              deliveryDate: pharmacyDate(),
+              deliveryStatus: "Received",
+            })
+            .returning();
+          const poItems = await tx.select().from(poItemsTable).where(eq(poItemsTable.poId, order.id));
+          const allProducts = await tx.select().from(productsTable);
+          for (let idx = 0; idx < poItems.length; idx++) {
+            const poItem = poItems[idx]!;
+            const prod = allProducts.find((p) => p.id === poItem.productId);
+            await tx.insert(deliveryItemsTable).values({
+              deliveryId: createdDeliv.id,
+              productId: poItem.productId,
+              batchNumber: generateItemBatchNumber(order.poNumber, prod?.sku, idx),
+              expirationDate: "2028-12-31",
+              quantityDelivered: poItem.quantityOrdered,
+            });
+          }
+        } else {
+          await tx
+            .update(supplierDeliveriesTable)
+            .set({ deliveryStatus: "Received" })
+            .where(eq(supplierDeliveriesTable.id, existingDelivs[0]!.id));
+        }
+      }
       return saved;
     });
 

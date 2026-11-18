@@ -81,6 +81,7 @@ function buildFactsSql(includePayments: boolean): string {
   SELECT
     i.id AS invoice_id, i.invoice_number,
     i.supplier_id AS invoice_supplier_id, s.supplier_name AS invoice_supplier,
+    s.payment_terms AS supplier_payment_terms,
     i.po_id, po.po_number, i.due_date::text, i.invoice_amount::text, i.is_paid,
     a.id AS payable_id, a.supplier_id AS payable_supplier_id,
     aps.supplier_name AS payable_supplier,
@@ -159,14 +160,19 @@ function reconciliation(facts: SupplierPayableFact[]) {
 }
 
 function toInvoice(row: SupplierPayableFact) {
-  let status = "Unpaid";
+  let status = "Pending";
+  const today = localToday();
   if (row.findings.length > 0) status = "Needs Review";
-  else if (cents(row.recorded_balance) === 0n) status = "Paid";
+  else if (cents(row.recorded_balance) === 0n || row.is_paid) status = "Settled";
+  else if (row.due_date && row.due_date < today) status = "Overdue";
+  const rawTerms = String((row as any).supplier_payment_terms || "");
+  const paymentTerms = rawTerms.includes("60") ? "Net 60" : "Net 30";
   return {
     id: row.invoice_id,
     invoiceNumber: row.invoice_number,
     supplierId: row.invoice_supplier_id,
     supplier: row.invoice_supplier || "Unknown supplier",
+    paymentTerms,
     poId: row.po_id,
     poNumber: row.po_number,
     dueDate: row.due_date,
@@ -174,6 +180,9 @@ function toInvoice(row: SupplierPayableFact) {
     isPaid: row.is_paid,
     needsReview: row.findings.length > 0,
     reviewReasons: row.findings,
+    balance: row.recorded_balance,
+    totalPaid: row.recorded_paid,
+    payments: (row as any).payment_records || [],
     status,
   };
 }
@@ -186,12 +195,15 @@ function toPayables(facts: SupplierPayableFact[], today: string) {
     if (needsReview) status = "Needs Review";
     else if (cents(row.recorded_balance) === 0n) status = "Paid";
     else if (row.due_date < today) status = "Overdue";
+    const rawTerms = String((row as any).supplier_payment_terms || "");
+    const paymentTerms = rawTerms.includes("60") ? "Net 60" : "Net 30";
     return [
       {
         id: row.payable_id,
         supplierId: row.payable_supplier_id,
         invoiceId: row.invoice_id,
         supplier: row.payable_supplier || "Unknown supplier",
+        paymentTerms,
         invoiceNumber: row.invoice_number,
         dueDate: row.due_date,
         totalOwed: needsReview ? null : row.invoice_amount,
@@ -253,7 +265,10 @@ export async function readSupplierPayables(
 }
 
 export async function readSupplierInvoices(query: Query) {
-  const facts = await readFacts(query);
+  const { rows: facts }: { rows: SupplierHistoryFact[] } = await query(
+    orderedFactsSql(supplierHistoryFactsSql),
+    [],
+  );
   return {
     invoices: facts.map(toInvoice),
     reconciliation: reconciliation(facts),
