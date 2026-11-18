@@ -1,29 +1,8 @@
-import {
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type Ref,
-} from "react";
-import * as Dialog from "@radix-ui/react-dialog";
-import { CalendarDays, X } from "lucide-react";
+import { useEffect, useId, useRef, useState, type Ref } from "react";
+import { CalendarDays } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { ResponsivePicker } from "./responsive-picker";
 import { formatCalendarDate, parseCalendarDate } from "@/lib/business-date";
-
-const phoneQuery =
-  "(max-width: 760px), (max-width: 1023px) and (max-height: 480px)";
-const subscribeToViewport = (onChange: () => void) => {
-  const media = window.matchMedia(phoneQuery);
-  media.addEventListener("change", onChange);
-  return () => media.removeEventListener("change", onChange);
-};
-const isPhoneViewport = () => window.matchMedia(phoneQuery).matches;
 
 export function DateControl({
   date,
@@ -68,18 +47,12 @@ export function DateControl({
   const [draft, setDraft] = useState(() =>
     date ? formatCalendarDate(date) : "",
   );
-  const [layer, setLayer] = useState(50);
   useEffect(() => {
     if (disabled || readOnly) setOpen(false);
   }, [disabled, readOnly]);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const [inputError, setInputError] = useState("");
   const inputId = useId();
-  const panelRef = useRef<HTMLDivElement>(null);
-  const focusPanel = (event: Event) => {
-    event.preventDefault();
-    panelRef.current?.focus({ preventScroll: true });
-  };
   const firstMonth =
     startMonth ??
     minDate ??
@@ -95,26 +68,9 @@ export function DateControl({
   const inRange = (value: Date) => value >= earliestDate && value <= latestDate;
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const mobile = useSyncExternalStore(
-    subscribeToViewport,
-    isPhoneViewport,
-    () => false,
-  );
-
   const changeOpen = (nextOpen: boolean) => {
     if (nextOpen && (disabled || readOnly)) return;
     if (nextOpen) {
-      let nextLayer = 50;
-      for (
-        let owner = buttonRef.current?.parentElement;
-        owner;
-        owner = owner.parentElement
-      ) {
-        const ownerLayer = Number.parseInt(getComputedStyle(owner).zIndex);
-        if (Number.isFinite(ownerLayer))
-          nextLayer = Math.max(nextLayer, ownerLayer + 10);
-      }
-      setLayer(nextLayer);
       setMonth(inRange(referenceDate) ? referenceDate : earliestDate);
       setDraft(date ? formatCalendarDate(date) : "");
       setInputError("");
@@ -254,52 +210,15 @@ export function DateControl({
     </>
   );
 
-  if (mobile) {
-    return (
-      <Dialog.Root open={open} onOpenChange={changeOpen}>
-        <Dialog.Trigger asChild>{trigger}</Dialog.Trigger>
-        <Dialog.Portal>
-          <Dialog.Overlay
-            className="date-picker-backdrop"
-            style={{ zIndex: layer }}
-          >
-            <Dialog.Content
-              ref={panelRef}
-              className="date-picker-popover date-picker-dialog"
-              style={{ zIndex: layer }}
-              aria-describedby={undefined}
-              onOpenAutoFocus={focusPanel}
-              onEscapeKeyDown={(event) => event.stopPropagation()}
-            >
-              <div className="date-picker-dialog-header">
-                <Dialog.Title>{label || "Select date"}</Dialog.Title>
-                <Dialog.Close aria-label="Close date picker">
-                  <X size={16} aria-hidden="true" />
-                </Dialog.Close>
-              </div>
-              {calendar}
-            </Dialog.Content>
-          </Dialog.Overlay>
-        </Dialog.Portal>
-      </Dialog.Root>
-    );
-  }
-
   return (
-    <Popover open={open} onOpenChange={changeOpen}>
-      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-      <PopoverContent
-        ref={panelRef}
-        className="date-picker-popover"
-        style={{ zIndex: layer }}
-        align="end"
-        collisionPadding={12}
-        aria-label={label || "Select date"}
-        onOpenAutoFocus={focusPanel}
-        onEscapeKeyDown={(event) => event.stopPropagation()}
-      >
-        {calendar}
-      </PopoverContent>
-    </Popover>
+    <ResponsivePicker
+      open={open}
+      onOpenChange={changeOpen}
+      anchorRef={buttonRef}
+      trigger={trigger}
+      label={label || "Select date"}
+    >
+      {calendar}
+    </ResponsivePicker>
   );
 }
