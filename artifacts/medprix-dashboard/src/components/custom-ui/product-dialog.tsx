@@ -16,16 +16,27 @@ import {
 } from "@/lib/product-form";
 import type { ProductItem, ProductCategory } from "@/lib/types";
 
+type ProductOptionState = {
+  pending: boolean;
+  hasData: boolean;
+  error: string;
+  onRetry: () => void;
+};
+
 export function ProductDialog({
   product,
   categories,
   suppliers,
+  categoryState,
+  supplierState,
   onClose,
   onSaved,
 }: {
   product?: ProductItem;
   categories: ProductCategory[];
   suppliers: string[];
+  categoryState?: ProductOptionState;
+  supplierState?: ProductOptionState;
   onClose: () => void;
   onSaved: (product: ProductItem) => void;
 }) {
@@ -93,6 +104,7 @@ export function ProductDialog({
     } = {},
   ) => {
     const id = `${prefix}-${key}`;
+    const optionState = key === "category" ? categoryState : key === "supplier" ? supplierState : undefined;
     const errorKey = key;
     const props = {
       id,
@@ -120,7 +132,11 @@ export function ProductDialog({
           {label} {options.required ? "*" : ""}
         </label>
         {options.choices ? (
-          <SelectField {...props}>
+          <SelectField {...props}
+            optionsLoading={optionState ? optionState.pending && !optionState.hasData : undefined}
+            aria-busy={optionState?.pending}
+            optionsError={optionState?.error}
+            onRetryOptions={optionState?.onRetry}>
             <option value="">Select {label.toLowerCase()}</option>
             {[
               ...new Set([

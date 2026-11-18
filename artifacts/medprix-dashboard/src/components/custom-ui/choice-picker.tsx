@@ -7,7 +7,7 @@ import {
   type CSSProperties,
 } from "react";
 import * as Popover from "@radix-ui/react-popover";
-import { Check, ChevronDown } from "lucide-react";
+import { AlertCircle, Check, ChevronDown, LoaderCircle } from "lucide-react";
 import {
   Command,
   CommandEmpty,
@@ -149,7 +149,7 @@ export const ChoicePicker = forwardRef<HTMLButtonElement, ChoicePickerProps>(
                   : (selected?.label ??
                     (error ? "Options unavailable" : placeholder))}
               </span>
-              <ChevronDown size={14} aria-hidden="true" />
+              {loading || busy ? <LoaderCircle size={14} className="spin action-spinner" aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
             </button>
           </Popover.Trigger>
           <Popover.Portal container={popupContainer}>
@@ -185,11 +185,12 @@ export const ChoicePicker = forwardRef<HTMLButtonElement, ChoicePickerProps>(
               <div className="choice-menu-sizer" aria-hidden="true">
                 {sizingText}
               </div>
-              {!showSearch && error ? (
-                <p className="choice-menu-error" role="alert">
-                  {error}
+              {!showSearch && error && (
+                <p className="choice-menu-error action-error-copy">
+                  <AlertCircle size={14} aria-hidden="true" /><span>{error}</span>
                 </p>
-              ) : (
+              )}
+              {!showSearch && error && options.length === 0 ? null : (
                 <Command shouldFilter={shouldFilter} label={searchPlaceholder}>
                   {showSearch && (
                     <CommandInput
@@ -245,6 +246,7 @@ export const ChoicePicker = forwardRef<HTMLButtonElement, ChoicePickerProps>(
                   ref={retryButton}
                   type="button"
                   className="receiving-new-batch"
+                  disabled={busy || loading}
                   onClick={onRetry}
                 >
                   Retry loading

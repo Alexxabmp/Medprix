@@ -248,20 +248,34 @@ export default function InventoryPage({
   const canRecordStockOut = isAdmin || isCashier;
 
   const [suppliers, setSuppliers] = useState<SupplierRecord[]>([]);
+  const [supplierLoading, setSupplierLoading] = useState(!isCashier);
+  const [supplierAvailable, setSupplierAvailable] = useState(false);
+  const [supplierError, setSupplierError] = useState("");
+  const [supplierRetry, setSupplierRetry] = useState(0);
   useEffect(() => {
     if (isCashier) return;
     let active = true;
+    setSupplierLoading(true);
     fetchSupplierRecords()
       .then((records) => {
-        if (active) setSuppliers(records);
+        if (active) {
+          setSuppliers(records);
+          setSupplierAvailable(true);
+          setSupplierError("");
+          setSupplierLoading(false);
+        }
       })
       .catch((failure) => {
-        if (active) onToast({ message: safeError(failure), variant: "error" });
+        if (active) {
+          setSupplierError(safeError(failure));
+          setSupplierLoading(false);
+          onToast({ message: safeError(failure), variant: "error" });
+        }
       });
     return () => {
       active = false;
     };
-  }, [isCashier, onToast]);
+  }, [isCashier, onToast, supplierRetry]);
 
   // Inventory items state from shared pharmacy store
   const { items, setItems, refresh: fetchInventory, isBackendConnected } = usePharmacyInventory();
@@ -275,6 +289,7 @@ export default function InventoryPage({
   const [statusFilter, setStatusFilter] = useState("All statuses");
   const [categoryRecords, setCategoryRecords] = useState<ProductCategory[]>([]);
   const [categoryLoading, setCategoryLoading] = useState(true);
+  const [categoryAvailable, setCategoryAvailable] = useState(false);
   const [categoryError, setCategoryError] = useState("");
   const loadCategories = async () => {
     setCategoryLoading(true);
@@ -282,7 +297,9 @@ export default function InventoryPage({
       const response = await fetch("/api/inventory/categories");
       if (!response.ok) throw new Error();
       const data = await response.json();
+      if (!Array.isArray(data.categories)) throw new Error();
       setCategoryRecords(data.categories);
+      setCategoryAvailable(true);
       setCategoryError("");
     } catch { setCategoryError("Categories could not be loaded. Retry before editing products."); }
     finally { setCategoryLoading(false); }
@@ -1358,6 +1375,8 @@ export default function InventoryPage({
         product={editProduct ?? undefined}
         categories={categoryRecords}
         suppliers={suppliers.map((supplier) => supplier.name)}
+        categoryState={{ pending: categoryLoading, hasData: categoryAvailable, error: categoryError, onRetry: () => void loadCategories() }}
+        supplierState={{ pending: supplierLoading, hasData: supplierAvailable, error: supplierError, onRetry: () => { setSupplierLoading(true); setSupplierRetry(value => value + 1); } }}
         onClose={() => { setIsAddProductOpen(false); setEditProduct(null); }}
         onSaved={handleProductSaved}
       />}

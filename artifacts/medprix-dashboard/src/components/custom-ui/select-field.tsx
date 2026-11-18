@@ -25,6 +25,7 @@ export type SelectFieldProps = ComponentPropsWithoutRef<"select"> & {
   shouldFilter?: boolean;
   footerAction?: { label: string; onClick: () => void };
   optionsError?: string;
+  optionsLoading?: boolean;
   onRetryOptions?: () => void;
 };
 
@@ -38,6 +39,7 @@ export function SelectField({
   shouldFilter,
   footerAction,
   optionsError,
+  optionsLoading,
   onRetryOptions,
   ...props
 }: SelectFieldProps) {
@@ -174,7 +176,7 @@ export function SelectField({
             trigger.current?.focus();
         }}
       />
-      {searchable || optionsError ? (
+      {searchable || optionsError || optionsLoading !== undefined ? (
         <ChoicePicker
           ref={trigger}
           id={id}
@@ -183,6 +185,7 @@ export function SelectField({
           data-testid={props["data-testid"]}
           footerAction={footerAction}
           error={optionsError}
+          loading={optionsLoading}
           onRetry={
             onRetryOptions
               ? () => {
