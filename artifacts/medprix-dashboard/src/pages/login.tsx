@@ -122,7 +122,10 @@ export default function LoginPage({ onLogin }: { onLogin: () => void }) {
           disabled={pending}
           style={{ marginTop: 22 }}
         >
-          {pending ? <><LoaderCircle size={14} className="spin action-spinner" aria-hidden="true" /> Signing in…</> : <>Sign in </>}
+          {pending ? <><LoaderCircle size={14} className="spin action-spinner" aria-hidden="true" /> Signing in…</> : 
+          <>
+          Sign in <ArrowUpRight size={14} />
+          </>}
         </button>
         <span className="sr-only" role="status">{pending ? "Signing in…" : ""}</span>
         <div className="login-footer">
