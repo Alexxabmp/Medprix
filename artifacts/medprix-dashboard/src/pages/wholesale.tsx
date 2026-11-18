@@ -16,8 +16,7 @@ import {
   type WholesaleSummaryRow,
 } from "@/components/wholesale-workspace-tables";
 import { WholesaleReceivables } from "@/components/wholesale-receivables";
-import { Summary } from "@/components/custom-ui/summary-card";
-import { LoadingState } from "@/components/custom-ui/loading-state";
+import { SourceSummary as Summary, SourceTableBody, SourceFeedback, SourceRefreshButton, SourceProgress, SourceText, type SourceState } from "@/components/custom-ui/source-state";
 import { WholesaleDeliveryReceipts } from "@/components/wholesale-delivery-receipts";
 import { WholesaleOrderDetails } from "@/components/wholesale-order-details";
 import {
@@ -27,7 +26,7 @@ import {
 import { WholesaleDeliveryPanel } from "@/components/wholesale-delivery-panel";
 import { WholesaleRequestFeedback } from "@/components/wholesale-request-feedback";
 import { DeliveryReceiptView } from "@/components/delivery-receipt-view";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Eye, Pencil, Plus, Search, Truck } from "lucide-react";
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import { WholesaleDialog } from "@/components/wholesale-dialog";
@@ -111,8 +110,12 @@ export default function WholesalePage({
   const [priceInput, setPriceInput] = useState("");
   const [printingReceipt, setPrintingReceipt] = useState(false);
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [ready, setReady] = useState(true);
+  type Resource = "clients" | "catalog" | "orders" | "receipts" | "overview";
+  const [sources, setSources] = useState<Record<Resource, SourceState>>(() => Object.fromEntries(
+    [["clients", "/clients"], ["catalog", "/catalog"], ["orders", "/orders"], ["receipts", "/delivery-receipts"], ["overview", "/overview"]]
+      .map(([key, path]) => [key, { hasData: getCachedWholesale(path) !== null, pending: true, error: "" }]),
+  ) as Record<Resource, SourceState>);
+  const resourceRequests = useRef<Record<Resource, number>>({ clients: 0, catalog: 0, orders: 0, receipts: 0, overview: 0 });
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
   const [deliveryVersion, setDeliveryVersion] = useState(0);
@@ -128,51 +131,31 @@ export default function WholesalePage({
     }
   });
 
-  async function load(background = false) {
-    if (!background) setLoading(true);
-    setError("");
-    try {
-      const [
-        nextClients,
-        nextProducts,
-        nextOrders,
-        nextReceipts,
-        nextOverview,
-      ] = await Promise.all([
-        wholesaleGet<WholesaleClient[]>("/clients"),
-        wholesaleGet<WholesaleProduct[]>("/catalog"),
-        wholesaleGet<WholesaleOrder[]>("/orders"),
-        wholesaleGet<DeliveryReceiptSummary[]>("/delivery-receipts"),
-        wholesaleGet<WholesaleOverview>("/overview"),
-      ]);
-      setOverview(nextOverview);
-      setOverviewError("");
-      setClients(nextClients);
-      setProducts(nextProducts);
-      setOrders(nextOrders);
-      setReceipts(nextReceipts);
-      setReady(true);
-    } catch (failure) {
-      if (!background) setReady(false);
-      setOverview(null);
-      setError(safeError(failure));
-    } finally {
-      if (!background) setLoading(false);
+  async function load(_background = false, only?: Resource, force = false) {
+    async function read<T>(key: Resource, path: string, receive: (data: T) => void) {
+      resourceRequests.current[key]++;
+      setSources(current => ({ ...current, [key]: { ...current[key], pending: true } }));
+      try {
+        const result = await wholesaleGet<T>(path, force);
+        receive(result);
+        setSources(current => ({ ...current, [key]: { hasData: true, pending: resourceRequests.current[key] > 1, error: "" } }));
+      } catch (failure) {
+        setSources(current => ({ ...current, [key]: { ...current[key], pending: resourceRequests.current[key] > 1, error: safeError(failure) } }));
+      } finally { resourceRequests.current[key]--; }
     }
+    await Promise.all([
+      ...(!only || only === "clients" ? [read<WholesaleClient[]>("clients", "/clients", setClients)] : []),
+      ...(!only || only === "catalog" ? [read<WholesaleProduct[]>("catalog", "/catalog", setProducts)] : []),
+      ...(!only || only === "orders" ? [read<WholesaleOrder[]>("orders", "/orders", setOrders)] : []),
+      ...(!only || only === "receipts" ? [read<DeliveryReceiptSummary[]>("receipts", "/delivery-receipts", setReceipts)] : []),
+      ...(!only || only === "overview" ? [read<WholesaleOverview>("overview", "/overview", setOverview)] : []),
+    ]);
   }
   useEffect(() => {
     void load(true);
   }, []);
 
-  async function refreshOverview() {
-    try {
-      setOverview(await wholesaleGet<WholesaleOverview>("/overview"));
-      setOverviewError("");
-    } catch (failure) {
-      setOverview(null);
-      setOverviewError(safeError(failure));
-    }
-  }
+  async function refreshOverview() { await load(true, "overview"); }
   useEffect(() => {
     const refresh = () => {
       if (document.visibilityState === "visible") void load(true);
@@ -300,7 +283,7 @@ export default function WholesalePage({
     busy || pending !== null || openingAccount || openingSummary !== null;
   const navigating = busy || openingAccount || openingSummary !== null;
   const query = search.toLocaleLowerCase();
-  const visibleOrders = orders.filter((order) => {
+  const visibleOrders = useMemo(() => tab === "orders" ? orders.filter((order) => {
     const displayStatus = order.status === "Pending" ? "Draft" : order.status;
     const matchesStatus =
       orderStatus === "All statuses" ||
@@ -310,13 +293,13 @@ export default function WholesalePage({
       .toLocaleLowerCase()
       .includes(query);
     return matchesStatus && matchesQuery;
-  });
-  const visibleClients = clients.filter((client) =>
+  }) : [], [tab, orders, orderStatus, query]);
+  const visibleClients = useMemo(() => tab === "clients" ? clients.filter((client) =>
     (client.name + " " + (client.address ?? ""))
       .toLocaleLowerCase()
       .includes(query),
-  );
-  const visibleProducts = products.filter((product) => {
+  ) : [], [tab, clients, query]);
+  const visibleProducts = useMemo(() => tab === "prices" ? products.filter((product) => {
     const vatLabel =
       product.isVatExempt === null
         ? "Needs classification"
@@ -329,7 +312,7 @@ export default function WholesalePage({
       .toLocaleLowerCase()
       .includes(query);
     return matchesVat && matchesQuery;
-  });
+  }) : [], [tab, products, vatFilter, query]);
 
   const WHOLESALE_PAGE_SIZE = 15;
   const totalOrderPages = Math.max(
@@ -397,6 +380,8 @@ export default function WholesalePage({
     },
   }[tab];
 
+  const activeResource: Resource | null = tab === "orders" ? "orders" : tab === "clients" ? "clients" : tab === "prices" ? "catalog" : tab === "receipts" ? "receipts" : null;
+  const retryResource = (key: Resource) => { if (!resourceRequests.current[key]) void load(false, key, true); };
   return (
     <div className="wholesale-workspace">
       <PageHeading
@@ -406,13 +391,15 @@ export default function WholesalePage({
       {error && (
         <div role="alert" className="inline-error">
           {error}
-          {!loading && (
+          {!(Object.values(sources).some(source => source.pending)) && (
             <button className="button soft" onClick={() => void load()}>
               Retry loading
             </button>
           )}
         </div>
       )}
+      <SourceFeedback status={sources.overview} label="wholesale summary" onRetry={() => retryResource("overview")} />
+      {activeResource && <SourceFeedback status={sources[activeResource]} label="wholesale records" />}
       {pending && (
         <div className="inline-error" role="status">
           <span>
@@ -432,9 +419,9 @@ export default function WholesalePage({
       <div
         className="summary-strip wholesale-summary-strip"
         aria-label="Wholesale summary"
-        aria-busy={loading}
+        aria-busy={sources.overview.pending}
       >
-        <Summary
+        <Summary status={sources.overview}
           label="Pending Orders"
           value={overview ? String(overview.openOrders) : "—"}
           caption="Orders awaiting delivery"
@@ -444,11 +431,11 @@ export default function WholesalePage({
               disabled={navigating || !overview}
               onClick={() => void openSummary("pending")}
             >
-              {openingSummary === "pending" ? "Opening..." : "View"}
+              {openingSummary === "pending" ? <SourceProgress label="Opening…" /> : "View"}
             </button>
           }
         />
-        <Summary
+        <Summary status={sources.overview}
           label="Deliveries"
           value={overview ? String(overview.activeDeliveries) : "—"}
           caption="Scheduled or in transit"
@@ -458,11 +445,11 @@ export default function WholesalePage({
               disabled={navigating || !overview}
               onClick={() => void openSummary("deliveries")}
             >
-              {openingSummary === "deliveries" ? "Opening..." : "View"}
+              {openingSummary === "deliveries" ? <SourceProgress label="Opening…" /> : "View"}
             </button>
           }
         />
-        <Summary
+        <Summary status={sources.overview}
           label="Outstanding Balance"
           value={overview ? wholesalePeso(overview.outstanding) : "—"}
           caption="Unpaid client balances"
@@ -472,11 +459,11 @@ export default function WholesalePage({
               disabled={navigating || !overview}
               onClick={() => void openSummary("outstanding")}
             >
-              {openingSummary === "outstanding" ? "Opening..." : "View"}
+              {openingSummary === "outstanding" ? <SourceProgress label="Opening…" /> : "View"}
             </button>
           }
         />
-        <Summary
+        <Summary status={sources.overview}
           label="Overdue Balance"
           value={overview ? wholesalePeso(overview.overdue) : "—"}
           caption={
@@ -496,7 +483,7 @@ export default function WholesalePage({
               disabled={navigating || !overview}
               onClick={() => void openSummary("overdue")}
             >
-              {openingSummary === "overdue" ? "Opening..." : "View"}
+              {openingSummary === "overdue" ? <SourceProgress label="Opening…" /> : "View"}
             </button>
           }
         />
@@ -579,6 +566,7 @@ export default function WholesalePage({
             />
           </div>
           <div className="table-tools-right">
+            {activeResource && <SourceRefreshButton status={sources[activeResource]} label="wholesale records" onRefresh={() => retryResource(activeResource)} />}
             {tab === "deliveries" && (
               <SelectField
                 className="select"
@@ -654,7 +642,7 @@ export default function WholesalePage({
             {tab === "orders" && (
               <button
                 className="button primary-action"
-                disabled={locked || !ready || loading || !clients.length}
+                disabled={locked || !sources.clients.hasData || !sources.catalog.hasData || !clients.length}
                 onClick={() => open({ kind: "order", order: null })}
               >
                 <Plus size={14} /> New draft
@@ -663,7 +651,7 @@ export default function WholesalePage({
             {tab === "clients" && (
               <button
                 className="button primary-action"
-                disabled={locked || !ready || loading}
+                disabled={locked}
                 onClick={() => open({ kind: "client" })}
               >
                 <Plus size={14} /> Add client
@@ -671,11 +659,7 @@ export default function WholesalePage({
             )}
           </div>
         </div>
-        {loading ? (
-          <LoadingState label="Loading wholesale records…" />
-        ) : (
-          ready && (
-            <>
+        <>
               {tab === "deliveries" ? (
                 <WholesaleDeliveries
                   key={deliveryVersion}
@@ -699,6 +683,7 @@ export default function WholesalePage({
                       receipts={receipts}
                       search={search}
                       disabled={navigating}
+                      source={sources.receipts}
                     />
                   )}
                   {tab === "orders" && (
@@ -715,7 +700,7 @@ export default function WholesalePage({
                           <th className="table-action-head">Action</th>
                         </tr>
                       </thead>
-                      <tbody>
+                      <SourceTableBody status={sources.orders} label="Wholesale orders" colSpan={5}>
                         {paginatedOrders.map((order) => (
                           <tr key={order.id}>
                             <td>{order.orderNumber}</td>
@@ -807,7 +792,7 @@ export default function WholesalePage({
                             </TableEmptyState>
                           </tr>
                         )}
-                      </tbody>
+                      </SourceTableBody>
                     </table>
                   )}
                   {tab === "clients" && (
@@ -822,7 +807,7 @@ export default function WholesalePage({
                           <th className="table-action-head">Action</th>
                         </tr>
                       </thead>
-                      <tbody>
+                      <SourceTableBody status={sources.clients} label="Wholesale clients" colSpan={3}>
                         {paginatedClients.map((client) => (
                           <tr key={client.id}>
                             <td>
@@ -869,7 +854,7 @@ export default function WholesalePage({
                             </TableEmptyState>
                           </tr>
                         )}
-                      </tbody>
+                      </SourceTableBody>
                     </table>
                   )}
                   {tab === "prices" && (
@@ -890,7 +875,7 @@ export default function WholesalePage({
                           )}
                         </tr>
                       </thead>
-                      <tbody>
+                      <SourceTableBody status={sources.catalog} label="Wholesale products" colSpan={role === "Admin" ? 7 : 6}>
                         {paginatedProducts.map((product) => (
                           <tr key={product.id}>
                             <td>
@@ -938,7 +923,7 @@ export default function WholesalePage({
                             </TableEmptyState>
                           </tr>
                         )}
-                      </tbody>
+                      </SourceTableBody>
                     </table>
                   )}
                 </div>
@@ -949,10 +934,10 @@ export default function WholesalePage({
                   role="navigation"
                   aria-label="Wholesale orders pagination"
                 >
-                  <span className="muted">
+                  <span className="muted"><SourceText status={sources.orders}>
                     Page {safeOrderPage} of {totalOrderPages} (
                     {visibleOrders.length} orders)
-                  </span>
+                  </SourceText></span>
                   <button
                     type="button"
                     className="button soft"
@@ -979,10 +964,10 @@ export default function WholesalePage({
                   role="navigation"
                   aria-label="Wholesale clients pagination"
                 >
-                  <span className="muted">
+                  <span className="muted"><SourceText status={sources.clients}>
                     Page {safeClientPage} of {totalClientPages} (
                     {visibleClients.length} clients)
-                  </span>
+                  </SourceText></span>
                   <button
                     type="button"
                     className="button soft"
@@ -1009,10 +994,10 @@ export default function WholesalePage({
                   role="navigation"
                   aria-label="Wholesale prices pagination"
                 >
-                  <span className="muted">
+                  <span className="muted"><SourceText status={sources.catalog}>
                     Page {safePricePage} of {totalPricePages} (
                     {visibleProducts.length} products)
-                  </span>
+                  </SourceText></span>
                   <button
                     type="button"
                     className="button soft"
@@ -1033,9 +1018,7 @@ export default function WholesalePage({
                   </button>
                 </div>
               )}
-            </>
-          )
-        )}
+        </>
       </section>
       {pageTableStandard && viewClient && (
         <WholesaleDialog

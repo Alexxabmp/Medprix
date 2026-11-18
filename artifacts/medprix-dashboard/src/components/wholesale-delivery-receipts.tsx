@@ -1,3 +1,4 @@
+import { SourceTableBody, type SourceState } from "./custom-ui/source-state";
 import { AppTooltip } from "@/components/ui/tooltip";
 import { PageTableValue, PageTableScroll } from "@/components/page-table-context";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
@@ -17,10 +18,12 @@ export function WholesaleDeliveryReceipts({
   receipts,
   search,
   disabled,
+  source,
 }: {
   receipts: DeliveryReceiptSummary[];
   search: string;
   disabled: boolean;
+  source: SourceState;
 }) {
   const [receipt, setReceipt] = useState<DeliveryReceipt | null>(null);
   const [opening, setOpening] = useState(false);
@@ -58,7 +61,7 @@ export function WholesaleDeliveryReceipts({
             <th className="table-action-head">Action</th>
           </tr>
         </thead>
-        <tbody>
+        <SourceTableBody status={source} label="Delivery receipts" colSpan={4}>
           {paginated.map((row) => (
             <tr key={row.id}>
               <td>{row.receiptNumber}</td>
@@ -103,7 +106,7 @@ export function WholesaleDeliveryReceipts({
               </TableEmptyState>
             </tr>
           )}
-        </tbody>
+        </SourceTableBody>
       </table></PageTableScroll>
       <div className="table-pagination" role="navigation" aria-label="Delivery receipts pagination">
         <span className="muted">

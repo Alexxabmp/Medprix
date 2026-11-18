@@ -1,3 +1,4 @@
+import { SourceTableBody, SourceFeedback } from "./custom-ui/source-state";
 import { SelectField } from "@/components/custom-ui/select-field";
 import { formatDisplayDate } from "@/lib/business-date";
 import {
@@ -65,7 +66,9 @@ export function WholesaleReceivables({
   const [data, setData] = useState<WholesaleReceivablePage | null>(() =>
     getCachedWholesale<WholesaleReceivablePage>(initialCacheKey),
   );
-  const [loading, setLoading] = useState(false);
+  const queryPath = "/accounts-receivable?search=" + encodeURIComponent(search) + "&page=" + page + "&status=" + status;
+  const [dataPath, setDataPath] = useState(initialCacheKey);
+  const [loading, setLoading] = useState(() => getCachedWholesale(initialCacheKey) === null);
   const [loadError, setLoadError] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(
     initialDetail?.id ?? null,
@@ -108,6 +111,7 @@ export function WholesaleReceivables({
         status,
     );
     setData(result);
+    setDataPath(queryPath);
   }
   async function loadDetail(id: string) {
     setDetail(
@@ -152,8 +156,9 @@ export function WholesaleReceivables({
     const cached = getCachedWholesale<WholesaleReceivablePage>(reqPath);
     if (cached) {
       setData(cached);
+      setDataPath(reqPath);
     }
-    setLoading(false);
+    setLoading(!cached);
     setLoadError("");
     const timer = setTimeout(() => {
       wholesaleGet<WholesaleReceivablePage>(
@@ -165,7 +170,7 @@ export function WholesaleReceivables({
           status,
       )
         .then((value) => {
-          if (active) setData(value);
+          if (active) { setData(value); setDataPath(reqPath); }
         })
         .catch((failure) => {
           if (active) setLoadError(safeError(failure));
@@ -213,6 +218,8 @@ export function WholesaleReceivables({
     }
   }
   const listLoading = standard ? paging.loading : loading;
+  const listHasData = standard ? paging.hasData : data !== null && dataPath === queryPath;
+  const listPending = standard ? paging.pending : loading;
   const listError = standard ? paging.error || loadError : loadError;
   const listItems = standard ? paging.items : paginatedItems;
   const listTotal = standard ? paging.total : items.length;
@@ -223,20 +230,7 @@ export function WholesaleReceivables({
       {!detailsOnly && (
         <>
           {!selectedId && <WholesaleRequestFeedback {...request} />}
-          {listError && (
-            <div role="alert" className="inline-error">
-              {listError}
-              {standard && paging.error && (
-                <button
-                  type="button"
-                  className="button soft"
-                  onClick={() => void paging.refresh()}
-                >
-                  Retry
-                </button>
-              )}
-            </div>
-          )}
+          <SourceFeedback status={{ hasData: listHasData, pending: listPending, error: listError }} label="receivables" onRetry={() => { if (standard) void paging.refresh(); else void load().catch(failure => setLoadError(safeError(failure))); }} />
           <PageTableScroll>
             <table
               data-page-table="wholesale-receivables"
@@ -255,9 +249,8 @@ export function WholesaleReceivables({
                   <th className="table-action-head">Action</th>
                 </tr>
               </thead>
-              <tbody>
-                {!listLoading &&
-                  listItems.map((item) => (
+              <SourceTableBody status={{ hasData: listHasData, pending: listPending, error: listError }} label="Receivables" colSpan={9}>
+                {listItems.map((item) => (
                     <tr key={item.id}>
                       <td>
                         <strong>{item.orderNumber}</strong>
@@ -324,25 +317,8 @@ export function WholesaleReceivables({
                       </td>
                     </tr>
                   ))}
-                {listLoading ? (
-                  <tr>
-                    <td colSpan={9}>
-                      <LoadingState label="Loading receivables…" />
-                    </td>
-                  </tr>
-                ) : (
-                  !listError &&
-                  !listTotal && (
-                    <tr>
-                      <TableEmptyState colSpan={9}>
-                        {search
-                          ? "No matching receivables."
-                          : "No delivered receivables found."}
-                      </TableEmptyState>
-                    </tr>
-                  )
-                )}
-              </tbody>
+                {!listTotal && <tr><TableEmptyState colSpan={9}>{search ? "No matching receivables." : "No delivered receivables found."}</TableEmptyState></tr>}
+              </SourceTableBody>
             </table>
           </PageTableScroll>
           <div

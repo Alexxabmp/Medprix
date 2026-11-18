@@ -1,5 +1,5 @@
+import { SourceTableBody, SourceFeedback } from "./custom-ui/source-state";
 import { CalendarDays, ClipboardCheck, Eye, Truck } from "lucide-react";
-import { LoadingState } from "./custom-ui/loading-state";
 import { useEffect } from "react";
 import { TableEmptyState } from "./custom-ui/empty-state";
 import {
@@ -55,14 +55,7 @@ export function WholesaleDeliveries({
   }, [list.refresh]);
   return (
     <>
-      {list.error && (
-        <div className="inline-error" role="alert">
-          {list.error}
-          <button className="button soft" onClick={list.refresh}>
-            Retry loading
-          </button>
-        </div>
-      )}
+      <SourceFeedback status={{ hasData: list.hasData, pending: list.pending, error: list.error }} label="deliveries" onRetry={list.refresh} />
       <div className="table-scroll">
         <PageTableScroll>
           <table className="data-table" data-page-table="wholesale-deliveries">
@@ -76,16 +69,8 @@ export function WholesaleDeliveries({
                 <th className="table-action-head">Action</th>
               </tr>
             </thead>
-            <tbody>
-              {list.loading ? (
-                <tr>
-                  <td colSpan={6}>
-                    <LoadingState label="Loading deliveries…" />
-                  </td>
-                </tr>
-              ) : (
-                !list.error &&
-                list.items.map((row) => {
+            <SourceTableBody status={{ hasData: list.hasData, pending: list.pending, error: list.error }} label="Deliveries" colSpan={6}>
+              {list.items.map((row) => {
                   const { label, icon: Icon } = actions[row.status];
                   return (
                     <tr key={row.id}>
@@ -121,9 +106,8 @@ export function WholesaleDeliveries({
                       </td>
                     </tr>
                   );
-                })
-              )}
-              {!list.loading && !list.error && !list.total && (
+                })}
+              {!list.total && (
                 <tr>
                   <TableEmptyState colSpan={6}>
                     {search || status !== "active"
@@ -132,7 +116,7 @@ export function WholesaleDeliveries({
                   </TableEmptyState>
                 </tr>
               )}
-            </tbody>
+            </SourceTableBody>
           </table>
         </PageTableScroll>
       </div>

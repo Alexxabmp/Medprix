@@ -1,3 +1,4 @@
+import { SourceTableBody, SourceProgress, SourceFeedback } from "./custom-ui/source-state";
 import { SelectField } from "@/components/custom-ui/select-field";
 import { formatDisplayDate } from "@/lib/business-date";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
@@ -22,7 +23,6 @@ import {
   ModalTablePager,
   ModalTableHint,
 } from "./modal-table-layout";
-import { LoadingState } from "./custom-ui/loading-state";
 import { safeError } from "@/lib/feedback";
 import {
   wholesaleGet,
@@ -57,6 +57,10 @@ export function useWorkspaceList<T>(
     () => !initialData && getCachedWholesale(initialQueryPath) === null,
   );
   const firstLoad = useRef(true);
+  const [revision, setRevision] = useState(0);
+  const currentPath = path + "?search=" + encodeURIComponent(search) + "&page=" + page + "&status=" + encodeURIComponent(status);
+  const [dataPath, setDataPath] = useState(initialQueryPath);
+  const [errorPath, setErrorPath] = useState("");
   const [error, setError] = useState("");
   useEffect(() => {
     setPage(1);
@@ -65,6 +69,7 @@ export function useWorkspaceList<T>(
     let active = true;
     const load = async () => {
       setError("");
+      setLoading(true);
       try {
         const result = await wholesaleGet<WholesalePageResult<T>>(
           path +
@@ -75,9 +80,9 @@ export function useWorkspaceList<T>(
             "&status=" +
             encodeURIComponent(status),
         );
-        if (active) setData(result);
+        if (active) { setData(result); setDataPath(reqPath); }
       } catch (failure) {
-        if (active) setError(safeError(failure));
+        if (active) { setError(safeError(failure)); setErrorPath(reqPath); }
       } finally {
         if (active) setLoading(false);
       }
@@ -91,7 +96,7 @@ export function useWorkspaceList<T>(
       "&status=" +
       encodeURIComponent(status);
     const cached = getCachedWholesale<WholesalePageResult<T>>(reqPath);
-    if (cached) setData(cached);
+    if (cached) { setData(cached); setDataPath(reqPath); }
     const seeded = (firstLoad.current && initialData) || cached !== null;
     firstLoad.current = false;
     if (!seeded) setLoading(true);
@@ -107,8 +112,8 @@ export function useWorkspaceList<T>(
       window.clearInterval(interval);
       window.removeEventListener("focus", refresh);
     };
-  }, [path, search, page, status]);
-  return { page, setPage, data, loading, error };
+  }, [path, search, page, status, revision]);
+  return { page, setPage, data, loading, refresh: () => setRevision(value => value + 1), hasData: data !== null && dataPath === currentPath, error: errorPath === currentPath ? error : "" };
 }
 
 function Pagination({
@@ -431,11 +436,7 @@ export function WholesaleSummaryModal({
                 </SelectField>
               )}
             </div>
-            {list.error && (
-              <div className="inline-error" role="alert">
-                {list.error}
-              </div>
-            )}
+            <SourceFeedback status={{ hasData: list.hasData, pending: list.loading, error: list.error }} label="records" onRetry={list.refresh} />
             <ModalTableFrame>
               <div
                 className="wholesale-summary-table"
@@ -469,16 +470,8 @@ export function WholesaleSummaryModal({
                       <th className="table-action-head">Action</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    {list.loading || previewBlockPending ? (
-                      <tr>
-                        <td colSpan={columns}>
-                          <LoadingState label="Loading records..." />
-                        </td>
-                      </tr>
-                    ) : (
-                      !list.error &&
-                      visibleRows?.map((row) => (
+                  <SourceTableBody status={{ hasData: list.hasData && !previewBlockPending, pending: list.loading || previewBlockPending, error: list.error }} label="Records" colSpan={columns}>
+                    {visibleRows?.map((row) => (
                         <tr key={row.id}>
                           <td data-label="Order / client">
                             <strong>{row.orderNumber}</strong>
@@ -607,11 +600,8 @@ export function WholesaleSummaryModal({
                             </div>
                           </td>
                         </tr>
-                      ))
-                    )}
-                    {!list.loading &&
-                      !list.error &&
-                      !list.data?.items.length && (
+                      ))}
+                    {!list.data?.items.length && (
                         <tr>
                           <TableEmptyState colSpan={columns}>
                             {search
@@ -624,7 +614,7 @@ export function WholesaleSummaryModal({
                           </TableEmptyState>
                         </tr>
                       )}
-                  </tbody>
+                  </SourceTableBody>
                 </table>
               </div>
             </ModalTableFrame>
@@ -633,7 +623,7 @@ export function WholesaleSummaryModal({
                 <ModalTablePager
                   page={previewPage}
                   total={list.data?.total ?? 0}
-                  loading={list.loading || previewBlockPending}
+                  loading={(!list.hasData && list.loading) || previewBlockPending}
                   change={setPreviewPage}
                   label={summary.title}
                 />
@@ -642,7 +632,7 @@ export function WholesaleSummaryModal({
               <Pagination
                 page={list.page}
                 total={list.data?.total ?? 0}
-                loading={list.loading}
+                loading={!list.hasData && list.loading}
                 change={list.setPage}
               />
             )}
