@@ -6,9 +6,10 @@ import {
   type ComponentPropsWithoutRef,
 } from "react";
 import { DateControl } from "./date-control";
+import { DateTimeControl } from "./date-time-control";
 import { localDateKey, parseCalendarDate } from "@/lib/business-date";
 
-type DateFieldProps = Omit<
+export type DateFieldProps = Omit<
   ComponentPropsWithoutRef<"input">,
   "type" | "value" | "defaultValue"
 > & {
@@ -19,12 +20,22 @@ type DateFieldProps = Omit<
 
 /** Preserve native date validation and form values behind the shared picker. */
 export function DateField(props: DateFieldProps) {
+  return <DateInputField {...props} />;
+}
+
+/** Shared native validation/form bridge for calendar inputs. */
+export function DateInputField({
+  inputKind = "date",
+  ...props
+}: DateFieldProps & { inputKind?: "date" | "datetime-local" }) {
   const native = useRef<HTMLInputElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const generatedId = useId();
   const id = props.id ?? generatedId;
   const [uncontrolled, setUncontrolled] = useState(props.defaultValue ?? "");
-  const [label, setLabel] = useState("Select date");
+  const [label, setLabel] = useState(
+    inputKind === "date" ? "Select date" : "Select date and time",
+  );
   const [inheritedDisabled, setInheritedDisabled] = useState(false);
   const [error, setError] = useState("");
   const value = props.value ?? uncontrolled;
@@ -36,7 +47,7 @@ export function DateField(props: DateFieldProps) {
     setLabel(
       props["aria-label"] ??
         fieldLabel?.textContent?.trim().replace(/\s*\*$/, "") ??
-        "Select date",
+        (inputKind === "date" ? "Select date" : "Select date and time"),
     );
     if (fieldLabel && !fieldLabel.htmlFor) fieldLabel.htmlFor = id;
     const syncDisabled = () => setInheritedDisabled(input.matches(":disabled"));
@@ -66,7 +77,7 @@ export function DateField(props: DateFieldProps) {
       observer.disconnect();
       form?.removeEventListener("reset", reset);
     };
-  }, [id, props.disabled, props.value, props["aria-label"]]);
+  }, [id, inputKind, props.disabled, props.value, props["aria-label"]]);
 
   const commit = (next: string) => {
     const input = native.current!;
@@ -82,13 +93,31 @@ export function DateField(props: DateFieldProps) {
     if (props.value === undefined) setUncontrolled(input.value);
   };
 
+  const controlProps = {
+    id,
+    triggerRef: trigger,
+    className: `date-field-trigger ${props.className ?? ""}`,
+    label,
+    disabled: props.disabled || inheritedDisabled,
+    readOnly: props.readOnly,
+    required: props.required,
+    invalid:
+      Boolean(error) ||
+      props["aria-invalid"] === true ||
+      props["aria-invalid"] === "true",
+    describedBy:
+      [props["aria-describedby"], error ? `${id}-error` : ""]
+        .filter(Boolean)
+        .join(" ") || undefined,
+    testId: props["data-testid"] ?? `date-field-${id}`,
+  };
   return (
     <div className="date-field">
       <input
         {...props}
         id={undefined}
         data-testid={undefined}
-        type="date"
+        type={inputKind}
         hidden
         tabIndex={-1}
         aria-hidden="true"
@@ -110,39 +139,37 @@ export function DateField(props: DateFieldProps) {
           props.onChange?.(event);
         }}
       />
-      <DateControl
-        id={id}
-        triggerRef={trigger}
-        className={`date-field-trigger ${props.className ?? ""}`}
-        date={parseCalendarDate(value) ?? undefined}
-        onDateChange={(selected) => commit(localDateKey(selected))}
-        onClear={() => commit("")}
-        minDate={
-          props.min
-            ? (parseCalendarDate(String(props.min)) ?? undefined)
-            : undefined
-        }
-        maxDate={
-          props.max
-            ? (parseCalendarDate(String(props.max)) ?? undefined)
-            : undefined
-        }
-        label={label}
-        disabled={props.disabled || inheritedDisabled}
-        readOnly={props.readOnly}
-        required={props.required}
-        invalid={
-          Boolean(error) ||
-          props["aria-invalid"] === true ||
-          props["aria-invalid"] === "true"
-        }
-        describedBy={
-          [props["aria-describedby"], error ? `${id}-error` : ""]
-            .filter(Boolean)
-            .join(" ") || undefined
-        }
-        testId={props["data-testid"] ?? `date-field-${id}`}
-      />
+      {inputKind === "datetime-local" ? (
+        <DateTimeControl
+          {...controlProps}
+          value={value}
+          onChange={commit}
+          min={props.min === undefined ? undefined : String(props.min)}
+          max={props.max === undefined ? undefined : String(props.max)}
+          validate={(next) => {
+            const probe = native.current!.cloneNode() as HTMLInputElement;
+            probe.value = next;
+            return probe.validity.valid ? "" : probe.validationMessage;
+          }}
+        />
+      ) : (
+        <DateControl
+          {...controlProps}
+          date={parseCalendarDate(value) ?? undefined}
+          onDateChange={(selected) => commit(localDateKey(selected))}
+          onClear={() => commit("")}
+          minDate={
+            props.min
+              ? (parseCalendarDate(String(props.min)) ?? undefined)
+              : undefined
+          }
+          maxDate={
+            props.max
+              ? (parseCalendarDate(String(props.max)) ?? undefined)
+              : undefined
+          }
+        />
+      )}
       {error && (
         <span id={`${id}-error`} className="field-error" role="alert">
           {error}

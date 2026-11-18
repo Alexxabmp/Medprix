@@ -1,4 +1,5 @@
 import { DateField } from "@/components/custom-ui/date-field";
+import { DateTimeField } from "@/components/custom-ui/date-time-field";
 import { WholesaleStatusPill } from "./wholesale-status-pill";
 import { useLayoutEffect, useId, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
@@ -291,10 +292,9 @@ export function WholesaleDeliveryPanel({
                       <label htmlFor={formId + "-received"}>
                         Received at (Manila) *
                       </label>
-                      <input
+                      <DateTimeField
                         id={formId + "-received"}
                         name="receivedAt"
-                        type="datetime-local"
                         step="0.001"
                         min={
                           active.dispatchedAt
