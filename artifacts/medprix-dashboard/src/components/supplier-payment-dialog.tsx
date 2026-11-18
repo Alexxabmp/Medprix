@@ -1,3 +1,4 @@
+import { DateField } from "@/components/custom-ui/date-field";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { AlertTriangle, Check, X } from "lucide-react";
@@ -340,10 +341,9 @@ export function SupplierPaymentDialog({
                 </div>
                 <div className="field">
                   <label htmlFor="settlement-date">Payment date *</label>
-                  <input
+                  <DateField
                     id="settlement-date"
                     required
-                    type="date"
                     value={draft?.paymentDate || ""}
                     onChange={(e) =>
                       setDraft({ ...draft!, paymentDate: e.target.value })

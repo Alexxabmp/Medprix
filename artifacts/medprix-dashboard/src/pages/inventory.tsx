@@ -1,3 +1,4 @@
+import { DateField } from "@/components/custom-ui/date-field";
 import { SourceProgress } from "@/components/custom-ui/source-state";
 import { SelectField } from "@/components/custom-ui/select-field";
 import type { ProductCategory } from "@/lib/types";
@@ -364,7 +365,7 @@ export default function InventoryPage({
     }
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !movementBusy.current) {
+      if (e.key === "Escape" && !e.defaultPrevented && !movementBusy.current) {
         setViewProduct(null);
         setBatchProduct(null);
         setStockInProduct(null);
@@ -1452,8 +1453,7 @@ export default function InventoryPage({
                   </div>
                   <div className={canAddFullBatchInfo ? "field" : "field full-width"}>
                     <label>Expiry Date *</label>
-                    <input
-                      type="date"
+                    <DateField
                       required
                       value={newBatchData.expiryDate}
                       onChange={(e) =>
@@ -1468,8 +1468,7 @@ export default function InventoryPage({
                     <>
                       <div className="field">
                         <label>Date Received</label>
-                        <input
-                          type="date"
+                        <DateField
                           value={newBatchData.dateReceived}
                           onChange={(e) =>
                             setNewBatchData({
@@ -1481,8 +1480,7 @@ export default function InventoryPage({
                       </div>
                       <div className="field">
                         <label>Manufacturing Date</label>
-                        <input
-                          type="date"
+                        <DateField
                           value={newBatchData.mfgDate}
                           onChange={(e) =>
                             setNewBatchData({
@@ -1596,8 +1594,7 @@ export default function InventoryPage({
                   </div>
                   <div className="field">
                     <label>Date *</label>
-                    <input
-                      type="date"
+                    <DateField
                       required
                       value={stockInData.date}
                       onChange={(e) =>
@@ -1705,8 +1702,7 @@ export default function InventoryPage({
                   </div>
                   <div className="field">
                     <label>Date *</label>
-                    <input
-                      type="date"
+                    <DateField
                       required
                       value={stockOutData.date}
                       onChange={(e) =>

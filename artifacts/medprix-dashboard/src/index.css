@@ -438,6 +438,8 @@ a {
 }
 
 .icon-button:hover,
+/* A moving anchor changes the popover's constrained height during positioning
+   and can feed back into ResizeObserver inside a modal. */
 .date-control:hover {
   transform: translateY(-1px);
   border-color: hsl(var(--foreground) / 0.28);
@@ -2061,6 +2063,43 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
   color: hsl(var(--muted));
 }
 
+.date-control:hover {
+  transform: none;
+}
+
+[data-date-value][hidden] {
+  display: none !important;
+}
+
+.date-field {
+  min-width: 0;
+}
+
+.date-control.date-field-trigger {
+  width: 100%;
+  justify-content: flex-start;
+  min-height: 39px;
+  height: 39px;
+  border-radius: 11px;
+  background: hsl(var(--surface-soft));
+}
+
+.date-field-trigger:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.date-field-trigger[aria-invalid="true"] {
+  border-color: hsl(var(--danger));
+}
+
+@media (max-width: 760px) {
+  .date-control.date-field-trigger {
+    min-height: 44px;
+    height: 44px;
+  }
+}
+
 .page-heading.date-page-heading {
   display: flex;
   flex-wrap: wrap;
@@ -2104,6 +2143,9 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
 }
 
 .date-picker-popover {
+  color-scheme: light;
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted)) hsl(var(--surface-soft));
   width: max-content;
   max-width: calc(100vw - 24px);
   max-height: min(var(--radix-popover-content-available-height), calc(100dvh - 24px));
@@ -2119,7 +2161,11 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
 
 .date-picker-popover [data-slot="calendar"] {
   background: transparent;
-  --cell-size: clamp(2rem, calc((100vw - 50px) / 7), 2.75rem);
+  --cell-size: clamp(2rem, calc((100vw - 62px) / 7), 2.75rem);
+}
+
+.dark .date-picker-popover {
+  color-scheme: dark;
 }
 
 .calendar-caption-control {

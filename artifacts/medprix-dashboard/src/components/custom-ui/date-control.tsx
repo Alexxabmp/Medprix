@@ -1,4 +1,11 @@
-import { useId, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type Ref,
+} from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { CalendarDays, X } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
@@ -24,18 +31,48 @@ export function DateControl({
   label,
   startMonth,
   endMonth,
+  minDate,
+  maxDate,
+  onClear,
+  id,
+  disabled,
+  readOnly,
+  required,
+  className,
+  describedBy,
+  invalid,
+  triggerRef,
   testId = "control-cashier-date",
 }: {
-  date: Date;
+  date?: Date;
   onDateChange: (date: Date) => void;
   label?: string;
   startMonth?: Date;
   endMonth?: Date;
+  minDate?: Date;
+  maxDate?: Date;
+  onClear?: () => void;
+  id?: string;
+  disabled?: boolean;
+  readOnly?: boolean;
+  required?: boolean;
+  className?: string;
+  describedBy?: string;
+  invalid?: boolean;
+  triggerRef?: Ref<HTMLButtonElement>;
   testId?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const [month, setMonth] = useState(date);
-  const [draft, setDraft] = useState(() => formatCalendarDate(date));
+  const referenceDate = date ?? new Date();
+  const [month, setMonth] = useState(referenceDate);
+  const [draft, setDraft] = useState(() =>
+    date ? formatCalendarDate(date) : "",
+  );
+  const [layer, setLayer] = useState(50);
+  useEffect(() => {
+    if (disabled || readOnly) setOpen(false);
+  }, [disabled, readOnly]);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
   const [inputError, setInputError] = useState("");
   const inputId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -44,19 +81,17 @@ export function DateControl({
     panelRef.current?.focus({ preventScroll: true });
   };
   const firstMonth =
-    startMonth ?? new Date(Math.min(1900, date.getFullYear()), 0);
+    startMonth ??
+    minDate ??
+    new Date(Math.min(1900, referenceDate.getFullYear()), 0);
   const lastMonth =
-    endMonth ?? new Date(Math.max(2100, date.getFullYear()), 11);
-  const earliestDate = new Date(
-    firstMonth.getFullYear(),
-    firstMonth.getMonth(),
-    1,
-  );
-  const latestDate = new Date(
-    lastMonth.getFullYear(),
-    lastMonth.getMonth() + 1,
-    0,
-  );
+    endMonth ??
+    maxDate ??
+    new Date(Math.max(2100, referenceDate.getFullYear()), 11);
+  const earliestDate =
+    minDate ?? new Date(firstMonth.getFullYear(), firstMonth.getMonth(), 1);
+  const latestDate =
+    maxDate ?? new Date(lastMonth.getFullYear(), lastMonth.getMonth() + 1, 0);
   const inRange = (value: Date) => value >= earliestDate && value <= latestDate;
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -67,16 +102,28 @@ export function DateControl({
   );
 
   const changeOpen = (nextOpen: boolean) => {
+    if (nextOpen && (disabled || readOnly)) return;
     if (nextOpen) {
-      setMonth(date);
-      setDraft(formatCalendarDate(date));
+      let nextLayer = 50;
+      for (
+        let owner = buttonRef.current?.parentElement;
+        owner;
+        owner = owner.parentElement
+      ) {
+        const ownerLayer = Number.parseInt(getComputedStyle(owner).zIndex);
+        if (Number.isFinite(ownerLayer))
+          nextLayer = Math.max(nextLayer, ownerLayer + 10);
+      }
+      setLayer(nextLayer);
+      setMonth(inRange(referenceDate) ? referenceDate : earliestDate);
+      setDraft(date ? formatCalendarDate(date) : "");
       setInputError("");
     }
     setOpen(nextOpen);
   };
 
   const selectDate = (selected: Date) => {
-    if (!inRange(selected)) return;
+    if (disabled || readOnly || !inRange(selected)) return;
     onDateChange(selected);
     setOpen(false);
   };
@@ -108,14 +155,24 @@ export function DateControl({
 
   const trigger = (
     <button
+      ref={(node) => {
+        buttonRef.current = node;
+        if (typeof triggerRef === "function") triggerRef(node);
+        else if (triggerRef) triggerRef.current = node;
+      }}
+      id={id}
       type="button"
-      className="date-control"
+      className={`date-control ${className ?? ""}`}
+      disabled={disabled || readOnly}
+      aria-required={required}
+      aria-invalid={invalid}
+      aria-describedby={describedBy}
       data-testid={testId}
-      aria-label={`${label || "Select date"}: ${formatCalendarDate(date)}`}
-      title={formatCalendarDate(date)}
+      aria-label={`${label || "Select date"}: ${date ? formatCalendarDate(date) : "No date selected"}`}
+      title={date ? formatCalendarDate(date) : undefined}
     >
       <CalendarDays size={14} aria-hidden="true" />
-      <span>{formatCalendarDate(date)}</span>
+      <span>{date ? formatCalendarDate(date) : "Select date"}</span>
     </button>
   );
   const calendar = (
@@ -173,7 +230,19 @@ export function DateControl({
         onMonthChange={setMonth}
       />
       <div className="date-picker-footer">
-        <span>{formatCalendarDate(date)}</span>
+        <span>{date ? formatCalendarDate(date) : "No date selected"}</span>
+        {onClear && date && (
+          <button
+            type="button"
+            onClick={() => {
+              if (disabled || readOnly) return;
+              onClear();
+              setOpen(false);
+            }}
+          >
+            Clear
+          </button>
+        )}
         <button
           type="button"
           disabled={!inRange(today)}
@@ -190,12 +259,17 @@ export function DateControl({
       <Dialog.Root open={open} onOpenChange={changeOpen}>
         <Dialog.Trigger asChild>{trigger}</Dialog.Trigger>
         <Dialog.Portal>
-          <Dialog.Overlay className="date-picker-backdrop">
+          <Dialog.Overlay
+            className="date-picker-backdrop"
+            style={{ zIndex: layer }}
+          >
             <Dialog.Content
               ref={panelRef}
               className="date-picker-popover date-picker-dialog"
+              style={{ zIndex: layer }}
               aria-describedby={undefined}
               onOpenAutoFocus={focusPanel}
+              onEscapeKeyDown={(event) => event.stopPropagation()}
             >
               <div className="date-picker-dialog-header">
                 <Dialog.Title>{label || "Select date"}</Dialog.Title>
@@ -217,10 +291,12 @@ export function DateControl({
       <PopoverContent
         ref={panelRef}
         className="date-picker-popover"
+        style={{ zIndex: layer }}
         align="end"
         collisionPadding={12}
         aria-label={label || "Select date"}
         onOpenAutoFocus={focusPanel}
+        onEscapeKeyDown={(event) => event.stopPropagation()}
       >
         {calendar}
       </PopoverContent>

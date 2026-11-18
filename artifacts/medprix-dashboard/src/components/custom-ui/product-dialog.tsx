@@ -1,5 +1,6 @@
 import { ModalScrollBody } from "@/components/modal-scroll-body";
 import { SelectField } from "@/components/custom-ui/select-field";
+import { DateField } from "@/components/custom-ui/date-field";
 import { safeError } from "@/lib/feedback";
 import { useRef, useState, type FormEvent } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
@@ -76,7 +77,7 @@ export function ProductDialog({
     setErrors(next);
     requestAnimationFrame(() => {
       const first = form.current?.querySelector<HTMLElement>(
-        "[aria-invalid='true']",
+        "[aria-invalid='true']:not([aria-hidden='true'])",
       );
       first?.focus();
       first?.scrollIntoView({ block: "nearest" });
@@ -152,6 +153,8 @@ export function ProductDialog({
                 </option>
               ))}
           </SelectField>
+        ) : options.type === "date" ? (
+          <DateField {...props} />
         ) : (
           <input
             {...props}
