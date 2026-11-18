@@ -179,6 +179,7 @@ export function ReportModal({
   const [cashDetailRow, setCashDetailRow] = useState<number | null>(
     initialCashDetailRow,
   );
+  const [enteredCashList] = useState(() => initialCashDetailRow === null);
 
   const analytics = useMemo(
     () =>
@@ -249,11 +250,11 @@ export function ReportModal({
           </div>
           {preview ? (
             <div className="wholesale-dialog-header-actions">
-              {activeCashRow && <button type="button" className="button soft wholesale-dialog-back" aria-label="Back" onClick={() => setCashDetailRow(null)}><ArrowLeft size={14} /> Back</button>}
+              {activeCashRow && enteredCashList && <button type="button" className="button soft wholesale-dialog-back" aria-label="Back" onClick={() => setCashDetailRow(null)}><ArrowLeft size={14} /> Back</button>}
               <button type="button" className="modal-close" aria-label="Close dialog" data-testid="button-close-modal" onClick={onClose}><X size={16} /></button>
             </div>
           ) : <>
-          {activeCashRow ? (
+          {activeCashRow && enteredCashList ? (
             <button
               className="button soft"
               style={{ marginRight: 8 }}
