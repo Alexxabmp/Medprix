@@ -99,7 +99,7 @@ export default function WholesalePage({
   const [refreshTarget, setRefreshTarget] = useState<HTMLDivElement | null>(null);
   const [deliveryStatus, setDeliveryStatus] =
     useState<DeliveryQueueStatus>("all");
-  const [vatFilter, setVatFilter] = useState("All VAT classifications");
+  const [vatFilter, setVatFilter] = useState("All VAT statuses");
   const [orderPage, setOrderPage] = useState(1);
   const [clientPage, setClientPage] = useState(1);
   const [pricePage, setPricePage] = useState(1);
@@ -290,10 +290,10 @@ export default function WholesalePage({
       product.isVatExempt === null
         ? "Needs classification"
         : product.isVatExempt
-          ? "Exempt"
-          : "VATable";
+          ? "Non-VAT"
+          : "VAT";
     const matchesVat =
-      vatFilter === "All VAT classifications" || vatLabel === vatFilter;
+      vatFilter === "All VAT statuses" || vatLabel === vatFilter;
     const matchesQuery = (product.name + " " + product.sku)
       .toLocaleLowerCase()
       .includes(query);
@@ -577,7 +577,7 @@ export default function WholesalePage({
               setAccountStatus("all");
               setOrderStatus("All statuses");
               setDeliveryStatus("all");
-              setVatFilter("All VAT classifications");
+              setVatFilter("All VAT statuses");
               setOrderPage(1);
               setClientPage(1);
               setPricePage(1);
@@ -656,7 +656,7 @@ export default function WholesalePage({
             {tab === "prices" && (
               <SelectField
                 className="select"
-                aria-label="Filter wholesale prices by VAT classification"
+                aria-label="Filter wholesale prices by VAT status"
                 value={vatFilter}
                 onChange={(event) => {
                   setVatFilter(event.target.value);
@@ -664,11 +664,11 @@ export default function WholesalePage({
                 }}
                 data-testid="select-wholesale-vat-filter"
               >
-                <option value="All VAT classifications">
-                  All VAT classifications
+                <option value="All VAT statuses">
+                  All VAT statuses
                 </option>
-                <option value="VATable">VATable</option>
-                <option value="Exempt">Exempt</option>
+                <option value="VAT">VAT</option>
+                <option value="Non-VAT">Non-VAT</option>
                 <option value="Needs classification">
                   Needs classification
                 </option>
@@ -917,7 +917,7 @@ export default function WholesalePage({
                         <tr>
                           <th>Product / SKU</th>
                           <th>Wholesale unit price</th>
-                          <th>VAT classification</th>
+                          <th>VAT Status</th>
                           <th>Physical</th>
                           <th>Reserved</th>
                           <th>Available</th>
@@ -938,8 +938,8 @@ export default function WholesalePage({
                               {product.isVatExempt === null
                                 ? "Needs classification"
                                 : product.isVatExempt
-                                  ? "Exempt"
-                                  : "VATable"}
+                                  ? "Non-VAT"
+                                  : "VAT"}
                             </td>
                             <td>{product.physicalStock}</td>
                             <td>{product.reservedStock}</td>
@@ -1357,10 +1357,10 @@ export default function WholesalePage({
                       <span>
                         {dialog.product.sku} ·{" "}
                         {dialog.product.isVatExempt === null
-                          ? "VAT classification missing"
+                          ? "VAT status missing"
                           : dialog.product.isVatExempt
-                            ? "VAT-exempt"
-                            : "VATable"}
+                            ? "Non-VAT"
+                            : "VAT"}
                       </span>
                       <span>
                         Current price:{" "}
