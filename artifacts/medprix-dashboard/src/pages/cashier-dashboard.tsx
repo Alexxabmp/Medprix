@@ -1,3 +1,4 @@
+import { AsyncActionButton } from "@/components/custom-ui/async-action-button";
 import { PharmacyFeedback, PharmacyRefreshButton, TransactionTableBody, TransactionText } from "@/components/custom-ui/pharmacy-source-state";
 import { SourceProgress, SourceFeedback } from "@/components/custom-ui/source-state";
 import { SelectField } from "@/components/custom-ui/select-field";
@@ -1128,18 +1129,14 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
               )}
             </div>
             <div className="modal-actions" style={{ marginTop: 16, display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <button
+              <AsyncActionButton
                 type="button"
                 className="button primary-action"
-                onClick={async () => {
-                  try {
-                    await printReceipt(selectedReceipt);
-                  } catch {
-                    onToast("Could not prepare the receipt. Please try printing again.");
-                  }
-                }}>
+                pendingLabel={"Preparing receipt\u2026"}
+                onAction={() => printReceipt(selectedReceipt)}
+                onError={() => onToast("Could not prepare the receipt. Please try printing again.")}>
                 <Download size={13} style={{ marginRight: 4 }} /> Print Receipt
-              </button>
+              </AsyncActionButton>
             </div>
           </div>
         </div>
