@@ -936,7 +936,7 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
             </p>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, maxWidth: "100%" }}>
-            <div className="search-wrap" style={{ width: 260, maxWidth: "100%" }}>
+            <div className="search-wrap" style={{ width: 260, minWidth: 0, maxWidth: "100%" }}>
               <Search size={14} />
               <input
                 type="search"
