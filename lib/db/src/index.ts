@@ -59,38 +59,8 @@ let readinessVerified = false;
 let currentCheck: Promise<void> | null = null;
 let checkFn: (() => Promise<void>) | null = null;
 
-function isNetworkError(err: any): boolean {
-  const code = String(err?.code || err?.errno || "");
-  const msg = String(err?.message || "");
-  return (
-    code === "ENOTFOUND" ||
-    code === "EAI_AGAIN" ||
-    code === "ETIMEDOUT" ||
-    code === "ECONNRESET" ||
-    code === "ECONNREFUSED" ||
-    code === "CONNECT_TIMEOUT" ||
-    msg.includes("CONNECT_TIMEOUT") ||
-    msg.includes("ETIMEDOUT") ||
-    msg.includes("ENOTFOUND")
-  );
-}
-
-async function activatePgliteFallback(): Promise<boolean> {
-  const fallbackDir = findLocalPgDir();
-  if (!fallbackDir) return false;
-  if (activeMode === "pglite" && rawClient && "query" in rawClient && readinessVerified) {
-    return true;
-  }
-  const pgliteClient = new PGlite(fallbackDir);
-  await assertSchemaReady((text, params = []) => pgliteClient.query(text, params));
-  rawClient = pgliteClient;
-  activeMode = "pglite";
-  activeDrizzle = drizzlePglite(pgliteClient, { schema }) as unknown as DrizzleInstance;
-  checkFn = () => assertSchemaReady((text, params = []) => pgliteClient.query(text, params)).then(() => {});
-  readinessVerified = true;
-  console.log(`[DB] Switched to local embedded database (${fallbackDir})`);
-  return true;
-}
+// No automatic fallback: if the configured database is unreachable or not migrated, requests fail
+// loudly instead of silently reading or writing a different (local) database.
 
 export async function ensureDbReady(): Promise<void> {
   if (readinessVerified) return;
@@ -105,14 +75,6 @@ export async function ensureDbReady(): Promise<void> {
         readinessVerified = true;
         return;
       } catch (err: any) {
-        if (isPgUrl && (isNetworkError(err) || err?.name === "SchemaReadinessError")) {
-          try {
-            const switched = await activatePgliteFallback();
-            if (switched) return;
-          } catch (fallbackErr) {
-            console.error("[DB] Local fallback failed:", fallbackErr);
-          }
-        }
         currentCheck = null;
         throw err;
       }
@@ -173,16 +135,8 @@ export const db = new Proxy({} as DrizzleInstance, {
 export async function queryDb<T = any>(queryText: string, params: any[] = []): Promise<{ rows: T[] }> {
   await ensureDbReady();
   if (activeMode === "pg" && rawClient) {
-    try {
-      const res = await (rawClient as any).unsafe(queryText, params);
-      return { rows: res };
-    } catch (err) {
-      if (isNetworkError(err) && (await activatePgliteFallback())) {
-        const res = await (rawClient as PGlite).query<T>(queryText, params);
-        return res;
-      }
-      throw err;
-    }
+    const res = await (rawClient as any).unsafe(queryText, params);
+    return { rows: res };
   }
   if (rawClient && "query" in rawClient) {
     const res = await (rawClient as PGlite).query<T>(queryText, params);
@@ -194,16 +148,8 @@ export async function queryDb<T = any>(queryText: string, params: any[] = []): P
 export async function execDb(sqlText: string): Promise<void> {
   await ensureDbReady();
   if (activeMode === "pg" && rawClient) {
-    try {
-      await (rawClient as any).unsafe(sqlText);
-      return;
-    } catch (err) {
-      if (isNetworkError(err) && (await activatePgliteFallback())) {
-        await (rawClient as PGlite).exec(sqlText);
-        return;
-      }
-      throw err;
-    }
+    await (rawClient as any).unsafe(sqlText);
+    return;
   }
   if (rawClient && "exec" in rawClient) {
     await (rawClient as PGlite).exec(sqlText);
@@ -216,18 +162,9 @@ export type TransactionQuery = (text: string, params?: any[]) => Promise<{ rows:
 export async function withTransaction<T>(work: (query: TransactionQuery) => Promise<T>): Promise<T> {
   await ensureDbReady();
   if (activeMode === "pg" && rawClient) {
-    try {
-      return (await (rawClient as postgres.Sql).begin(async (client) =>
-        work(async (text, params = []) => ({ rows: await client.unsafe(text, params) })),
-      )) as T;
-    } catch (err) {
-      if (isNetworkError(err) && (await activatePgliteFallback())) {
-        return (rawClient as PGlite).transaction((client) =>
-          work(async (text, params = []) => client.query(text, params)),
-        );
-      }
-      throw err;
-    }
+    return (await (rawClient as postgres.Sql).begin(async (client) =>
+      work(async (text, params = []) => ({ rows: await client.unsafe(text, params) })),
+    )) as T;
   }
   if (rawClient && "transaction" in rawClient) {
     return (rawClient as PGlite).transaction((client) =>

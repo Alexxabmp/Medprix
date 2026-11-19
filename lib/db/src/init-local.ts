@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import { PGlite } from "@electric-sql/pglite";
 import { assertSchemaReady } from "./readiness";
 import { buildData, TABLE_ORDER, T, SEED_PASSWORD } from "./seed";

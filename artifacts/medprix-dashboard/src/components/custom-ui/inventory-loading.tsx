@@ -16,8 +16,8 @@ import { SourceSummary, SourceFeedback, SourceRefreshButton, SourceTableBody as 
 export function InventorySummary(props: ComponentProps<typeof Summary>) {
   return <SourceSummary {...props} status={usePharmacyInventoryStatus()} />;
 }
-export function InventoryRefreshButton(_props?: any) {
-  return null;
+export function InventoryRefreshButton() {
+  return <SourceRefreshButton status={usePharmacyInventoryStatus()} label="stock" retryOnError={false} onRefresh={() => void refreshStock()} />;
 }
 
 const refreshStock = () =>

@@ -42,8 +42,9 @@ export class SchemaReadinessError extends Error {
     this.name = "SchemaReadinessError";
   }
 }
-export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | "cashier" | "legacy-runtime" | "audit-runtime" | "identifier-runtime" | "pre-retail-runtime" | "pre-retirement-runtime" | "pre-delivery-runtime" | "pre-wholesale-runtime" | "wholesale-draft-runtime" | "wholesale-reservation-runtime" | "wholesale-fulfillment-runtime" | "wholesale-collections-runtime" | "pre-category-runtime" | "pre-payment-reference-runtime" | "pre-discount-holder-runtime" | "pre-returning-customer-runtime" | "pre-prescription-runtime" | "pre-payment-plan-runtime" | "pre-wholesale-terms-runtime" | "runtime" = "runtime", namespace = "public", existingTablesOnly = false) {
-  const revisedTerms = scope === "runtime";
+export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | "cashier" | "legacy-runtime" | "audit-runtime" | "identifier-runtime" | "pre-retail-runtime" | "pre-retirement-runtime" | "pre-delivery-runtime" | "pre-wholesale-runtime" | "wholesale-draft-runtime" | "wholesale-reservation-runtime" | "wholesale-fulfillment-runtime" | "wholesale-collections-runtime" | "pre-category-runtime" | "pre-payment-reference-runtime" | "pre-discount-holder-runtime" | "pre-returning-customer-runtime" | "pre-prescription-runtime" | "pre-payment-plan-runtime" | "pre-wholesale-terms-runtime" | "pre-procurement-workflow-runtime" | "runtime" = "runtime", namespace = "public", existingTablesOnly = false) {
+  const procurementWorkflow = scope === "runtime";
+  const revisedTerms = procurementWorkflow || scope === "pre-procurement-workflow-runtime";
   const sharedPaymentPlan = revisedTerms || scope === "pre-wholesale-terms-runtime";
   const prescriptions = sharedPaymentPlan || scope === "pre-payment-plan-runtime";
   const returningCustomers = prescriptions || scope === "pre-prescription-runtime";
@@ -58,7 +59,7 @@ export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | 
   const calendar = wholesale || scope === "pre-wholesale-runtime";
   const retiredSales = calendar || scope === "pre-delivery-runtime";
   const retail = retiredSales || scope === "pre-retirement-runtime";
-  if (["pre-retail-runtime", "pre-retirement-runtime", "pre-delivery-runtime", "pre-wholesale-runtime", "wholesale-draft-runtime", "wholesale-reservation-runtime", "wholesale-fulfillment-runtime", "wholesale-collections-runtime", "pre-category-runtime", "pre-payment-reference-runtime", "pre-discount-holder-runtime", "pre-returning-customer-runtime", "pre-prescription-runtime", "pre-payment-plan-runtime", "pre-wholesale-terms-runtime"].includes(scope)) scope = "runtime";
+  if (["pre-retail-runtime", "pre-retirement-runtime", "pre-delivery-runtime", "pre-wholesale-runtime", "wholesale-draft-runtime", "wholesale-reservation-runtime", "wholesale-fulfillment-runtime", "wholesale-collections-runtime", "pre-category-runtime", "pre-payment-reference-runtime", "pre-discount-holder-runtime", "pre-returning-customer-runtime", "pre-prescription-runtime", "pre-payment-plan-runtime", "pre-wholesale-terms-runtime", "pre-procurement-workflow-runtime"].includes(scope)) scope = "runtime";
   const actual = await inspectSchema(query, namespace);
   const issues: string[] = [];
   const normalize = (v: unknown) => typeof v === "string" ? v.replaceAll(`"${namespace}".`, "public.").replaceAll(`${namespace}.`, "public.") : v;
@@ -74,7 +75,7 @@ export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | 
       for (const field of ["type", "not_null", "default_value"] as const)
         if (normalize(found[field]) !== normalize(calendar && expected.table_name === 'supplier_deliveries' && expected.name === 'delivery_date'
           ? field === 'type' ? 'date' : field === 'default_value' ? null : expected[field]
-          : sharedPaymentPlan && expected.table_name === 'suppliers' && expected.name === 'payment_terms' ? field === 'type' ? 'payment_plan_enum' : field === 'not_null' ? true : expected[field] : expected[field])) issues.push(`incompatible ${expected.table_name}.${expected.name} ${field}`);
+          : sharedPaymentPlan && expected.table_name === 'suppliers' && expected.name === 'payment_terms' ? field === 'type' ? (procurementWorkflow ? 'supplier_terms_enum' : 'payment_plan_enum') : field === 'not_null' ? true : expected[field] : expected[field])) issues.push(`incompatible ${expected.table_name}.${expected.name} ${field}`);
     }
     for (const expected of contract.constraints) {
       if (retired(expected.table_name) || absent(expected.table_name) || replaced(expected.name)) continue;
@@ -154,6 +155,26 @@ export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | 
   if (reservations) await assertWholesaleReservationsReady(query, actual, namespace, existingTablesOnly, issues);
   if (fulfillment) await assertWholesaleFulfillmentReady(query, actual, namespace, existingTablesOnly, issues);
   if (collections) await assertWholesaleCollectionsReady(query, actual, namespace, existingTablesOnly, issues);
+  if (procurementWorkflow && !existingTablesOnly) {
+    // Migration 0021: procurement workflow columns and tables.
+    for (const [table, name, type] of [
+      ["suppliers", "terms_basis", "supplier_terms_basis_enum"],
+      ["purchase_orders", "created_by", "uuid"], ["purchase_orders", "approved_by", "uuid"], ["purchase_orders", "self_approved", "boolean"],
+      ["purchase_orders", "sent_at", "timestamp with time zone"], ["purchase_orders", "sent_method", "character varying(20)"],
+      ["purchase_orders", "expected_delivery_date", "date"], ["purchase_orders", "closed_at", "timestamp with time zone"],
+      ["purchase_order_events", "event_type", "character varying(40)"],
+      ["supplier_deliveries", "receipt_number", "character varying(100)"], ["supplier_deliveries", "received_by", "uuid"],
+      ["delivery_rejections", "quantity", "integer"], ["delivery_rejections", "reason", "character varying(20)"],
+      ["supplier_invoices", "invoice_date", "date"], ["supplier_invoices", "status", "supplier_invoice_status_enum"],
+      ["supplier_invoices", "terms", "supplier_terms_enum"], ["supplier_invoices", "terms_basis", "supplier_terms_basis_enum"],
+      ["supplier_payments", "payment_mode", "character varying(20)"], ["supplier_payments", "advice_number", "character varying(30)"],
+      ["supplier_payments", "is_prepayment", "boolean"],
+    ]) if (!actual.columns.some(column => column.table_name === table && column.name === name && column.type === type))
+      issues.push("missing/incompatible procurement column " + table + "." + name);
+    const terms = actual.enums.find(e => e.name === "supplier_terms_enum");
+    if (!terms || JSON.stringify(terms.labels) !== JSON.stringify(["Immediate", "EndOfMonth", "EndOfNextMonth", "Net30", "Net60"]))
+      issues.push("missing/incompatible enum supplier_terms_enum");
+  }
   if (installments) await assertWholesaleInstallmentsReady(query, actual, namespace, existingTablesOnly, issues, sharedPaymentPlan ? "payment_plan_enum" : "wholesale_payment_plan_enum");
   if (revisedTerms && !existingTablesOnly) {
     for (const [table, name] of [
