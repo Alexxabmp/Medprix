@@ -1,3 +1,4 @@
+import { applicableContract, contractPrice } from "./wholesale-contracts";
 import {
   pharmacyDate,
   calculateRetailLine,
@@ -58,10 +59,20 @@ async function priceBinding(
   productId: string,
 ) {
   const {
+    rows: [order],
+  } = await query("SELECT * FROM wholesale_orders WHERE id=$1", [orderId]);
+  await applicableContract(
+    query,
+    order.contract_id,
+    order.client_id,
+    order.contract_revision ?? undefined,
+  );
+  const {
     rows: [line],
   } = await query(
-    `SELECT i.quantity,i.unit_price::text AS original_price,p.wholesale_price::text AS default_price,
+    `SELECT i.quantity,i.unit_price::text AS original_price,coalesce(ci.agreed_unit_price,p.wholesale_price)::text AS default_price,
       p.is_vat_exempt FROM wholesale_order_items i JOIN products p ON p.id=i.product_id
+      JOIN wholesale_orders o ON o.id=i.order_id LEFT JOIN client_contract_items ci ON ci.contract_id=o.contract_id AND ci.product_id=p.id
       WHERE i.order_id=$1 AND i.product_id=$2 FOR SHARE OF p`,
     [orderId, productId],
   );
@@ -83,15 +94,125 @@ export function createWholesaleConfirmation(
   transaction: WholesaleTransaction,
 ) {
   const operation = createWholesaleOperation(transaction);
+  async function termsBinding(query: WholesaleQuery, order: any) {
+    const contract = await applicableContract(
+      query,
+      order.contract_id,
+      order.client_id,
+      order.contract_revision ?? undefined,
+    );
+    if (!contract || contract.payment_terms === order.payment_plan)
+      throw new WholesaleError(
+        409,
+        "This order does not require a contract payment-terms exception.",
+      );
+    return {
+      clientId: order.client_id,
+      contractId: contract.id,
+      contractRevision: contract.revision,
+      contractTerms: contract.payment_terms,
+      paymentPlan: order.payment_plan,
+    };
+  }
   return {
+    async requestTermsOverride(
+      actor: AuditActor,
+      key: unknown,
+      orderId: unknown,
+      input: any,
+    ) {
+      const id = requireUuid(orderId),
+        expected = revision(input?.revision),
+        explanation = reason(input?.reason);
+      return operation(
+        actor,
+        key,
+        { action: "request-terms-override", id, expected, explanation },
+        async (query) => {
+          const order = await lockOrder(query, id, expected, ["Pending"]);
+          const binding = await termsBinding(query, order);
+          const {
+            rows: [saved],
+          } = await query(
+            "INSERT INTO wholesale_terms_overrides(order_id,order_revision,binding,reason,requested_by) VALUES($1,$2,$3::jsonb,$4,$5) RETURNING id",
+            [id, expected, JSON.stringify(binding), explanation, actor.id],
+          );
+          await wholesaleAudit(
+            query,
+            actor,
+            "WHOLESALE_TERMS_EXCEPTION_REQUESTED",
+            `Order ${id}; request ${saved.id}`,
+          );
+          return saved;
+        },
+      );
+    },
+    async approveTermsOverride(
+      actor: AuditActor,
+      key: unknown,
+      requestId: unknown,
+      input: any,
+    ) {
+      if (actor.role !== "Admin")
+        throw new WholesaleError(
+          403,
+          "Only Admin may approve payment-terms exceptions.",
+        );
+      const id = requireUuid(requestId),
+        explanation = reason(input?.reason);
+      return operation(
+        actor,
+        key,
+        { action: "approve-terms-override", id, explanation },
+        async (query) => {
+          const {
+            rows: [request],
+          } = await query(
+            "SELECT * FROM wholesale_terms_overrides WHERE id=$1",
+            [id],
+          );
+          if (!request)
+            throw new WholesaleError(404, "Payment-terms exception not found.");
+          const order = await lockOrder(
+            query,
+            request.order_id,
+            request.order_revision,
+            ["Pending"],
+          );
+          const binding = await termsBinding(query, order);
+          const {
+            rows: [current],
+          } = await query(
+            "SELECT approved_by,binding=$2::jsonb AS matches FROM wholesale_terms_overrides WHERE id=$1 FOR UPDATE",
+            [id, JSON.stringify(binding)],
+          );
+          if (current.approved_by || !current.matches)
+            throw new WholesaleError(
+              409,
+              "This exception is approved or stale. Refresh the order.",
+            );
+          await query(
+            "UPDATE wholesale_terms_overrides SET approved_by=$2,approved_at=now(),approval_reason=$3 WHERE id=$1",
+            [id, actor.id, explanation],
+          );
+          await wholesaleAudit(
+            query,
+            actor,
+            "WHOLESALE_TERMS_EXCEPTION_APPROVED",
+            `Request ${id}; ${explanation}`,
+          );
+          return { id };
+        },
+      );
+    },
     async detail(orderId: unknown) {
       const id = requireUuid(orderId);
       const {
         rows: [order],
       } = await read(
-        `SELECT o.id,o.confirmation_snapshot AS snapshot,
+        `SELECT o.id,o.confirmation_snapshot AS snapshot,ct.payment_terms AS "contractPaymentPlan",
           json_build_object('id',c.id,'name',c.client_name,'address',c.address) AS client
-          FROM wholesale_orders o JOIN wholesale_clients c ON c.id=o.client_id
+          FROM wholesale_orders o JOIN wholesale_clients c ON c.id=o.client_id LEFT JOIN client_contracts ct ON ct.id=o.contract_id
           WHERE o.id=$1 AND o.draft_revision IS NOT NULL`,
         [id],
       );
@@ -113,8 +234,15 @@ export function createWholesaleConfirmation(
       );
       return {
         snapshot: order.snapshot,
+        contractPaymentPlan: order.contractPaymentPlan,
         client: order.client,
         overrides,
+        termsOverrides: (
+          await read(
+            `SELECT t.id,t.order_revision AS revision,t.reason,t.approved_by AS "approvedBy",t.approval_reason AS "approvalReason",u.full_name AS "approvedByName" FROM wholesale_terms_overrides t LEFT JOIN users u ON u.id=t.approved_by WHERE t.order_id=$1 ORDER BY t.requested_at,t.id`,
+            [id],
+          )
+        ).rows,
         reservations,
       };
     },
@@ -259,8 +387,30 @@ export function createWholesaleConfirmation(
           if (!plan.success)
             throw new WholesaleError(
               409,
-              "Choose Net-30 or Net-60 before confirming the order.",
+              "Choose Net 30 or Net 60 before confirming the order.",
             );
+          const contract = await applicableContract(
+            query,
+            order.contract_id,
+            order.client_id,
+            order.contract_revision ?? undefined,
+          );
+          let termsException = null;
+          if (contract && contract.payment_terms !== plan.data) {
+            const binding = await termsBinding(query, order);
+            const {
+              rows: [approved],
+            } = await query(
+              "SELECT id,approved_by,approval_reason,approved_at FROM wholesale_terms_overrides WHERE order_id=$1 AND order_revision=$2 AND binding=$3::jsonb AND approved_by IS NOT NULL ORDER BY approved_at DESC LIMIT 1",
+              [id, expected, JSON.stringify(binding)],
+            );
+            if (!approved)
+              throw new WholesaleError(
+                409,
+                "Admin approval is required for the contract payment-terms exception.",
+              );
+            termsException = approved;
+          }
           const { rows: lines } = await query(
             "SELECT * FROM wholesale_order_items WHERE order_id=$1 ORDER BY product_id",
             [id],
@@ -318,9 +468,14 @@ export function createWholesaleConfirmation(
                 "Every product needs an explicit VAT classification.",
               );
             }
+            const agreedPrice = contractPrice(
+              contract,
+              product.id,
+              product.wholesale_price,
+            );
             if (
-              product.wholesale_price === null ||
-              wholesaleMoney(product.wholesale_price) !== line.unit_price
+              agreedPrice === null ||
+              wholesaleMoney(agreedPrice) !== line.unit_price
             ) {
               throw new WholesaleError(
                 409,
@@ -339,7 +494,7 @@ export function createWholesaleConfirmation(
                 JSON.stringify({
                   quantity: line.quantity,
                   original_price: line.unit_price,
-                  default_price: product.wholesale_price,
+                  default_price: agreedPrice,
                   is_vat_exempt: product.is_vat_exempt,
                 }),
               ],
@@ -418,6 +573,11 @@ export function createWholesaleConfirmation(
               sku: product.sku,
               quantity: line.quantity,
               originalPrice: line.unit_price,
+              priceSource: contract?.items.some(
+                (item) => item.productId === product.id,
+              )
+                ? "Contract"
+                : "Standard wholesale",
               unitPrice: price,
               isVatExempt: product.is_vat_exempt,
               vatRate: product.is_vat_exempt ? "0.00" : "12.00",
@@ -453,6 +613,18 @@ export function createWholesaleConfirmation(
               "The confirmed wholesale order total must be greater than zero.",
             );
           const snapshot = {
+            contract: contract
+              ? {
+                  id: contract.id,
+                  title: contract.title,
+                  revision: contract.revision,
+                  effectiveDate: contract.effective_day,
+                  expiryDate: contract.expiry_day,
+                  paymentPlan: contract.payment_terms,
+                  items: contract.items,
+                }
+              : null,
+            termsException,
             clientId: order.client_id,
             clientName: client.client_name,
             address: client.address,

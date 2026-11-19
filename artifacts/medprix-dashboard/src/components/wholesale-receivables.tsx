@@ -249,7 +249,7 @@ export function WholesaleReceivables({
                           <PageTableValue value={item.clientName} />
                         </div>
                         <div className="muted">
-                          {item.paymentPlan === "Net60" ? "Net-60" : "Net-30"}
+                          {item.paymentPlan === "Net60" ? "Net 60" : "Net 30"}
                         </div>
                       </td>
                       <td>{wholesalePeso(item.total)}</td>
@@ -416,7 +416,7 @@ export function WholesaleReceivables({
                   </dl>
                   <p className="field-hint">
                     Payment plan:{" "}
-                    {detail.paymentPlan === "Net60" ? "Net-60" : "Net-30"}
+                    {detail.paymentPlan === "Net60" ? "Net 60" : "Net 30"}
                   </p>
                   {detail.nextDueDate && (
                     <p className="field-hint">

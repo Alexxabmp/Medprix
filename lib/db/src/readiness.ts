@@ -42,8 +42,9 @@ export class SchemaReadinessError extends Error {
     this.name = "SchemaReadinessError";
   }
 }
-export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | "cashier" | "legacy-runtime" | "audit-runtime" | "identifier-runtime" | "pre-retail-runtime" | "pre-retirement-runtime" | "pre-delivery-runtime" | "pre-wholesale-runtime" | "wholesale-draft-runtime" | "wholesale-reservation-runtime" | "wholesale-fulfillment-runtime" | "wholesale-collections-runtime" | "pre-category-runtime" | "pre-payment-reference-runtime" | "pre-discount-holder-runtime" | "pre-returning-customer-runtime" | "pre-prescription-runtime" | "pre-payment-plan-runtime" | "runtime" = "runtime", namespace = "public", existingTablesOnly = false) {
-  const sharedPaymentPlan = scope === "runtime";
+export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | "cashier" | "legacy-runtime" | "audit-runtime" | "identifier-runtime" | "pre-retail-runtime" | "pre-retirement-runtime" | "pre-delivery-runtime" | "pre-wholesale-runtime" | "wholesale-draft-runtime" | "wholesale-reservation-runtime" | "wholesale-fulfillment-runtime" | "wholesale-collections-runtime" | "pre-category-runtime" | "pre-payment-reference-runtime" | "pre-discount-holder-runtime" | "pre-returning-customer-runtime" | "pre-prescription-runtime" | "pre-payment-plan-runtime" | "pre-wholesale-terms-runtime" | "runtime" = "runtime", namespace = "public", existingTablesOnly = false) {
+  const revisedTerms = scope === "runtime";
+  const sharedPaymentPlan = revisedTerms || scope === "pre-wholesale-terms-runtime";
   const prescriptions = sharedPaymentPlan || scope === "pre-payment-plan-runtime";
   const returningCustomers = prescriptions || scope === "pre-prescription-runtime";
   const discountHolders = returningCustomers || scope === "pre-returning-customer-runtime";
@@ -57,7 +58,7 @@ export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | 
   const calendar = wholesale || scope === "pre-wholesale-runtime";
   const retiredSales = calendar || scope === "pre-delivery-runtime";
   const retail = retiredSales || scope === "pre-retirement-runtime";
-  if (["pre-retail-runtime", "pre-retirement-runtime", "pre-delivery-runtime", "pre-wholesale-runtime", "wholesale-draft-runtime", "wholesale-reservation-runtime", "wholesale-fulfillment-runtime", "wholesale-collections-runtime", "pre-category-runtime", "pre-payment-reference-runtime", "pre-discount-holder-runtime", "pre-returning-customer-runtime", "pre-prescription-runtime", "pre-payment-plan-runtime"].includes(scope)) scope = "runtime";
+  if (["pre-retail-runtime", "pre-retirement-runtime", "pre-delivery-runtime", "pre-wholesale-runtime", "wholesale-draft-runtime", "wholesale-reservation-runtime", "wholesale-fulfillment-runtime", "wholesale-collections-runtime", "pre-category-runtime", "pre-payment-reference-runtime", "pre-discount-holder-runtime", "pre-returning-customer-runtime", "pre-prescription-runtime", "pre-payment-plan-runtime", "pre-wholesale-terms-runtime"].includes(scope)) scope = "runtime";
   const actual = await inspectSchema(query, namespace);
   const issues: string[] = [];
   const normalize = (v: unknown) => typeof v === "string" ? v.replaceAll(`"${namespace}".`, "public.").replaceAll(`${namespace}.`, "public.") : v;
@@ -154,6 +155,33 @@ export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | 
   if (fulfillment) await assertWholesaleFulfillmentReady(query, actual, namespace, existingTablesOnly, issues);
   if (collections) await assertWholesaleCollectionsReady(query, actual, namespace, existingTablesOnly, issues);
   if (installments) await assertWholesaleInstallmentsReady(query, actual, namespace, existingTablesOnly, issues, sharedPaymentPlan ? "payment_plan_enum" : "wholesale_payment_plan_enum");
+  if (revisedTerms && !existingTablesOnly) {
+    for (const [table, name] of [
+      ["client_contracts", "revision"],
+      ["client_contracts", "title"],
+      ["wholesale_orders", "contract_revision"],
+      ["wholesale_installment_schedules", "next_payment_date"],
+    ])
+      if (
+        !actual.columns.some((c) => c.table_name === table && c.name === name)
+      )
+        issues.push(`missing Wholesale terms column ${table}.${name}`);
+    for (const table of ["wholesale_terms_overrides"])
+      if (!actual.tables.some((t) => t.name === table))
+        issues.push(`missing Wholesale terms table ${table}`);
+    const functions = await query(
+      "SELECT proname,prosrc FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname=$1 AND p.proname='validate_wholesale_schedule'",
+      [namespace],
+    );
+    if (
+      !functions.rows.some(
+        (f) =>
+          f.proname === "validate_wholesale_schedule" &&
+          f.prosrc.includes("next_payment_date"),
+      )
+    )
+      issues.push("missing revised Wholesale schedule functions");
+  }
   if (categoryPricing && !existingTablesOnly) {
     for (const [table, name, type] of [["product_categories", "id", "uuid"], ["product_categories", "name", "character varying(100)"], ["product_categories", "is_vat", "boolean"], ["products", "initial_price", "numeric(12,2)"]]) {
       if (!actual.columns.some(column => column.table_name === table && column.name === name && column.type === type)) issues.push("missing/incompatible category pricing column " + table + "." + name);

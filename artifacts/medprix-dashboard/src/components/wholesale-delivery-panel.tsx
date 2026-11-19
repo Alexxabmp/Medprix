@@ -5,6 +5,7 @@ import { useLayoutEffect, useId, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import {
   pharmacyDate,
+  addWholesaleCalendarDays,
   calculateWholesaleSchedule,
   wholesaleReceiptTimeSchema,
 } from "@workspace/api-zod";
@@ -47,6 +48,8 @@ export function WholesaleDeliveryPanel({
   const [receiptTime, setReceiptTime] = useState(
     initialAction === "deliver" ? wholesaleManilaInput() : "",
   );
+  const [nextDate, setNextDate] = useState("");
+  const [finalDate, setFinalDate] = useState("");
   const [validation, setValidation] = useState("");
   const [historyOpen, setHistoryOpen] = useState(initialHistoryOpen);
   const historyRef = useRef<HTMLDetailsElement>(null);
@@ -61,14 +64,31 @@ export function WholesaleDeliveryPanel({
   const parsedTime = wholesaleReceiptTimeSchema.safeParse(
     (receiptTime.length === 16 ? receiptTime + ":00" : receiptTime) + "+08:00",
   );
-  const schedule =
-    action === "deliver" && parsedTime.success && order.paymentPlan
-      ? calculateWholesaleSchedule({
-          paymentPlan: order.paymentPlan,
-          total: order.total,
-          receivedAt: parsedTime.data,
-        })
-      : null;
+  const defaultNext = parsedTime.success
+    ? addWholesaleCalendarDays(pharmacyDate(new Date(parsedTime.data)), 30)
+    : "";
+  const effectiveNext = nextDate || defaultNext;
+  const effectiveFinal =
+    order.paymentPlan === "Net30"
+      ? effectiveNext
+      : finalDate ||
+        (effectiveNext ? addWholesaleCalendarDays(effectiveNext, 30) : "");
+  let schedule = null;
+  let dateError = "";
+  if (action === "deliver" && parsedTime.success && order.paymentPlan) {
+    try {
+      schedule = calculateWholesaleSchedule({
+        paymentPlan: order.paymentPlan,
+        total: order.total,
+        receivedAt: parsedTime.data,
+        nextPaymentDate: effectiveNext,
+        finalDueDate: effectiveFinal,
+      });
+    } catch (error) {
+      dateError =
+        error instanceof Error ? error.message : "Choose valid payment dates.";
+    }
+  }
   useLayoutEffect(() => {
     onTaskChange?.(Boolean(action));
   }, [action, onTaskChange]);
@@ -86,10 +106,13 @@ export function WholesaleDeliveryPanel({
                     ? "Record failed delivery"
                     : "Cancel delivery attempt",
           variant: action === "deliver" ? "compact-table" : "form",
-          back: action === initialAction ? undefined : () => {
-            setAction("");
-            setValidation("");
-          },
+          back:
+            action === initialAction
+              ? undefined
+              : () => {
+                  setAction("");
+                  setValidation("");
+                },
         }
       : null,
   );
@@ -109,7 +132,11 @@ export function WholesaleDeliveryPanel({
           <div>
             <dt>Delivery status</dt>
             <dd>
-              <WholesaleStatusPill status={detail.receipt ? "Completed" : active?.status ?? "Ready"} />
+              <WholesaleStatusPill
+                status={
+                  detail.receipt ? "Completed" : (active?.status ?? "Ready")
+                }
+              />
             </dd>
           </div>
           {showTotal && (
@@ -225,11 +252,17 @@ export function WholesaleDeliveryPanel({
                   );
                   return;
                 }
+                if (dateError || !schedule) {
+                  setValidation(dateError || "Choose valid payment dates.");
+                  return;
+                }
                 mutate(path + "/deliver", "POST", {
                   revision: order.revision,
                   scheduleId: active.id,
                   receivedBy: form.get("receivedBy"),
                   receivedAt: new Date(parsedTime.data).toISOString(),
+                  nextPaymentDate: effectiveNext,
+                  finalDueDate: effectiveFinal,
                   receivedInFull: form.get("receivedInFull") === "on",
                 });
               } else {
@@ -313,6 +346,62 @@ export function WholesaleDeliveryPanel({
                       />
                     </div>
                   </div>
+                  <div className="form-grid">
+                    <div className="field">
+                      <label htmlFor={formId + "-next"}>
+                        Next payment date *
+                      </label>
+                      <DateField
+                        id={formId + "-next"}
+                        value={effectiveNext}
+                        min={
+                          parsedTime.success
+                            ? pharmacyDate(new Date(parsedTime.data))
+                            : undefined
+                        }
+                        required
+                        onChange={(event) => {
+                          setNextDate(event.target.value);
+                          setValidation("");
+                        }}
+                      />
+                      <span className="field-hint">
+                        Defaults to 30 calendar days after actual client
+                        receipt.
+                      </span>
+                    </div>
+                    <div className="field">
+                      <label htmlFor={formId + "-final"}>
+                        Final payment deadline *
+                      </label>
+                      <DateField
+                        id={formId + "-final"}
+                        value={effectiveFinal}
+                        readOnly={order.paymentPlan === "Net30"}
+                        min={
+                          order.paymentPlan === "Net60" && effectiveNext
+                            ? addWholesaleCalendarDays(effectiveNext, 30)
+                            : effectiveNext
+                        }
+                        required
+                        onChange={(event) => {
+                          setFinalDate(event.target.value);
+                          setValidation("");
+                        }}
+                      />
+                      <span className="field-hint">
+                        {order.paymentPlan === "Net60"
+                          ? "At least 30 calendar days after the next payment date. Adjust before posting."
+                          : "Matches the next payment date."}{" "}
+                        Payments never move these dates.
+                      </span>
+                    </div>
+                  </div>
+                  {dateError && (
+                    <p className="field-error" role="alert">
+                      {dateError}
+                    </p>
+                  )}
                   {validation && (
                     <p className="inline-error" role="alert">
                       {validation}

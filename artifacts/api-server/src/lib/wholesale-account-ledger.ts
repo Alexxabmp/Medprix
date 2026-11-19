@@ -23,7 +23,7 @@ export async function wholesaleAccountLedger(query: WholesaleQuery, row: any) {
     rows: [header],
   } = await query(
     `SELECT payment_plan,plan_version,principal::text,installment_count,received_at,
-      receipt_date::text,final_due_date::text FROM wholesale_installment_schedules WHERE ar_id=$1`,
+      receipt_date::text,next_payment_date::text,final_due_date::text FROM wholesale_installment_schedules WHERE ar_id=$1`,
     [row.id],
   );
   if (!header || !row.received_at) inconsistent();
@@ -32,6 +32,9 @@ export async function wholesaleAccountLedger(query: WholesaleQuery, row: any) {
     schedule = calculateWholesaleSchedule({
       paymentPlan: row.payment_plan as WholesalePaymentPlan,
       total: row.sale_total,
+      paymentPlanVersion: header.plan_version,
+      nextPaymentDate: header.next_payment_date ?? undefined,
+      finalDueDate: header.final_due_date,
       receivedAt: new Date(row.received_at).toISOString(),
     });
   } catch {

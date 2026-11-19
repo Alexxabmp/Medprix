@@ -1,3 +1,4 @@
+import { pharmacyDate } from "@workspace/api-zod";
 import { SelectField } from "./custom-ui/select-field";
 import { useId, useRef, useState } from "react";
 import type { WholesalePaymentPlan } from "@workspace/api-zod";
@@ -8,6 +9,7 @@ import "@/styles/wholesale-workflow.css";
 import {
   wholesalePeso,
   type WholesaleClient,
+  type WholesaleContract,
   type WholesaleProduct,
   type WholesaleOrder,
   type WholesaleLine,
@@ -16,7 +18,8 @@ import {
 export function WholesaleOrderEditor({
   order,
   clients,
-  products,
+  products: standardProducts,
+  contracts,
   busy,
   submitting = busy,
   error,
@@ -27,6 +30,7 @@ export function WholesaleOrderEditor({
   order: WholesaleOrder | null;
   clients: WholesaleClient[];
   products: WholesaleProduct[];
+  contracts: WholesaleContract[];
   busy: boolean;
   submitting?: boolean;
   error: string;
@@ -34,6 +38,7 @@ export function WholesaleOrderEditor({
   close: () => void;
   save: (draft: {
     clientId: string;
+    contractId: string | null;
     paymentPlan: WholesalePaymentPlan;
     lines: WholesaleLine[];
   }) => void;
@@ -41,6 +46,14 @@ export function WholesaleOrderEditor({
   const form = useRef<HTMLFormElement>(null);
   const formId = useId();
   const [clientId, setClientId] = useState(order?.clientId ?? "");
+  const [contractId, setContractId] = useState(order?.contractId ?? "");
+  const contract = contracts.find((item) => item.id === contractId);
+  const products = standardProducts.map((product) => ({
+    ...product,
+    wholesalePrice:
+      contract?.items.find((item) => item.productId === product.id)
+        ?.unitPrice ?? product.wholesalePrice,
+  }));
   const [paymentPlan, setPaymentPlan] = useState<WholesalePaymentPlan | "">(
     order?.paymentPlan ?? "",
   );
@@ -61,7 +74,7 @@ export function WholesaleOrderEditor({
   const validationError = !clientId
     ? "Select a client before saving the draft."
     : !paymentPlan
-      ? "Choose Net-30 or Net-60 before saving the draft."
+      ? "Choose Net 30 or Net 60 before saving the draft."
       : lines.some((line) => !line.productId)
         ? "Select a product for every line."
         : lines.some((line) => invalidQuantity(line.quantity))
@@ -118,7 +131,13 @@ export function WholesaleOrderEditor({
             );
             return;
           }
-          if (paymentPlan) save({ clientId, paymentPlan, lines });
+          if (paymentPlan)
+            save({
+              clientId,
+              contractId: contractId || null,
+              paymentPlan,
+              lines,
+            });
         }}
       >
         <fieldset disabled={busy} className="wholesale-fields">
@@ -134,6 +153,7 @@ export function WholesaleOrderEditor({
                 aria-invalid={attempted && !clientId}
                 onChange={(event) => {
                   setClientId(event.target.value);
+                  setContractId("");
                   setAttempted(false);
                 }}
               >
@@ -160,10 +180,48 @@ export function WholesaleOrderEditor({
                 }}
               >
                 <option value="">Select payment plan</option>
-                <option value="Net30">Net-30 — 4 weekly installments</option>
-                <option value="Net60">Net-60 — 8 weekly installments</option>
+                <option value="Net30">Net 30: One Payment Deadline</option>
+                <option value="Net60">Net 60: Two Installments</option>
               </SelectField>
             </div>
+          </div>
+          <div className="field">
+            <label htmlFor={formId + "-contract"}>
+              Client contract (optional)
+            </label>
+            <SelectField
+              id={formId + "-contract"}
+              searchable
+              pickerLabel="Client contract"
+              value={contractId}
+              disabled={!clientId}
+              onChange={(event) => {
+                const id = event.target.value;
+                setContractId(id);
+                const selected = contracts.find((item) => item.id === id);
+                if (selected) setPaymentPlan(selected.paymentPlan);
+              }}
+            >
+              <option value="">Standard Wholesale prices</option>
+              {contracts
+                .filter(
+                  (item) =>
+                    item.clientId === clientId &&
+                    item.status === "Active" &&
+                    item.effectiveDate <= pharmacyDate() &&
+                    item.expiryDate >= pharmacyDate(),
+                )
+                .map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.title}
+                  </option>
+                ))}
+            </SelectField>
+            <span className="field-hint">
+              {contract
+                ? "Contract prices apply to covered products; other products use standard Wholesale prices. Changes to contract terms require Admin approval before confirmation."
+                : "Choose a contract to use this client's agreed product prices and payment terms."}
+            </span>
           </div>
           {clientId && (
             <section
@@ -320,10 +378,12 @@ export function WholesaleOrderEditor({
           </dl>
           {paymentPlan && (
             <p className="field-hint">
-              {paymentPlan === "Net60" ? "8" : "4"} weekly installments from
-              client receipt. Final settlement within{" "}
-              {paymentPlan === "Net60" ? "60" : "30"} days. No interest or
-              penalties.
+              {paymentPlan === "Net60"
+                ? "Two installments, split equally with any cent remainder in the second payment."
+                : "One payment deadline for the full amount."}{" "}
+              Dates are selected when client receipt is confirmed. Partial and
+              multiple collections are allowed; payments never move the agreed
+              dates.
             </p>
           )}
           {attempted && validationError && (

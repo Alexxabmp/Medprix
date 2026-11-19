@@ -14,6 +14,7 @@ export const pageTablePolicies: Record<string, PageTablePolicy> = {
   "supplier-directory": { label: "Supplier directory", columns: [text, text, number, number, plain, actions] },
   "supplier-payables": { label: "Supplier accounts payable", columns: [text, plain, plain, number, number, number, plain, actions] },
   "wholesale-orders": { label: "Wholesale orders", columns: [plain, text, number, plain, actions] },
+  "wholesale-contracts": { label: "Client contracts", columns: [text, plain, plain, number, plain, actions] },
   "wholesale-clients": { label: "Wholesale clients", columns: [text, address, actions] },
   "wholesale-prices": { label: "Wholesale prices", columns: [product, number, plain, number, number, number, actions] },
   "wholesale-receipts": { label: "Wholesale delivery receipts", columns: [plain, plain, text, actions] },

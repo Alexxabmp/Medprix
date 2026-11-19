@@ -1,3 +1,4 @@
+import { applicableContract, contractPrice } from "./wholesale-contracts";
 import { randomUUID } from "node:crypto";
 import {
   calculateRetailLine,
@@ -26,6 +27,7 @@ export {
 
 type DraftInput = {
   clientId: string;
+  contractId: string | null;
   paymentPlan: WholesalePaymentPlan | null;
   lines: Array<{ productId: string; quantity: number }>;
 };
@@ -42,7 +44,8 @@ function parseDraft(value: any): DraftInput {
   if (
     !value ||
     Object.keys(value).some(
-      (key) => !["clientId", "lines", "paymentPlan"].includes(key),
+      (key) =>
+        !["clientId", "lines", "paymentPlan", "contractId"].includes(key),
     )
   ) {
     throw new WholesaleError(
@@ -54,7 +57,7 @@ function parseDraft(value: any): DraftInput {
   const plan = wholesalePaymentPlanSchema
     .nullable()
     .safeParse(value.paymentPlan ?? null);
-  if (!plan.success) throw new WholesaleError(400, "Choose Net-30 or Net-60.");
+  if (!plan.success) throw new WholesaleError(400, "Choose Net 30 or Net 60.");
   if (
     !Array.isArray(value.lines) ||
     !value.lines.length ||
@@ -94,7 +97,12 @@ function parseDraft(value: any): DraftInput {
   ) {
     throw new WholesaleError(400, "Combine duplicate products into one line.");
   }
-  return { clientId, paymentPlan: plan.data, lines };
+  return {
+    clientId,
+    contractId: value.contractId ? requireUuid(value.contractId) : null,
+    paymentPlan: plan.data,
+    lines,
+  };
 }
 
 export function createWholesaleDrafts(read: Query, transaction: Transaction) {
@@ -330,12 +338,15 @@ export function createWholesaleDrafts(read: Query, transaction: Transaction) {
         await read(
           `SELECT o.id,o.order_number AS "orderNumber",o.draft_revision AS revision,
         o.status,o.client_id AS "clientId",COALESCE(o.confirmation_snapshot->>'clientName',c.client_name) AS "clientName",o.total_order_amount::text AS total,
-        o.updated_at AS "updatedAt",o.payment_plan AS "paymentPlan",
+        o.updated_at AS "updatedAt",o.payment_plan AS "paymentPlan",o.contract_id AS "contractId",
+        o.contract_revision AS "contractRevision", COALESCE(o.confirmation_snapshot->'contract'->>'title',ct.title) AS "contractTitle",
         COALESCE((SELECT jsonb_agg(jsonb_build_object('productId',i.product_id,'quantity',i.quantity,
           'unitPrice',i.unit_price::text,'name',p.product_name) ORDER BY i.id)
           FROM wholesale_order_items i JOIN products p ON p.id=i.product_id WHERE i.order_id=o.id),'[]'::jsonb) AS lines
         FROM wholesale_orders o JOIN wholesale_clients c ON c.id=o.client_id
-        WHERE o.draft_revision IS NOT NULL AND ($1::uuid IS NULL OR o.id=$1) ORDER BY CASE o.status WHEN 'Pending' THEN 0 WHEN 'Processing' THEN 1 WHEN 'Confirmed' THEN 2 WHEN 'Delivered' THEN 3 WHEN 'Cancelled' THEN 4 ELSE 5 END,
+        LEFT JOIN client_contracts ct ON ct.id=o.contract_id
+        WHERE o.draft_revision IS NOT NULL AND ($1::uuid IS NULL OR o.id=$1)
+        ORDER BY CASE o.status WHEN 'Pending' THEN 0 WHEN 'Processing' THEN 1 WHEN 'Confirmed' THEN 2 WHEN 'Delivered' THEN 3 WHEN 'Cancelled' THEN 4 ELSE 5 END,
           o.updated_at DESC,o.id DESC LIMIT 200`,
           [id],
         )
@@ -390,6 +401,11 @@ export function createWholesaleDrafts(read: Query, transaction: Transaction) {
           ) {
             throw new WholesaleError(404, "Client not found.");
           }
+          const contract = await applicableContract(
+            query,
+            draft.contractId,
+            draft.clientId,
+          );
           const products = (
             await query(
               "SELECT id,wholesale_price::text AS price,is_vat_exempt FROM products WHERE id=ANY($1::uuid[]) ORDER BY id FOR SHARE",
@@ -400,14 +416,17 @@ export function createWholesaleDrafts(read: Query, transaction: Transaction) {
           let vat: bigint | null = 0n;
           const lines = draft.lines.map((line) => {
             const product = products.find((item) => item.id === line.productId);
-            if (!product || product.price === null) {
+            const price = product
+              ? contractPrice(contract, product.id, product.price)
+              : null;
+            if (!product || price === null) {
               throw new WholesaleError(
                 409,
                 "Configure a wholesale price for every selected product first.",
               );
             }
             const amount = calculateRetailLine(
-              cents(product.price),
+              cents(price),
               line.quantity,
               product.is_vat_exempt === true,
               false,
@@ -422,28 +441,37 @@ export function createWholesaleDrafts(read: Query, transaction: Transaction) {
               );
             return {
               ...line,
-              unitPrice: product.price,
+              unitPrice: price,
               total: money(amount.net),
             };
           });
           const savedId = id ?? randomUUID();
           if (!id) {
             await query(
-              `INSERT INTO wholesale_orders(id,client_id,order_number,draft_revision,created_by,total_order_amount,payment_plan)
-            VALUES($1,$2,'WS-' || nextval('wholesale_order_number_seq')::text,1,$3,$4,$5)`,
+              `INSERT INTO wholesale_orders(id,client_id,order_number,draft_revision,created_by,total_order_amount,payment_plan,contract_id,contract_revision)
+            VALUES($1,$2,'WS-' || nextval('wholesale_order_number_seq')::text,1,$3,$4,$5,$6,$7)`,
               [
                 savedId,
                 draft.clientId,
                 actor.id,
                 money(total),
                 draft.paymentPlan,
+                draft.contractId,
+                contract?.revision ?? null,
               ],
             );
           } else {
             await query(
               `UPDATE wholesale_orders SET client_id=$2,total_order_amount=$3,
-            draft_revision=draft_revision+1,payment_plan=$4 WHERE id=$1`,
-              [id, draft.clientId, money(total), draft.paymentPlan],
+            draft_revision=draft_revision+1,payment_plan=$4,contract_id=$5,contract_revision=$6 WHERE id=$1`,
+              [
+                id,
+                draft.clientId,
+                money(total),
+                draft.paymentPlan,
+                draft.contractId,
+                contract?.revision ?? null,
+              ],
             );
             await query("DELETE FROM wholesale_order_items WHERE order_id=$1", [
               id,

@@ -27,8 +27,8 @@ export function WholesaleInstallmentScheduleView({
       {showTerms && (
         <p className="field-hint">
           {schedule.paymentPlan === "Net30"
-            ? "Net-30 · 4 weekly installments"
-            : "Net-60 · 8 weekly installments"}
+            ? "Net 30: One Payment deadline"
+            : "Net 60: Two Installments"}
           . Final settlement deadline:{" "}
           <strong>{formatDisplayDate(schedule.finalDueDate)}</strong>.
         </p>

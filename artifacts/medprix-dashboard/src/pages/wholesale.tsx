@@ -1,3 +1,7 @@
+import {
+  WholesaleContracts,
+  WholesaleClientInformation,
+} from "@/components/wholesale-contracts";
 import { WholesaleStatusPill } from "@/components/wholesale-status-pill";
 import { ReadDialog, useReadDialog } from "@/components/read-dialog";
 import { SelectField } from "@/components/custom-ui/select-field";
@@ -18,7 +22,15 @@ import {
   type WholesaleSummaryRow,
 } from "@/components/wholesale-workspace-tables";
 import { WholesaleReceivables } from "@/components/wholesale-receivables";
-import { SourceSummary as Summary, SourceTableBody, SourceFeedback, SourceRefreshButton, SourceProgress, SourceText, type SourceState } from "@/components/custom-ui/source-state";
+import {
+  SourceSummary as Summary,
+  SourceTableBody,
+  SourceFeedback,
+  SourceRefreshButton,
+  SourceProgress,
+  SourceText,
+  type SourceState,
+} from "@/components/custom-ui/source-state";
 import { WholesaleDeliveryReceipts } from "@/components/wholesale-delivery-receipts";
 import { WholesaleOrderDetails } from "@/components/wholesale-order-details";
 import {
@@ -41,6 +53,7 @@ import {
   wholesalePeso,
   type DeliveryReceiptSummary,
   type WholesaleClient,
+  type WholesaleContract,
   type WholesaleOrder,
   type WholesaleOrderDetail,
   type DeliveryReceipt,
@@ -68,6 +81,8 @@ export default function WholesalePage({
   role: string;
 }) {
   const pageTableStandard = usePageTableStandard();
+  const [contractCreateRequested, setContractCreateRequested] = useState(false);
+  const [contracts, setContracts] = useState<WholesaleContract[]>([]);
   const [viewClient, setViewClient] = useState<WholesaleClient | null>(null);
   const storageKey =
     "medprix-wholesale-request:" +
@@ -89,14 +104,21 @@ export default function WholesalePage({
     getCachedWholesale<WholesaleOverview>("/overview"),
   );
   const [overviewError, setOverviewError] = useState("");
-  const summaryRead = useReadDialog<{ kind: WholesaleSummaryKind; data: WholesalePageResult<WholesaleSummaryRow> }>();
-  const deliveryRead = useReadDialog<WholesaleOrderDetail & { order: WholesaleOrder }>();
+  const summaryRead = useReadDialog<{
+    kind: WholesaleSummaryKind;
+    data: WholesalePageResult<WholesaleSummaryRow>;
+  }>();
+  const deliveryRead = useReadDialog<
+    WholesaleOrderDetail & { order: WholesaleOrder }
+  >();
   const openingAccount = deliveryRead.state?.pending ?? false;
   const [accountStatus, setAccountStatus] =
     useState<WholesaleAccountFilter>("all");
   const [orderStatus, setOrderStatus] = useState("All statuses");
   const [deliveryHistoryOpen, setDeliveryHistoryOpen] = useState(false);
-  const [refreshTarget, setRefreshTarget] = useState<HTMLDivElement | null>(null);
+  const [refreshTarget, setRefreshTarget] = useState<HTMLDivElement | null>(
+    null,
+  );
   const [deliveryStatus, setDeliveryStatus] =
     useState<DeliveryQueueStatus>("all");
   const [vatFilter, setVatFilter] = useState("All VAT statuses");
@@ -104,18 +126,48 @@ export default function WholesalePage({
   const [clientPage, setClientPage] = useState(1);
   const [pricePage, setPricePage] = useState(1);
   const [tab, setTab] = useState<
-    "orders" | "deliveries" | "clients" | "prices" | "receipts" | "accounts"
+    | "orders"
+    | "deliveries"
+    | "clients"
+    | "prices"
+    | "receipts"
+    | "accounts"
+    | "contracts"
   >("orders");
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [priceInput, setPriceInput] = useState("");
   const [printingReceipt, setPrintingReceipt] = useState(false);
   const [search, setSearch] = useState("");
-  type Resource = "clients" | "catalog" | "orders" | "receipts" | "overview";
-  const [sources, setSources] = useState<Record<Resource, SourceState>>(() => Object.fromEntries(
-    [["clients", "/clients"], ["catalog", "/catalog"], ["orders", "/orders"], ["receipts", "/delivery-receipts"], ["overview", "/overview"]]
-      .map(([key, path]) => [key, { hasData: getCachedWholesale(path) !== null, pending: true, error: "" }]),
-  ) as Record<Resource, SourceState>);
-  const resourceRequests = useRef<Record<Resource, number>>({ clients: 0, catalog: 0, orders: 0, receipts: 0, overview: 0 });
+  type Resource =
+    "clients" | "catalog" | "orders" | "receipts" | "overview" | "contracts";
+  const [sources, setSources] = useState<Record<Resource, SourceState>>(
+    () =>
+      Object.fromEntries(
+        [
+          ["clients", "/clients"],
+          ["catalog", "/catalog"],
+          ["orders", "/orders"],
+          ["receipts", "/delivery-receipts"],
+          ["overview", "/overview"],
+          ["contracts", "/contracts"],
+        ].map(([key, path]) => [
+          key,
+          {
+            hasData: getCachedWholesale(path) !== null,
+            pending: true,
+            error: "",
+          },
+        ]),
+      ) as Record<Resource, SourceState>,
+  );
+  const resourceRequests = useRef<Record<Resource, number>>({
+    clients: 0,
+    catalog: 0,
+    orders: 0,
+    receipts: 0,
+    overview: 0,
+    contracts: 0,
+  });
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
   const [deliveryVersion, setDeliveryVersion] = useState(0);
@@ -132,33 +184,87 @@ export default function WholesalePage({
   });
 
   async function load(_background = false, only?: Resource, force = false) {
-    async function read<T>(key: Resource, path: string, receive: (data: T) => void) {
+    async function read<T>(
+      key: Resource,
+      path: string,
+      receive: (data: T) => void,
+    ) {
       resourceRequests.current[key]++;
-      setSources(current => ({ ...current, [key]: { ...current[key], pending: true } }));
+      setSources((current) => ({
+        ...current,
+        [key]: { ...current[key], pending: true },
+      }));
       try {
         const result = await wholesaleGet<T>(path, force);
         receive(result);
-        setSources(current => ({ ...current, [key]: { hasData: true, pending: resourceRequests.current[key] > 1, error: "" } }));
+        setSources((current) => ({
+          ...current,
+          [key]: {
+            hasData: true,
+            pending: resourceRequests.current[key] > 1,
+            error: "",
+          },
+        }));
       } catch (failure) {
-        setSources(current => ({ ...current, [key]: { ...current[key], pending: resourceRequests.current[key] > 1, error: safeError(failure) } }));
-      } finally { resourceRequests.current[key]--; }
+        setSources((current) => ({
+          ...current,
+          [key]: {
+            ...current[key],
+            pending: resourceRequests.current[key] > 1,
+            error: safeError(failure),
+          },
+        }));
+      } finally {
+        resourceRequests.current[key]--;
+      }
     }
     await Promise.all([
-      ...(!only || only === "clients" ? [read<WholesaleClient[]>("clients", "/clients", setClients)] : []),
-      ...(!only || only === "catalog" ? [read<WholesaleProduct[]>("catalog", "/catalog", setProducts)] : []),
-      ...(!only || only === "orders" ? [read<WholesaleOrder[]>("orders", "/orders", setOrders)] : []),
-      ...(!only || only === "receipts" ? [read<DeliveryReceiptSummary[]>("receipts", "/delivery-receipts", setReceipts)] : []),
-      ...(!only || only === "overview" ? [read<WholesaleOverview>("overview", "/overview", setOverview)] : []),
+      ...(!only || only === "contracts"
+        ? [read<WholesaleContract[]>("contracts", "/contracts", setContracts)]
+        : []),
+      ...(!only || only === "clients"
+        ? [read<WholesaleClient[]>("clients", "/clients", setClients)]
+        : []),
+      ...(!only || only === "catalog"
+        ? [read<WholesaleProduct[]>("catalog", "/catalog", setProducts)]
+        : []),
+      ...(!only || only === "orders"
+        ? [read<WholesaleOrder[]>("orders", "/orders", setOrders)]
+        : []),
+      ...(!only || only === "receipts"
+        ? [
+            read<DeliveryReceiptSummary[]>(
+              "receipts",
+              "/delivery-receipts",
+              setReceipts,
+            ),
+          ]
+        : []),
+      ...(!only || only === "overview"
+        ? [read<WholesaleOverview>("overview", "/overview", setOverview)]
+        : []),
     ]);
   }
   useEffect(() => {
     void load(true);
   }, []);
 
-  async function refreshOverview() { await load(true, "overview"); }
+  async function refreshOverview() {
+    await load(true, "overview");
+  }
   function openSummary(kind: WholesaleSummaryKind) {
-    const title = { pending: "Pending orders", deliveries: "Active delivery attempts", outstanding: "Outstanding accounts", overdue: "Overdue accounts" }[kind];
-    summaryRead.open(title, async () => ({ kind, data: await wholesaleGet<WholesalePageResult<WholesaleSummaryRow>>(wholesaleSummaryPath(kind)) }));
+    const title = {
+      pending: "Pending orders",
+      deliveries: "Active delivery attempts",
+      outstanding: "Outstanding accounts",
+      overdue: "Overdue accounts",
+    }[kind];
+    summaryRead.open(title, async () => ({
+      kind,
+      data: await wholesaleGet<WholesalePageResult<WholesaleSummaryRow>>(
+        wholesaleSummaryPath(kind),
+      ),
+    }));
   }
   async function submit(request: WholesaleRequest) {
     if (inFlight.current) return;
@@ -216,10 +322,19 @@ export default function WholesalePage({
     if (pending || inFlight.current) return;
     void submit({ key: crypto.randomUUID(), path, method, body });
   }
-  function openDelivery(id: string, title = "Manage delivery", view?: "history") {
+  function openDelivery(
+    id: string,
+    title = "Manage delivery",
+    view?: "history",
+  ) {
     setDeliveryHistoryOpen(view === "history");
     setDeliveryReceipt(null);
-    deliveryRead.open(title, () => wholesaleGet<WholesaleOrderDetail & { order: WholesaleOrder }>("/orders/" + id, true));
+    deliveryRead.open(title, () =>
+      wholesaleGet<WholesaleOrderDetail & { order: WholesaleOrder }>(
+        "/orders/" + id,
+        true,
+      ),
+    );
   }
   function closeDeliveryRead() {
     deliveryRead.close();
@@ -246,6 +361,7 @@ export default function WholesalePage({
   }
   function saveDraft(draft: {
     clientId: string;
+    contractId: string | null;
     paymentPlan: NonNullable<WholesaleOrder["paymentPlan"]>;
     lines: WholesaleLine[];
   }) {
@@ -257,8 +373,12 @@ export default function WholesalePage({
     );
   }
   const locked =
-    busy || pending !== null || openingAccount || Boolean(summaryRead.state?.pending);
-  const navigating = busy || openingAccount || Boolean(summaryRead.state?.pending);
+    busy ||
+    pending !== null ||
+    openingAccount ||
+    Boolean(summaryRead.state?.pending);
+  const navigating =
+    busy || openingAccount || Boolean(summaryRead.state?.pending);
   const query = search.toLocaleLowerCase();
   const orderPriority: Record<string, number> = {
     Pending: 0,
@@ -294,25 +414,37 @@ export default function WholesalePage({
         : [],
     [tab, orders, orderStatus, query],
   );
-  const visibleClients = useMemo(() => tab === "clients" ? clients.filter((client) =>
-    (client.name + " " + (client.address ?? ""))
-      .toLocaleLowerCase()
-      .includes(query),
-  ) : [], [tab, clients, query]);
-  const visibleProducts = useMemo(() => tab === "prices" ? products.filter((product) => {
-    const vatLabel =
-      product.isVatExempt === null
-        ? "Needs classification"
-        : product.isVatExempt
-          ? "Non-VAT"
-          : "VAT";
-    const matchesVat =
-      vatFilter === "All VAT statuses" || vatLabel === vatFilter;
-    const matchesQuery = (product.name + " " + product.sku)
-      .toLocaleLowerCase()
-      .includes(query);
-    return matchesVat && matchesQuery;
-  }) : [], [tab, products, vatFilter, query]);
+  const visibleClients = useMemo(
+    () =>
+      tab === "clients"
+        ? clients.filter((client) =>
+            (client.name + " " + (client.address ?? ""))
+              .toLocaleLowerCase()
+              .includes(query),
+          )
+        : [],
+    [tab, clients, query],
+  );
+  const visibleProducts = useMemo(
+    () =>
+      tab === "prices"
+        ? products.filter((product) => {
+            const vatLabel =
+              product.isVatExempt === null
+                ? "Needs classification"
+                : product.isVatExempt
+                  ? "Non-VAT"
+                  : "VAT";
+            const matchesVat =
+              vatFilter === "All VAT statuses" || vatLabel === vatFilter;
+            const matchesQuery = (product.name + " " + product.sku)
+              .toLocaleLowerCase()
+              .includes(query);
+            return matchesVat && matchesQuery;
+          })
+        : [],
+    [tab, products, vatFilter, query],
+  );
 
   const WHOLESALE_PAGE_SIZE = 15;
   const totalOrderPages = Math.max(
@@ -346,6 +478,11 @@ export default function WholesalePage({
   );
 
   const section = {
+    contracts: {
+      title: "Client contracts",
+      description: "Agreed client prices, validity dates and payment terms",
+      placeholder: "Search contract or client",
+    },
     orders: {
       title: "Wholesale orders",
       description: "Drafts, agreed prices and delivery status",
@@ -380,57 +517,78 @@ export default function WholesalePage({
     },
   }[tab];
 
-  const activeResource: Resource | null = tab === "orders" ? "orders" : tab === "clients" ? "clients" : tab === "prices" ? "catalog" : tab === "receipts" ? "receipts" : null;
-  const retryResource = (key: Resource) => { if (!resourceRequests.current[key]) void load(false, key, true); };
-  function renderDelivery(order: WholesaleOrder, detail: WholesaleOrderDetail, close: () => void, embedded = false) {
-    return (<WholesaleDialog embedded={embedded}
-          variant="form"
-          back={deliveryReceipt ? () => setDeliveryReceipt(null) : undefined}
-          title={
-            deliveryReceipt
-              ? "Delivery receipt details"
-              : (deliveryHistoryOpen ? "Delivery history · " : "Delivery · ") + order.orderNumber
-          }
-          description={
-            deliveryReceipt
-              ? deliveryReceipt.receiptNumber
-              : order.orderNumber
-          }
-          busy={busy || printingReceipt}
-          close={() => {
-            close();
-            setDeliveryReceipt(null);
-          }}
-        >
-          {deliveryReceipt ? (
-            <DeliveryReceiptView
-              receipt={deliveryReceipt}
-              onBusyChange={setPrintingReceipt}
-              close={() => {
-                close();
-                setDeliveryReceipt(null);
-              }}
-              embedded
+  const activeResource: Resource | null =
+    tab === "orders"
+      ? "orders"
+      : tab === "clients"
+        ? "clients"
+        : tab === "contracts"
+          ? "contracts"
+          : tab === "prices"
+            ? "catalog"
+            : tab === "receipts"
+              ? "receipts"
+              : null;
+  const retryResource = (key: Resource) => {
+    if (!resourceRequests.current[key]) void load(false, key, true);
+  };
+  function renderDelivery(
+    order: WholesaleOrder,
+    detail: WholesaleOrderDetail,
+    close: () => void,
+    embedded = false,
+  ) {
+    return (
+      <WholesaleDialog
+        embedded={embedded}
+        variant="form"
+        back={deliveryReceipt ? () => setDeliveryReceipt(null) : undefined}
+        title={
+          deliveryReceipt
+            ? "Delivery receipt details"
+            : (deliveryHistoryOpen ? "Delivery history · " : "Delivery · ") +
+              order.orderNumber
+        }
+        description={
+          deliveryReceipt ? deliveryReceipt.receiptNumber : order.orderNumber
+        }
+        busy={busy || printingReceipt}
+        close={() => {
+          close();
+          setDeliveryReceipt(null);
+        }}
+      >
+        {deliveryReceipt ? (
+          <DeliveryReceiptView
+            receipt={deliveryReceipt}
+            onBusyChange={setPrintingReceipt}
+            close={() => {
+              close();
+              setDeliveryReceipt(null);
+            }}
+            embedded
+          />
+        ) : (
+          <>
+            <WholesaleRequestFeedback
+              error={formError}
+              pending={pending}
+              busy={busy}
+              retry={() => pending && void submit(pending)}
             />
-          ) : (
-            <>
-              <WholesaleRequestFeedback
-                error={formError}
-                pending={pending}
-                busy={busy}
-                retry={() => pending && void submit(pending)}
-              />
-              <WholesaleDeliveryPanel
-                key={order.id + ":" + order.revision}
-                order={order}
-                detail={detail}
-                busy={locked}
-                mutate={mutate}
-                initialHistoryOpen={deliveryHistoryOpen}
-                initialAction={
-                  deliveryHistoryOpen ? undefined : detail.attempts.some(
-                    (attempt) => attempt.status === "InTransit",
-                  )
+            <WholesaleDeliveryPanel
+              key={order.id + ":" + order.revision}
+              order={order}
+              detail={detail}
+              busy={locked}
+              mutate={mutate}
+              initialHistoryOpen={deliveryHistoryOpen}
+              initialAction={
+                deliveryHistoryOpen
+                  ? undefined
+                  : detail.attempts.some(
+                        (attempt) => attempt.status === "InTransit",
+                      )
                     ? "deliver"
                     : detail.attempts.some(
                           (attempt) => attempt.status === "Scheduled",
@@ -439,16 +597,17 @@ export default function WholesalePage({
                       : detail.receipt
                         ? undefined
                         : "schedule"
+              }
+              viewReceipt={() => {
+                if (detail.receipt) {
+                  setDeliveryReceipt(detail.receipt.snapshot);
                 }
-                viewReceipt={() => {
-                  if (detail.receipt) {
-                    setDeliveryReceipt(detail.receipt.snapshot);
-                  }
-                }}
-              />
-            </>
-          )}
-        </WholesaleDialog>);
+              }}
+            />
+          </>
+        )}
+      </WholesaleDialog>
+    );
   }
   return (
     <div className="wholesale-workspace">
@@ -459,15 +618,24 @@ export default function WholesalePage({
       {error && (
         <div role="alert" className="inline-error">
           {error}
-          {!(Object.values(sources).some(source => source.pending)) && (
+          {!Object.values(sources).some((source) => source.pending) && (
             <button className="button soft" onClick={() => void load()}>
               Retry loading
             </button>
           )}
         </div>
       )}
-      <SourceFeedback status={sources.overview} label="wholesale summary" onRetry={() => retryResource("overview")} />
-      {activeResource && <SourceFeedback status={sources[activeResource]} label="wholesale records" />}
+      <SourceFeedback
+        status={sources.overview}
+        label="wholesale summary"
+        onRetry={() => retryResource("overview")}
+      />
+      {activeResource && (
+        <SourceFeedback
+          status={sources[activeResource]}
+          label="wholesale records"
+        />
+      )}
       {pending && (
         <div className="inline-error" role="status">
           <span>
@@ -489,7 +657,8 @@ export default function WholesalePage({
         aria-label="Wholesale summary"
         aria-busy={sources.overview.pending}
       >
-        <Summary status={sources.overview}
+        <Summary
+          status={sources.overview}
           label="Pending Orders"
           value={overview ? String(overview.openOrders) : "—"}
           caption="Orders awaiting delivery"
@@ -503,7 +672,8 @@ export default function WholesalePage({
             </button>
           }
         />
-        <Summary status={sources.overview}
+        <Summary
+          status={sources.overview}
           label="Deliveries"
           value={overview ? String(overview.activeDeliveries) : "—"}
           caption="Scheduled or in transit"
@@ -517,7 +687,8 @@ export default function WholesalePage({
             </button>
           }
         />
-        <Summary status={sources.overview}
+        <Summary
+          status={sources.overview}
           label="Outstanding Balance"
           value={overview ? wholesalePeso(overview.outstanding) : "—"}
           caption="Unpaid client balances"
@@ -531,7 +702,8 @@ export default function WholesalePage({
             </button>
           }
         />
-        <Summary status={sources.overview}
+        <Summary
+          status={sources.overview}
           label="Overdue Balance"
           value={overview ? wholesalePeso(overview.overdue) : "—"}
           caption={
@@ -562,13 +734,21 @@ export default function WholesalePage({
         </div>
       )}
       <ReadDialog task={summaryRead} busy={busy}>
-        {summary => <WholesaleSummaryModal
-          embedded kind={summary.kind} initialData={summary.data}
-          busy={busy || pending !== null} submitting={busy}
-          close={summaryRead.close} role={role} mutate={mutate} error={formError}
-          retry={pending ? () => void submit(pending) : undefined}
-          onAccountChanged={() => void refreshOverview()}
-        />}
+        {(summary) => (
+          <WholesaleSummaryModal
+            embedded
+            kind={summary.kind}
+            initialData={summary.data}
+            busy={busy || pending !== null}
+            submitting={busy}
+            close={summaryRead.close}
+            role={role}
+            mutate={mutate}
+            error={formError}
+            retry={pending ? () => void submit(pending) : undefined}
+            onAccountChanged={() => void refreshOverview()}
+          />
+        )}
       </ReadDialog>
       <div className="page-tabs" role="group" aria-label="Wholesale sections">
         {(
@@ -577,6 +757,7 @@ export default function WholesalePage({
             "deliveries",
             "accounts",
             "clients",
+            "contracts",
             "prices",
             "receipts",
           ] as const
@@ -599,15 +780,17 @@ export default function WholesalePage({
           >
             {item === "orders"
               ? "Orders"
-              : item === "deliveries"
-                ? "Deliveries"
-                : item === "clients"
-                  ? "Clients"
-                  : item === "prices"
-                    ? "Wholesale prices"
-                    : item === "receipts"
-                      ? "Delivery receipts"
-                      : "Receivables"}
+              : item === "contracts"
+                ? "Contracts"
+                : item === "deliveries"
+                  ? "Deliveries"
+                  : item === "clients"
+                    ? "Clients"
+                    : item === "prices"
+                      ? "Wholesale prices"
+                      : item === "receipts"
+                        ? "Delivery receipts"
+                        : "Receivables"}
           </button>
         ))}
       </div>
@@ -676,9 +859,7 @@ export default function WholesalePage({
                 }}
                 data-testid="select-wholesale-vat-filter"
               >
-                <option value="All VAT statuses">
-                  All VAT statuses
-                </option>
+                <option value="All VAT statuses">All VAT statuses</option>
                 <option value="VAT">VAT</option>
                 <option value="Non-VAT">Non-VAT</option>
                 <option value="Needs classification">
@@ -705,10 +886,31 @@ export default function WholesalePage({
             {tab === "orders" && (
               <button
                 className="button primary-action"
-                disabled={locked || !sources.clients.hasData || !sources.catalog.hasData || !clients.length}
+                disabled={
+                  locked ||
+                  !sources.clients.hasData ||
+                  !sources.catalog.hasData ||
+                  !clients.length
+                }
                 onClick={() => open({ kind: "order", order: null })}
               >
                 <Plus size={14} /> New draft
+              </button>
+            )}
+            {tab === "contracts" && role === "Admin" && (
+              <button
+                className="button primary-action"
+                disabled={
+                  locked ||
+                  !sources.clients.hasData ||
+                  !sources.catalog.hasData ||
+                  !sources.contracts.hasData ||
+                  !clients.length ||
+                  !products.length
+                }
+                onClick={() => setContractCreateRequested(true)}
+              >
+                <Plus size={14} /> Add contract
               </button>
             )}
             {tab === "clients" && (
@@ -723,401 +925,402 @@ export default function WholesalePage({
           </div>
         </div>
         <>
-              {tab === "deliveries" ? (
-                <WholesaleDeliveries
-                  key={deliveryVersion}
+          {tab === "contracts" ? (
+            <WholesaleContracts
+              contracts={contracts}
+              clients={clients}
+              products={products}
+              role={role}
+              search={search}
+              source={sources.contracts}
+              createRequested={contractCreateRequested}
+              onCreateHandled={() => setContractCreateRequested(false)}
+              onChanged={() => load(true)}
+            />
+          ) : tab === "deliveries" ? (
+            <WholesaleDeliveries
+              key={deliveryVersion}
+              refreshTarget={refreshTarget}
+              search={search}
+              status={deliveryStatus}
+              busy={navigating}
+              open={(id, title, view) => openDelivery(id, title, view)}
+            />
+          ) : (
+            <div className="table-scroll">
+              {tab === "accounts" && (
+                <WholesaleReceivables
                   refreshTarget={refreshTarget}
                   search={search}
-                  status={deliveryStatus}
-                  busy={navigating}
-                  open={(id, title, view) => openDelivery(id, title, view)}
+                  role={role}
+                  status={accountStatus}
+                  onChanged={() => void refreshOverview()}
                 />
-              ) : (
-                <div className="table-scroll">
-                  {tab === "accounts" && (
-                    <WholesaleReceivables
-                      refreshTarget={refreshTarget}
-                      search={search}
-                      role={role}
-                      status={accountStatus}
-                      onChanged={() => void refreshOverview()}
-                    />
-                  )}
-                  {tab === "receipts" && (
-                    <WholesaleDeliveryReceipts
-                      receipts={receipts}
-                      search={search}
-                      disabled={navigating}
-                      source={sources.receipts}
-                    />
-                  )}
-                  {tab === "orders" && (
-                    <table
-                      data-page-table="wholesale-orders"
-                      className="data-table"
-                    >
-                      <thead>
-                        <tr>
-                          <th>Order</th>
-                          <th>Client</th>
-                          <th>Total including VAT</th>
-                          <th>Order status</th>
-                          <th className="table-action-head">Action</th>
-                        </tr>
-                      </thead>
-                      <SourceTableBody status={sources.orders} label="Wholesale orders" colSpan={5}>
-                        {paginatedOrders.map((order) => (
-                          <tr key={order.id}>
-                            <td>{order.orderNumber}</td>
-                            <td>
-                              <PageTableValue value={order.clientName} />
-                            </td>
-                            <td>{wholesalePeso(order.total)}</td>
-                            <td>
-                              <WholesaleStatusPill status={order.status} />
-                            </td>
-                            <td className="table-action-cell">
-                              <div className="table-actions">
-                                {pageTableStandard &&
-                                  order.status === "Pending" && (
-                                    <AppTooltip content="Confirm draft">
-                                      <button
-                                        type="button"
-                                        className="button soft table-action-btn"
-                                        disabled={locked}
-                                        aria-label="Confirm draft"
-                                        onClick={() =>
-                                          open({
-                                            kind: "details",
-                                            order,
-                                            confirm: true,
-                                          })
-                                        }
-                                      >
-                                        <Check size={13} aria-hidden="true" />
-                                      </button>
-                                    </AppTooltip>
-                                  )}
-                                {order.status === "Pending" && (
-                                  <AppTooltip content={"Edit draft"}>
-                                    <button
-                                      className="button soft table-action-btn"
-                                      disabled={locked}
-                                      aria-label="Edit draft"
-
-                                      onClick={() =>
-                                        open({ kind: "order", order })
-                                      }
-                                    >
-                                      <Pencil size={13} />
-                                    </button>
-                                  </AppTooltip>
-                                )}
-                                {["Confirmed", "Processing"].includes(
-                                  order.status,
-                                ) && (
-                                  <AppTooltip content="Manage delivery">
-                                    <button
-                                      className="button soft table-action-btn"
-                                      aria-label="Manage delivery"
-                                      disabled={navigating}
-                                      onClick={() =>
-                                        void openDelivery(order.id)
-                                      }
-                                    >
-                                      <Truck size={13} />
-                                    </button>
-                                  </AppTooltip>
-                                )}
-                                <AppTooltip content={"Review order"}>
-                                  <button
-                                    className="button soft table-action-btn"
-                                    disabled={navigating}
-                                    aria-label="Review order"
-
-                                    onClick={() =>
-                                      open({ kind: "details", order })
-                                    }
-                                  >
-                                    <Eye size={13} />
-                                  </button>
-                                </AppTooltip>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                        {!visibleOrders.length && (
-                          <tr>
-                            <TableEmptyState colSpan={5}>
-                              {search
-                                ? "No matching records."
-                                : "No wholesale orders found."}
-                            </TableEmptyState>
-                          </tr>
-                        )}
-                      </SourceTableBody>
-                    </table>
-                  )}
-                  {tab === "clients" && (
-                    <table
-                      data-page-table="wholesale-clients"
-                      className="data-table"
-                    >
-                      <thead>
-                        <tr>
-                          <th>Client</th>
-                          <th>Address</th>
-                          <th className="table-action-head">Action</th>
-                        </tr>
-                      </thead>
-                      <SourceTableBody status={sources.clients} label="Wholesale clients" colSpan={3}>
-                        {paginatedClients.map((client) => (
-                          <tr key={client.id}>
-                            <td>
-                              <PageTableValue value={client.name} />
-                            </td>
-                            <td>{client.address || "Not provided"}</td>
-                            <td className="table-action-cell">
-                              <div className="table-actions">
-                                <AppTooltip content={"Edit client"}>
-                                  <button
-                                    className="button soft table-action-btn"
-                                    disabled={locked}
-                                    aria-label="Edit client"
-
-                                    onClick={() =>
-                                      open({ kind: "client", client })
-                                    }
-                                  >
-                                    <Pencil size={13} />
-                                  </button>
-                                </AppTooltip>
-                                {pageTableStandard && (
-                                  <AppTooltip content="View client">
-                                    <button
-                                      type="button"
-                                      className="button soft table-action-btn"
-                                      aria-label="View client"
-                                      onClick={() => setViewClient(client)}
-                                    >
-                                      <Eye size={13} aria-hidden="true" />
-                                    </button>
-                                  </AppTooltip>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                        {!visibleClients.length && (
-                          <tr>
-                            <TableEmptyState colSpan={3}>
-                              {search
-                                ? "No matching records."
-                                : "No wholesale clients found."}
-                            </TableEmptyState>
-                          </tr>
-                        )}
-                      </SourceTableBody>
-                    </table>
-                  )}
-                  {tab === "prices" && (
-                    <table
-                      data-page-table="wholesale-prices"
-                      className="data-table"
-                    >
-                      <thead>
-                        <tr>
-                          <th>Product / SKU</th>
-                          <th>Wholesale unit price</th>
-                          <th>VAT Status</th>
-                          <th>Physical</th>
-                          <th>Reserved</th>
-                          <th>Available</th>
-                          {role === "Admin" && (
-                            <th className="table-action-head">Action</th>
-                          )}
-                        </tr>
-                      </thead>
-                      <SourceTableBody status={sources.catalog} label="Wholesale products" colSpan={role === "Admin" ? 7 : 6}>
-                        {paginatedProducts.map((product) => (
-                          <tr key={product.id}>
-                            <td>
-                              <PageTableValue value={product.name} />
-                              <div className="muted">{product.sku}</div>
-                            </td>
-                            <td>{wholesalePeso(product.wholesalePrice)}</td>
-                            <td>
-                              {product.isVatExempt === null
-                                ? "Needs classification"
-                                : product.isVatExempt
-                                  ? "Non-VAT"
-                                  : "VAT"}
-                            </td>
-                            <td>{product.physicalStock}</td>
-                            <td>{product.reservedStock}</td>
-                            <td>{product.availableStock}</td>
-                            {role === "Admin" && (
-                              <td className="table-action-cell">
-                                <div className="table-actions">
-                                  <AppTooltip content={"Set price"}>
-                                    <button
-                                      className="button soft table-action-btn"
-                                      disabled={locked}
-                                      aria-label="Set price"
-
-                                      onClick={() =>
-                                        open({ kind: "price", product })
-                                      }
-                                    >
-                                      <Pencil size={13} />
-                                    </button>
-                                  </AppTooltip>
-                                </div>
-                              </td>
-                            )}
-                          </tr>
-                        ))}
-                        {!visibleProducts.length && (
-                          <tr>
-                            <TableEmptyState colSpan={role === "Admin" ? 7 : 6}>
-                              {search
-                                ? "No matching records."
-                                : "No wholesale products found."}
-                            </TableEmptyState>
-                          </tr>
-                        )}
-                      </SourceTableBody>
-                    </table>
-                  )}
-                </div>
+              )}
+              {tab === "receipts" && (
+                <WholesaleDeliveryReceipts
+                  receipts={receipts}
+                  search={search}
+                  disabled={navigating}
+                  source={sources.receipts}
+                />
               )}
               {tab === "orders" && (
-                <div
-                  className="table-pagination"
-                  role="navigation"
-                  aria-label="Wholesale orders pagination"
+                <table
+                  data-page-table="wholesale-orders"
+                  className="data-table"
                 >
-                  <span className="muted"><SourceText status={sources.orders}>
-                    Page {safeOrderPage} of {totalOrderPages} (
-                    {visibleOrders.length} orders)
-                  </SourceText></span>
-                  <button
-                    type="button"
-                    className="button soft"
-                    disabled={safeOrderPage <= 1}
-                    onClick={() => setOrderPage((p) => Math.max(1, p - 1))}
+                  <thead>
+                    <tr>
+                      <th>Order</th>
+                      <th>Client</th>
+                      <th>Total including VAT</th>
+                      <th>Order status</th>
+                      <th className="table-action-head">Action</th>
+                    </tr>
+                  </thead>
+                  <SourceTableBody
+                    status={sources.orders}
+                    label="Wholesale orders"
+                    colSpan={5}
                   >
-                    Previous
-                  </button>
-                  <button
-                    type="button"
-                    className="button soft"
-                    disabled={safeOrderPage >= totalOrderPages}
-                    onClick={() =>
-                      setOrderPage((p) => Math.min(totalOrderPages, p + 1))
-                    }
-                  >
-                    Next
-                  </button>
-                </div>
+                    {paginatedOrders.map((order) => (
+                      <tr key={order.id}>
+                        <td>{order.orderNumber}</td>
+                        <td>
+                          <PageTableValue value={order.clientName} />
+                        </td>
+                        <td>{wholesalePeso(order.total)}</td>
+                        <td>
+                          <WholesaleStatusPill status={order.status} />
+                        </td>
+                        <td className="table-action-cell">
+                          <div className="table-actions">
+                            {pageTableStandard &&
+                              order.status === "Pending" && (
+                                <AppTooltip content="Confirm draft">
+                                  <button
+                                    type="button"
+                                    className="button soft table-action-btn"
+                                    disabled={locked}
+                                    aria-label="Confirm draft"
+                                    onClick={() =>
+                                      open({
+                                        kind: "details",
+                                        order,
+                                        confirm: true,
+                                      })
+                                    }
+                                  >
+                                    <Check size={13} aria-hidden="true" />
+                                  </button>
+                                </AppTooltip>
+                              )}
+                            {order.status === "Pending" && (
+                              <AppTooltip content={"Edit draft"}>
+                                <button
+                                  className="button soft table-action-btn"
+                                  disabled={locked}
+                                  aria-label="Edit draft"
+
+                                  onClick={() => open({ kind: "order", order })}
+                                >
+                                  <Pencil size={13} />
+                                </button>
+                              </AppTooltip>
+                            )}
+                            {["Confirmed", "Processing"].includes(
+                              order.status,
+                            ) && (
+                              <AppTooltip content="Manage delivery">
+                                <button
+                                  className="button soft table-action-btn"
+                                  aria-label="Manage delivery"
+                                  disabled={navigating}
+                                  onClick={() => void openDelivery(order.id)}
+                                >
+                                  <Truck size={13} />
+                                </button>
+                              </AppTooltip>
+                            )}
+                            <AppTooltip content={"Review order"}>
+                              <button
+                                className="button soft table-action-btn"
+                                disabled={navigating}
+                                aria-label="Review order"
+
+                                onClick={() => open({ kind: "details", order })}
+                              >
+                                <Eye size={13} />
+                              </button>
+                            </AppTooltip>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {!visibleOrders.length && (
+                      <tr>
+                        <TableEmptyState colSpan={5}>
+                          {search
+                            ? "No matching records."
+                            : "No wholesale orders found."}
+                        </TableEmptyState>
+                      </tr>
+                    )}
+                  </SourceTableBody>
+                </table>
               )}
               {tab === "clients" && (
-                <div
-                  className="table-pagination"
-                  role="navigation"
-                  aria-label="Wholesale clients pagination"
+                <table
+                  data-page-table="wholesale-clients"
+                  className="data-table"
                 >
-                  <span className="muted"><SourceText status={sources.clients}>
-                    Page {safeClientPage} of {totalClientPages} (
-                    {visibleClients.length} clients)
-                  </SourceText></span>
-                  <button
-                    type="button"
-                    className="button soft"
-                    disabled={safeClientPage <= 1}
-                    onClick={() => setClientPage((p) => Math.max(1, p - 1))}
+                  <thead>
+                    <tr>
+                      <th>Client</th>
+                      <th>Address</th>
+                      <th className="table-action-head">Action</th>
+                    </tr>
+                  </thead>
+                  <SourceTableBody
+                    status={sources.clients}
+                    label="Wholesale clients"
+                    colSpan={3}
                   >
-                    Previous
-                  </button>
-                  <button
-                    type="button"
-                    className="button soft"
-                    disabled={safeClientPage >= totalClientPages}
-                    onClick={() =>
-                      setClientPage((p) => Math.min(totalClientPages, p + 1))
-                    }
-                  >
-                    Next
-                  </button>
-                </div>
+                    {paginatedClients.map((client) => (
+                      <tr key={client.id}>
+                        <td>
+                          <PageTableValue value={client.name} />
+                        </td>
+                        <td>{client.address || "Not provided"}</td>
+                        <td className="table-action-cell">
+                          <div className="table-actions">
+                            <AppTooltip content={"Edit client"}>
+                              <button
+                                className="button soft table-action-btn"
+                                disabled={locked}
+                                aria-label="Edit client"
+
+                                onClick={() => open({ kind: "client", client })}
+                              >
+                                <Pencil size={13} />
+                              </button>
+                            </AppTooltip>
+                            {pageTableStandard && (
+                              <AppTooltip content="View client">
+                                <button
+                                  type="button"
+                                  className="button soft table-action-btn"
+                                  aria-label="View client"
+                                  onClick={() => setViewClient(client)}
+                                >
+                                  <Eye size={13} aria-hidden="true" />
+                                </button>
+                              </AppTooltip>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {!visibleClients.length && (
+                      <tr>
+                        <TableEmptyState colSpan={3}>
+                          {search
+                            ? "No matching records."
+                            : "No wholesale clients found."}
+                        </TableEmptyState>
+                      </tr>
+                    )}
+                  </SourceTableBody>
+                </table>
               )}
               {tab === "prices" && (
-                <div
-                  className="table-pagination"
-                  role="navigation"
-                  aria-label="Wholesale prices pagination"
+                <table
+                  data-page-table="wholesale-prices"
+                  className="data-table"
                 >
-                  <span className="muted"><SourceText status={sources.catalog}>
-                    Page {safePricePage} of {totalPricePages} (
-                    {visibleProducts.length} products)
-                  </SourceText></span>
-                  <button
-                    type="button"
-                    className="button soft"
-                    disabled={safePricePage <= 1}
-                    onClick={() => setPricePage((p) => Math.max(1, p - 1))}
+                  <thead>
+                    <tr>
+                      <th>Product / SKU</th>
+                      <th>Wholesale unit price</th>
+                      <th>VAT Status</th>
+                      <th>Physical</th>
+                      <th>Reserved</th>
+                      <th>Available</th>
+                      {role === "Admin" && (
+                        <th className="table-action-head">Action</th>
+                      )}
+                    </tr>
+                  </thead>
+                  <SourceTableBody
+                    status={sources.catalog}
+                    label="Wholesale products"
+                    colSpan={role === "Admin" ? 7 : 6}
                   >
-                    Previous
-                  </button>
-                  <button
-                    type="button"
-                    className="button soft"
-                    disabled={safePricePage >= totalPricePages}
-                    onClick={() =>
-                      setPricePage((p) => Math.min(totalPricePages, p + 1))
-                    }
-                  >
-                    Next
-                  </button>
-                </div>
+                    {paginatedProducts.map((product) => (
+                      <tr key={product.id}>
+                        <td>
+                          <PageTableValue value={product.name} />
+                          <div className="muted">{product.sku}</div>
+                        </td>
+                        <td>{wholesalePeso(product.wholesalePrice)}</td>
+                        <td>
+                          {product.isVatExempt === null
+                            ? "Needs classification"
+                            : product.isVatExempt
+                              ? "Non-VAT"
+                              : "VAT"}
+                        </td>
+                        <td>{product.physicalStock}</td>
+                        <td>{product.reservedStock}</td>
+                        <td>{product.availableStock}</td>
+                        {role === "Admin" && (
+                          <td className="table-action-cell">
+                            <div className="table-actions">
+                              <AppTooltip content={"Set price"}>
+                                <button
+                                  className="button soft table-action-btn"
+                                  disabled={locked}
+                                  aria-label="Set price"
+
+                                  onClick={() =>
+                                    open({ kind: "price", product })
+                                  }
+                                >
+                                  <Pencil size={13} />
+                                </button>
+                              </AppTooltip>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                    {!visibleProducts.length && (
+                      <tr>
+                        <TableEmptyState colSpan={role === "Admin" ? 7 : 6}>
+                          {search
+                            ? "No matching records."
+                            : "No wholesale products found."}
+                        </TableEmptyState>
+                      </tr>
+                    )}
+                  </SourceTableBody>
+                </table>
               )}
+            </div>
+          )}
+          {tab === "orders" && (
+            <div
+              className="table-pagination"
+              role="navigation"
+              aria-label="Wholesale orders pagination"
+            >
+              <span className="muted">
+                <SourceText status={sources.orders}>
+                  Page {safeOrderPage} of {totalOrderPages} (
+                  {visibleOrders.length} orders)
+                </SourceText>
+              </span>
+              <button
+                type="button"
+                className="button soft"
+                disabled={safeOrderPage <= 1}
+                onClick={() => setOrderPage((p) => Math.max(1, p - 1))}
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                className="button soft"
+                disabled={safeOrderPage >= totalOrderPages}
+                onClick={() =>
+                  setOrderPage((p) => Math.min(totalOrderPages, p + 1))
+                }
+              >
+                Next
+              </button>
+            </div>
+          )}
+          {tab === "clients" && (
+            <div
+              className="table-pagination"
+              role="navigation"
+              aria-label="Wholesale clients pagination"
+            >
+              <span className="muted">
+                <SourceText status={sources.clients}>
+                  Page {safeClientPage} of {totalClientPages} (
+                  {visibleClients.length} clients)
+                </SourceText>
+              </span>
+              <button
+                type="button"
+                className="button soft"
+                disabled={safeClientPage <= 1}
+                onClick={() => setClientPage((p) => Math.max(1, p - 1))}
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                className="button soft"
+                disabled={safeClientPage >= totalClientPages}
+                onClick={() =>
+                  setClientPage((p) => Math.min(totalClientPages, p + 1))
+                }
+              >
+                Next
+              </button>
+            </div>
+          )}
+          {tab === "prices" && (
+            <div
+              className="table-pagination"
+              role="navigation"
+              aria-label="Wholesale prices pagination"
+            >
+              <span className="muted">
+                <SourceText status={sources.catalog}>
+                  Page {safePricePage} of {totalPricePages} (
+                  {visibleProducts.length} products)
+                </SourceText>
+              </span>
+              <button
+                type="button"
+                className="button soft"
+                disabled={safePricePage <= 1}
+                onClick={() => setPricePage((p) => Math.max(1, p - 1))}
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                className="button soft"
+                disabled={safePricePage >= totalPricePages}
+                onClick={() =>
+                  setPricePage((p) => Math.min(totalPricePages, p + 1))
+                }
+              >
+                Next
+              </button>
+            </div>
+          )}
         </>
       </section>
       {pageTableStandard && viewClient && (
-        <WholesaleDialog
-          title="Client information"
-          busy={false}
+        <WholesaleClientInformation
+          client={viewClient}
+          contracts={contracts}
+          source={sources.contracts}
           close={() => setViewClient(null)}
-        >
-          <dl className="wholesale-detail-list wholesale-client-details">
-            <div className="wholesale-client-wide">
-              <dt>Client name</dt>
-              <dd>{viewClient.name}</dd>
-            </div>
-            <div className="wholesale-client-wide">
-              <dt>Delivery address</dt>
-              <dd>{viewClient.address || "Not provided"}</dd>
-            </div>
-            <div>
-              <dt>Contact person</dt>
-              <dd>{viewClient.contactPerson || "Not provided"}</dd>
-            </div>
-            <div>
-              <dt>Contact number</dt>
-              <dd>{viewClient.contactNumber || "Not provided"}</dd>
-            </div>
-            <div className="wholesale-client-wide">
-              <dt>Email</dt>
-              <dd>{viewClient.email || "Not provided"}</dd>
-            </div>
-          </dl>
-        </WholesaleDialog>
+        />
       )}
       {dialog?.kind === "order" && (
         <WholesaleOrderEditor
           order={dialog.order}
           clients={clients}
           products={products}
+          contracts={contracts}
           busy={locked}
           submitting={busy}
           error={formError}
@@ -1140,16 +1343,25 @@ export default function WholesalePage({
           mutate={mutate}
         />
       )}
-      <ReadDialog task={{ ...deliveryRead, close: closeDeliveryRead }} variant="form" busy={busy || printingReceipt}>
-        {detail => renderDelivery(detail.order, detail, closeDeliveryRead, true)}
+      <ReadDialog
+        task={{ ...deliveryRead, close: closeDeliveryRead }}
+        variant="form"
+        busy={busy || printingReceipt}
+      >
+        {(detail) =>
+          renderDelivery(detail.order, detail, closeDeliveryRead, true)
+        }
       </ReadDialog>
-      {dialog?.kind === "delivery" && renderDelivery(dialog.order, dialog.detail, () => setDialog(null))}
-      {deliveryReceipt && !deliveryRead.state && dialog?.kind !== "delivery" && (
-        <DeliveryReceiptView
-          receipt={deliveryReceipt}
-          close={() => setDeliveryReceipt(null)}
-        />
-      )}
+      {dialog?.kind === "delivery" &&
+        renderDelivery(dialog.order, dialog.detail, () => setDialog(null))}
+      {deliveryReceipt &&
+        !deliveryRead.state &&
+        dialog?.kind !== "delivery" && (
+          <DeliveryReceiptView
+            receipt={deliveryReceipt}
+            close={() => setDeliveryReceipt(null)}
+          />
+        )}
       {dialog &&
         dialog.kind !== "order" &&
         dialog.kind !== "details" &&

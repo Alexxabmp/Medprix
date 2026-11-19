@@ -32,6 +32,7 @@ export const wholesaleInstallmentSchedulesTable = pgTable(
     installmentCount: integer("installment_count").notNull(),
     receivedAt: timestamp("received_at", { withTimezone: true }).notNull(),
     receiptDate: date("receipt_date").notNull(),
+    nextPaymentDate: date("next_payment_date").notNull(),
     finalDueDate: date("final_due_date").notNull(),
     generatedAt: timestamp("generated_at", { withTimezone: true })
       .notNull()
@@ -40,11 +41,11 @@ export const wholesaleInstallmentSchedulesTable = pgTable(
   (t) => [
     check(
       "wholesale_schedule_plan_check",
-      sql`(${t.paymentPlan}='Net30' AND ${t.installmentCount}=4 AND ${t.finalDueDate}=${t.receiptDate}+30) OR (${t.paymentPlan}='Net60' AND ${t.installmentCount}=8 AND ${t.finalDueDate}=${t.receiptDate}+60)`,
+      sql`${t.planVersion}='wholesale-terms-v2' AND ${t.nextPaymentDate} IS NOT NULL AND ${t.nextPaymentDate}>=${t.receiptDate} AND ((${t.paymentPlan}='Net30' AND ${t.installmentCount}=1 AND ${t.finalDueDate}=${t.nextPaymentDate}) OR (${t.paymentPlan}='Net60' AND ${t.installmentCount}=2 AND ${t.finalDueDate}>=${t.nextPaymentDate}+30))`,
     ),
     check(
       "wholesale_schedule_version_check",
-      sql`${t.planVersion}='wholesale-installments-v1'`,
+      sql`${t.planVersion} ='wholesale-terms-v2'`,
     ),
     check(
       "wholesale_schedule_principal_check",
@@ -73,7 +74,7 @@ export const wholesaleInstallmentsTable = pgTable(
     primaryKey({ columns: [t.arId, t.sequenceNumber] }),
     check(
       "wholesale_installment_sequence_check",
-      sql`${t.sequenceNumber} BETWEEN 1 AND 8`,
+      sql`${t.sequenceNumber} BETWEEN 1 AND 2`,
     ),
     check(
       "wholesale_installment_amount_check",
