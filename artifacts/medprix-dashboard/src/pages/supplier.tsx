@@ -6,7 +6,9 @@ import { AppTooltip } from "@/components/ui/tooltip";
 import { ModalTableDialog, ModalDataTable } from "@/components/modal-data-table";
 import { EmptyState, TableEmptyState } from "@/components/custom-ui/empty-state";
 import { useDialogAccessibility } from "@/lib/use-dialog-accessibility";
-import { SupplierPaymentDialog } from "@/components/supplier-payment-dialog";
+import { PaymentDialog, type PaymentTarget } from "@/components/procurement/payment-dialog";
+import { SupplierTermsDialog, TermsFields } from "@/components/procurement/supplier-terms-dialog";
+import { SUPPLIER_TERMS_LABEL, normalizeSupplierTerms, type SupplierTerms, type SupplierTermsBasis } from "@workspace/api-zod";
 import { safeError, readResponse } from "@/lib/feedback";
 import {
   useCallback,
@@ -57,13 +59,12 @@ type Payable = {
   needsReview?: boolean;
 };
 
-type PaymentTarget = {
-  id: string;
-  balance: string | null;
-  invoiceId: string;
-  supplier?: string;
-  invoiceNumber?: string;
-};
+/** Builds the payment dialog's target from a payable row (Payables tab or supplier history). */
+const payTarget = (payable: any, supplier: string, invoiceNumber: string): PaymentTarget => ({
+  apId: payable.id, invoiceNumber, supplier, poNumber: payable.poNumber ?? null,
+  amount: payable.totalOwed ?? "0", totalPaid: payable.totalPaid ?? "0", balance: payable.balance ?? "0",
+  dueDate: payable.dueDate ?? "", prepayment: payable.verification === "PendingVerification",
+});
 
 type SupplierHistory = {
   summary: {
@@ -104,7 +105,8 @@ type SupplierDraft = {
   contactNumber: string;
   email: string;
   address: string;
-  paymentTerms: string;
+  paymentTerms: SupplierTerms | "";
+  termsBasis: SupplierTermsBasis;
 };
 
 const emptySupplier: SupplierDraft = {
@@ -114,6 +116,7 @@ const emptySupplier: SupplierDraft = {
   email: "",
   address: "",
   paymentTerms: "",
+  termsBasis: "InvoiceDate",
 };
 
 const emptyHistory: SupplierHistory = {
@@ -183,8 +186,7 @@ function validateSupplier(draft: SupplierDraft) {
     return "Enter a valid email address.";
   if (draft.address.trim().length > 500)
     return "Address must be 500 characters or fewer.";
-  if (!["Net30", "Net60"].includes(draft.paymentTerms))
-    return "Choose Net 30 or Net 60 payment terms.";
+  if (!draft.paymentTerms) return "Choose the supplier's payment terms.";
   return "";
 }
 
@@ -221,6 +223,7 @@ export default function SupplierPage({
   const historyRequest = useRef<AbortController | null>(null);
   useEffect(() => () => historyRequest.current?.abort(), []);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [editingTerms, setEditingTerms] = useState(false);
   const [historyAvailable, setHistoryAvailable] = useState(false);
   const [historyError, setHistoryError] = useState("");
   const [historyTab, setHistoryTab] = useState<
@@ -388,7 +391,8 @@ export default function SupplierPage({
           contactPerson: supplierForm.contactPerson.trim(),
           email: supplierForm.email.trim(),
           address: supplierForm.address.trim(),
-          paymentTerms: supplierForm.paymentTerms.trim(),
+          paymentTerms: supplierForm.paymentTerms,
+          termsBasis: supplierForm.termsBasis,
         }),
       });
       const data = await readResponse(response, "Could not load or save supplier data. Please try again.");
@@ -780,13 +784,7 @@ export default function SupplierPage({
                                 className="button soft table-action-btn"
                                 type="button"
                                 onClick={() => {
-                                  setPaymentPayable({
-                                    id: payable.id,
-                                    invoiceId: payable.invoiceId,
-                                    balance: payable.balance,
-                                    supplier: payable.supplier,
-                                    invoiceNumber: payable.invoiceNumber,
-                                  });
+                                  setPaymentPayable(payTarget(payable, payable.supplier, payable.invoiceNumber));
                                 }}
                               >
                                 Record payment
@@ -927,24 +925,10 @@ export default function SupplierPage({
                     }
                   />
                 </div>
-                <div className="field">
-                  <label htmlFor="supplier-terms">Payment terms *</label>
-                  <SelectField
-                    id="supplier-terms"
-                    data-testid="input-supplier-terms"
-                    required
-                    value={supplierForm.paymentTerms}
-                    onChange={(event) =>
-                      setSupplierForm({
-                        ...supplierForm,
-                        paymentTerms: event.target.value,
-                      })
-                    }
-                  >
-                    <option value="" disabled>Select payment terms</option>
-                    <option value="Net30">Net 30</option>
-                    <option value="Net60">Net 60</option>
-                  </SelectField>
+                <div className="field full-width" data-testid="input-supplier-terms">
+                  <TermsFields terms={supplierForm.paymentTerms} basis={supplierForm.termsBasis}
+                    onTerms={terms => setSupplierForm({ ...supplierForm, paymentTerms: terms })}
+                    onBasis={basis => setSupplierForm({ ...supplierForm, termsBasis: basis })} />
                 </div>
                 <div className="field full-width">
                   <label htmlFor="supplier-address">Business address</label>
@@ -1107,7 +1091,9 @@ export default function SupplierPage({
                         <ClipboardList size={15} />
                         <span>Payment terms</span>
                         <strong>
-                          {selectedSupplier.paymentTerms || "Not provided"}
+                          {normalizeSupplierTerms(selectedSupplier.paymentTerms) ? SUPPLIER_TERMS_LABEL[normalizeSupplierTerms(selectedSupplier.paymentTerms)!] : "Not set"}
+                          {selectedSupplier.termsBasis === "DeliveryDate" ? " (from delivery date)" : " (from invoice date)"}
+                          {currentRole === "Admin" && <button type="button" className="proc-link proc-inline-link" onClick={() => setEditingTerms(true)}>Edit</button>}
                         </strong>
                       </div>
                       <div className="wide">
@@ -1199,14 +1185,7 @@ export default function SupplierPage({
                                             className="button soft"
                                             type="button"
                                             onClick={() => {
-                                              setPaymentPayable({
-                                                id: payable.id,
-                                  invoiceId: invoice.id,
-                                                balance: payable.balance,
-                                                supplier: selectedSupplier.name,
-                                                invoiceNumber:
-                                                  invoice.invoiceNumber,
-                                              });
+                                              setPaymentPayable(payTarget(payable, selectedSupplier.name, invoice.invoiceNumber));
                                             }}
                                           >
                                             Record payment
@@ -1260,8 +1239,10 @@ export default function SupplierPage({
           document.body,
         )}
 
-      {paymentPayable && <SupplierPaymentDialog invoiceId={paymentPayable.invoiceId} onClose={() => setPaymentPayable(null)} onToast={onToast}
-        onSaved={async () => { await loadPayables(); if (selectedSupplier) await loadHistory(selectedSupplier); }} />}
+      {paymentPayable && <PaymentDialog target={paymentPayable} onClose={() => setPaymentPayable(null)}
+        onSaved={async advice => { onToast(`Payment recorded. Payment advice ${advice.payment.adviceNumber ?? ""} is ready to send.`); await loadPayables(); if (selectedSupplier) await loadHistory(selectedSupplier); }} />}
+      {editingTerms && selectedSupplier && <SupplierTermsDialog supplier={selectedSupplier} onClose={() => setEditingTerms(false)}
+        onSaved={async () => { onToast("Payment terms updated. New invoices will use them."); await fetchSuppliers(); await loadHistory(selectedSupplier); }} />}
     </div>
   );
 }

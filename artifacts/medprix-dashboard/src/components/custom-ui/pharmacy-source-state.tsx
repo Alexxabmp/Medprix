@@ -21,8 +21,8 @@ function retry(source: Source) {
 export function PharmacyFeedback({ source, label, showRetry = true }: { source: Source; label: string; showRetry?: boolean }) {
   return <SourceFeedback status={useSource(source)} label={label} onRetry={showRetry ? () => retry(source) : undefined} />;
 }
-export function PharmacyRefreshButton(_props?: any) {
-  return null;
+export function PharmacyRefreshButton({ source, label }: { source: Source; label: string }) {
+  return <SourceRefreshButton status={useSource(source)} label={label} onRefresh={() => retry(source)} />;
 }
 export function PharmacyRegion({ source, label, children }: { source: Source; label: string; children: ReactNode }) {
   return <SourceRegion status={useSource(source)} label={label}>{children}</SourceRegion>;

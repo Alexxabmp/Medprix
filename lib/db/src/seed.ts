@@ -1,7 +1,7 @@
 import { SEED_CATEGORIES, seedSellingPrice } from "./seed-categories";
 import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import postgres from "postgres";
 import { databaseUrl, loadDatabaseEnvironment } from "./database-environment";
 
@@ -94,7 +94,15 @@ const past = (off: number, hour = 12, minute = 0) => {
 const dateStr = (off: number) => new Date(Date.UTC(TODAY.y, TODAY.m, TODAY.d + off)).toISOString().slice(0, 10);
 const ymd = (off: number) => dateStr(off).replaceAll("-", "");
 const pad = (n: number, w: number) => String(n).padStart(w, "0");
-const termsDays = (terms: string) => Number(/Net\s*(\d+)/i.exec(terms)?.[1] ?? 0);
+/** Days from the invoice date to the due date under a supplier's terms (mirrors api-zod supplierDueDate). */
+const termsDays = (terms: string, invoiceOff = 0) => {
+  const start = new Date(Date.UTC(TODAY.y, TODAY.m, TODAY.d + invoiceOff));
+  const end = terms === "Immediate" ? start
+    : terms === "EndOfMonth" ? new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0))
+    : terms === "EndOfNextMonth" ? new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 2, 0))
+    : new Date(start.getTime() + Number(/Net\s*(\d+)/i.exec(terms)?.[1] ?? 0) * 86_400_000);
+  return Math.round((end.getTime() - start.getTime()) / 86_400_000);
+};
 /** Philippine mobile in international format (+639XXXXXXXXX) — matches the users.contact_number CHECK. */
 const phone = () => `+639${randInt(100_000_000, 999_999_999)}`;
 
@@ -179,11 +187,11 @@ const PRODUCT_DEFS: ProductDef[] = [
 ];
 
 const SUPPLIER_DEFS = [
-  { name: "Mindanao MedSupply Corp.", person: "Ramon Aquino", terms: "Net30", code: "MMS", address: "Lanang, Davao City", domain: "mindanaomedsupply.example" },
+  { name: "Mindanao MedSupply Corp.", person: "Ramon Aquino", terms: "EndOfNextMonth", code: "MMS", address: "Lanang, Davao City", domain: "mindanaomedsupply.example" },
   { name: "Davao Pharma Distributors Inc.", person: "Teresita Lim", terms: "Net30", code: "DPD", address: "Ilustre St., Davao City", domain: "davaopharma.example" },
   { name: "Southern Health Wholesale", person: "Antonio Uy", terms: "Net60", code: "SHW", address: "Bajada, Davao City", domain: "southernhealth.example" },
   { name: "Visayas-Mindanao Drug Trading", person: "Corazon Tan", terms: "Net30", code: "VMD", address: "Carmen, Cagayan de Oro City", domain: "vmdrugtrading.example" },
-  { name: "Prime Generics Trading", person: "Benjamin Ocampo", terms: "Net30", code: "PGT", address: "Mandaue City, Cebu", domain: "primegenerics.example" },
+  { name: "Prime Generics Trading", person: "Benjamin Ocampo", terms: "Immediate", code: "PGT", address: "Mandaue City, Cebu", domain: "primegenerics.example" },
 ] as const;
 const CATEGORY_SUPPLIER: Record<string, number> = {
   Analgesic: 0, Antibiotic: 1, "Controlled Substance": 1,
@@ -336,15 +344,23 @@ export function buildData(passwordHash: string) {
   interface PODelivery { off: number; status: "Received" | "Inspected" | "Partial"; fraction?: number; payParts: number[] }
   let poSeq = 0;
   let invSeq = 0;
+  let adviceSeq = 0;
 
   function buildPO(o: { supplierIdx: number; orderOff: number; status: string; lines: POLine[]; delivery?: PODelivery }) {
     if (o.lines.length === 0) return;
     const sup = suppliers[o.supplierIdx]!;
     const poId = randomUUID();
-    const poNumber = `PO-${ymd(o.orderOff)}-${pad(++poSeq, 3)}`;
+    const poNumber = `PO-${dateStr(o.orderOff).slice(0, 4)}-${pad(++poSeq, 4)}`;
     const orderedAt = past(o.orderOff, 9, 30);
+    const approved = ["Approved", "Submitted", "Fulfilled"].includes(o.status);
+    const sent = ["Submitted", "Fulfilled"].includes(o.status);
     T.purchase_orders.push({
       id: poId, supplier_id: sup.id, po_number: poNumber, order_date: orderedAt, status: o.status,
+      // Every row carries the same keys: the multi-row insert takes its columns from the first row.
+      created_by: admin.id,
+      approved_by: approved ? admin.id : null, approved_at: approved ? orderedAt : null, self_approved: approved,
+      sent_at: sent ? orderedAt : null, sent_method: sent ? "Viber" : null, sent_by: sent ? admin.id : null,
+      closed_at: o.status === "Cancelled" ? orderedAt : null, close_reason: o.status === "Cancelled" ? "Supplier could not deliver" : null,
       total_order_amount: r2(sum(o.lines.map((l) => l.qty * l.prod.def.cost))),
       created_at: orderedAt, updated_at: o.delivery ? past(o.delivery.off, 10) : orderedAt,
     });
@@ -359,7 +375,8 @@ export function buildData(passwordHash: string) {
     if (!d) return;
     const deliveryId = randomUUID();
     const deliveredAt = past(d.off, 10, 0);
-    T.supplier_deliveries.push({ id: deliveryId, po_id: poId, delivery_date: dateStr(d.off), delivery_status: d.status, created_at: deliveredAt });
+    T.supplier_deliveries.push({ id: deliveryId, po_id: poId, delivery_date: dateStr(d.off), delivery_status: d.status, created_at: deliveredAt,
+      receipt_number: `DR-${sup.code}-${pad(poSeq, 4)}`, received_by: admin.id });
     let invoiceTotal = 0;
     for (const l of o.lines) {
       const qty = d.status === "Partial" ? Math.max(10, Math.floor((l.qty * (d.fraction ?? 0.7)) / 10) * 10) : l.qty;
@@ -374,7 +391,7 @@ export function buildData(passwordHash: string) {
     addLog(admin.id, "RECEIVE", "Inventory", `Received delivery for ${poNumber} (${d.status})`, deliveredAt, "Success", admin.ip);
 
     // Invoice → accounts payable → payments
-    const terms = termsDays(sup.terms);
+    const terms = termsDays(sup.terms, d.off);
     const invoiceId = randomUUID();
     const apId = randomUUID();
     const amount = r2(invoiceTotal);
@@ -391,15 +408,19 @@ export function buildData(passwordHash: string) {
       paid = r2(paid + amt);
       lastPayOff = payOff;
       const when = past(payOff, 14, 0);
+      const mode = pick(["BankTransfer", "Check", "GCash", "Cash"]);
       T.supplier_payments.push({
-        id: randomUUID(), ap_id: apId, payment_date: when, amount_paid: amt,
-        notes: pick(["Bank transfer", "Check payment", "Online banking", "Cash payment"]), created_at: when,
+        id: randomUUID(), ap_id: apId, payment_date: when, amount_paid: amt, notes: null, created_at: when,
+        payment_mode: mode, reference_number: mode === "Cash" ? null : mode === "Check" ? `CHK-${pad(randInt(1000, 99999), 6)}` : `REF-${randInt(10_000_000, 99_999_999)}`,
+        advice_number: `PA-${dateStr(payOff).slice(0, 4)}-${pad(++adviceSeq, 4)}`, recorded_by: admin.id,
       });
     });
     const balance = r2(amount - paid);
     T.supplier_invoices.push({
       id: invoiceId, po_id: poId, supplier_id: sup.id, invoice_number: `INV-${sup.code}-${pad(++invSeq, 4)}`,
       due_date: dateStr(d.off + terms), invoice_amount: amount, is_paid: balance <= 0, created_at: deliveredAt,
+      invoice_date: dateStr(d.off), status: "Verified", terms: sup.terms, terms_basis: "InvoiceDate",
+      recorded_by: admin.id, verified_by: admin.id, verified_at: deliveredAt,
     });
     T.accounts_payable.push({
       id: apId, supplier_id: sup.id, invoice_id: invoiceId, total_owed: amount, total_paid: paid, balance,
@@ -856,6 +877,7 @@ async function main() {
     await sql.begin(async (tx) => {
       for (const t of TABLE_ORDER) await insertMany(tx, t, T[t]);
       await tx`SELECT setval('wholesale_order_number_seq', ${T.wholesale_orders.length}, true)`;
+      if (T.supplier_payments.length) await tx`SELECT setval('supplier_payment_advice_seq', ${T.supplier_payments.length}, true)`;
       const { seedWholesaleExamples } = await import(new URL("../../../scripts/seed-wholesale.mjs", import.meta.url).href);
       const examples = await seedWholesaleExamples(tx);
       console.log("Wholesale scenarios:");

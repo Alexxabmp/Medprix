@@ -1,4 +1,8 @@
 ﻿import type { Query } from "./atomic-checkout";
+import { SUPPLIER_TERMS_LABEL, type SupplierTerms } from "@workspace/api-zod";
+
+const termsLabel = (row: any) =>
+  SUPPLIER_TERMS_LABEL[(row.invoice_terms || row.supplier_payment_terms) as SupplierTerms] ?? "Not set";
 
 export type SupplierFinding =
   | "missing_payable"
@@ -60,7 +64,9 @@ function buildFactsSql(includePayments: boolean): string {
       jsonb_agg(
         jsonb_build_object(
           'id', id, 'apId', ap_id, 'amountPaid', amount_paid::text,
-          'paymentDate', payment_date, 'notes', notes
+          'paymentDate', payment_date, 'notes', notes, 'mode', payment_mode,
+          'referenceNumber', reference_number, 'supplierOrNumber', supplier_or_number,
+          'adviceNumber', advice_number, 'isPrepayment', is_prepayment
         ) ORDER BY payment_date DESC, id
       ) AS payment_records`
     : "";
@@ -82,6 +88,7 @@ function buildFactsSql(includePayments: boolean): string {
     i.id AS invoice_id, i.invoice_number,
     i.supplier_id AS invoice_supplier_id, s.supplier_name AS invoice_supplier,
     s.payment_terms AS supplier_payment_terms,
+    i.terms AS invoice_terms, i.status AS invoice_status, i.invoice_date::text AS invoice_date,
     i.po_id, po.po_number, i.due_date::text, i.invoice_amount::text, i.is_paid,
     a.id AS payable_id, a.supplier_id AS payable_supplier_id,
     aps.supplier_name AS payable_supplier,
@@ -93,7 +100,7 @@ function buildFactsSql(includePayments: boolean): string {
     h.latest_date::text AS recorded_last_payment_date
     ${paymentProjection},
     array_remove(ARRAY[
-      CASE WHEN a.id IS NULL THEN 'missing_payable' END,
+      CASE WHEN a.id IS NULL AND i.status = 'Verified' THEN 'missing_payable' END,
       CASE WHEN i.invoice_amount <= 0 THEN 'non_positive_invoice_amount' END,
       CASE WHEN a.id IS NOT NULL AND a.supplier_id <> i.supplier_id
         THEN 'supplier_mismatch' END,
@@ -107,7 +114,7 @@ function buildFactsSql(includePayments: boolean): string {
         THEN 'payment_history_difference' END,
       CASE WHEN COALESCE(h.recorded_paid, 0) > i.invoice_amount
         THEN 'recorded_overpayment' END,
-      CASE WHEN i.invoice_amount > 0
+      CASE WHEN i.invoice_amount > 0 AND a.id IS NOT NULL
         AND i.is_paid <> (COALESCE(h.recorded_paid, 0) = i.invoice_amount)
         THEN 'history_paid_status_mismatch' END,
       CASE WHEN a.id IS NOT NULL AND a.last_payment_date IS DISTINCT FROM h.latest_date
@@ -155,7 +162,7 @@ function reconciliation(facts: SupplierPayableFact[]) {
   return {
     invoicesNeedingReview: facts.filter((row) => row.findings.length > 0)
       .length,
-    missingPayables: facts.filter((row) => row.payable_id === null).length,
+    missingPayables: facts.filter((row) => row.findings.includes("missing_payable")).length,
   };
 }
 
@@ -163,12 +170,14 @@ function toInvoice(row: SupplierPayableFact) {
   let status = "Pending";
   const today = localToday();
   if (row.findings.length > 0) status = "Needs Review";
+  else if ((row as any).invoice_status === "PendingVerification" && row.payable_id === null) status = "Pending verification";
   else if (cents(row.recorded_balance) === 0n || row.is_paid) status = "Settled";
   else if (row.due_date && row.due_date < today) status = "Overdue";
-  const rawTerms = String((row as any).supplier_payment_terms || "");
-  const paymentTerms = rawTerms.includes("60") ? "Net 60" : "Net 30";
+  const paymentTerms = termsLabel(row);
   return {
     id: row.invoice_id,
+    invoiceDate: (row as any).invoice_date,
+    verification: (row as any).invoice_status,
     invoiceNumber: row.invoice_number,
     supplierId: row.invoice_supplier_id,
     supplier: row.invoice_supplier || "Unknown supplier",
@@ -199,8 +208,7 @@ function toPayables(facts: SupplierPayableFact[], today: string) {
     if (needsReview) status = "Needs Review";
     else if (cents(row.recorded_balance) === 0n) status = "Paid";
     else if (row.due_date < today) status = "Overdue";
-    const rawTerms = String((row as any).supplier_payment_terms || "");
-    const paymentTerms = rawTerms.includes("60") ? "Net 60" : "Net 30";
+    const paymentTerms = termsLabel(row);
     return [
       {
         id: row.payable_id,
@@ -209,6 +217,10 @@ function toPayables(facts: SupplierPayableFact[], today: string) {
         supplier: row.payable_supplier || "Unknown supplier",
         paymentTerms,
         invoiceNumber: row.invoice_number,
+        invoiceDate: (row as any).invoice_date,
+        verification: (row as any).invoice_status,
+        poId: row.po_id,
+        poNumber: row.po_number,
         dueDate: row.due_date,
         totalOwed: needsReview ? null : row.invoice_amount,
         totalPaid: needsReview ? null : amount(cents(row.recorded_paid)),

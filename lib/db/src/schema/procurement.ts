@@ -14,8 +14,8 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { money } from "./_columns";
-import { paymentPlanEnum } from "./payment-plan";
 import { productsTable } from "./inventory";
+import { usersTable } from "./users";
 
 // ─── Enums ───────────────────────────────────────────────────────────────────
 export const poStatusEnum = pgEnum("po_status_enum", [
@@ -34,6 +34,16 @@ export const deliveryStatusEnum = pgEnum("delivery_status_enum", [
   "Rejected",
 ]);
 
+export const supplierTermsEnum = pgEnum("supplier_terms_enum", [
+  "Immediate",
+  "EndOfMonth",
+  "EndOfNextMonth",
+  "Net30",
+  "Net60",
+]);
+export const supplierTermsBasisEnum = pgEnum("supplier_terms_basis_enum", ["InvoiceDate", "DeliveryDate"]);
+export const supplierInvoiceStatusEnum = pgEnum("supplier_invoice_status_enum", ["PendingVerification", "Verified"]);
+
 // ─── Suppliers ───────────────────────────────────────────────────────────────
 export const suppliersTable = pgTable("suppliers", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -42,7 +52,8 @@ export const suppliersTable = pgTable("suppliers", {
   contactNumber: varchar("contact_number", { length: 50 }),
   email: varchar("email", { length: 255 }),
   address: text("address"),
-  paymentTerms: paymentPlanEnum("payment_terms").notNull(),
+  paymentTerms: supplierTermsEnum("payment_terms").notNull(),
+  termsBasis: supplierTermsBasisEnum("terms_basis").notNull().default("InvoiceDate"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -59,6 +70,17 @@ export const purchaseOrdersTable = pgTable(
     orderDate: timestamp("order_date", { withTimezone: true }).notNull().defaultNow(),
     status: poStatusEnum("status").notNull().default("Draft"),
     totalOrderAmount: money("total_order_amount").notNull().default("0.00"),
+    createdBy: uuid("created_by").references(() => usersTable.id, { onDelete: "set null" }),
+    approvedBy: uuid("approved_by").references(() => usersTable.id, { onDelete: "set null" }),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    selfApproved: boolean("self_approved").notNull().default(false),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    sentMethod: varchar("sent_method", { length: 20 }),
+    sentBy: uuid("sent_by").references(() => usersTable.id, { onDelete: "set null" }),
+    expectedDeliveryDate: date("expected_delivery_date"),
+    notes: text("notes"),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    closeReason: text("close_reason"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -102,6 +124,9 @@ export const supplierDeliveriesTable = pgTable(
       .references(() => purchaseOrdersTable.id, { onDelete: "restrict" }),
     deliveryDate: date("delivery_date").notNull(),
     deliveryStatus: deliveryStatusEnum("delivery_status").notNull().default("Received"),
+    receiptNumber: varchar("receipt_number", { length: 100 }),
+    notes: text("notes"),
+    receivedBy: uuid("received_by").references(() => usersTable.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("idx_supplier_deliveries_po_id").on(t.poId)],
@@ -128,6 +153,37 @@ export const deliveryItemsTable = pgTable(
   ],
 );
 
+export const purchaseOrderEventsTable = pgTable(
+  "purchase_order_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    poId: uuid("po_id").notNull().references(() => purchaseOrdersTable.id, { onDelete: "cascade" }),
+    eventType: varchar("event_type", { length: 40 }).notNull(),
+    actorId: uuid("actor_id").references(() => usersTable.id, { onDelete: "set null" }),
+    actorName: varchar("actor_name", { length: 255 }),
+    actorRole: varchar("actor_role", { length: 30 }),
+    details: text("details"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("idx_purchase_order_events_po_id").on(t.poId, t.createdAt)],
+);
+
+export const deliveryRejectionsTable = pgTable(
+  "delivery_rejections",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    deliveryId: uuid("delivery_id").notNull().references(() => supplierDeliveriesTable.id, { onDelete: "cascade" }),
+    productId: uuid("product_id").notNull().references(() => productsTable.id, { onDelete: "restrict" }),
+    quantity: integer("quantity").notNull(),
+    reason: varchar("reason", { length: 20 }).notNull(),
+    batchNumber: varchar("batch_number", { length: 100 }),
+    expirationDate: date("expiration_date"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("idx_delivery_rejections_delivery_id").on(t.deliveryId)],
+);
+
 // ─── Supplier invoices / accounts payable / payments ─────────────────────────
 export const supplierInvoicesTable = pgTable(
   "supplier_invoices",
@@ -142,6 +198,15 @@ export const supplierInvoicesTable = pgTable(
     dueDate: date("due_date").notNull(),
     invoiceAmount: money("invoice_amount").notNull().default("0.00"),
     isPaid: boolean("is_paid").notNull().default(false),
+    invoiceDate: date("invoice_date").notNull(),
+    status: supplierInvoiceStatusEnum("status").notNull().default("Verified"),
+    terms: supplierTermsEnum("terms").notNull(),
+    termsBasis: supplierTermsBasisEnum("terms_basis").notNull(),
+    termsOverrideReason: text("terms_override_reason"),
+    varianceReason: text("variance_reason"),
+    recordedBy: uuid("recorded_by").references(() => usersTable.id, { onDelete: "set null" }),
+    verifiedBy: uuid("verified_by").references(() => usersTable.id, { onDelete: "set null" }),
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -189,6 +254,12 @@ export const supplierPaymentsTable = pgTable(
     paymentDate: timestamp("payment_date", { withTimezone: true }).notNull().defaultNow(),
     amountPaid: money("amount_paid").notNull(),
     notes: text("notes"),
+    paymentMode: varchar("payment_mode", { length: 20 }),
+    referenceNumber: varchar("reference_number", { length: 100 }),
+    supplierOrNumber: varchar("supplier_or_number", { length: 100 }),
+    adviceNumber: varchar("advice_number", { length: 30 }).unique("supplier_payments_advice_number_key"),
+    recordedBy: uuid("recorded_by").references(() => usersTable.id, { onDelete: "set null" }),
+    isPrepayment: boolean("is_prepayment").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -214,5 +285,7 @@ export type AccountsPayable = typeof accountsPayableTable.$inferSelect;
 export type InsertAccountsPayable = typeof accountsPayableTable.$inferInsert;
 export type SupplierPayment = typeof supplierPaymentsTable.$inferSelect;
 export type InsertSupplierPayment = typeof supplierPaymentsTable.$inferInsert;
+export type PurchaseOrderEvent = typeof purchaseOrderEventsTable.$inferSelect;
+export type DeliveryRejection = typeof deliveryRejectionsTable.$inferSelect;
 export type PoStatus = (typeof poStatusEnum.enumValues)[number];
 export type DeliveryStatus = (typeof deliveryStatusEnum.enumValues)[number];

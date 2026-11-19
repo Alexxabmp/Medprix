@@ -9,6 +9,8 @@ export type SupplierRecord = {
   email?: string | null;
   address?: string | null;
   paymentTerms?: string | null;
+  termsBasis?: string | null;
+  termsLabel?: string | null;
   orders: number;
   orderValue: string;
   status: string;
@@ -21,6 +23,10 @@ export type AccountsPayableRecord = {
   supplier: string;
   paymentTerms?: string | null;
   invoiceNumber: string;
+  invoiceDate?: string | null;
+  verification?: "PendingVerification" | "Verified";
+  poId?: string | null;
+  poNumber?: string | null;
   dueDate: string | null;
   totalOwed: string | null;
   totalPaid: string | null;

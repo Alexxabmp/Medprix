@@ -18,8 +18,11 @@ A full-stack pharmacy management platform built with React 19, TypeScript, Expre
   - Product catalog with batch tracking, expiry date alerts, and stock level thresholds.
   - Category management and instant search/filtering.
 - **Supplier & Procurement Management:**
-  - Vendor directory with contact information and supply history.
-  - Purchase order creation, status tracking, and fulfillment workflow.
+  - Vendor directory with contact information, supply history, and each supplier's payment terms (Immediate, End of current month, End of following month, Net 30, Net 60; counted from the invoice or delivery date).
+  - Purchase orders: Draft → For approval → Approved → Sent → Partly received → Received (or Closed short / Cancelled), with approval history. Front desk and Admin can approve, including their own orders (recorded).
+  - Receiving is the receiving report: good and rejected quantities, the supplier's lot number and expiry, short-expiry warnings; stock is added in the supplier's lots.
+  - Supplier invoices copy the supplier's terms; invoices billed before delivery wait as "pending verification". Partial payments with mode, reference and the supplier's OR number; each payment produces a payment advice PDF for the supplier.
+  - PDFs: purchase order, receiving report, invoice record, payment advice (pharmacy details are set in `artifacts/medprix-dashboard/src/lib/procurement-documents.ts`).
 - **Wholesale & Invoicing:**
   - Bulk customer management, transaction records, and invoice generation.
 - **API-First Architecture:**
