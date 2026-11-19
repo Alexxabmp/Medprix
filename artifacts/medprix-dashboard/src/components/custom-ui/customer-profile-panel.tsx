@@ -27,8 +27,10 @@ const formatDate = (value: string | null) =>
  * Phase 2b: a returning customer's profile, opened from the POS customer bar.
  * Shows and edits their details and usual order, and deletes the profile (past sales stay).
  */
-export function CustomerProfilePanel({ customer, products, onClose, onUpdated, onDeleted, onToast }: {
+export function CustomerProfilePanel({ customer, products, onClose, onUpdated, onDeleted, onToast, fromRecords = false }: {
   customer: Customer | null;
+  /** Opened from the Customers page, where there is no cart. */
+  fromRecords?: boolean;
   products: ProductItem[];
   onClose: () => void;
   onUpdated: (customer: Customer) => void;
@@ -192,7 +194,7 @@ export function CustomerProfilePanel({ customer, products, onClose, onUpdated, o
               ))}
             </ul>
           )}
-          <p className="customer-field-note">Controlled drugs can't be added. You can also update it from the cart with "Save cart as usual order".</p>
+          <p className="customer-field-note">Controlled drugs can't be added.{fromRecords ? "" : ' You can also update it from the cart with "Save cart as usual order".'}</p>
           {usualChanged && (
             <div className="customer-profile-actions">
               <button type="button" className="button soft" disabled={busy === "usual"} onClick={() => setUsual(customer.usualItems.map((item) => ({ ...item })))}>Discard changes</button>

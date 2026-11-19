@@ -17,6 +17,7 @@ import { useBusinessDate } from "@/lib/use-business-date";
 import { Kpi } from "@/components/custom-ui/kpi-card";
 import { MovementLineGraph } from "@/components/custom-ui/movement-line-graph";
 import { ReportModal } from "@/components/custom-ui/report-modal";
+import { SecurityPanel } from "@/components/custom-ui/security-panel";
 import {
   financialArReviewMessage,
   formatPeso,
@@ -237,6 +238,8 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
           </PharmacyRegion>
         </section>
       </div>
+
+      <SecurityPanel />
 
       {report && (
         <ReportModal

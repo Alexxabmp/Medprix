@@ -26,7 +26,7 @@ export function createAuditRouter(read: Query = queryDb): IRouter {
       const result = await read(`SELECT l.*,u.full_name AS actor_name,u.username AS actor_username,u.role AS actor_role
         FROM system_logs l LEFT JOIN users u ON u.id=l.user_id ORDER BY l.timestamp DESC,l.id DESC`);
       return res.json(result.rows.map(row => ({ id: row.id, dateTime: iso(row.timestamp),
-        user: row.actor_name || row.actor_username || "System / archived actor", role: row.actor_role || "Unavailable",
+        user: row.actor_name || row.actor_username || (!row.user_id && row.module === "Authentication" ? "Unknown user" : "System / archived actor"), role: row.actor_role || "Unavailable",
         action: row.action_type, module: row.module, description: row.description, status: row.status, deviceIp: row.device_ip || "" }))
         .filter(row => (!input.status || input.status === "All" || row.status.toLowerCase() === input.status.toLowerCase()) &&
           (!input.module || input.module === "All" || includes(row.module, input.module)) &&
@@ -40,13 +40,37 @@ export function createAuditRouter(read: Query = queryDb): IRouter {
       const result = await read(`SELECT a.*,u.full_name AS actor_name,u.username AS actor_username,u.role AS actor_role
         FROM user_activities a LEFT JOIN users u ON u.id=a.user_id ORDER BY a.timestamp DESC,a.id DESC`);
       return res.json(result.rows.map(row => ({ id: row.id, dateTime: iso(row.timestamp),
-        user: row.actor_name || row.actor_username || "System / archived actor", role: row.actor_role || "Unavailable",
+        user: row.actor_name || row.actor_username || (!row.user_id && row.module === "Authentication" ? "Unknown user" : "System / archived actor"), role: row.actor_role || "Unavailable",
         activity: row.activity,module: row.module,description: row.description,flag: row.flag }))
         .filter(row => (!input.flag || input.flag === "All" || row.flag.toLowerCase() === input.flag.toLowerCase()) &&
           (!input.role || input.role === "All" || row.role.toLowerCase() === input.role.toLowerCase()) &&
           (!input.module || input.module === "All" || includes(row.module,input.module)) &&
           (!input.search || [row.user,row.activity,row.module,row.description].some(value => includes(value,input.search)))));
     } catch { return res.status(503).json({ error: "Activity records are temporarily unavailable." }); }
+  });
+  // Admin dashboard "Security & access" panel (Part D). "Today" is the pharmacy's Manila calendar day.
+  router.get("/admin/security-summary", requireRoles("Admin"), async (_req, res) => {
+    try {
+      const today = `timestamp >= (date_trunc('day', now() AT TIME ZONE 'Asia/Manila') AT TIME ZONE 'Asia/Manila')`;
+      const [counts, locked, recent] = await Promise.all([
+        read(`SELECT
+          (SELECT count(*)::int FROM system_logs WHERE action_type='LOGIN' AND status='Failed' AND ${today}) AS failed_today,
+          (SELECT count(*)::int FROM user_activities WHERE flag<>'Normal' AND ${today}) AS suspicious_today,
+          (SELECT count(*)::int FROM users WHERE is_active AND must_change_password) AS temporary_passwords`),
+        read(`SELECT username,full_name,locked_until FROM users WHERE locked_until > now() ORDER BY locked_until`),
+        read(`SELECT a.id,a.timestamp,a.activity,a.module,a.description,a.flag,u.full_name AS actor_name,u.username AS actor_username,a.user_id
+          FROM user_activities a LEFT JOIN users u ON u.id=a.user_id ORDER BY a.timestamp DESC,a.id DESC LIMIT 8`),
+      ]);
+      const row = counts.rows[0] ?? {};
+      return res.json({
+        failedLoginsToday: Number(row.failed_today ?? 0),
+        suspiciousToday: Number(row.suspicious_today ?? 0),
+        temporaryPasswords: Number(row.temporary_passwords ?? 0),
+        lockedAccounts: locked.rows.map(r => ({ username: r.username, name: r.full_name, lockedUntil: iso(r.locked_until) })),
+        recent: recent.rows.map(r => ({ id: r.id, dateTime: iso(r.timestamp), activity: r.activity, module: r.module, flag: r.flag,
+          user: r.actor_name || r.actor_username || (!r.user_id && r.module === "Authentication" ? "Unknown user" : "System / archived actor") })),
+      });
+    } catch { return res.status(503).json({ error: "Security summary is temporarily unavailable." }); }
   });
   router.post(["/admin/system-logs", "/admin/user-activities"], (_req, res) =>
     res.status(409).json({ error: "Audit events are recorded by server operations. Direct audit creation is unavailable." }));

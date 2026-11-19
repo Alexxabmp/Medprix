@@ -26,7 +26,9 @@ type UsualItem = { productId: string; quantity: number };
 
 const CUSTOMER_SELECT = `SELECT c.id,c.customer_name,c.discount_type,c.id_number,c.contact_number,c.consent_at,c.created_at,
   COALESCE((SELECT jsonb_agg(jsonb_build_object('productId',u.product_id,'quantity',u.quantity) ORDER BY u.created_at,u.product_id)
-    FROM customer_usual_items u WHERE u.customer_id=c.id),'[]'::jsonb) AS usual_items
+    FROM customer_usual_items u WHERE u.customer_id=c.id),'[]'::jsonb) AS usual_items,
+  (SELECT count(*)::int FROM transactions t WHERE t.customer_id=c.id AND t.status='Completed') AS visit_count,
+  (SELECT max(t.transaction_date) FROM transactions t WHERE t.customer_id=c.id AND t.status='Completed') AS last_visit_at
   FROM customers c`;
 
 function toApiCustomer(row: any) {
@@ -39,6 +41,9 @@ function toApiCustomer(row: any) {
     consentAt: row.consent_at ?? null,
     createdAt: row.created_at,
     usualItems: (row.usual_items ?? []) as UsualItem[],
+    /** Completed sales linked to this customer (voided sales don't count). */
+    visitCount: Number(row.visit_count ?? 0),
+    lastVisitAt: row.last_visit_at ?? null,
   };
 }
 

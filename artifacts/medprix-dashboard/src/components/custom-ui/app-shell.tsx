@@ -2,7 +2,8 @@ import type { SourceState } from "./source-state";
 import { useState, useEffect } from "react";
 import { PageTables } from "@/components/page-tables";
 import { Link, Route, Switch, useLocation } from "wouter";
-import { Moon, Pill, Sun, X } from "lucide-react";
+import { Moon, Pill, Sun, UserRound, X } from "lucide-react";
+import { MyAccountDialog } from "@/components/custom-ui/my-account-dialog";
 import { getDefaultRoute, navGroups } from "@/lib/data";
 import type { ToastFn, UserRecord } from "@/lib/types";
 import { prefetchPharmacyData } from "@/lib/pharmacy-store";
@@ -22,6 +23,7 @@ import ProcurementPage from "@/pages/procurement";
 import WholesalePage from "@/pages/wholesale";
 import SystemAdminPage from "@/pages/system-admin";
 import UserManagementPage from "@/pages/user-management";
+import CustomersPage from "@/pages/customers";
 
 export function AppShell({
   dark,
@@ -46,6 +48,7 @@ export function AppShell({
 }) {
   const [location] = useLocation();
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showAccount, setShowAccount] = useState(false);
 
   useEffect(() => {
     prefetchPharmacyData(role);
@@ -65,7 +68,7 @@ export function AppShell({
     return undefined;
   }, [role]);
   const roleKey = role.toLowerCase();
-  const tablePage = ["/supplier", "/wholesale", "/system-ad", "/inventory", "/procurement", "/user-management", "/pos"].includes(location)
+  const tablePage = ["/supplier", "/wholesale", "/system-ad", "/inventory", "/procurement", "/user-management", "/pos", "/customers"].includes(location)
     || ((location === "/" || location === "/dashboard") && roleKey === "cashier");
   const homeHref = getDefaultRoute(role);
 
@@ -170,6 +173,16 @@ export function AppShell({
                     </div>
                     <div className="user-menu-divider" />
                     <button
+                      className="user-menu-item"
+                      data-testid="button-my-account"
+                      onClick={() => {
+                        setShowUserMenu(false);
+                        setShowAccount(true);
+                      }}
+                    >
+                      <UserRound size={14} /> My account
+                    </button>
+                    <button
                       className="user-menu-item danger"
                       data-testid="button-logout"
                       onClick={() => {
@@ -185,6 +198,12 @@ export function AppShell({
             </div>
           </div>
         </header>
+        {showAccount && (
+          <MyAccountDialog
+            onClose={() => setShowAccount(false)}
+            onToast={(message) => onToast(message)}
+          />
+        )}
         <main className="content">
           <PageTables enabled={tablePage}>
           <Switch>
@@ -226,6 +245,9 @@ export function AppShell({
             </Route>
             <Route path="/system-ad">
               <SystemAdminPage onToast={onToast} />
+            </Route>
+            <Route path="/customers">
+              <CustomersPage onToast={onToast} />
             </Route>
             <Route path="/user-management">
               <UserManagementPage

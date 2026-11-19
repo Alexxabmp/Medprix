@@ -30,6 +30,9 @@
     { "idx": 19, "version": "7", "when": 1795132800000, "tag": "0019_prescription_required", "breakpoints": true },
     { "idx": 20, "version": "7", "when": 1795219200000, "tag": "0020_shared_payment_plan", "breakpoints": true },
     { "idx": 21, "version": "7", "when": 1795219200001, "tag": "0021_wholesale_terms_and_contracts", "breakpoints": true },
-    { "idx": 22, "version": "7", "when": 1795305600000, "tag": "0022_procurement_workflow", "breakpoints": true }
+    { "idx": 22, "version": "7", "when": 1795305600000, "tag": "0022_procurement_workflow", "breakpoints": true },
+    { "idx": 23, "version": "7", "when": 1795392000000, "tag": "0023_primary_admin", "breakpoints": true },
+    { "idx": 24, "version": "7", "when": 1795478400000, "tag": "0024_password_change_required", "breakpoints": true },
+    { "idx": 25, "version": "7", "when": 1795564800000, "tag": "0025_login_lockout", "breakpoints": true }
   ]
 }

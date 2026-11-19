@@ -53,6 +53,8 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
 
   const [trxFilterUser, setTrxFilterUser] = useState<string>("All users");
   const [trxFilterType, setTrxFilterType] = useState<"All" | "Retail" | "Wholesale">("All");
+  // Reviewer item #44: a working status filter, using each sale's stored status.
+  const [trxFilterStatus, setTrxFilterStatus] = useState<"All" | "Completed" | "Voided" | "Cancelled" | "Pending">("All");
   const [trxSearch, setTrxSearch] = useState("");
   const [trxPage, setTrxPage] = useState(1);
   const [selectedTrx, setSelectedTrx] = useState<UserTransaction | null>(null);
@@ -166,6 +168,7 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
     return transactions.filter((trx) => {
       const matchesUser = trxFilterUser === "All users" || trx.user === trxFilterUser;
       const matchesType = trxFilterType === "All" || trx.businessType === trxFilterType;
+      const matchesStatus = trxFilterStatus === "All" || trx.status === trxFilterStatus;
       const matchesSearch =
         !q ||
         trx.transactionNumber.toLowerCase().includes(q) ||
@@ -175,9 +178,9 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
         (!!trx.paymentReference && trx.paymentReference.toLowerCase().includes(q.replace(/[\s-]/g, ""))) ||
         (!!trx.discountHolderName && trx.discountHolderName.toLowerCase().includes(q)) ||
         (!!trx.discountHolderId && trx.discountHolderId.toLowerCase().includes(q));
-      return matchesUser && matchesType && matchesSearch;
+      return matchesUser && matchesType && matchesStatus && matchesSearch;
     });
-  }, [transactions, trxFilterUser, trxFilterType, trxSearch]);
+  }, [transactions, trxFilterUser, trxFilterType, trxFilterStatus, trxSearch]);
 
   const TRX_PAGE_SIZE = 15;
   const totalTrxPages = Math.max(1, Math.ceil(filteredTransactions.length / TRX_PAGE_SIZE));
@@ -402,6 +405,22 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
                   <option value="All">All business types</option>
                   <option value="Retail">Retail (Cashier)</option>
                   <option value="Wholesale">Wholesale (Front desk)</option>
+                </SelectField>
+
+                <SelectField
+                  className="select"
+                  aria-label="Filter transactions by status"
+                  value={trxFilterStatus}
+                  onChange={(e) => {
+                    setTrxFilterStatus(e.target.value as typeof trxFilterStatus);
+                    setTrxPage(1);
+                  }}
+                  data-testid="select-trx-status">
+                  <option value="All">All statuses</option>
+                  <option value="Completed">Completed</option>
+                  <option value="Voided">Voided</option>
+                  <option value="Cancelled">Cancelled</option>
+                  <option value="Pending">Pending</option>
                 </SelectField>
               </div>
             </div>
