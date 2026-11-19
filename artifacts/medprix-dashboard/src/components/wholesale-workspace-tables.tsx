@@ -1,4 +1,5 @@
 import { WholesaleStatusPill } from "./wholesale-status-pill";
+import { planLabel } from "@/lib/wholesale-documents";
 import { ReadContent, useReadDialog } from "./read-dialog";
 import { SourceTableBody, SourceFeedback } from "./custom-ui/source-state";
 import { SelectField } from "@/components/custom-ui/select-field";
@@ -447,9 +448,7 @@ export function WholesaleSummaryModal({
                             </span>
                             {accounts && (
                               <div className="muted">
-                                {row.paymentPlan === "Net60"
-                                  ? "Net 60"
-                                  : "Net 30"}
+                                {planLabel(row.paymentPlan)}
                               </div>
                             )}
                           </td>

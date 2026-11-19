@@ -1,3 +1,4 @@
+import { clientCredit, approvedCredit, creditHoldMessage } from "./wholesale-credit";
 import { applicableContract, contractPrice } from "./wholesale-contracts";
 import {
   pharmacyDate,
@@ -377,10 +378,19 @@ export function createWholesaleConfirmation(
       const chosen = overrideIds.map(requireUuid).sort();
       if (new Set(chosen).size !== chosen.length)
         throw new WholesaleError(400, "Choose each approval once.");
+      // Credit hold: an Admin confirming for a client with an overdue balance records a note instead of asking themselves.
+      const creditNote =
+        typeof input?.creditNote === "string" && input.creditNote.trim()
+          ? input.creditNote.trim()
+          : null;
+      if (creditNote !== null && (creditNote.length < 3 || creditNote.length > 500))
+        throw new WholesaleError(400, "Enter a credit note of 3 to 500 characters.");
       return operation(
         actor,
         key,
-        { action: "confirm", id, expected, chosen },
+        creditNote === null
+          ? { action: "confirm", id, expected, chosen }
+          : { action: "confirm", id, expected, chosen, creditNote },
         async (query) => {
           const order = await lockOrder(query, id, expected, ["Pending"]);
           const plan = wholesalePaymentPlanSchema.safeParse(order.payment_plan);
@@ -410,6 +420,29 @@ export function createWholesaleConfirmation(
                 "Admin approval is required for the contract payment-terms exception.",
               );
             termsException = approved;
+          }
+          const credit = await clientCredit(query, order.client_id);
+          let creditApproval: any = null;
+          if (Number(credit.overdueAmount) > 0) {
+            creditApproval = await approvedCredit(query, id, expected);
+            if (!creditApproval && actor.role === "Admin" && creditNote) {
+              const {
+                rows: [row],
+              } = await query(
+                `INSERT INTO wholesale_credit_approvals(order_id,order_revision,overdue_amount,oldest_due_date,reason,requested_by,decision,decided_by,decided_at,decision_note)
+                VALUES($1,$2,$3,$4,$5,$6,'Approved',$6,now(),$5) RETURNING id, decided_by AS "decidedBy", decision_note AS "note", decided_at AS "decidedAt", overdue_amount::text AS "overdueAmount"`,
+                [id, expected, credit.overdueAmount, credit.oldestDueDate, creditNote, actor.id],
+              );
+              creditApproval = row;
+              await wholesaleAudit(
+                query,
+                actor,
+                "WHOLESALE_CREDIT_HOLD_APPROVED",
+                `Order ${order.order_number ?? id}: Admin confirmed despite ₱${credit.overdueAmount} overdue; note: ${creditNote}`,
+              );
+            }
+            if (!creditApproval)
+              throw new WholesaleError(409, creditHoldMessage(credit));
           }
           const { rows: lines } = await query(
             "SELECT * FROM wholesale_order_items WHERE order_id=$1 ORDER BY product_id",
@@ -625,6 +658,7 @@ export function createWholesaleConfirmation(
                 }
               : null,
             termsException,
+            creditApproval,
             clientId: order.client_id,
             clientName: client.client_name,
             address: client.address,

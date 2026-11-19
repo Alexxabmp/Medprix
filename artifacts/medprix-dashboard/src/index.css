@@ -1290,9 +1290,11 @@ a {
   margin-top: 20px;
 }
 
+/* Fixed colours, not theme variables: the button's own "dark" class is also the dark-theme switch, which redefines
+   --foreground/--background on the button itself and turned main actions in pop-ups light grey. Dark mode: see .dark .button.dark. */
 .modal .button.dark {
-  background: hsl(var(--foreground));
-  color: hsl(var(--background));
+  background: #17171a;
+  color: #fff;
 }
 
 .modal .button.dark:hover {

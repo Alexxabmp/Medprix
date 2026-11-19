@@ -42,8 +42,9 @@ export class SchemaReadinessError extends Error {
     this.name = "SchemaReadinessError";
   }
 }
-export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | "cashier" | "legacy-runtime" | "audit-runtime" | "identifier-runtime" | "pre-retail-runtime" | "pre-retirement-runtime" | "pre-delivery-runtime" | "pre-wholesale-runtime" | "wholesale-draft-runtime" | "wholesale-reservation-runtime" | "wholesale-fulfillment-runtime" | "wholesale-collections-runtime" | "pre-category-runtime" | "pre-payment-reference-runtime" | "pre-discount-holder-runtime" | "pre-returning-customer-runtime" | "pre-prescription-runtime" | "pre-payment-plan-runtime" | "pre-wholesale-terms-runtime" | "pre-procurement-workflow-runtime" | "pre-primary-admin-runtime" | "pre-password-change-runtime" | "pre-login-lockout-runtime" | "pre-expenses-runtime" | "runtime" = "runtime", namespace = "public", existingTablesOnly = false) {
-  const expenses = scope === "runtime";
+export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | "cashier" | "legacy-runtime" | "audit-runtime" | "identifier-runtime" | "pre-retail-runtime" | "pre-retirement-runtime" | "pre-delivery-runtime" | "pre-wholesale-runtime" | "wholesale-draft-runtime" | "wholesale-reservation-runtime" | "wholesale-fulfillment-runtime" | "wholesale-collections-runtime" | "pre-category-runtime" | "pre-payment-reference-runtime" | "pre-discount-holder-runtime" | "pre-returning-customer-runtime" | "pre-prescription-runtime" | "pre-payment-plan-runtime" | "pre-wholesale-terms-runtime" | "pre-procurement-workflow-runtime" | "pre-primary-admin-runtime" | "pre-password-change-runtime" | "pre-login-lockout-runtime" | "pre-expenses-runtime" | "pre-wholesale-fixes-runtime" | "runtime" = "runtime", namespace = "public", existingTablesOnly = false) {
+  const wholesaleFixes = scope === "runtime";
+  const expenses = wholesaleFixes || scope === "pre-wholesale-fixes-runtime";
   const loginLockout = expenses || scope === "pre-expenses-runtime";
   const passwordChange = loginLockout || scope === "pre-login-lockout-runtime";
   const primaryAdmin = passwordChange || scope === "pre-password-change-runtime";
@@ -63,7 +64,7 @@ export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | 
   const calendar = wholesale || scope === "pre-wholesale-runtime";
   const retiredSales = calendar || scope === "pre-delivery-runtime";
   const retail = retiredSales || scope === "pre-retirement-runtime";
-  if (["pre-retail-runtime", "pre-retirement-runtime", "pre-delivery-runtime", "pre-wholesale-runtime", "wholesale-draft-runtime", "wholesale-reservation-runtime", "wholesale-fulfillment-runtime", "wholesale-collections-runtime", "pre-category-runtime", "pre-payment-reference-runtime", "pre-discount-holder-runtime", "pre-returning-customer-runtime", "pre-prescription-runtime", "pre-payment-plan-runtime", "pre-wholesale-terms-runtime", "pre-procurement-workflow-runtime", "pre-primary-admin-runtime", "pre-password-change-runtime", "pre-login-lockout-runtime", "pre-expenses-runtime"].includes(scope)) scope = "runtime";
+  if (["pre-retail-runtime", "pre-retirement-runtime", "pre-delivery-runtime", "pre-wholesale-runtime", "wholesale-draft-runtime", "wholesale-reservation-runtime", "wholesale-fulfillment-runtime", "wholesale-collections-runtime", "pre-category-runtime", "pre-payment-reference-runtime", "pre-discount-holder-runtime", "pre-returning-customer-runtime", "pre-prescription-runtime", "pre-payment-plan-runtime", "pre-wholesale-terms-runtime", "pre-procurement-workflow-runtime", "pre-primary-admin-runtime", "pre-password-change-runtime", "pre-login-lockout-runtime", "pre-expenses-runtime", "pre-wholesale-fixes-runtime"].includes(scope)) scope = "runtime";
   const actual = await inspectSchema(query, namespace);
   const issues: string[] = [];
   const normalize = (v: unknown) => typeof v === "string" ? v.replaceAll(`"${namespace}".`, "public.").replaceAll(`${namespace}.`, "public.") : v;
@@ -159,6 +160,14 @@ export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | 
   if (reservations) await assertWholesaleReservationsReady(query, actual, namespace, existingTablesOnly, issues);
   if (fulfillment) await assertWholesaleFulfillmentReady(query, actual, namespace, existingTablesOnly, issues);
   if (collections) await assertWholesaleCollectionsReady(query, actual, namespace, existingTablesOnly, issues);
+  if (wholesaleFixes && !existingTablesOnly) {
+    // Migration 0027: collection receipts and credit-hold approvals.
+    for (const [table, name, type] of [["wholesale_collection_receipts", "collection_id", "uuid"], ["wholesale_collection_receipts", "receipt_number", "character varying(30)"], ["wholesale_collection_receipts", "official_receipt_number", "character varying(100)"],
+      ["wholesale_credit_approvals", "order_id", "uuid"], ["wholesale_credit_approvals", "order_revision", "integer"], ["wholesale_credit_approvals", "overdue_amount", "numeric(12,2)"], ["wholesale_credit_approvals", "decision", "character varying(10)"], ["wholesale_credit_approvals", "decision_note", "character varying(500)"]])
+      if (!actual.columns.some(c => c.table_name === table && c.name === name && c.type === type)) issues.push("missing/incompatible wholesale fix column " + table + "." + name);
+    if (!actual.triggers.some(t => t.name === "protect_wholesale_receipts" && t.enabled === "O")) issues.push("missing receipt guard protect_wholesale_receipts");
+    if (!actual.indexes.some(i => i.name === "uq_wholesale_credit_approvals_pending" && i.valid)) issues.push("missing credit approval index uq_wholesale_credit_approvals_pending");
+  }
   if (expenses && !existingTablesOnly) {
     // Migration 0026: operating expenses.
     for (const [name, type] of [["expense_date", "date"], ["category", "character varying(30)"], ["amount", "numeric(12,2)"], ["description", "character varying(500)"], ["voided_at", "timestamp with time zone"], ["void_reason", "character varying(500)"]])

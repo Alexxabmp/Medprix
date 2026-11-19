@@ -252,6 +252,19 @@ export default function WholesalePage({
   async function refreshOverview() {
     await load(true, "overview");
   }
+  /** Open one order's details from an overview card (failed delivery, credit approval waiting). */
+  function openOrderById(orderId: string) {
+    const order = orders.find((item) => item.id === orderId);
+    if (order) {
+      open({ kind: "details", order });
+      return;
+    }
+    void wholesaleGet<WholesaleOrder[]>("/orders", true).then((list) => {
+      setOrders(list);
+      const found = list.find((item) => item.id === orderId);
+      if (found) open({ kind: "details", order: found });
+    });
+  }
   function openSummary(kind: WholesaleSummaryKind) {
     const title = {
       pending: "Pending orders",
@@ -727,6 +740,56 @@ export default function WholesalePage({
             </button>
           }
         />
+        {role === "Admin" && (overview?.pendingCreditApprovals?.length ?? 0) > 0 && (
+          <Summary
+            status={sources.overview}
+            label="Credit approvals waiting"
+            value={String(overview!.pendingCreditApprovals!.length)}
+            caption={
+              overview!.pendingCreditApprovals!
+                .slice(0, 2)
+                .map((item) => item.orderNumber ?? "Draft order")
+                .join(", ") +
+              (overview!.pendingCreditApprovals!.length > 2 ? "…" : "") +
+              " · clients with overdue balances"
+            }
+            tone="warning"
+            action={
+              <button
+                className="button soft wholesale-summary-action"
+                disabled={navigating}
+                onClick={() => openOrderById(overview!.pendingCreditApprovals![0]!.orderId)}
+              >
+                Review
+              </button>
+            }
+          />
+        )}
+        {(overview?.failedDeliveries?.length ?? 0) > 0 && (
+          <Summary
+            status={sources.overview}
+            label="Failed deliveries"
+            value={String(overview!.failedDeliveries!.length)}
+            caption={
+              overview!.failedDeliveries!
+                .slice(0, 2)
+                .map((item) => item.orderNumber ?? item.clientName)
+                .join(", ") +
+              (overview!.failedDeliveries!.length > 2 ? "…" : "") +
+              " · reschedule or cancel"
+            }
+            tone="warning"
+            action={
+              <button
+                className="button soft wholesale-summary-action"
+                disabled={navigating}
+                onClick={() => openOrderById(overview!.failedDeliveries![0]!.orderId)}
+              >
+                View
+              </button>
+            }
+          />
+        )}
       </div>
       {overviewError && (
         <div role="alert" className="inline-error">

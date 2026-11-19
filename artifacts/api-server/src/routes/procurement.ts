@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { desc, eq, ilike } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { db, queryDb, withTransaction, purchaseOrdersTable, supplierDeliveriesTable, suppliersTable } from "@workspace/db";
 import { normalizeSupplierTerms, isSupplierTermsBasis, SUPPLIER_TERMS_LABEL } from "@workspace/api-zod";
 import { requireAuth, requireRoles } from "../middleware/auth";
@@ -73,7 +73,7 @@ export function createProcurementRouter(store = createProcurementStore(withTrans
     if (phone && !contactPattern.test(phone)) throw fail("Contact number must use 09XXXXXXXXX or +639XXXXXXXXX format.", "contactNumber");
     if (email && !emailPattern.test(email)) throw fail("Enter a valid email address.", "email");
     if (contact.length > 120 || email.length > 255 || address.length > 500) throw fail("One or more supplier details are too long.", "supplierName");
-    const [duplicate] = await db.select({ id: suppliersTable.id }).from(suppliersTable).where(ilike(suppliersTable.supplierName, name));
+    const [duplicate] = await db.select({ id: suppliersTable.id }).from(suppliersTable).where(sql`lower(btrim(${suppliersTable.supplierName})) = lower(${name})`);
     if (duplicate) throw new ProcurementError(409, "A supplier with this name already exists.", { errors: { supplierName: "A supplier with this name already exists." } });
     return withTransaction(async query => {
       const { rows: [supplier] } = await query(`INSERT INTO suppliers(supplier_name,contact_person,contact_number,email,address,payment_terms,terms_basis)

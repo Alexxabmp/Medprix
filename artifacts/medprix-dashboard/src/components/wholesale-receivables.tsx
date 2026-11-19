@@ -15,7 +15,7 @@ import { ModalDataTable } from "./modal-data-table";
 import { ModalTableValue, ModalTableFooter } from "./modal-table-layout";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Eye, RotateCcw } from "lucide-react";
+import { Download, Eye, RotateCcw } from "lucide-react";
 import { WholesalePaymentDetails } from "./wholesale-payment-details";
 import { WholesaleDialog } from "./wholesale-dialog";
 import { WholesaleRequestFeedback } from "./wholesale-request-feedback";
@@ -26,6 +26,7 @@ import {
   wholesalePrincipalSchema,
 } from "@workspace/api-zod";
 import { WholesaleInstallmentBalances } from "./wholesale-installment-balances";
+import { collectionReceiptPdf, planLabel, statementPdf, type WholesaleStatement } from "@/lib/wholesale-documents";
 import {
   wholesaleGet,
   getCachedWholesale,
@@ -131,12 +132,35 @@ export function WholesaleReceivables({
       ),
     );
   }
+  // After a payment is recorded, point to its new collection receipt.
+  const [justRecorded, setJustRecorded] = useState<string | null>(null);
+  const [orFor, setOrFor] = useState<string | null>(null);
+  const [orValue, setOrValue] = useState("");
+  const [docBusy, setDocBusy] = useState(false);
+  const [docError, setDocError] = useState("");
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
   const request = useWholesaleRequest("collections", async () => {
+    const before = new Set((detail?.payments ?? []).map((payment) => payment.id));
+    const wasPayment = modeRef.current === "payment";
     await load();
-    if (selectedId) await loadDetail(selectedId);
+    if (selectedId) {
+      const fresh = await wholesaleGet<WholesaleReceivableDetail>("/accounts-receivable/" + selectedId, true);
+      setDetail(fresh);
+      const added = fresh.payments.find((payment) => !before.has(payment.id));
+      setJustRecorded(wasPayment && added ? added.id : null);
+    }
     setMode("view");
+    setOrFor(null);
     onChanged?.();
   });
+  async function downloadStatement() {
+    if (!detail?.clientId) return;
+    setDocBusy(true); setDocError("");
+    try { statementPdf(await wholesaleGet<WholesaleStatement>(`/clients/${detail.clientId}/statement`, true)); }
+    catch (failure) { setDocError(safeError(failure, "The statement couldn't be prepared. Try again.")); }
+    finally { setDocBusy(false); }
+  }
   let allocationPreview: ReturnType<typeof allocateWholesalePayment> = [];
   const enteredAmount = wholesalePrincipalSchema.safeParse(paymentAmount);
   if (detail && enteredAmount.success) {
@@ -248,9 +272,7 @@ export function WholesaleReceivables({
                         <div className="muted">
                           <PageTableValue value={item.clientName} />
                         </div>
-                        <div className="muted">
-                          {item.paymentPlan === "Net60" ? "Net 60" : "Net 30"}
-                        </div>
+                        <div className="muted">{planLabel(item.paymentPlan)}</div>
                       </td>
                       <td>{wholesalePeso(item.total)}</td>
                       <td>{wholesalePeso(item.paid)}</td>
@@ -414,10 +436,7 @@ export function WholesaleReceivables({
                       <dd>{wholesalePeso(detail.overdueAmount)}</dd>
                     </div>
                   </dl>
-                  <p className="field-hint">
-                    Payment plan:{" "}
-                    {detail.paymentPlan === "Net60" ? "Net 60" : "Net 30"}
-                  </p>
+                  <p className="field-hint">Payment plan: {planLabel(detail.paymentPlan)}</p>
                   {detail.nextDueDate && (
                     <p className="field-hint">
                       Next unpaid: {formatDisplayDate(detail.nextDueDate)} ·{" "}
@@ -486,6 +505,16 @@ export function WholesaleReceivables({
               )}
               {mode === "view" ? (
                 <>
+                  {justRecorded && detail.payments.some((payment) => payment.id === justRecorded) && (() => {
+                    const payment = detail.payments.find((item) => item.id === justRecorded)!;
+                    return (
+                      <div className="wholesale-receipt-ready" role="status">
+                        <span>Payment of <strong>{wholesalePeso(payment.amount)}</strong> recorded · receipt <strong>{payment.receiptNumber ?? "—"}</strong></span>
+                        <button type="button" className="button primary-action" onClick={() => collectionReceiptPdf(detail, payment)}>Download receipt</button>
+                      </div>
+                    );
+                  })()}
+                  {docError && <div role="alert" className="inline-error">{docError}</div>}
                   <WholesaleInstallmentBalances
                     installments={detail.installments ?? []}
                   />
@@ -494,6 +523,7 @@ export function WholesaleReceivables({
                     <ModalDataTable className="data-table wholesale-payment-history">
                       <thead>
                         <tr>
+                          <th>Receipt</th>
                           <th>Collected</th>
                           <th>Amount</th>
                           <th>Method / reference</th>
@@ -505,6 +535,25 @@ export function WholesaleReceivables({
                       <tbody>
                         {detail.payments.map((payment) => (
                           <tr key={payment.id}>
+                            <td data-label="Receipt">
+                              <strong className={payment.reversalId ? "wholesale-receipt-reversed" : undefined}>{payment.receiptNumber ?? "—"}</strong>
+                              {payment.officialReceiptNumber ? (
+                                <div className="muted">OR {payment.officialReceiptNumber.replace(/^OR\s*/i, "")}</div>
+                              ) : !payment.reversalId && orFor !== payment.id ? (
+                                <div><button type="button" className="text-button" disabled={request.locked} onClick={() => { setOrFor(payment.id); setOrValue(""); }}>Add official receipt no.</button></div>
+                              ) : null}
+                              {orFor === payment.id && (
+                                <form className="wholesale-or-form" onSubmit={(event) => {
+                                  event.preventDefault();
+                                  request.mutate(`/payments/${payment.id}/official-receipt`, { officialReceiptNumber: orValue.trim() }, "PATCH");
+                                }}>
+                                  <label className="sr-only" htmlFor={"or-" + payment.id}>Official receipt number</label>
+                                  <input id={"or-" + payment.id} value={orValue} maxLength={100} required placeholder="e.g. 004512" onChange={(event) => setOrValue(event.target.value)} />
+                                  <button className="button soft" disabled={request.locked || !orValue.trim()}>Save</button>
+                                  <button type="button" className="button soft" onClick={() => setOrFor(null)}>Cancel</button>
+                                </form>
+                              )}
+                            </td>
                             <td data-label="Collected">
                               {wholesaleDateTime(payment.collectedAt)}
                             </td>
@@ -532,6 +581,15 @@ export function WholesaleReceivables({
                             </td>
                             <td data-label="Action" className="table-action-cell">
                               <div className="table-actions">
+                                {payment.receiptNumber && (
+                                  <AppTooltip content="Download receipt">
+                                    <button type="button" className="button soft table-action-btn"
+                                      aria-label={"Download receipt " + payment.receiptNumber}
+                                      onClick={() => collectionReceiptPdf(detail, payment)}>
+                                      <Download size={14} aria-hidden="true" />
+                                    </button>
+                                  </AppTooltip>
+                                )}
                                 <AppTooltip content="View payment">
                                   <button type="button" className="button soft table-action-btn"
                                     aria-label={"View payment of " + wholesalePeso(payment.amount)}
@@ -565,7 +623,7 @@ export function WholesaleReceivables({
                         ))}
                         {!detail.payments.length && (
                           <tr>
-                            <TableEmptyState colSpan={6}>
+                            <TableEmptyState colSpan={7}>
                               No payments recorded.
                             </TableEmptyState>
                           </tr>
@@ -575,6 +633,11 @@ export function WholesaleReceivables({
                   </section>
                   <ModalTableFooter>
                     <div className="wholesale-actions">
+                      {detail.clientId && (
+                        <button type="button" className="button soft" disabled={docBusy} onClick={() => void downloadStatement()}>
+                          {docBusy ? "Preparing…" : "Statement of account"}
+                        </button>
+                      )}
                       <button
                         className="button primary-action"
                         disabled={
@@ -620,6 +683,9 @@ export function WholesaleReceivables({
                           ? { reference: form.get("reference") }
                           : {}),
                         notes: form.get("notes"),
+                        ...(String(form.get("officialReceiptNumber") ?? "").trim()
+                          ? { officialReceiptNumber: String(form.get("officialReceiptNumber")).trim() }
+                          : {}),
                       },
                     );
                   }}
@@ -708,6 +774,12 @@ export function WholesaleReceivables({
                           maxLength={255}
                           required={method !== "Cash"}
                         />
+                      </div>
+                      <div className="field">
+                        <label htmlFor="wholesale-payment-or">
+                          Pharmacy official receipt no. <span className="muted">(optional)</span>
+                        </label>
+                        <input id="wholesale-payment-or" name="officialReceiptNumber" maxLength={100} placeholder="If one is issued now; you can add it later" />
                       </div>
                       <div className="field full-width">
                         <label htmlFor="wholesale-payment-notes">Notes</label>

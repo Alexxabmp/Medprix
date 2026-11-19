@@ -308,6 +308,10 @@ export type WholesaleOverview = {
   outstanding: string;
   overdue: string;
   overdueCount: number;
+  /** Confirmed orders whose latest delivery failed and nothing new is scheduled. */
+  failedDeliveries?: { orderId: string; orderNumber: string | null; clientName: string; failedOn: string; reason: string | null }[];
+  /** Credit-hold requests waiting for an Admin. */
+  pendingCreditApprovals?: { orderId: string; orderNumber: string | null; requestedAt: string }[];
 };
 
 export type WholesaleReceivable = {
@@ -321,6 +325,7 @@ export type WholesaleReceivable = {
   status: string;
   id: string;
   orderNumber: string;
+  clientId?: string;
   clientName: string;
   total: string;
   paid: string;
@@ -346,6 +351,9 @@ export type WholesaleCollection = {
   reversalId: string | null;
   reversalReason: string | null;
   reversedAt: string | null;
+  /** Collection receipt (CR-YYYY-NNNN) and the pharmacy's own official receipt / invoice number, if written. */
+  receiptNumber?: string | null;
+  officialReceiptNumber?: string | null;
   allocations: WholesalePaymentAllocation[];
 };
 export type WholesaleReceivableDetail = WholesaleReceivable & {

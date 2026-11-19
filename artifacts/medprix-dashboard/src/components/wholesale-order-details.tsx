@@ -8,6 +8,8 @@ import { SelectField } from "@/components/custom-ui/select-field";
 import { ChevronDown, Info } from "lucide-react";
 import { DeliveryReceiptView } from "./delivery-receipt-view";
 import { WholesaleDeliveryPanel } from "./wholesale-delivery-panel";
+import { WholesaleCreditHold, useCreditStatus } from "./wholesale-credit-hold";
+import { planLabel } from "@/lib/wholesale-documents";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { WholesaleDialog, useWholesaleDialogView } from "./wholesale-dialog";
 import {
@@ -184,6 +186,13 @@ export function WholesaleOrderDetails({
     if (!initialDetail) void load();
   }, [order.id, initialDetail]);
   const draft = order.status === "Pending";
+  // Credit hold: checked for drafts; Admins confirming a held order add a note, Front desk asks for approval.
+  const credit = useCreditStatus(order.id, order.revision, busy, draft);
+  const creditOverdue = Number(credit.status?.overdueAmount ?? 0) > 0;
+  const [creditNote, setCreditNote] = useState("");
+  const lastAttempt = detail?.attempts[detail.attempts.length - 1];
+  const deliveryFailed = order.status === "Confirmed" && lastAttempt?.status === "Failed";
+  const failedReason = lastAttempt?.notes?.trim().split("\n").filter(Boolean).pop() ?? null;
   const active =
     draft ||
     (order.status === "Confirmed" &&
@@ -275,11 +284,9 @@ export function WholesaleOrderDetails({
                 <div>
                   <dt>Payment plan</dt>
                   <dd>
-                    {order.paymentPlan === "Net30"
-                      ? "Net 30: One Payment Deadline"
-                      : order.paymentPlan === "Net60"
-                        ? "Net 60: Two Installments"
-                        : "Select a plan before confirmation"}
+                    {order.paymentPlan === "Net30" || order.paymentPlan === "Net60"
+                      ? planLabel(order.paymentPlan)
+                      : "Select a plan before confirmation"}
                     {detail.receipt && (
                       <span className="wholesale-plan-deadline">
                         Final deadline:{" "}
@@ -343,6 +350,19 @@ export function WholesaleOrderDetails({
                     "No delivery address. Update the client before confirmation."}
                 </p>
               </section>
+              {deliveryFailed && !action && (
+                <div className="wholesale-credit-banner is-warning" role="status">
+                  <strong>
+                    Last delivery failed on {formatDisplayDate(lastAttempt!.date)}
+                    {failedReason ? `: ${failedReason}` : ""}.
+                  </strong>
+                  <span>The stock is still reserved for this order. Schedule a new delivery below, or cancel the order to release the stock.</span>
+                </div>
+              )}
+              {draft && creditOverdue && credit.status && (
+                <WholesaleCreditHold orderId={order.id} revision={order.revision} role={role} busy={busy} credit={credit.status} mutate={mutate} />
+              )}
+              {draft && credit.error && <p className="field-hint">{credit.error}</p>}
               {draft &&
                 order.contractId &&
                 detail.contractPaymentPlan !== order.paymentPlan && (
@@ -880,6 +900,23 @@ export function WholesaleOrderDetails({
                   Add a delivery address to the client before confirmation.
                 </p>
               )}
+              {credit.status?.onHold && role !== "Admin" && (
+                <p className="inline-error" role="alert">
+                  {credit.status.current && !credit.status.current.decision
+                    ? "Credit hold: waiting for an Admin to approve this order."
+                    : "Credit hold: request Admin approval on the order before confirming."}
+                </p>
+              )}
+              {credit.status?.onHold && role === "Admin" && (
+                <div className="field">
+                  <label htmlFor={"credit-confirm-note-" + order.id}>
+                    Credit hold note * <span className="muted">(client has {wholesalePeso(credit.status.overdueAmount)} overdue)</span>
+                  </label>
+                  <input id={"credit-confirm-note-" + order.id} value={creditNote} maxLength={500}
+                    placeholder="Why this order goes ahead despite the overdue balance"
+                    onChange={(event) => setCreditNote(event.target.value)} />
+                </div>
+              )}
               <section
                 className="wholesale-context wholesale-confirmation-note"
                 aria-label="Confirmation details"
@@ -898,13 +935,18 @@ export function WholesaleOrderDetails({
                   <button
                     disabled={
                       busy ||
-                      !(detail.snapshot?.address ?? detail.client?.address)
+                      !(detail.snapshot?.address ?? detail.client?.address) ||
+                      (credit.status?.onHold === true &&
+                        (role !== "Admin" || creditNote.trim().length < 3))
                     }
                     className="button dark"
                     onClick={() =>
                       mutate("/orders/" + order.id + "/confirm", "POST", {
                         revision: order.revision,
                         overrideIds: selectedIds,
+                        ...(credit.status?.onHold && role === "Admin"
+                          ? { creditNote: creditNote.trim() }
+                          : {}),
                       })
                     }
                   >

@@ -72,9 +72,11 @@ export async function wholesaleAccountLedger(query: WholesaleQuery, row: any) {
   const { rows: payments } = await query(
     `SELECT p.id,p.amount_paid::text AS amount,p.payment_date AS "collectedAt",p.notes,
     c.id AS "collectionId",c.method,c.reference,c.collector_name AS "collectorName",c.collector_id AS "collectorId",
-    r.id AS "reversalId",r.reason AS "reversalReason",r.reversed_at AS "reversedAt"
+    r.id AS "reversalId",r.reason AS "reversalReason",r.reversed_at AS "reversedAt",
+    cr.receipt_number AS "receiptNumber",cr.official_receipt_number AS "officialReceiptNumber"
     FROM ar_payments p LEFT JOIN wholesale_collections c ON c.id=p.id
     LEFT JOIN wholesale_collection_reversals r ON r.collection_id=c.id
+    LEFT JOIN wholesale_collection_receipts cr ON cr.collection_id=c.id
     WHERE p.ar_id=$1 ORDER BY p.payment_date DESC,p.created_at DESC,p.id`,
     [row.id],
   );
