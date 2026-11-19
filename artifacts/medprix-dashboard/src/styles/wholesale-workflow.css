@@ -135,8 +135,12 @@
 .wholesale-payment-context {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
-.wholesale-payment-context > .button {
-  grid-column: 1 / -1;
+.wholesale-payment-amount-help {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 .wholesale-account-dialog .wholesale-payment-history {
   min-width: 0;

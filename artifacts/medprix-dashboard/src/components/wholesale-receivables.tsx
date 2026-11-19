@@ -91,6 +91,7 @@ export function WholesaleReceivables({
   const [validation, setValidation] = useState("");
   const [subPage, setSubPage] = useState(1);
   const contentRef = useRef<HTMLDivElement>(null);
+  const paymentAmountRef = useRef<HTMLInputElement>(null);
   const RECEIVABLE_PAGE_SIZE = 15;
   const items = data?.items ?? [];
   const totalPages = Math.max(
@@ -452,14 +453,6 @@ export function WholesaleReceivables({
                     <span className="field-label">Outstanding balance</span>
                     <strong>{wholesalePeso(detail.balance)}</strong>
                   </div>
-                  <button
-                    className="button soft w-fit"
-                    type="button"
-                    disabled={request.locked}
-                    onClick={() => setPaymentAmount(detail.balance)}
-                  >
-                    Pay remaining balance
-                  </button>
                 </section>
               ) : (
                 <section
@@ -641,6 +634,7 @@ export function WholesaleReceivables({
                           Amount (₱) *
                         </label>
                         <input
+                          ref={paymentAmountRef}
                           autoFocus
                           id="wholesale-payment-amount"
                           name="amount"
@@ -654,9 +648,23 @@ export function WholesaleReceivables({
                           step="0.01"
                           required
                         />
-                        <span className="field-hint">
-                          Up to {wholesalePeso(detail.balance)}
-                        </span>
+                        <div className="wholesale-payment-amount-help">
+                          <span className="field-hint">
+                            Up to {wholesalePeso(detail.balance)}
+                          </span>
+                          <button
+                            className="button soft"
+                            type="button"
+                            disabled={request.locked}
+                            onClick={() => {
+                              setPaymentAmount(detail.balance);
+                              setValidation("");
+                              paymentAmountRef.current?.focus();
+                            }}
+                          >
+                            Pay remaining balance
+                          </button>
+                        </div>
                       </div>
                       <div className="field">
                         <label htmlFor="wholesale-payment-time">
