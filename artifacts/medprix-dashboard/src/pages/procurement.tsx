@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { SourceProgress } from "@/components/custom-ui/source-state";
 import { ChevronLeft, ChevronRight, Package, Plus, RefreshCw, Search } from "lucide-react";
 import { SUPPLIER_TERMS_LABEL, type SupplierTerms } from "@workspace/api-zod";
 import { PageHeading } from "@/components/custom-ui/page-heading";
@@ -6,7 +7,7 @@ import { TableEmptyState } from "@/components/custom-ui/empty-state";
 import { OrderPanel } from "@/components/procurement/order-panel";
 import { OrderEditor, type SupplierOption } from "@/components/procurement/order-editor";
 import { Callout, shortDate } from "@/components/procurement/shared";
-import { procurementApi, peso, stageTone, NEXT_STEP_LABEL, type OrderSummary } from "@/lib/procurement-api";
+import { procurementApi, peso, stageTone, NEXT_STEP_LABEL, type OrderSummary, getProcurementCache, loadProcurementList } from "@/lib/procurement-api";
 import type { ToastFn } from "@/lib/types";
 
 /** The previous procurement screen kept statuses, notes, expiries and payments in this browser only.
@@ -28,9 +29,10 @@ const PAGE_SIZE = 12;
  */
 export default function ProcurementPage({ onToast, currentRole }: { onToast: ToastFn; currentRole: string }) {
   const isAdmin = currentRole === "Admin";
-  const [orders, setOrders] = useState<OrderSummary[] | null>(null);
-  const [today, setToday] = useState("");
-  const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
+  // Start from the list kept since the last visit (or prefetched at sign-in), then refresh quietly.
+  const [orders, setOrders] = useState<OrderSummary[] | null>(() => getProcurementCache()?.orders ?? null);
+  const [today, setToday] = useState(() => getProcurementCache()?.today ?? "");
+  const [suppliers, setSuppliers] = useState<SupplierOption[]>(() => getProcurementCache()?.suppliers ?? []);
   const [loadError, setLoadError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<Filter>("open");
@@ -42,12 +44,8 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
   const load = useCallback(async () => {
     setRefreshing(true);
     try {
-      const [list, supplierData] = await Promise.all([
-        procurementApi.listOrders(),
-        fetch("/api/suppliers", { credentials: "include", cache: "no-store" }).then(r => r.ok ? r.json() : Promise.reject(new Error("suppliers"))),
-      ]);
-      setOrders(list.orders); setToday(list.today);
-      setSuppliers((supplierData.suppliers ?? []).map((s: { id: string; name: string; paymentTerms: SupplierTerms }) => ({ id: s.id, name: s.name, paymentTerms: s.paymentTerms })));
+      const fresh = await loadProcurementList();
+      setOrders(fresh.orders); setToday(fresh.today); setSuppliers(fresh.suppliers);
       setLoadError("");
     } catch (e) {
       setLoadError(e instanceof Error && e.message !== "suppliers" ? e.message : "Could not load purchase orders. Check your connection and refresh.");
@@ -140,7 +138,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
           <table className="data-table proc-orders">
             <thead><tr><th>Order</th><th>Supplier</th><th>Ordered</th><th className="num">Total</th><th>Progress</th><th>Status</th><th className="table-action-head">Next step</th></tr></thead>
             <tbody>
-              {!orders && !loadError && <tr><td colSpan={7} className="muted proc-loading-cell">Loading purchase orders…</td></tr>}
+              {!orders && !loadError && <tr><td colSpan={7} className="proc-loading-cell"><SourceProgress label="Loading purchase orders…" /></td></tr>}
               {orders && shown.length === 0 && <tr><TableEmptyState colSpan={7} icon={Package}>{search || filter !== "all" ? "No orders here. Try another filter." : "No purchase orders yet. Create the first one."}</TableEmptyState></tr>}
               {shown.map(o => {
                 const pct = o.unitsOrdered ? Math.min(100, Math.round((o.unitsReceived / o.unitsOrdered) * 100)) : 0;

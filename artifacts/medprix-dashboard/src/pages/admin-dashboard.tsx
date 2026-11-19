@@ -24,6 +24,7 @@ import {
 } from "@/lib/dashboard-analytics";
 import { useDashboardAnalytics } from "@/lib/use-dashboard-analytics";
 import { FinanceKpi, FinanceSection } from "@/components/finance/finance-section";
+import { CustomersCard } from "@/components/custom-ui/customers-card";
 import type { ReportType, ToastFn } from "@/lib/types";
 
 export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
@@ -93,6 +94,7 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
       </section>
 
       <FinanceSection onToast={onToast} onOpenReport={() => setReport("financial")} />
+      <CustomersCard onToast={onToast} />
 
       <section
         className="surface-card chart-card"

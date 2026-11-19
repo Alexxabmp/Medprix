@@ -5,6 +5,7 @@ import { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_LABEL, type ExpenseCategory } from
 import { DateField } from "@/components/custom-ui/date-field";
 import { SelectField } from "@/components/custom-ui/select-field";
 import { Kpi } from "@/components/custom-ui/kpi-card";
+import { SourceProgress } from "@/components/custom-ui/source-state";
 import { WholesaleDialog } from "@/components/wholesale-dialog";
 import { Callout, Field, moneyInput, shortDate } from "@/components/procurement/shared";
 import { buildDocumentPdf, downloadPdf } from "@/lib/document-pdf";
@@ -77,6 +78,7 @@ export function FinanceSection({ onToast, onOpenReport, showKpis = false }: { on
         <span className="muted proc-small fin-updated" aria-live="polite">{rangeLabel(f)}{f.updatedAt ? ` · updated ${f.updatedAt.toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit", second: "2-digit" })}, refreshes every 30 s` : ""}</span>
       </div>
 
+      {!s && f.loading && <SourceProgress label="Loading finance figures…" />}
       {f.error && <Callout tone="danger">{f.error}{s ? " Showing the last figures loaded." : ""} <button type="button" className="proc-link" onClick={() => void refreshFinance()}>Try again</button></Callout>}
 
       {showKpis && (
@@ -122,8 +124,8 @@ export function FinanceSection({ onToast, onOpenReport, showKpis = false }: { on
       </div>
 
       <div className="fin-grid">
-        <OverdueList title="Overdue receivables" rows={d?.overdueReceivables} empty="No overdue client balances." link="/wholesale" linkLabel="Wholesale → Receivables" amountKey="overdue" />
-        <OverdueList title="Overdue payables" rows={d?.overduePayables} empty="No overdue supplier invoices." link="/supplier" linkLabel="Supplier → Payables" amountKey="balance" />
+        <OverdueList title="Overdue receivables" rows={d?.overdueReceivables} empty="No overdue client balances." link="/wholesale" linkLabel="Open Wholesale" amountKey="overdue" />
+        <OverdueList title="Overdue payables" rows={d?.overduePayables} empty="No overdue supplier invoices." link="/supplier" linkLabel="Open Supplier" amountKey="balance" />
       </div>
 
       <div className="fin-grid">

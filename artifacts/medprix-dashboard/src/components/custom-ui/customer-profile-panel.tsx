@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Minus, Plus, Trash2, X } from "lucide-react";
 import {
   DISCOUNT_ID_LABELS,
@@ -27,9 +27,11 @@ const formatDate = (value: string | null) =>
  * Phase 2b: a returning customer's profile, opened from the POS customer bar.
  * Shows and edits their details and usual order, and deletes the profile (past sales stay).
  */
-export function CustomerProfilePanel({ customer, products, onClose, onUpdated, onDeleted, onToast, fromRecords = false }: {
+export function CustomerProfilePanel({ customer, products, onClose, onUpdated, onDeleted, onToast, fromRecords = false, inline = false }: {
   customer: Customer | null;
-  /** Opened from the Customers page, where there is no cart. */
+  /** Rendered inside another dialog (the dashboard's Customers window): no backdrop or close button of its own. */
+  inline?: boolean;
+  /** Opened from the dashboard's Customers window, where there is no cart. */
   fromRecords?: boolean;
   products: ProductItem[];
   onClose: () => void;
@@ -45,7 +47,7 @@ export function CustomerProfilePanel({ customer, products, onClose, onUpdated, o
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState<"" | "details" | "usual" | "delete">("");
   const [error, setError] = useState("");
-  useDialogAccessibility(open, ".customer-profile-panel", () => { if (!busy) onClose(); }, !!busy);
+  useDialogAccessibility(open && !inline, ".customer-profile-panel", () => { if (!busy) onClose(); }, !!busy);
 
   useEffect(() => {
     if (!customer) return;
@@ -97,15 +99,14 @@ export function CustomerProfilePanel({ customer, products, onClose, onUpdated, o
     setUsual((list) => list.map((item) => item.productId === productId ? { ...item, quantity: Math.min(100000, Math.max(1, item.quantity + change)) } : item));
 
   return (
-    <div className="modal-backdrop customer-profile-backdrop" onClick={() => { if (!busy) onClose(); }} style={{ zIndex: 1100 }}>
-      <aside className="customer-profile-panel" onClick={(event) => event.stopPropagation()}>
+    <Frame inline={inline} busy={!!busy} onClose={onClose}>
         <div className="customer-profile-head">
           <span className="customer-avatar is-large" aria-hidden="true">{initialsOf(customer.name)}</span>
           <div className="customer-profile-title">
             <h2>{customer.name}</h2>
             <span><CustomerDiscountBadge discountType={customer.discountType} /> Customer since {formatDate(customer.createdAt ?? customer.consentAt)}</span>
           </div>
-          <button type="button" className="modal-close" aria-label="Close profile" disabled={!!busy} onClick={onClose}><X size={16} /></button>
+          {!inline && <button type="button" className="modal-close" aria-label="Close profile" disabled={!!busy} onClick={onClose}><X size={16} /></button>}
         </div>
 
         {error && <div className="inline-error" role="alert"><span>{error}</span></div>}
@@ -219,7 +220,16 @@ export function CustomerProfilePanel({ customer, products, onClose, onUpdated, o
             </div>
           )}
         </div>
-      </aside>
+    </Frame>
+  );
+}
+
+/** Slide-in panel over the POS, or plain content inside the dashboard's Customers window. */
+function Frame({ inline, busy, onClose, children }: { inline: boolean; busy: boolean; onClose: () => void; children: ReactNode }) {
+  if (inline) return <div className="customer-profile-panel is-inline">{children}</div>;
+  return (
+    <div className="modal-backdrop customer-profile-backdrop" onClick={() => { if (!busy) onClose(); }} style={{ zIndex: 1100 }}>
+      <aside className="customer-profile-panel" onClick={(event) => event.stopPropagation()}>{children}</aside>
     </div>
   );
 }

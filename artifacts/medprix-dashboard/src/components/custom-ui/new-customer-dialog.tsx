@@ -18,9 +18,11 @@ import { useDialogAccessibility } from "@/lib/use-dialog-accessibility";
 export type UsualLine = { productId: string; name: string; quantity: number; controlled: boolean };
 
 /** Saves a returning customer with their consent; the usual order starts from the current cart. */
-export function NewCustomerDialog({ open, initial, cartLines, onSaved, onClose, fromRecords = false }: {
+export function NewCustomerDialog({ open, initial, cartLines, onSaved, onClose, fromRecords = false, inline = false }: {
   open: boolean;
-  /** Opened from the Customers page (no cart): the wording points to the profile for the usual order. */
+  /** Rendered inside another dialog (the dashboard's Customers window): just the form. */
+  inline?: boolean;
+  /** Opened from the dashboard's Customers window (no cart): the wording points to the profile for the usual order. */
   fromRecords?: boolean;
   initial: { name: string; discountType: CustomerDiscount; idNumber: string };
   cartLines: UsualLine[];
@@ -36,7 +38,7 @@ export function NewCustomerDialog({ open, initial, cartLines, onSaved, onClose, 
   const [touched, setTouched] = useState({ name: false, mobile: false, id: false });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  useDialogAccessibility(open, ".new-customer-dialog", () => { if (!saving) onClose(); }, saving);
+  useDialogAccessibility(open && !inline, ".new-customer-dialog", () => { if (!saving) onClose(); }, saving);
 
   useEffect(() => {
     if (!open) return;
@@ -67,16 +69,7 @@ export function NewCustomerDialog({ open, initial, cartLines, onSaved, onClose, 
     } catch (failure) { setError(safeError(failure)); setSaving(false); }
   }
 
-  return (
-    <div className="modal-backdrop" onClick={() => { if (!saving) onClose(); }} style={{ zIndex: 1110 }}>
-      <div className="modal dialog new-customer-dialog" onClick={(event) => event.stopPropagation()} style={{ maxWidth: 520, width: "94%" }}>
-        <div className="modal-header">
-          <div>
-            <h2>{fromRecords ? "Add customer" : "Save returning customer"}</h2>
-            <p className="modal-sub">Next time, find them by name, mobile or ID.</p>
-          </div>
-          <button type="button" className="modal-close" aria-label="Close" disabled={saving} onClick={onClose}><X size={16} /></button>
-        </div>
+  const form = (
         <form className="new-customer-form" onSubmit={(event) => { event.preventDefault(); void save(); }}>
           <div className="customer-field">
             <label htmlFor="new-customer-name">Full name *</label>
@@ -139,6 +132,19 @@ export function NewCustomerDialog({ open, initial, cartLines, onSaved, onClose, 
             <button type="submit" className="button primary-action" disabled={!canSave}>{saving ? "Saving…" : "Save customer"}</button>
           </div>
         </form>
+  );
+  if (inline) return form;
+  return (
+    <div className="modal-backdrop" onClick={() => { if (!saving) onClose(); }} style={{ zIndex: 1110 }}>
+      <div className="modal dialog new-customer-dialog" onClick={(event) => event.stopPropagation()} style={{ maxWidth: 520, width: "94%" }}>
+        <div className="modal-header">
+          <div>
+            <h2>{fromRecords ? "Add customer" : "Save returning customer"}</h2>
+            <p className="modal-sub">Next time, find them by name, mobile or ID.</p>
+          </div>
+          <button type="button" className="modal-close" aria-label="Close" disabled={saving} onClick={onClose}><X size={16} /></button>
+        </div>
+        {form}
       </div>
     </div>
   );

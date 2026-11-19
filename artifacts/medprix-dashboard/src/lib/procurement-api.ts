@@ -142,3 +142,28 @@ export const peso = (value: string | number | null | undefined) => {
   return new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number.isFinite(n) ? n : 0);
 };
 export const newKey = () => crypto.randomUUID();
+
+
+/**
+ * Purchase-order list kept between page visits (like Inventory and Wholesale), so opening Procurement shows the last
+ * list straight away while a fresh copy loads quietly. Filled at sign-in and on every load.
+ */
+export type ProcurementListCache = { orders: OrderSummary[]; today: string; suppliers: { id: string; name: string; paymentTerms: SupplierTerms }[] };
+let procurementCache: ProcurementListCache | null = null;
+let procurementInFlight: Promise<ProcurementListCache> | null = null;
+export const getProcurementCache = () => procurementCache;
+export function loadProcurementList(): Promise<ProcurementListCache> {
+  if (procurementInFlight) return procurementInFlight;
+  procurementInFlight = Promise.all([
+    procurementApi.listOrders(),
+    fetch("/api/suppliers", { credentials: "include", cache: "no-store" }).then(r => r.ok ? r.json() : Promise.reject(new Error("suppliers"))),
+  ]).then(([list, supplierData]) => {
+    procurementCache = {
+      orders: list.orders, today: list.today,
+      suppliers: (supplierData.suppliers ?? []).map((s: { id: string; name: string; paymentTerms: SupplierTerms }) => ({ id: s.id, name: s.name, paymentTerms: s.paymentTerms })),
+    };
+    return procurementCache;
+  }).finally(() => { procurementInFlight = null; });
+  return procurementInFlight;
+}
+export const clearProcurementCache = () => { procurementCache = null; };

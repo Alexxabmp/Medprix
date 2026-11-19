@@ -77,3 +77,10 @@ export function useFinance(): FinanceState {
 
 /** The figures currently on screen (for PDF export outside React). */
 export const getFinanceState = () => state;
+
+/** Forget the figures on sign-out, so the next person on this computer starts clean. */
+export function resetFinance() {
+  latest++; inFlight = false;
+  state = { ...state, summary: null, details: null, expenses: [], error: "", loading: false, updatedAt: null };
+  listeners.forEach(l => l());
+}

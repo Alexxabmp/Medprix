@@ -56,3 +56,17 @@
   .fin-updated { margin-left: 0; width: 100%; }
   .fin-card .data-table.fin-statement td { padding: 7px 6px !important; }
 }
+
+/* ─── Customers card on the dashboard + its single window ─────────────────────────────────────── */
+.customers-card { display: flex; align-items: center; gap: 14px; padding: 16px 20px; flex-wrap: wrap; }
+.customers-card-text { flex: 1; min-width: 220px; }
+.customers-card-text .card-title { margin: 0; }
+.customers-card-text p { margin: 2px 0 0; font-size: var(--text-sm); }
+.customers-dialog .table-tools { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+.customers-dialog .table-tools .search-wrap { flex: 1 1 260px; min-width: 0; }
+.customers-dialog .table-tools > :not(.search-wrap) { flex: 0 0 200px; width: 200px; }
+@media (max-width: 560px) { .customers-dialog .table-tools > :not(.search-wrap) { flex: 1 1 100%; width: 100%; } }
+.customers-dialog .data-table.customers-table { min-width: 560px; }
+.customers-dialog .customers-row { cursor: pointer; }
+.customer-profile-panel.is-inline { width: 100%; height: auto; padding: 0; box-shadow: none; overflow: visible; background: transparent; }
+@media (max-width: 560px) { .customers-card .button { width: 100%; } }
