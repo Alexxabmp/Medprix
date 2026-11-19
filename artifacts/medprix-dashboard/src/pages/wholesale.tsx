@@ -260,17 +260,40 @@ export default function WholesalePage({
     busy || pending !== null || openingAccount || Boolean(summaryRead.state?.pending);
   const navigating = busy || openingAccount || Boolean(summaryRead.state?.pending);
   const query = search.toLocaleLowerCase();
-  const visibleOrders = useMemo(() => tab === "orders" ? orders.filter((order) => {
-    const displayStatus = order.status === "Pending" ? "Draft" : order.status;
-    const matchesStatus =
-      orderStatus === "All statuses" ||
-      order.status === orderStatus ||
-      displayStatus === orderStatus;
-    const matchesQuery = (order.orderNumber + " " + order.clientName)
-      .toLocaleLowerCase()
-      .includes(query);
-    return matchesStatus && matchesQuery;
-  }) : [], [tab, orders, orderStatus, query]);
+  const orderPriority: Record<string, number> = {
+    Pending: 0,
+    Draft: 0,
+    Processing: 1,
+    Confirmed: 2,
+    Delivered: 3,
+    Cancelled: 4,
+  };
+  const visibleOrders = useMemo(
+    () =>
+      tab === "orders"
+        ? orders
+            .filter((order) => {
+              const displayStatus =
+                order.status === "Pending" ? "Draft" : order.status;
+              const matchesStatus =
+                orderStatus === "All statuses" ||
+                order.status === orderStatus ||
+                displayStatus === orderStatus;
+              const matchesQuery = (order.orderNumber + " " + order.clientName)
+                .toLocaleLowerCase()
+                .includes(query);
+              return matchesStatus && matchesQuery;
+            })
+            .sort(
+              (a, b) =>
+                (orderPriority[a.status] ?? 5) -
+                  (orderPriority[b.status] ?? 5) ||
+                b.updatedAt.localeCompare(a.updatedAt) ||
+                b.id.localeCompare(a.id),
+            )
+        : [],
+    [tab, orders, orderStatus, query],
+  );
   const visibleClients = useMemo(() => tab === "clients" ? clients.filter((client) =>
     (client.name + " " + (client.address ?? ""))
       .toLocaleLowerCase()

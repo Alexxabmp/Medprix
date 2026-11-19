@@ -335,7 +335,8 @@ export function createWholesaleDrafts(read: Query, transaction: Transaction) {
           'unitPrice',i.unit_price::text,'name',p.product_name) ORDER BY i.id)
           FROM wholesale_order_items i JOIN products p ON p.id=i.product_id WHERE i.order_id=o.id),'[]'::jsonb) AS lines
         FROM wholesale_orders o JOIN wholesale_clients c ON c.id=o.client_id
-        WHERE o.draft_revision IS NOT NULL AND ($1::uuid IS NULL OR o.id=$1) ORDER BY o.updated_at DESC,o.id DESC LIMIT 200`,
+        WHERE o.draft_revision IS NOT NULL AND ($1::uuid IS NULL OR o.id=$1) ORDER BY CASE o.status WHEN 'Pending' THEN 0 WHEN 'Processing' THEN 1 WHEN 'Confirmed' THEN 2 WHEN 'Delivered' THEN 3 WHEN 'Cancelled' THEN 4 ELSE 5 END,
+          o.updated_at DESC,o.id DESC LIMIT 200`,
           [id],
         )
       ).rows;
