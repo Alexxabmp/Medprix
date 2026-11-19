@@ -27,6 +27,7 @@
   outline-offset: 2px;
 }
 .receiving-batch-menu {
+  color-scheme: light;
   z-index: 1100;
   width: var(--radix-popover-trigger-width);
   max-width: calc(100vw - 36px);
@@ -37,7 +38,13 @@
   color: inherit;
 }
 .receiving-batch-menu [cmdk-list] {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted)) hsl(var(--surface-soft));
   max-height: min(190px, 30dvh);
+}
+
+.dark .receiving-batch-menu {
+  color-scheme: dark;
 }
 .receiving-batch-menu [cmdk-item] {
   cursor: pointer;
@@ -208,9 +215,16 @@
   box-shadow: 0 8px 28px rgb(0 0 0 / 0.3);
 }
 .app-select-menu {
+  color-scheme: light;
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted)) hsl(var(--surface-soft));
   min-width: min(var(--radix-select-trigger-width), calc(100vw - 24px));
   max-width: calc(100vw - 24px);
   max-height: min(264px, var(--radix-select-content-available-height));
+}
+
+.dark .app-select-menu {
+  color-scheme: dark;
 }
 .app-select-menu [data-radix-select-viewport] {
   min-width: 0 !important;

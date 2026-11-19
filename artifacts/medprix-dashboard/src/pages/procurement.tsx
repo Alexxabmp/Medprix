@@ -1,3 +1,4 @@
+import { DateField } from "@/components/custom-ui/date-field";
 import { SourceProgress } from "@/components/custom-ui/source-state";
 import { SelectField } from "@/components/custom-ui/select-field";
 import { PageTableValue, PageTableRow, PageTableAction, usePageTableStandard } from "@/components/page-table-context";
@@ -2888,9 +2889,8 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 </div>
                 <div className="field">
                   <label>Delivery date *</label>
-                  <input
+                  <DateField
                     required
-                    type="date"
                     value={deliveryForm.deliveryDate}
                     onChange={(event) =>
                       setDeliveryForm({
@@ -2936,9 +2936,8 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
                 </div>
                 <div className="field">
                   <label>Expiration date *</label>
-                  <input
+                  <DateField
                     required
-                    type="date"
                     value={existingDeliveryBatch?.expiryDate ?? deliveryForm.expirationDate}
                     readOnly={Boolean(existingDeliveryBatch)}
                     onChange={(event) =>

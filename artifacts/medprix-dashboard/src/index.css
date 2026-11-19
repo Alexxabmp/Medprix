@@ -438,6 +438,8 @@ a {
 }
 
 .icon-button:hover,
+/* A moving anchor changes the popover's constrained height during positioning
+   and can feed back into ResizeObserver inside a modal. */
 .date-control:hover {
   transform: translateY(-1px);
   border-color: hsl(var(--foreground) / 0.28);
@@ -1754,15 +1756,6 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
     display: none;
   }
 
-  .date-control span {
-    display: none;
-  }
-
-  .date-control {
-    width: 38px;
-    padding: 0;
-  }
-
   .kpi-grid,
   .reports-grid,
   .summary-strip {
@@ -2070,35 +2063,383 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
 .date-control {
   position: relative;
   cursor: pointer;
+  flex-shrink: 0;
+  min-height: 44px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
-.date-control input {
-  position: absolute;
-  inset: 0;
+.date-control svg {
+  flex-shrink: 0;
+  color: hsl(var(--muted));
+}
+
+.date-control:hover {
+  transform: none;
+}
+
+[data-date-value][hidden] {
+  display: none !important;
+}
+
+.date-field {
+  min-width: 0;
+}
+
+.date-control.date-field-trigger {
   width: 100%;
-  height: 100%;
-  opacity: 0;
-  cursor: pointer;
-}
-
-.shift-date-control input::-webkit-calendar-picker-indicator {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  padding: 0;
-  cursor: pointer;
-}
-
-.shift-date-control input:focus,
-.shift-date-control input:focus-visible {
-  outline: none;
-  box-shadow: none;
-}
-
-.shift-date-control:focus-within {
+  justify-content: flex-start;
+  min-height: 39px;
+  height: 39px;
+  border-radius: 11px;
   background: hsl(var(--surface-soft));
+}
+
+.date-field-trigger:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.date-field-trigger[aria-invalid="true"] {
+  border-color: hsl(var(--danger));
+}
+
+@media (max-width: 760px) {
+  .date-control.date-field-trigger {
+    min-height: 44px;
+    height: 44px;
+  }
+}
+
+.page-heading.date-page-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+}
+
+.date-page-heading > :first-child {
+  flex: 1 1 20rem;
+  min-width: 0;
+}
+
+.date-page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (max-width: 760px) {
+  .page-heading.date-page-heading {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .date-page-heading > :first-child {
+    flex: auto;
+  }
+
+  .date-page-heading > .date-control {
+    align-self: flex-start;
+  }
+
+  .date-page-actions {
+    justify-content: space-between;
+  }
+}
+
+.date-control:focus-visible {
+  outline: 2px solid hsl(var(--foreground));
+  outline-offset: 3px;
+}
+
+.date-picker-popover {
+  color-scheme: light;
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted)) hsl(var(--surface-soft));
+  width: max-content;
+  max-width: calc(100vw - 24px);
+  max-height: min(var(--radix-popover-content-available-height), calc(100dvh - 24px));
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 0;
+  border: 1px solid hsl(var(--border));
+  border-radius: 13px;
+  background: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+  box-shadow: var(--shadow-lift);
+}
+
+.date-picker-popover [data-slot="calendar"] {
+  background: transparent;
+  --cell-size: clamp(2rem, calc((100vw - 62px) / 7), 2.75rem);
+}
+
+.dark .date-picker-popover {
+  color-scheme: dark;
+}
+
+.date-picker-popover.date-time-picker {
+  display: flex;
+  flex-direction: column;
+  width: min(360px, calc(100vw - 24px));
+  max-height: min(var(--radix-popover-content-available-height, 100dvh), calc(100dvh - 24px));
+  overflow: hidden;
+}
+
+.date-time-picker-body {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted)) hsl(var(--surface-soft));
+}
+
+.date-time-picker [data-slot="calendar"] {
+  --cell-size: clamp(1.9rem, calc((100vw - 76px) / 7), 2.75rem);
+}
+
+.date-time-picker > .date-picker-dialog-header,
+.date-time-actions {
+  flex-shrink: 0;
+}
+
+.date-time-entry {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px;
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.date-time-part {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.date-time-part input,
+.date-time-part .app-select-trigger {
+  width: 100%;
+  min-width: 0;
+  height: 44px;
+  padding: 0 10px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--surface-soft));
+  color: hsl(var(--foreground));
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.date-time-part input:focus-visible {
+  outline: 2px solid hsl(var(--foreground));
+  outline-offset: 2px;
+}
+
+.date-time-error {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0 12px 12px;
+  color: hsl(var(--danger));
+  font-size: 12px;
+}
+
+.date-time-actions {
+  gap: 8px;
+}
+
+.date-time-actions .date-time-apply {
+  margin-left: auto;
+  background: hsl(var(--foreground));
+  color: hsl(var(--background));
+}
+
+.date-time-actions .date-time-apply:hover {
+  background: hsl(var(--foreground) / 0.85);
+}
+
+.date-time-trigger span {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.calendar-caption-control {
+  min-width: 0;
+}
+
+.date-picker-popover .calendar-caption-select {
+  width: auto;
+  min-width: 0;
+  height: 36px;
+  padding: 0 8px;
+  border-radius: 8px;
+}
+
+.date-picker-entry {
+  padding: 12px;
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.date-picker-entry label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.date-picker-entry-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.date-picker-entry input {
+  min-width: 0;
+  width: 0;
+  flex: 1;
+  height: 44px;
+  padding: 0 10px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--surface-soft));
+  color: hsl(var(--foreground));
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.date-picker-entry input:focus-visible {
+  outline: 2px solid hsl(var(--foreground));
+  outline-offset: 2px;
+}
+
+.date-picker-entry-row button {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.date-picker-entry p {
+  max-width: 250px;
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: hsl(var(--muted));
+}
+
+.date-picker-entry input[aria-invalid="true"] {
+  border-color: hsl(var(--danger));
+}
+
+.date-picker-entry .date-picker-entry-error {
+  color: hsl(var(--danger));
+}
+
+.date-picker-popover button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.date-picker-popover button:hover {
+  background: hsl(var(--foreground) / 0.07);
+}
+
+.date-picker-popover button {
+  color: inherit;
+}
+
+.date-picker-popover button:focus-visible {
+  outline: 2px solid hsl(var(--foreground));
+  outline-offset: -2px;
+}
+
+.date-picker-popover .rdp-today {
+  background: hsl(var(--surface-soft));
+  color: hsl(var(--foreground));
+  box-shadow: inset 0 0 0 1px hsl(var(--foreground) / 0.35);
+  border-radius: 8px;
+}
+
+.date-picker-popover button[data-selected-single="true"] {
+  background: hsl(var(--foreground));
+  color: hsl(var(--background));
+}
+
+.date-picker-popover button[data-selected-single="true"]:focus-visible {
+  outline-color: hsl(var(--background));
+  outline-offset: -3px;
+}
+
+.date-picker-popover .rdp-outside,
+.date-picker-popover .rdp-weekday {
+  color: hsl(var(--muted));
+}
+
+.date-picker-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 12px;
+  border-top: 1px solid hsl(var(--border));
+  color: hsl(var(--muted));
+  font-size: 12px;
+}
+
+.date-picker-footer button {
+  min-height: 44px;
+  padding: 0 10px;
+  border-radius: 8px;
+  color: hsl(var(--foreground));
+  font-weight: 600;
+}
+
+.date-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+    max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  background: hsl(0 0% 0% / 0.4);
+}
+
+.date-picker-dialog {
+  position: relative;
+  max-height: 100%;
+  flex-shrink: 1;
+}
+
+.date-picker-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.date-picker-dialog-header h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.date-picker-dialog-header button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
 }
 
 .dashboard-lower {
@@ -4513,6 +4854,31 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
 }
 
 /* Find customer dialog */
+.modal.find-customer-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(480px, 100%);
+  overflow: hidden;
+  color-scheme: light;
+}
+
+.dark .find-customer-dialog {
+  color-scheme: dark;
+}
+
+.find-customer-dialog > :not(.find-customer-results) {
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.find-customer-dialog .modal-header {
+  margin-bottom: 0;
+}
+
+.find-customer-dialog .modal-header > div {
+  min-width: 0;
+}
+
 .find-customer-search {
   display: flex;
   align-items: center;
@@ -4530,6 +4896,7 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
 .modal .find-customer-search input,
 .modal .find-customer-search input:focus {
   flex: 1;
+  min-width: 0;
   height: 100% !important;
   padding: 0 !important;
   border: 0 !important;
@@ -4549,17 +4916,27 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
 }
 
 .find-customer-results {
-  display: grid;
-  gap: 2px;
+  flex: 0 1 auto;
+  min-height: 0;
+  min-width: 0;
   max-height: 340px;
   margin: 0;
   padding: 0;
   overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted)) hsl(var(--surface-soft));
   list-style: none;
 }
 
+.find-customer-results > li + li {
+  margin-top: 2px;
+}
+
 .find-customer-result {
-  display: flex;
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   width: 100%;
@@ -4573,9 +4950,10 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
   cursor: pointer;
 }
 
-.find-customer-result.is-active {
+.find-customer-result:is(.is-active, :hover, :focus-visible) {
   background: hsl(var(--surface-soft));
   outline: 2px solid hsl(var(--border));
+  outline-offset: -2px;
 }
 
 .find-customer-text {
@@ -4592,11 +4970,13 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
   flex-wrap: wrap;
   font-size: 15px;
   font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
 .find-customer-detail {
   color: hsl(var(--muted));
   font-size: 13px;
+  overflow-wrap: anywhere;
 }
 
 .find-customer-usual {
@@ -4627,6 +5007,27 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
+}
+
+@media (max-width: 480px), (max-height: 480px) {
+  .modal.find-customer-dialog {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .find-customer-result {
+    grid-template-columns: 40px minmax(0, 1fr);
+    gap: 4px 10px;
+  }
+
+  .find-customer-result .customer-avatar {
+    grid-row: span 2;
+  }
+
+  .find-customer-usual {
+    grid-column: 2;
+  }
 }
 
 /* New customer dialog */

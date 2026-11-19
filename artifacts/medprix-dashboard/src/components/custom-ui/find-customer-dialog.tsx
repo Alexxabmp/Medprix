@@ -27,6 +27,7 @@ export function FindCustomerDialog({ open, customers, loading, error, onRetry, o
   const [search, setSearch] = useState("");
   const [active, setActive] = useState(0);
   const input = useRef<HTMLInputElement>(null);
+  const list = useRef<HTMLUListElement>(null);
   useDialogAccessibility(open, ".find-customer-dialog", onClose);
   useEffect(() => { if (open) { setSearch(""); setActive(0); requestAnimationFrame(() => input.current?.focus()); } }, [open]);
   const results = useMemo(() => customers.filter((customer) => matchesCustomer(customer, search)).slice(0, 8), [customers, search]);
@@ -35,7 +36,7 @@ export function FindCustomerDialog({ open, customers, loading, error, onRetry, o
 
   return (
     <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 1100 }}>
-      <div className="modal dialog find-customer-dialog" onClick={(event) => event.stopPropagation()} style={{ maxWidth: 480, width: "92%" }}>
+      <div className="modal dialog find-customer-dialog" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <div>
             <h2>Find customer</h2>
@@ -57,8 +58,12 @@ export function FindCustomerDialog({ open, customers, loading, error, onRetry, o
             aria-activedescendant={results[active] ? `find-customer-${results[active].id}` : undefined}
             onChange={(event) => setSearch(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === "ArrowDown") { event.preventDefault(); setActive((index) => Math.min(index + 1, results.length - 1)); }
-              else if (event.key === "ArrowUp") { event.preventDefault(); setActive((index) => Math.max(index - 1, 0)); }
+              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                event.preventDefault();
+                const next = Math.max(0, Math.min(active + (event.key === "ArrowDown" ? 1 : -1), results.length - 1));
+                setActive(next);
+                if (results[next]) list.current?.children[next]?.scrollIntoView({ block: "nearest" });
+              }
               else if (event.key === "Enter" && results[active]) { event.preventDefault(); onSelect(results[active]); }
             }}
           />
@@ -69,10 +74,10 @@ export function FindCustomerDialog({ open, customers, loading, error, onRetry, o
         {error ? (
           <div className="inline-error" role="alert"><span>{error}</span><button type="button" className="pos-stock-retry" onClick={onRetry}>Retry</button></div>
         ) : (
-          <ul id="find-customer-results" role="listbox" aria-label="Customers" className="find-customer-results">
+          <ul ref={list} id="find-customer-results" role="listbox" aria-label="Customers" className="find-customer-results">
             {results.map((customer, index) => (
               <li key={customer.id} id={`find-customer-${customer.id}`} role="option" aria-selected={index === active}>
-                <button type="button" className={`find-customer-result${index === active ? " is-active" : ""}`} onMouseEnter={() => setActive(index)} onClick={() => onSelect(customer)}>
+                <button type="button" className={`find-customer-result${index === active ? " is-active" : ""}`} onMouseMove={() => setActive(index)} onClick={() => onSelect(customer)}>
                   <span className="customer-avatar" aria-hidden="true">{initialsOf(customer.name)}</span>
                   <span className="find-customer-text">
                     <span className="find-customer-name">{customer.name} <CustomerDiscountBadge discountType={customer.discountType} /></span>
