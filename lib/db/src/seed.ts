@@ -1,16 +1,19 @@
 import { SEED_CATEGORIES, seedSellingPrice } from "./seed-categories";
 import { randomUUID } from "node:crypto";
-import bcrypt from "bcryptjs";
+import { pathToFileURL } from "node:url";
+import bcrypt from "bcrypt";
 import postgres from "postgres";
 import { databaseUrl, loadDatabaseEnvironment } from "./database-environment";
 
-loadDatabaseEnvironment();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  loadDatabaseEnvironment();
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Config
 // ─────────────────────────────────────────────────────────────────────────────
 const argv = new Set(process.argv.slice(2));
-const SEED_PASSWORD = process.env.SEED_PASSWORD ?? "Password123!";
+export const SEED_PASSWORD = process.env.SEED_PASSWORD ?? "Password123!";
 const RNG_SEED = Number(process.env.SEED_RNG ?? 20260920);
 
 const HISTORY_DAYS = 60; // days of simulated retail history
@@ -20,7 +23,7 @@ const VAT_RATE = 0.12;
 const SENIOR_PWD_DISCOUNT = 0.2;
 
 // Insert order follows active FK dependencies. Seeding never resets existing data.
-const TABLE_ORDER = [
+export const TABLE_ORDER = [
   "users",
   "system_logs", "user_activities", "backup_records",
   "product_categories", "products", "batch_info", "stock_movements", "inventory_alerts",
@@ -34,7 +37,7 @@ const TABLE_ORDER = [
 ] as const;
 type TableName = (typeof TABLE_ORDER)[number];
 type Row = Record<string, unknown>;
-const T = Object.fromEntries(TABLE_ORDER.map((t) => [t, [] as Row[]])) as Record<TableName, Row[]>;
+export const T = Object.fromEntries(TABLE_ORDER.map((t) => [t, [] as Row[]])) as Record<TableName, Row[]>;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Small helpers: seeded RNG, dates, money
@@ -227,7 +230,7 @@ interface Product {
   batches: Batch[];
 }
 
-function buildData(passwordHash: string) {
+export function buildData(passwordHash: string) {
   const day0 = at(-120, 9);
 
   // ── Users with fixed enum roles ────────────────────────────────────────────
@@ -868,7 +871,9 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error("Seed failed:", err);
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((err) => {
+    console.error("Seed failed:", err);
+    process.exit(1);
+  });
+}

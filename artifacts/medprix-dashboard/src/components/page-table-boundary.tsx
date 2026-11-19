@@ -62,14 +62,19 @@ function sizePageColumns(table: HTMLTableElement, available: number) {
     return Math.ceil(Math.max(heading, content) + padding + 8);
   });
   const minimum = minimums.reduce((sum, value) => sum + value, 0);
+  if (!available || available <= 0 || !headers.length) return;
   // Spare room belongs to identifying text, not actions, dates or amounts.
   const weights = headers.map(header => Number(header.dataset.pageWeight ?? 0));
   const totalWeight = weights.reduce((sum, value) => sum + value, 0);
   const width = Math.max(minimum, available);
+  if (!width || width <= 0 || !Number.isFinite(width)) return;
   table.style.setProperty("--page-table-min", minimum + "px");
   headers.forEach((header, index) => {
     const allocation = minimums[index] + (width - minimum) * (totalWeight ? weights[index] / totalWeight : 1 / headers.length);
-    header.style.setProperty("--page-column-width", allocation / width * 100 + "%");
+    const pct = width > 0 ? (allocation / width * 100) : (100 / headers.length);
+    if (Number.isFinite(pct) && pct > 0) {
+      header.style.setProperty("--page-column-width", pct.toFixed(2) + "%");
+    }
   });
 }
 

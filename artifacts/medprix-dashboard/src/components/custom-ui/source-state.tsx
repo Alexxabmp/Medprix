@@ -11,16 +11,10 @@ export function SourceProgress({ label }: { label: string }) {
   </span>;
 }
 
-export function SourceRefreshButton({ status, label, onRefresh, retryOnError = true }: {
-  status: SourceState; label: string; onRefresh: () => void; retryOnError?: boolean;
+export function SourceRefreshButton(_props: {
+  status?: SourceState; label?: string; onRefresh?: () => void; retryOnError?: boolean;
 }) {
-  return <button type="button" className="button soft" disabled={status.pending}
-    aria-busy={status.pending} onClick={onRefresh}
-    aria-label={status.pending ? `Refreshing ${label}` : status.error && retryOnError ? `Retry ${label}` : `Refresh ${label}`}>
-    <RefreshCw size={14} className="spin action-spinner"
-      style={{ animationPlayState: status.pending ? "running" : "paused" }} aria-hidden="true" />
-    {status.error && retryOnError ? "Retry" : "Refresh"}
-  </button>;
+  return null;
 }
 
 export function SourceFeedback({ status, label, onRetry }: {

@@ -1,3 +1,12 @@
+import dns from "node:dns";
+import net from "node:net";
+if (typeof dns.setDefaultResultOrder === "function") {
+  dns.setDefaultResultOrder("ipv4first");
+}
+if (typeof net.setDefaultAutoSelectFamily === "function") {
+  net.setDefaultAutoSelectFamily(false);
+}
+
 import app from "./app";
 import { logger } from "./lib/logger";
 

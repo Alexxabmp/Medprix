@@ -28,7 +28,6 @@ import {
   Minus,
   Plus,
   Receipt,
-  RefreshCw,
   Search,
   ShieldCheck,
   ShoppingCart,
@@ -96,7 +95,12 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
     } catch (failure) { setProductLoadError(safeError(failure)); return null; }
     finally { setStockChecking(false); }
   }
-  useEffect(() => { void refreshStock(); const refresh = () => { void refreshStock(); }; window.addEventListener("focus", refresh); return () => { clearTimeout(stockDayTimer.current); window.removeEventListener("focus", refresh); }; }, []);
+  useEffect(() => {
+    void refreshStock();
+    return () => {
+      clearTimeout(stockDayTimer.current);
+    };
+  }, []);
   const [productSearch, setProductSearch] = useState("");
   const [qty, setQty] = useState(1);
   const quantityInput = useRef<HTMLInputElement>(null);
@@ -680,10 +684,6 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
           <div>
             <div className="pos-product-label">
               <label htmlFor="pos-product-select">Select Product / Medicine *</label>
-              <AppTooltip content={"Refresh stock"}><button type="button" className="icon-button pos-stock-refresh" aria-label="Refresh stock"
-                disabled={stockChecking || isSubmitting} onClick={() => void refreshStock(true)}>
-                <RefreshCw size={14} className={stockChecking ? "spin" : undefined} />
-              </button></AppTooltip>
             </div>
             <SelectField searchable pickerLabel="Product / medicine" searchValue={productSearch} onSearchChange={setProductSearch} shouldFilter={false}
               searchPlaceholder="Search name, generic, SKU or category"
@@ -789,7 +789,6 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
 
         {productLoadError && <div id="pos-stock-error" className="pos-stock-error" role="alert">
           <AlertTriangle size={14} aria-hidden="true" /><span>Stock unavailable.</span>
-          <button type="button" className="pos-stock-retry" disabled={stockChecking || isSubmitting} onClick={() => void refreshStock()}>Retry stock</button>
         </div>}
 
         {checkoutError && !pendingCheckout && <div className="inline-error" role="alert"><AlertTriangle size={16} /><span>{checkoutError}</span></div>}

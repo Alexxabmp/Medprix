@@ -48,26 +48,9 @@ export function WholesaleDeliveries({
     search,
     status,
   );
-  useEffect(() => {
-    const refresh = () => {
-      if (document.visibilityState === "visible") void list.refresh();
-    };
-    const timer = window.setInterval(refresh, 60_000);
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [list.refresh]);
   return (
     <>
-      {refreshTarget && createPortal(
-        <SourceRefreshButton
-          status={{ hasData: list.hasData, pending: list.pending, error: list.error }}
-          label="deliveries"
-          onRefresh={list.refresh}
-        />,
-        refreshTarget,
-      )}
-      <SourceFeedback status={{ hasData: list.hasData, pending: list.pending, error: list.error }} label="deliveries" onRetry={list.refresh} />
+      <SourceFeedback status={{ hasData: list.hasData, pending: list.pending, error: list.error }} label="deliveries" />
       <div className="table-scroll">
         <PageTableScroll>
           <table className="data-table" data-page-table="wholesale-deliveries">

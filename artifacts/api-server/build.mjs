@@ -29,6 +29,8 @@ async function buildAll() {
     // - use path traversal to read files (e.g. @google-cloud/secret-manager loads sibling .proto files)
     external: [
       "*.node",
+      "bcrypt",
+      "bcryptjs",
       "@electric-sql/pglite",
       "drizzle-orm/pglite",
       "sharp",

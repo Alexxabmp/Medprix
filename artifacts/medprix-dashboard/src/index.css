@@ -772,9 +772,20 @@ a {
   color: #1b7a40;
 }
 
-.pill.warning {
-  background: hsl(var(--yellow));
-  color: #8b4500;
+.pill.warning,
+.pill.orange {
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+.pill.yellow {
+  background: #fef08a;
+  color: #854d0e;
+}
+
+.pill.blue {
+  background: #dbeafe;
+  color: #1d4ed8;
 }
 
 .pill.danger {
@@ -2882,7 +2893,7 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 1110;
-  width: min(500px, calc(100vw - 24px));
+  width: min(640px, calc(100vw - 24px));
   max-height: calc(100dvh - 24px);
   min-width: 0;
   overflow-y: auto;
@@ -2904,26 +2915,16 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
   padding: 0;
   min-width: 0;
 }
-.settlement-dialog :is(label, [id$="description"]) {
-  color: hsl(var(--foreground));
-}
-.settlement-dialog .field label {
-  color: hsl(var(--foreground));
-}
 .settlement-dialog textarea {
   width: 100%;
   background: hsl(var(--surface-soft));
   color: hsl(var(--foreground));
-  border: 1px solid hsl(var(--foreground) / 0.5);
+  border: 1px solid hsl(var(--border));
   border-radius: 11px;
-  padding: 10px;
+  padding: 10px 12px;
 }
 .settlement-dialog input {
-  border-color: hsl(var(--foreground) / 0.5);
-}
-.settlement-dialog :is(input, textarea)::placeholder {
-  color: hsl(var(--foreground));
-  opacity: 0.8;
+  border-color: hsl(var(--border));
 }
 .settlement-dialog :disabled {
   opacity: 1;
@@ -4412,6 +4413,26 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
   justify-content: center;
   gap: 5px;
   margin: 0 !important;
+}
+
+/* Wide modal variant: no horizontal scrolling, tables fit the box */
+.modal.modal-wide,
+.modal.dialog.modal-wide,
+.modal.settlement-dialog.modal-wide {
+  width: min(920px, calc(100vw - 32px)) !important;
+  max-width: calc(100vw - 32px);
+  overflow-x: hidden;
+  overflow-wrap: anywhere;
+}
+
+.modal.modal-wide .data-table,
+.modal.modal-wide table {
+  width: 100%;
+  min-width: 0 !important;
+}
+
+.modal.modal-wide .table-scroll {
+  overflow-x: visible;
 }
 
 /* Uniform Opened Modal Boxes (matching Alaxan FR Capsule modal in Inventory) */

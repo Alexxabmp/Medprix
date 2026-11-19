@@ -156,15 +156,6 @@ export default function WholesalePage({
   }, []);
 
   async function refreshOverview() { await load(true, "overview"); }
-  useEffect(() => {
-    const refresh = () => {
-      if (document.visibilityState === "visible") void load(true);
-    };
-    const timer = window.setInterval(refresh, 60000);
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, []);
   function openSummary(kind: WholesaleSummaryKind) {
     const title = { pending: "Pending orders", deliveries: "Active delivery attempts", outstanding: "Outstanding accounts", overdue: "Overdue accounts" }[kind];
     summaryRead.open(title, async () => ({ kind, data: await wholesaleGet<WholesalePageResult<WholesaleSummaryRow>>(wholesaleSummaryPath(kind)) }));
@@ -615,8 +606,6 @@ export default function WholesalePage({
             />
           </div>
           <div className="table-tools-right">
-            {(tab === "deliveries" || tab === "accounts") && <div ref={setRefreshTarget} />}
-            {activeResource && <SourceRefreshButton status={sources[activeResource]} label="wholesale records" onRefresh={() => retryResource(activeResource)} />}
             {tab === "deliveries" && (
               <SelectField
                 className="select"

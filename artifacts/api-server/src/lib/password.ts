@@ -1,4 +1,4 @@
-import bcrypt from "bcryptjs";
+import bcrypt from "bcrypt";
 
 const MIN_PASSWORD_LENGTH = 8;
 const MAX_BCRYPT_PASSWORD_BYTES = 72;

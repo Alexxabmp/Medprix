@@ -19,6 +19,7 @@ export type AccountsPayableRecord = {
   supplierId: string;
   invoiceId: string;
   supplier: string;
+  paymentTerms?: string | null;
   invoiceNumber: string;
   dueDate: string | null;
   totalOwed: string | null;

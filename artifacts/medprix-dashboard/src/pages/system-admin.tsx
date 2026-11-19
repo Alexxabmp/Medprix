@@ -252,7 +252,6 @@ export default function SystemAdminPage({ onToast }: { onToast: ToastFn }) {
   return (
     <div>
       <PageHeading
-        action={<SourceRefreshButton status={auditState} label="audit records" onRefresh={() => void loadBackendData(true)} />}
         title="System Administration"
         description="Monitor user sales transactions, audit system logs, and track user activities."
       />
