@@ -28,6 +28,19 @@ export type WholesaleClient = {
   email?: string | null;
 };
 
+export type WholesaleContract = {
+  id: string;
+  title: string;
+  clientId: string;
+  clientName: string;
+  revision: number;
+  effectiveDate: string;
+  expiryDate: string;
+  paymentPlan: WholesalePaymentPlan;
+  status: string;
+  items: Array<{ productId: string; unitPrice: string; name: string }>;
+};
+
 export type WholesaleLine = {
   productId: string;
   quantity: number;
@@ -40,6 +53,9 @@ export type WholesaleOrder = {
   status: string;
   clientId: string;
   paymentPlan: WholesalePaymentPlan | null;
+  contractId?: string | null;
+  contractTitle?: string | null;
+  contractRevision?: number | null;
   clientName: string;
   total: string;
   updatedAt: string;
@@ -190,6 +206,7 @@ export type WholesaleOverride = {
   approvedByName: string | null;
 };
 export type WholesaleOrderDetail = {
+  contractPaymentPlan?: WholesalePaymentPlan | null;
   client?: WholesaleClient;
   attempts: Array<{
     id: string;
@@ -202,6 +219,12 @@ export type WholesaleOrderDetail = {
   snapshot:
     | null
     | (WholesaleAgreement & {
+        contract?: {
+          title: string;
+          revision: number;
+          paymentPlan: WholesalePaymentPlan;
+        } | null;
+        termsException?: { approval_reason: string } | null;
         clientName: string;
         address: string;
         total: string;
@@ -216,6 +239,14 @@ export type WholesaleOrderDetail = {
         >;
       });
   overrides: WholesaleOverride[];
+  termsOverrides?: Array<{
+    id: string;
+    revision: number;
+    reason: string;
+    approvedBy: string | null;
+    approvedByName: string | null;
+    approvalReason: string | null;
+  }>;
   reservations: Array<{
     id: string;
     quantity: number;

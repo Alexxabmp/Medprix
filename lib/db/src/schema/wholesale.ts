@@ -54,6 +54,8 @@ export const clientContractsTable = pgTable(
     clientId: uuid("client_id")
       .notNull()
       .references(() => wholesaleClientsTable.id, { onDelete: "cascade" }),
+    title: varchar("title", { length: 100 }).notNull().default("Client agreement"),
+    revision: integer("revision").notNull().default(1),
     effectiveDate: date("effective_date").notNull(),
     expiryDate: date("expiry_date").notNull(),
     paymentTerms: varchar("payment_terms", { length: 100 }),
@@ -61,7 +63,7 @@ export const clientContractsTable = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("idx_client_contracts_client_id").on(t.clientId)],
+  (t) => [index("idx_client_contracts_client_id").on(t.clientId), check("client_contract_revision_check", sql`${t.revision} > 0`)],
 );
 
 export const clientContractItemsTable = pgTable(
@@ -94,6 +96,7 @@ export const wholesaleOrdersTable = pgTable(
       onDelete: "set null",
     }),
 
+    contractRevision: integer("contract_revision"),
     paymentPlan: paymentPlanEnum("payment_plan"),
     confirmationSnapshot: jsonb("confirmation_snapshot"),
     confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
@@ -110,7 +113,7 @@ export const wholesaleOrdersTable = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    check("wholesale_confirmed_agreement_check", sql`${t.confirmationSnapshot} IS NULL OR (${t.totalOrderAmount}>0 AND ${t.paymentPlan} IS NOT NULL AND (${t.confirmationSnapshot}->>'paymentPlan'=${t.paymentPlan}::text AND ${t.confirmationSnapshot}->>'paymentPlanVersion'='wholesale-installments-v1' AND ${t.confirmationSnapshot}->>'total'=${t.totalOrderAmount}::text) IS TRUE)`),
+    check("wholesale_confirmed_agreement_check", sql`${t.confirmationSnapshot} IS NULL OR (${t.totalOrderAmount}>0 AND ${t.paymentPlan} IS NOT NULL AND (${t.confirmationSnapshot}->>'paymentPlan'=${t.paymentPlan}::text AND ${t.confirmationSnapshot}->>'paymentPlanVersion'='wholesale-terms-v2' AND ${t.confirmationSnapshot}->>'total'=${t.totalOrderAmount}::text) IS TRUE)`),
     check("wholesale_confirmation_check", sql`(${t.confirmationSnapshot} IS NULL AND ${t.confirmedAt} IS NULL AND ${t.confirmedBy} IS NULL)
       OR (${t.confirmationSnapshot} IS NOT NULL AND jsonb_typeof(${t.confirmationSnapshot})='object' AND ${t.confirmedAt} IS NOT NULL AND ${t.confirmedBy} IS NOT NULL)`),
     check("wholesale_draft_revision_check", sql`${t.draftRevision} IS NULL OR (${t.draftRevision} > 0 AND ${t.orderNumber} IS NOT NULL AND ${t.createdBy} IS NOT NULL)`),

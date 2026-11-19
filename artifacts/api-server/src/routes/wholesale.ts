@@ -1,3 +1,4 @@
+import { createWholesaleContracts } from "../lib/wholesale-contracts";
 import { createWholesaleWorkspace } from "../lib/wholesale-workspace";
 import { createWholesaleOverview } from "../lib/wholesale-overview";
 import { createWholesaleCollections } from "../lib/wholesale-collections";
@@ -15,6 +16,7 @@ import { requireAuth, requireRoles } from "../middleware/auth";
 import { createWholesaleDrafts, WholesaleError } from "../lib/wholesale-drafts";
 
 const router: IRouter = Router();
+const contracts = createWholesaleContracts(queryDb, withTransaction);
 const service = createWholesaleDrafts(queryDb, withTransaction);
 const workspace = createWholesaleWorkspace(queryDb);
 const overview = createWholesaleOverview(queryDb);
@@ -89,6 +91,67 @@ router.get(
   }),
 );
 
+router.get(
+  "/wholesale/contracts",
+  handle(async (_req, res) => {
+    res.json(await contracts.list());
+  }),
+);
+router.post(
+  "/wholesale/contracts",
+  handle(async (req, res) => {
+    res
+      .status(201)
+      .json(
+        await contracts.save(
+          res.locals.user!,
+          req.get("Idempotency-Key"),
+          req.body,
+        ),
+      );
+  }),
+);
+router.put(
+  "/wholesale/contracts/:id",
+  handle(async (req, res) => {
+    res.json(
+      await contracts.save(
+        res.locals.user!,
+        req.get("Idempotency-Key"),
+        req.body,
+        req.params.id,
+      ),
+    );
+  }),
+);
+router.post(
+  "/wholesale/orders/:id/terms-exceptions",
+  handle(async (req, res) => {
+    res
+      .status(201)
+      .json(
+        await confirmation.requestTermsOverride(
+          res.locals.user!,
+          req.get("Idempotency-Key"),
+          req.params.id,
+          req.body,
+        ),
+      );
+  }),
+);
+router.post(
+  "/wholesale/terms-exceptions/:id/approve",
+  handle(async (req, res) => {
+    res.json(
+      await confirmation.approveTermsOverride(
+        res.locals.user!,
+        req.get("Idempotency-Key"),
+        req.params.id,
+        req.body,
+      ),
+    );
+  }),
+);
 router.get(
   "/wholesale/catalog",
   handle(async (_req, res) => {

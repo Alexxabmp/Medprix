@@ -262,6 +262,8 @@ export function createWholesaleDelivery(
         "receivedBy",
         "receivedAt",
         "receivedInFull",
+        "nextPaymentDate",
+        "finalDueDate",
       ]);
       const id = requireUuid(orderId);
       const parsed = wholesaleFullReceiptInputSchema.safeParse(input);
@@ -270,7 +272,13 @@ export function createWholesaleDelivery(
           400,
           "Enter the recipient's name and a valid actual receipt time with a timezone, and confirm full receipt.",
         );
-      const { scheduleId, receivedBy, receivedAt } = parsed.data;
+      const {
+        scheduleId,
+        receivedBy,
+        receivedAt,
+        nextPaymentDate,
+        finalDueDate,
+      } = parsed.data;
       return operation(
         actor,
         key,
@@ -282,6 +290,8 @@ export function createWholesaleDelivery(
           receivedBy,
           receivedAt,
           receivedInFull: true,
+          nextPaymentDate: nextPaymentDate ?? null,
+          finalDueDate: finalDueDate ?? null,
         },
         async (query) => {
           const recordedAt = clock().toISOString();
@@ -338,10 +348,23 @@ export function createWholesaleDelivery(
               409,
               "The confirmed order snapshot is incomplete.",
             );
-          const installmentSchedule = calculateWholesaleSchedule({
-            ...agreement.data,
-            receivedAt,
-          });
+          let installmentSchedule;
+          try {
+            installmentSchedule = calculateWholesaleSchedule({
+              paymentPlan: agreement.data.paymentPlan,
+              total: agreement.data.total,
+              receivedAt,
+              nextPaymentDate,
+              finalDueDate,
+            });
+          } catch (error) {
+            throw new WholesaleError(
+              400,
+              error instanceof Error
+                ? error.message
+                : "Choose valid payment dates.",
+            );
+          }
           const dueDate = installmentSchedule.finalDueDate;
           const ids = source.lines.map((line: any) => line.productId).sort();
           const { rows: products } = await query(
@@ -511,8 +534,8 @@ export function createWholesaleDelivery(
             ],
           );
           await query(
-            `INSERT INTO wholesale_installment_schedules(ar_id,payment_plan,plan_version,principal,installment_count,received_at,receipt_date,final_due_date,generated_at)
-            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+            `INSERT INTO wholesale_installment_schedules(ar_id,payment_plan,plan_version,principal,installment_count,received_at,receipt_date,final_due_date,generated_at,next_payment_date)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
             [
               ar.id,
               installmentSchedule.paymentPlan,
@@ -523,6 +546,7 @@ export function createWholesaleDelivery(
               installmentSchedule.receiptDate,
               dueDate,
               recordedAt,
+              installmentSchedule.nextPaymentDate,
             ],
           );
           for (const installment of installmentSchedule.installments) {

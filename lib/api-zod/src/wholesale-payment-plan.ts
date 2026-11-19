@@ -1,20 +1,20 @@
 import { z } from "zod";
 import { isCalendarDate, pharmacyDate } from "./pharmacy-date";
 
-export const WHOLESALE_PLAN_VERSION = "wholesale-installments-v1" as const;
+export const WHOLESALE_PLAN_VERSION = "wholesale-terms-v2" as const;
 export const WHOLESALE_MAX_CENTS = 999999999999n;
 export const wholesalePaymentPlanSchema = z.enum(["Net30", "Net60"]);
 export type WholesalePaymentPlan = z.infer<typeof wholesalePaymentPlanSchema>;
 
 export const wholesalePlanTerms = Object.freeze({
   Net30: Object.freeze({
-    installmentCount: 4,
-    intervalDays: 7,
+    installmentCount: 1,
+    intervalDays: 30,
     settlementDays: 30,
   }),
   Net60: Object.freeze({
-    installmentCount: 8,
-    intervalDays: 7,
+    installmentCount: 2,
+    intervalDays: 30,
     settlementDays: 60,
   }),
 });
@@ -61,6 +61,8 @@ export const wholesaleFullReceiptInputSchema = z
       new Date(value).toISOString(),
     ),
     receivedInFull: z.literal(true),
+    nextPaymentDate: wholesaleCalendarDateSchema.optional(),
+    finalDueDate: wholesaleCalendarDateSchema.optional(),
   })
   .strict();
 export type WholesaleFullReceiptInput = z.infer<
@@ -77,7 +79,7 @@ export type WholesaleAgreement = z.infer<typeof wholesaleAgreementSchema>;
 
 export const wholesaleInstallmentSchema = z
   .object({
-    sequenceNumber: z.number().int().min(1).max(8),
+    sequenceNumber: z.number().int().min(1).max(2),
     dueDate: wholesaleCalendarDateSchema,
     amount: wholesaleAmountSchema,
   })
@@ -87,10 +89,12 @@ export type WholesaleInstallmentSchedule = WholesaleAgreement & {
   receivedAt: string;
   receiptDate: string;
   finalDueDate: string;
+  nextPaymentDate: string;
   installments: WholesaleInstallment[];
 };
 
-function addCalendarDays(day: string, offset: number): string {
+export function addWholesaleCalendarDays(day: string, offset: number): string {
+  wholesaleCalendarDateSchema.parse(day);
   const date = new Date(`${day}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() + offset);
   return wholesaleCalendarDateSchema.parse(date.toISOString().slice(0, 10));
@@ -101,10 +105,13 @@ export function calculateWholesaleSchedule(input: {
   paymentPlan: WholesalePaymentPlan;
   total: string;
   receivedAt: string;
+  paymentPlanVersion?: WholesaleAgreement["paymentPlanVersion"];
+  nextPaymentDate?: string;
+  finalDueDate?: string;
 }): WholesaleInstallmentSchedule {
   const agreement = wholesaleAgreementSchema.parse({
     paymentPlan: input.paymentPlan,
-    paymentPlanVersion: WHOLESALE_PLAN_VERSION,
+    paymentPlanVersion: input.paymentPlanVersion ?? WHOLESALE_PLAN_VERSION,
     total: input.total,
   });
   const receivedAt = new Date(
@@ -114,18 +121,37 @@ export function calculateWholesaleSchedule(input: {
     pharmacyDate(new Date(receivedAt)),
   );
   const terms = wholesalePlanTerms[agreement.paymentPlan];
+  const nextPaymentDate = wholesaleCalendarDateSchema.parse(
+    input.nextPaymentDate ?? addWholesaleCalendarDays(receiptDate, 30),
+  );
+  const finalDueDate = wholesaleCalendarDateSchema.parse(
+    input.finalDueDate ??
+      (agreement.paymentPlan === "Net30"
+        ? nextPaymentDate
+        : addWholesaleCalendarDays(nextPaymentDate, 30)),
+  );
+  if (
+    nextPaymentDate < receiptDate ||
+    (agreement.paymentPlan === "Net30"
+      ? finalDueDate !== nextPaymentDate
+      : finalDueDate < addWholesaleCalendarDays(nextPaymentDate, 30))
+  )
+    throw new Error(
+      "Next payment cannot precede receipt. Net 30 deadlines must match; Net 60 final deadline must be at least 30 days after the next payment date.",
+    );
   const total = wholesaleCents(agreement.total);
   const base = total / BigInt(terms.installmentCount);
   return {
     ...agreement,
     receivedAt,
     receiptDate,
-    finalDueDate: addCalendarDays(receiptDate, terms.settlementDays),
+    nextPaymentDate,
+    finalDueDate,
     installments: Array.from(
       { length: terms.installmentCount },
       (_, index) => ({
         sequenceNumber: index + 1,
-        dueDate: addCalendarDays(receiptDate, terms.intervalDays * (index + 1)),
+        dueDate: index === 0 ? nextPaymentDate : finalDueDate,
         amount: wholesaleAmount(
           index === terms.installmentCount - 1
             ? total - base * BigInt(terms.installmentCount - 1)

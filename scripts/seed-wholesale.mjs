@@ -97,9 +97,9 @@ export async function seedWholesaleExamples(tx) {
       payments: ["1000.10"],
     },
     {
-      name: "Weekly overdue; final deadline still ahead",
-      plan: "Net30",
-      age: 17,
+      name: "First installment overdue; final deadline still ahead",
+      plan: "Net60",
+      age: 40,
       payments: ["100.00"],
     },
     { name: "Net-60 final deadline breached", plan: "Net60", age: 70 },

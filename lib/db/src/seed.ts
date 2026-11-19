@@ -193,11 +193,11 @@ const CATEGORY_SUPPLIER: Record<string, number> = {
 };
 
 const CLIENT_DEFS = [
-  { name: "Sunrise Family Clinic", person: "Dr. Elena Cruz", address: "Matina, Davao City", eff: -150, exp: 215, terms: "Net 30", status: "Active" },
-  { name: "Bayanihan Rural Health Unit", person: "Nurse Roberto Silva", address: "Toril, Davao City", eff: -120, exp: 245, terms: "Net 15", status: "Active" },
-  { name: "Kalinaw Medical Center", person: "Dr. Marites Ramos", address: "Buhangin, Davao City", eff: -90, exp: 275, terms: "Net 30", status: "Active" },
-  { name: "GreenLeaf Mini Pharmacy", person: "Pedro Navarro", address: "Panabo City, Davao del Norte", eff: -300, exp: 20, terms: "Net 45", status: "Active" },
-  { name: "Harbor Point Infirmary", person: "Dr. Luisa Fernandez", address: "Digos City, Davao del Sur", eff: -400, exp: -10, terms: "Net 30", status: "Expired" },
+  { name: "Sunrise Family Clinic", person: "Dr. Elena Cruz", address: "Matina, Davao City", eff: -150, exp: 215, terms: "Net30", status: "Active" },
+  { name: "Bayanihan Rural Health Unit", person: "Nurse Roberto Silva", address: "Toril, Davao City", eff: -120, exp: 245, terms: "Net60", status: "Active" },
+  { name: "Kalinaw Medical Center", person: "Dr. Marites Ramos", address: "Buhangin, Davao City", eff: -90, exp: 275, terms: "Net30", status: "Active" },
+  { name: "GreenLeaf Mini Pharmacy", person: "Pedro Navarro", address: "Panabo City, Davao del Norte", eff: -300, exp: 20, terms: "Net60", status: "Active" },
+  { name: "Harbor Point Infirmary", person: "Dr. Luisa Fernandez", address: "Digos City, Davao del Sur", eff: -400, exp: -10, terms: "Net30", status: "Inactive" },
 ] as const;
 
 const FIRST_NAMES = ["Juan", "Maria", "Jose", "Ana", "Pedro", "Rosa", "Miguel", "Carmen", "Antonio", "Luz", "Ramon", "Elena", "Carlos", "Teresa", "Rafael", "Josefina", "Eduardo", "Lourdes", "Fernando", "Imelda", "Ricardo", "Cristina", "Gabriel", "Norma", "Manuel", "Aurora", "Roberto", "Felicidad", "Andres", "Milagros"];
@@ -282,13 +282,13 @@ export function buildData(passwordHash: string) {
       email: `orders@${c.name.toLowerCase().replace(/[^a-z]+/g, "")}.example`, address: c.address, created_at: day0, updated_at: day0,
     });
     T.client_contracts.push({
-      id: contractId, client_id: id, effective_date: dateStr(c.eff), expiry_date: dateStr(c.exp),
+      id: contractId, client_id: id, title: `${c.name} supply agreement`, revision: 1, effective_date: dateStr(c.eff), expiry_date: dateStr(c.exp),
       payment_terms: c.terms, status: c.status, created_at: at(c.eff, 9), updated_at: at(c.eff, 9),
     });
     const items = shuffle(eligible).slice(0, 10).map((p) => ({ prod: p, price: r2(Math.max(p.def.cost * 1.08, p.def.sellingPrice * 0.88)) }));
     for (const it of items)
       T.client_contract_items.push({ id: randomUUID(), contract_id: contractId, product_id: it.prod.id, agreed_unit_price: it.price });
-    return { idx: i, id, contractId, terms: c.terms, items, name: c.name };
+    return { idx: i, id, contractId, terms: c.terms, active: c.status === "Active", items, name: c.name };
   });
 
   // Size opening stock (batch A), restock (batch B) and minimum level from expected demand:
@@ -648,11 +648,11 @@ export function buildData(passwordHash: string) {
   for (const [index, client] of clients.entries()) {
     const id = randomUUID();
     const orderedAt = past(-1, 10, 0);
-    const lines = client.items.slice(0, 3).map((item) => ({ ...item, qty: 10 }));
+    const lines = client.items.slice(0, 3).map((item) => ({ ...item, price: client.active ? item.price : Number(T.products.find(product => product.id === item.prod.id)?.wholesale_price ?? item.price), qty: 10 }));
     T.wholesale_orders.push({
       id, client_id: client.id, order_number: "WS-" + (index + 1), draft_revision: 1,
       created_by: frontDesk.id, order_date: orderedAt, status: "Pending",
-      payment_plan: index % 2 ? "Net60" : "Net30",
+      payment_plan: client.terms, contract_id: client.active ? client.contractId : null, contract_revision: client.active ? 1 : null,
       total_order_amount: r2(sum(lines.map((line) => line.qty * line.price))),
       created_at: orderedAt, updated_at: orderedAt,
     });

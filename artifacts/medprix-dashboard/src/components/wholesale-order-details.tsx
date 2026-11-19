@@ -1,5 +1,9 @@
 import { useReadDialog } from "./read-dialog";
-import { SourceProgress, SourceFeedback, SourcePlaceholder } from "./custom-ui/source-state";
+import {
+  SourceProgress,
+  SourceFeedback,
+  SourcePlaceholder,
+} from "./custom-ui/source-state";
 import { SelectField } from "@/components/custom-ui/select-field";
 import { ChevronDown, Info } from "lucide-react";
 import { DeliveryReceiptView } from "./delivery-receipt-view";
@@ -71,10 +75,19 @@ export function WholesalePriceApproval({
           </option>
         ))}
       </SelectField>
-      <ModalTableHint value={approvals.map((approval, index) =>
-        `${optionLabel(approval, index)}: ${approval.reason}. Approved by ${approval.approvedByName}.`,
-      ).join("\n")}>
-        <button type="button" className="button soft table-action-btn" aria-label={"View price approval details for " + name}>
+      <ModalTableHint
+        value={approvals
+          .map(
+            (approval, index) =>
+              `${optionLabel(approval, index)}: ${approval.reason}. Approved by ${approval.approvedByName}.`,
+          )
+          .join("\n")}
+      >
+        <button
+          type="button"
+          className="button soft table-action-btn"
+          aria-label={"View price approval details for " + name}
+        >
           <Info size={14} aria-hidden="true" />
         </button>
       </ModalTableHint>
@@ -130,16 +143,20 @@ export function WholesaleOrderDetails({
   const [overrideProductId, setOverrideProductId] = useState("");
   const [overridePrice, setOverridePrice] = useState("");
   const overrideLine = order.lines.find(
-    line => line.productId === (overrideProductId || order.lines[0]?.productId),
+    (line) =>
+      line.productId === (overrideProductId || order.lines[0]?.productId),
   );
   const validOverridePrice = wholesaleMoneyInputSchema.safeParse(overridePrice);
-  const overrideLineCents = overrideLine && validOverridePrice.success
-    ? wholesaleCents(validOverridePrice.data) * BigInt(overrideLine.quantity)
-    : null;
-  const overrideTotalTooLarge = overrideLineCents !== null && overrideLineCents > WHOLESALE_MAX_CENTS;
-  const overrideLineTotal = overrideLineCents !== null && !overrideTotalTooLarge
-    ? wholesaleAmount(overrideLineCents)
-    : null;
+  const overrideLineCents =
+    overrideLine && validOverridePrice.success
+      ? wholesaleCents(validOverridePrice.data) * BigInt(overrideLine.quantity)
+      : null;
+  const overrideTotalTooLarge =
+    overrideLineCents !== null && overrideLineCents > WHOLESALE_MAX_CENTS;
+  const overrideLineTotal =
+    overrideLineCents !== null && !overrideTotalTooLarge
+      ? wholesaleAmount(overrideLineCents)
+      : null;
   const [action, setAction] = useState<"confirm" | "cancel" | null>(() =>
     order.status === "Pending" ? (initialAction ?? null) : null,
   );
@@ -159,7 +176,9 @@ export function WholesaleOrderDetails({
       : null,
   );
   function load() {
-    read.open("Order details", () => wholesaleGet<WholesaleOrderDetail>("/orders/" + order.id));
+    read.open("Order details", () =>
+      wholesaleGet<WholesaleOrderDetail>("/orders/" + order.id),
+    );
   }
   useEffect(() => {
     if (!initialDetail) void load();
@@ -173,9 +192,13 @@ export function WholesaleOrderDetails({
       ));
   const current =
     detail?.overrides.filter((item) => item.revision === order.revision) ?? [];
-  const showPriceSelection = draft && current.some(item =>
-    item.approvedBy && order.lines.some(line => line.productId === item.productId),
-  );
+  const showPriceSelection =
+    draft &&
+    current.some(
+      (item) =>
+        item.approvedBy &&
+        order.lines.some((line) => line.productId === item.productId),
+    );
   const displayLines =
     detail?.snapshot?.lines ??
     order.lines.map((line) => ({
@@ -214,9 +237,28 @@ export function WholesaleOrderDetails({
           {error}
         </div>
       )}
-      {read.state?.pending && detail && <SourceProgress label={"Refreshing order details\u2026"} />}
-      <SourceFeedback status={{ hasData: detail !== null, pending: read.state?.pending ?? false, error: loadError }} label="order details" onRetry={read.retry} />
-      {!detail && <SourcePlaceholder status={{ hasData: false, pending: read.state?.pending ?? true, error: loadError }} label="Order details" />}
+      {read.state?.pending && detail && (
+        <SourceProgress label={"Refreshing order details\u2026"} />
+      )}
+      <SourceFeedback
+        status={{
+          hasData: detail !== null,
+          pending: read.state?.pending ?? false,
+          error: loadError,
+        }}
+        label="order details"
+        onRetry={read.retry}
+      />
+      {!detail && (
+        <SourcePlaceholder
+          status={{
+            hasData: false,
+            pending: read.state?.pending ?? true,
+            error: loadError,
+          }}
+          label="Order details"
+        />
+      )}
       {detail && (
         <div className="wholesale-details">
           {action !== "cancel" && !deliveryTask && (
@@ -234,9 +276,9 @@ export function WholesaleOrderDetails({
                   <dt>Payment plan</dt>
                   <dd>
                     {order.paymentPlan === "Net30"
-                      ? "Net-30 · 4 weekly installments"
+                      ? "Net 30: One Payment Deadline"
                       : order.paymentPlan === "Net60"
-                        ? "Net-60 · 8 weekly installments"
+                        ? "Net 60: Two Installments"
                         : "Select a plan before confirmation"}
                     {detail.receipt && (
                       <span className="wholesale-plan-deadline">
@@ -265,6 +307,27 @@ export function WholesaleOrderDetails({
                   </dd>
                 </div>
               </dl>
+              {order.contractTitle && (
+                <section className="wholesale-context">
+                  <strong>
+                    Contract:{" "}
+                    {detail.snapshot?.contract?.title ?? order.contractTitle}
+                  </strong>
+                  <p className="field-hint">
+                    Revision{" "}
+                    {detail.snapshot?.contract?.revision ??
+                      order.contractRevision}
+                    . Contract product prices and approved exceptions are
+                    captured at confirmation.
+                  </p>
+                  {detail.snapshot?.termsException && (
+                    <p className="field-hint">
+                      Approved terms exception:{" "}
+                      {detail.snapshot.termsException.approval_reason}
+                    </p>
+                  )}
+                </section>
+              )}
               <section className="wholesale-review-client">
                 <h3>Client</h3>
                 <p>
@@ -280,10 +343,101 @@ export function WholesaleOrderDetails({
                     "No delivery address. Update the client before confirmation."}
                 </p>
               </section>
+              {draft &&
+                order.contractId &&
+                detail.contractPaymentPlan !== order.paymentPlan && (
+                  <section className="modal-section">
+                    <h3>Contract payment-terms exceptions</h3>
+                    <p className="field-hint">
+                      If this draft uses different terms from its contract,
+                      request Admin approval before confirmation.
+                    </p>
+                    <form
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        const data = new FormData(event.currentTarget);
+                        mutate(`/orders/${order.id}/terms-exceptions`, "POST", {
+                          revision: order.revision,
+                          reason: data.get("reason"),
+                        });
+                      }}
+                    >
+                      <fieldset className="wholesale-fields" disabled={busy}>
+                        <div className="field">
+                          <label htmlFor="wholesale-terms-reason">
+                            Exception reason *
+                          </label>
+                          <textarea
+                            id="wholesale-terms-reason"
+                            name="reason"
+                            required
+                            maxLength={500}
+                            rows={2}
+                          />
+                        </div>
+                        <button className="button soft w-fit">
+                          Request terms approval
+                        </button>
+                      </fieldset>
+                    </form>
+                    {(detail.termsOverrides ?? [])
+                      .filter((item) => item.revision === order.revision)
+                      .map((item) => (
+                        <section className="modal-section" key={item.id}>
+                          <p>{item.reason}</p>
+                          {item.approvedBy ? (
+                            <p className="field-hint">
+                              Approved by {item.approvedByName}:{" "}
+                              {item.approvalReason}
+                            </p>
+                          ) : role === "Admin" ? (
+                            <form
+                              onSubmit={(event) => {
+                                event.preventDefault();
+                                const data = new FormData(event.currentTarget);
+                                mutate(
+                                  `/terms-exceptions/${item.id}/approve`,
+                                  "POST",
+                                  { reason: data.get("reason") },
+                                );
+                              }}
+                            >
+                              <fieldset
+                                className="wholesale-fields"
+                                disabled={busy}
+                              >
+                                <div className="field">
+                                  <label htmlFor={`terms-approval-${item.id}`}>
+                                    Admin approval reason *
+                                  </label>
+                                  <input
+                                    id={`terms-approval-${item.id}`}
+                                    name="reason"
+                                    required
+                                    maxLength={500}
+                                  />
+                                </div>
+                                <button className="button soft w-fit">
+                                  Approve exception
+                                </button>
+                              </fieldset>
+                            </form>
+                          ) : (
+                            <p className="field-hint">
+                              Awaiting Admin approval.
+                            </p>
+                          )}
+                        </section>
+                      ))}
+                  </section>
+                )}
               <section className="wholesale-review-items">
                 <h3>Order items</h3>
                 {showPriceSelection && (
-                  <p className="field-hint">Use the saved price or choose an approved override. The info button shows the approval details.</p>
+                  <p className="field-hint">
+                    Use the saved price or choose an approved override. The info
+                    button shows the approval details.
+                  </p>
                 )}
                 <ModalTableFrame>
                   <div
@@ -299,7 +453,11 @@ export function WholesaleOrderDetails({
                     <table
                       className="data-table wholesale-order-items-table"
                       data-modal-table={
-                        tablePreview ? (showPriceSelection ? "draft" : "items") : undefined
+                        tablePreview
+                          ? showPriceSelection
+                            ? "draft"
+                            : "items"
+                          : undefined
                       }
                     >
                       {tablePreview && (
@@ -424,7 +582,9 @@ export function WholesaleOrderDetails({
                             required
                             name="productId"
                             value={overrideLine?.productId ?? ""}
-                            onChange={event => setOverrideProductId(event.target.value)}
+                            onChange={(event) =>
+                              setOverrideProductId(event.target.value)
+                            }
                           >
                             {order.lines.map((line) => (
                               <option
@@ -449,20 +609,42 @@ export function WholesaleOrderDetails({
                             max="9999999999.99"
                             step="0.01"
                             value={overridePrice}
-                            onChange={event => setOverridePrice(event.target.value)}
+                            onChange={(event) =>
+                              setOverridePrice(event.target.value)
+                            }
                             aria-describedby="wholesale-override-total"
                           />
                         </div>
                       </div>
-                      <div className="form-grid" aria-live="polite" aria-atomic="true">
+                      <div
+                        className="form-grid"
+                        aria-live="polite"
+                        aria-atomic="true"
+                      >
                         <div className="field">
                           <span className="field-label">Order quantity</span>
-                          <strong>{overrideLine ? `${overrideLine.quantity} units` : "—"}</strong>
+                          <strong>
+                            {overrideLine
+                              ? `${overrideLine.quantity} units`
+                              : "—"}
+                          </strong>
                         </div>
                         <div className="field" id="wholesale-override-total">
-                          <span className="field-label">Requested line total (incl. VAT where applicable)</span>
-                          <strong>{overrideLineTotal === null ? "—" : wholesalePeso(overrideLineTotal)}</strong>
-                          <span className={overrideTotalTooLarge ? "field-error" : "field-hint"}>
+                          <span className="field-label">
+                            Requested line total (incl. VAT where applicable)
+                          </span>
+                          <strong>
+                            {overrideLineTotal === null
+                              ? "—"
+                              : wholesalePeso(overrideLineTotal)}
+                          </strong>
+                          <span
+                            className={
+                              overrideTotalTooLarge
+                                ? "field-error"
+                                : "field-hint"
+                            }
+                          >
                             {overrideTotalTooLarge
                               ? "The requested line total exceeds the supported amount."
                               : "Order quantity × requested unit price. Subject to Admin approval."}

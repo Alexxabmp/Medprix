@@ -196,7 +196,7 @@ export function deliveryReceiptMarkup(receipt: DeliveryReceipt): string {
       <div><h2>Deliver to</h2><strong>${e(receipt.clientName)}</strong><p class="dr-address">${e(receipt.address)}</p></div>
       <div><h2>Order details</h2>
         <p class="dr-pair"><span>Order reference</span><strong>${e(receipt.orderNumber)}</strong></p>
-        <p class="dr-pair"><span>Payment plan</span><span>${receipt.installmentSchedule.paymentPlan === "Net30" ? "Net-30" : "Net-60"}</span></p>
+        <p class="dr-pair"><span>Payment plan</span><span>${receipt.installmentSchedule.paymentPlan === "Net30" ? "Net 30" : "Net 60"}</span></p>
         <p class="dr-pair"><span>Final settlement deadline</span><span>${e(date(receipt.dueDate))}</span></p>
       </div>
     </section>

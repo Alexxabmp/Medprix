@@ -448,8 +448,8 @@ export function WholesaleSummaryModal({
                             {accounts && (
                               <div className="muted">
                                 {row.paymentPlan === "Net60"
-                                  ? "Net-60"
-                                  : "Net-30"}
+                                  ? "Net 60"
+                                  : "Net 30"}
                               </div>
                             )}
                           </td>

@@ -135,8 +135,15 @@
 .wholesale-payment-context {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
-.wholesale-payment-context > .button {
-  grid-column: 1 / -1;
+.wholesale-payment-amount-help {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.wholesale-client-summary dd {
+  overflow-wrap: anywhere;
 }
 .wholesale-account-dialog .wholesale-payment-history {
   min-width: 0;
@@ -284,17 +291,6 @@
   margin: 0;
   line-height: 1.5;
 }
-.wholesale-client-details {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-.wholesale-client-wide {
-  grid-column: 1 / -1;
-}
-@media (max-width: 600px) {
-  .wholesale-client-details {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
 /* Price selectors stay inside their column; approval notes live in a tooltip. */
 .wholesale-price-selection {
   display: grid;
@@ -367,4 +363,15 @@
     font-size: var(--text-xs);
     font-weight: 600;
   }
+}
+.wholesale-contract-item {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+}
+.wholesale-contract-item > * { min-width: 0; }
+@media (max-width: 760px) {
+  .wholesale-contract-item { grid-template-columns: minmax(0, 1fr); }
+  .wholesale-contract-item > button { justify-self: end; }
 }

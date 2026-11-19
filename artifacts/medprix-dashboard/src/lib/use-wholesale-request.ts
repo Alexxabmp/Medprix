@@ -51,9 +51,9 @@ export function useWholesaleRequest(
     pending,
     locked: busy || pending !== null,
     clearError: () => setError(""),
-    mutate: (path: string, body: unknown) => {
+    mutate: (path: string, body: unknown, method = "POST") => {
       if (!pending && !inFlight.current)
-        void submit({ key: crypto.randomUUID(), path, method: "POST", body });
+        void submit({ key: crypto.randomUUID(), path, method, body });
     },
     retry: () => {
       if (pending) void submit(pending);
