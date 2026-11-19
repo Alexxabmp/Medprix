@@ -11,7 +11,7 @@ import { Callout, Field, moneyInput, todayManila, useSave } from "./shared";
 
 export type SupplierOption = { id: string; name: string; paymentTerms: SupplierTerms };
 type Line = { key: string; productId: string; quantity: string; unitCost: string };
-const blankLine = (): Line => ({ key: crypto.randomUUID(), productId: "", quantity: "", unitCost: "" });
+const blankLine = (): Line => ({ key: crypto.randomUUID(), productId: "", quantity: "", unitCost: "0.00" });
 
 /** Create a purchase order, or edit one that hasn't been sent yet. */
 export function OrderEditor({ suppliers, existing, onClose, onSaved }: {
@@ -22,7 +22,12 @@ export function OrderEditor({ suppliers, existing, onClose, onSaved }: {
   const [productsError, setProductsError] = useState("");
   const [supplierId, setSupplierId] = useState(existing?.order.supplier.id ?? "");
   const [lines, setLines] = useState<Line[]>(existing
-    ? existing.lines.map(l => ({ key: l.productId, productId: l.productId, quantity: String(l.quantityOrdered), unitCost: l.unitCost }))
+    ? existing.lines.map(l => ({
+        key: l.productId,
+        productId: l.productId,
+        quantity: String(l.quantityOrdered),
+        unitCost: Number.isNaN(Number(l.unitCost)) ? "0.00" : Number(l.unitCost).toFixed(2),
+      }))
     : [blankLine()]);
   const [expected, setExpected] = useState(existing?.order.expectedDeliveryDate ?? "");
   const [notes, setNotes] = useState(existing?.order.notes ?? "");
@@ -41,23 +46,31 @@ export function OrderEditor({ suppliers, existing, onClose, onSaved }: {
     if (!l.productId) return "Choose a medicine.";
     if (lines.findIndex(x => x.productId === l.productId) !== i) return "This medicine is already on the order.";
     if (!/^\d+$/.test(l.quantity) || Number(l.quantity) < 1) return "Enter a quantity of at least 1.";
-    if (!/^\d+(\.\d{1,2})?$/.test(l.unitCost)) return "Enter the unit cost.";
+    if (!/^\d+(\.\d{1,2})?$/.test(l.unitCost) || Number.isNaN(Number(l.unitCost))) return "Enter the unit cost.";
     return "";
   });
   const valid = Boolean(supplierId) && lineProblems.every(p => !p) && (!expected || expected >= todayManila() || editing);
-  const original = existing ? existing.lines.map(l => `${l.productId}:${l.quantityOrdered}:${Number(l.unitCost).toFixed(2)}`).sort().join("|") : "";
-  const changedLines = existing ? lines.map(l => `${l.productId}:${Number(l.quantity)}:${Number(l.unitCost).toFixed(2)}`).sort().join("|") !== original : true;
+  const original = existing ? existing.lines.map(l => `${l.productId}:${l.quantityOrdered}:${(Number(l.unitCost) || 0).toFixed(2)}`).sort().join("|") : "";
+  const changedLines = existing ? lines.map(l => `${l.productId}:${Number(l.quantity)}:${(Number(l.unitCost) || 0).toFixed(2)}`).sort().join("|") !== original : true;
   const needsReapproval = existing?.order.status === "Approved" && changedLines;
 
-  const productChoices = useMemo(() => products.map(p => ({ id: p.id, label: `${p.name} (${p.sku})`, cost: p.cost ?? "" })), [products]);
+  const productChoices = useMemo(() => products.map(p => ({
+    id: p.id,
+    label: `${p.name} (${p.sku})`,
+    cost: p.cost && !Number.isNaN(Number(p.cost)) ? Number(p.cost).toFixed(2) : "0.00",
+  })), [products]);
 
   function setLine(index: number, patch: Partial<Line>) {
     setLines(current => current.map((l, i) => {
       if (i !== index) return l;
       const next = { ...l, ...patch };
-      if (patch.productId && !l.unitCost) {
-        const cost = productChoices.find(p => p.id === patch.productId)?.cost;
-        if (cost) next.unitCost = Number(cost).toFixed(2);
+      if (patch.productId) {
+        const rawCost = productChoices.find(p => p.id === patch.productId)?.cost;
+        const parsed = Number(rawCost);
+        next.unitCost = (rawCost && !Number.isNaN(parsed) && parsed > 0) ? parsed.toFixed(2) : "0.00";
+      }
+      if (next.unitCost === "NaN" || !next.unitCost) {
+        next.unitCost = "0.00";
       }
       return next;
     }));
@@ -109,7 +122,13 @@ export function OrderEditor({ suppliers, existing, onClose, onSaved }: {
       <div className="proc-section-head"><h3>What to order</h3><span className="muted">{lines.length} line{lines.length === 1 ? "" : "s"}</span></div>
       {productsError && <Callout tone="danger">{productsError} <button type="button" className="proc-link" onClick={loadProducts}>Retry</button></Callout>}
       <div className="proc-order-lines">
-        <div className="proc-order-line proc-order-line-head" aria-hidden="true"><span>Medicine</span><span>Quantity</span><span>Unit cost</span><span>Line total</span><span /></div>
+        <div className="proc-order-line proc-order-line-head" aria-hidden="true">
+          <span>Medicine</span>
+          <span>Quantity</span>
+          <span>Unit cost</span>
+          <span className="proc-col-total">Line total</span>
+          <span />
+        </div>
         {lines.map((line, index) => (
           <div className="proc-order-line" key={line.key}>
             <div>
@@ -121,14 +140,17 @@ export function OrderEditor({ suppliers, existing, onClose, onSaved }: {
               {attempted && lineProblems[index] && <span className="field-error" role="alert">{lineProblems[index]}</span>}
             </div>
             <input aria-label={`Quantity, line ${index + 1}`} inputMode="numeric" value={line.quantity} placeholder="0"
+              aria-invalid={attempted && (!/^\d+$/.test(line.quantity) || Number(line.quantity) < 1)}
               onChange={e => setLine(index, { quantity: e.target.value.replace(/\D/g, "").slice(0, 7) })} />
-            <div className="proc-money-input"><span>₱</span>
-              <input aria-label={`Unit cost, line ${index + 1}`} inputMode="decimal" value={line.unitCost} placeholder="0.00"
+            <div className={`proc-money-input ${attempted && (!/^\d+(\.\d{1,2})?$/.test(line.unitCost) || Number.isNaN(Number(line.unitCost))) ? "has-error" : ""}`}>
+              <span>₱</span>
+              <input aria-label={`Unit cost, line ${index + 1}`} inputMode="decimal"
+                value={line.unitCost === "NaN" || !line.unitCost ? "0.00" : line.unitCost} placeholder="0.00"
                 onChange={e => setLine(index, { unitCost: moneyInput(e.target.value) })} />
             </div>
             <strong className="proc-line-total">{peso((Number(line.quantity) || 0) * (Number(line.unitCost) || 0))}</strong>
-            <button type="button" className="button soft table-action-btn" aria-label={`Remove line ${index + 1}`}
-              disabled={lines.length === 1} onClick={() => setLines(current => current.filter((_, i) => i !== index))}><Trash2 size={15} /></button>
+            <button type="button" className="button soft proc-line-remove" aria-label={`Remove line ${index + 1}`}
+              disabled={lines.length === 1} onClick={() => setLines(current => current.filter((_, i) => i !== index))}><Trash2 size={16} /></button>
           </div>
         ))}
       </div>

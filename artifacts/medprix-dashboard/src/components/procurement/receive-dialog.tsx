@@ -8,7 +8,29 @@ import { procurementApi, newKey, type OrderDetail, type ReceiveLine } from "@/li
 import { Callout, Field, addMonths, shortDate, todayManila, useSave } from "./shared";
 
 type Lot = { key: string; productId: string; good: string; lot: string; expiry: string; rejected: string; reason: DeliveryRejectionReason | ""; reasonNotes: string };
-const lotFor = (productId: string, good = ""): Lot => ({ key: crypto.randomUUID(), productId, good, lot: "", expiry: "", rejected: "", reason: "", reasonNotes: "" });
+
+let lotSeqCounter = 0;
+function generateUniqueLotNumber(): string {
+  const now = new Date();
+  const yy = String(now.getFullYear()).slice(2);
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  lotSeqCounter = (lotSeqCounter + 1) % 10000;
+  const seq = String(lotSeqCounter).padStart(4, "0");
+  const rand = Math.random().toString(36).substring(2, 5).toUpperCase();
+  return `LOT-${yy}${mm}${dd}-${seq}${rand}`;
+}
+
+const lotFor = (productId: string, good = ""): Lot => ({
+  key: crypto.randomUUID(),
+  productId,
+  good,
+  lot: generateUniqueLotNumber(),
+  expiry: "",
+  rejected: "",
+  reason: "",
+  reasonNotes: "",
+});
 
 /** Screen 5: one form that becomes the receiving report. Saving adds the good units to stock in their supplier lots. */
 export function ReceiveDialog({ detail, onClose, onDone }: {
@@ -111,12 +133,19 @@ export function ReceiveDialog({ detail, onClose, onDone }: {
                         <input id={`good-${lot.key}`} inputMode="numeric" value={lot.good} onChange={e => update(lot.key, { good: e.target.value.replace(/\D/g, "").slice(0, 7) })} />
                       </Field>
                       <Field id={`lot-${lot.key}`} label="Lot no." error={show("lot")}>
-                        <input id={`lot-${lot.key}`} value={lot.lot} maxLength={100} placeholder="On the box" onChange={e => update(lot.key, { lot: e.target.value.toUpperCase() })} />
+                        <input
+                          id={`lot-${lot.key}`}
+                          value={lot.lot}
+                          readOnly
+                          tabIndex={-1}
+                          style={{ background: "hsl(var(--surface-soft))", cursor: "default", fontWeight: 500 }}
+                          title="Automatically generated unique lot number"
+                        />
                       </Field>
                       <Field id={`exp-${lot.key}`} label="Expiry" error={show("expiry")} hint={isShort ? `Expires within ${SHORT_EXPIRY_MONTHS} months` : undefined}>
                         <DateField id={`exp-${lot.key}`} value={lot.expiry} onChange={e => update(lot.key, { expiry: e.target.value })} />
                       </Field>
-                      <Field id={`rej-${lot.key}`} label="Rejected" optional error={undefined}>
+                      <Field id={`rej-${lot.key}`} label="Rejected" error={undefined}>
                         <input id={`rej-${lot.key}`} inputMode="numeric" value={lot.rejected} placeholder="0" onChange={e => update(lot.key, { rejected: e.target.value.replace(/\D/g, "").slice(0, 7) })} />
                       </Field>
                       {num(lot.rejected) > 0 && (

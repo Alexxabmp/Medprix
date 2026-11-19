@@ -1,6 +1,5 @@
 import { SelectField } from "@/components/custom-ui/select-field";
 import { AppTooltip } from "@/components/ui/tooltip";
-import { PageTableValue } from "@/components/page-table-context";
 import { useState, useEffect, useRef, type FormEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -317,19 +316,21 @@ export default function UserManagementPage({
                       <div className="product-cell">
                         <span
                           className="avatar"
-                          style={{ width: 32, height: 32, border: 0, boxShadow: "none", background: "#17171a", color: "#fff" }}>
+                          style={{ width: 32, height: 32, border: 0, boxShadow: "none", background: "#17171a", color: "#fff", flexShrink: 0 }}>
                           {user.initials}
                         </span>
-                        <div>
-                          <strong><PageTableValue value={user.name} /></strong>
-                          {user.isPrimary && (
-                            <span className="pill neutral um-primary-pill" data-testid={`badge-primary-${user.id}`}>
-                              <ShieldCheck size={11} aria-hidden /> Primary admin
-                            </span>
-                          )}
-                          {isCurrentUser && <span className="um-you">You</span>}
-                          <div className="muted" style={{ fontSize: 12 }}>
-                            <PageTableValue value={user.username} />
+                        <div style={{ minWidth: 0 }}>
+                          <div className="um-user-headline">
+                            <strong>{user.name}</strong>
+                            {user.isPrimary && (
+                              <span className="pill neutral um-primary-pill" data-testid={`badge-primary-${user.id}`}>
+                                <ShieldCheck size={11} aria-hidden /> Primary admin
+                              </span>
+                            )}
+                            {isCurrentUser && <span className="um-you">You</span>}
+                          </div>
+                          <div className="muted" style={{ fontSize: 12, marginTop: 1 }}>
+                            {user.username}
                           </div>
                         </div>
                       </div>

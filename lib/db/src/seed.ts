@@ -609,6 +609,7 @@ export function buildData(passwordHash: string) {
         id: txId, cashier_id: cashier.id, customer_id: cust?.id ?? null, transaction_date: when, status,
         gross_amount: gross, total_discount: totalDiscount, vat_amount: vat, net_amount: net,
         amount_tendered: tendered, change_amount: change, payment_method: method, void_reason: voidReason,
+        cashier_name_at_sale: cashier.full_name,
         // Sample proof of payment: unique 13-digit GCash references and 6-character card approval codes.
         payment_reference: method === "GCash" ? `100${pad(++paymentReferenceSeq, 10)}`
           : method === "Card" ? (++paymentReferenceSeq).toString(36).toUpperCase().padStart(6, "0") : null,

@@ -1,6 +1,12 @@
 import { useState } from "react";
 import { CheckCircle2, Download, ExternalLink } from "lucide-react";
-import { SUPPLIER_PAYMENT_MODES, SUPPLIER_PAYMENT_MODE_LABEL, type SupplierPaymentMode } from "@workspace/api-zod";
+import {
+  SUPPLIER_PAYMENT_MODES,
+  SUPPLIER_PAYMENT_MODE_LABEL,
+  SUPPLIER_TERMS_LABEL,
+  normalizeSupplierTerms,
+  type SupplierPaymentMode,
+} from "@workspace/api-zod";
 import { WholesaleDialog } from "@/components/wholesale-dialog";
 import { DateField } from "@/components/custom-ui/date-field";
 import { procurementApi, newKey, peso, type PaymentAdvice } from "@/lib/procurement-api";
@@ -10,6 +16,7 @@ import { Callout, Chips, Field, moneyInput, shortDate, todayManila, useSave } fr
 export type PaymentTarget = {
   apId: string; invoiceNumber: string; supplier: string; poNumber: string | null;
   amount: string; totalPaid: string; balance: string; dueDate: string; prepayment?: boolean;
+  paymentTerms?: string | null;
 };
 
 const referenceLabel = (mode: SupplierPaymentMode | "") =>
@@ -72,17 +79,25 @@ export function PaymentDialog({ target, onClose, onSaved }: { target: PaymentTar
     );
   }
 
+  const termsNormalized = normalizeSupplierTerms(target.paymentTerms);
+  const termsLabel = termsNormalized ? SUPPLIER_TERMS_LABEL[termsNormalized] : target.paymentTerms;
+
   return (
-    <WholesaleDialog title={target.prepayment ? "Record advance payment" : "Record payment"} description={`${target.invoiceNumber} · ${target.supplier}${target.poNumber ? ` · ${target.poNumber}` : ""}`}
+    <WholesaleDialog
+      title={target.prepayment ? "Record advance payment" : "Record payment"}
+      description={`${target.invoiceNumber} · ${target.supplier}${target.poNumber ? ` · ${target.poNumber}` : ""}${termsLabel ? ` · ${termsLabel}` : ""}`}
       busy={save.busy} close={onClose} className="proc-dialog"
       footer={<>
         <button type="button" className="button soft" onClick={onClose} disabled={save.busy}>Cancel</button>
         <button type="button" className="button primary-action" onClick={submit} disabled={save.busy}>{save.busy ? "Saving…" : value > 0 ? `Record ${peso(value)}` : "Record payment"}</button>
       </>}>
-      <div className="proc-stat-row">
+      <div className="proc-stat-row" style={{ gridTemplateColumns: termsLabel ? "repeat(4, minmax(0, 1fr))" : undefined }}>
         <div><span>Invoice</span><strong>{peso(target.amount)}</strong></div>
         <div><span>Paid so far</span><strong>{peso(target.totalPaid)}</strong></div>
         <div><span>Due {shortDate(target.dueDate)}</span><strong>{peso(balance)}</strong></div>
+        {termsLabel && (
+          <div><span>Payment terms</span><strong>{termsLabel}</strong></div>
+        )}
       </div>
       {target.prepayment && <Callout tone="info">Pay-now supplier: this invoice is paid before the goods are checked. It's verified when the delivery arrives.</Callout>}
       <div className="form-grid">

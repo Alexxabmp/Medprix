@@ -64,6 +64,7 @@ const payTarget = (payable: any, supplier: string, invoiceNumber: string): Payme
   apId: payable.id, invoiceNumber, supplier, poNumber: payable.poNumber ?? null,
   amount: payable.totalOwed ?? "0", totalPaid: payable.totalPaid ?? "0", balance: payable.balance ?? "0",
   dueDate: payable.dueDate ?? "", prepayment: payable.verification === "PendingVerification",
+  paymentTerms: payable.paymentTerms ?? payable.terms ?? null,
 });
 
 type SupplierHistory = {
@@ -600,6 +601,7 @@ export default function SupplierPage({
                 <thead>
                   <tr>
                     <th>Supplier</th>
+                    <th>Payment terms</th>
                     <th>Primary contact</th>
                     <th>Orders</th>
                     <th>Order value</th>
@@ -607,10 +609,10 @@ export default function SupplierPage({
                     <th className="table-action-head">Action</th>
                   </tr>
                 </thead>
-                <SourceTableBody status={directoryState} label="Suppliers" colSpan={6}>
+                <SourceTableBody status={directoryState} label="Suppliers" colSpan={7}>
                   {filtered.length === 0 ? (
                     <tr>
-                      <TableEmptyState colSpan={6} icon={Building2}>
+                      <TableEmptyState colSpan={7} icon={Building2}>
                         No suppliers found.
                       </TableEmptyState>
                     </tr>
@@ -628,6 +630,20 @@ export default function SupplierPage({
                                 {supplier.code}
                               </div>
                             </div>
+                          </div>
+                        </td>
+                        <td>
+                          <div>
+                            <strong>
+                              {normalizeSupplierTerms(supplier.paymentTerms)
+                                ? SUPPLIER_TERMS_LABEL[normalizeSupplierTerms(supplier.paymentTerms)!]
+                                : supplier.paymentTerms || "Not set"}
+                            </strong>
+                            {supplier.termsBasis && (
+                              <div className="muted" style={{ fontSize: 11 }}>
+                                from {supplier.termsBasis === "DeliveryDate" ? "delivery date" : "invoice date"}
+                              </div>
+                            )}
                           </div>
                         </td>
                         <td><PageTableValue value={supplier.contact || "Not provided"} /></td>
@@ -1185,7 +1201,7 @@ export default function SupplierPage({
                                             className="button soft"
                                             type="button"
                                             onClick={() => {
-                                              setPaymentPayable(payTarget(payable, selectedSupplier.name, invoice.invoiceNumber));
+                                              setPaymentPayable(payTarget({ ...payable, paymentTerms: payable.paymentTerms ?? selectedSupplier.paymentTerms }, selectedSupplier.name, invoice.invoiceNumber));
                                             }}
                                           >
                                             Record payment

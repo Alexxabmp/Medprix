@@ -512,6 +512,9 @@ export function ReportModal({
                 value={activeCashRow.recorded}
               />
               <ModalRow label="Difference" value={activeCashRow.difference} />
+              {activeCashRow.notes && (
+                <ModalRow label="Supervisor notes" value={activeCashRow.notes} />
+              )}
             </ModalSection>
             <ModalSection
               title={`Discrepant transactions (${activeCashRow.discrepantTransactions.length})`}>
@@ -536,9 +539,11 @@ export function ReportModal({
                   activeCashRow.type === "short" ? "#ffb5ad" : "#7ed2a0",
                 fontSize: 12,
               }}>
-              {activeCashRow.type === "short"
-                ? `Cash is ${activeCashRow.difference.replace("-", "")} short due to cancelled/uncollected shift orders. Review the register transactions before closing the shift.`
-                : `Cash is ${activeCashRow.difference} over net completed sales due to voided cash receipts. Verify drawer returns and confirm no duplicate entries.`}
+              {activeCashRow.notes
+                ? `Reconciliation record note: "${activeCashRow.notes}". Recorded till difference is ${activeCashRow.difference}.`
+                : activeCashRow.type === "short"
+                  ? `Cash is ${activeCashRow.difference.replace("-", "")} short. Review register transactions and verify physical count.`
+                  : `Cash is ${activeCashRow.difference} over net completed sales. Verify register float and drawer returns.`}
             </div>
           </>
         )}

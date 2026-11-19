@@ -140,7 +140,7 @@ export function InvoiceDialog({ detail, isAdmin, onClose, onDone }: { detail: Or
   const err = (field: keyof typeof problems, server?: string) => (attempted && problems[field]) || server;
 
   return (
-    <WholesaleDialog title="Record supplier invoice" description={`${order.poNumber} · ${order.supplier.name}`} busy={save.busy} close={onClose} className="proc-dialog"
+    <WholesaleDialog title="Record supplier invoice" description={`${order.poNumber} · ${order.supplier.name} · Terms: ${SUPPLIER_TERMS_LABEL[order.supplier.paymentTerms]}`} busy={save.busy} close={onClose} className="proc-dialog"
       footer={<>
         <button type="button" className="button soft" onClick={onClose} disabled={save.busy}>Cancel</button>
         <button type="button" className="button primary-action" onClick={submit} disabled={save.busy}>{save.busy ? "Saving…" : "Save invoice"}</button>

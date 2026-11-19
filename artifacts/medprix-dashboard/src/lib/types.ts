@@ -93,6 +93,19 @@ export interface CashMismatch {
   type: "short" | "over";
 }
 
+export interface CashReconciliationRecord {
+  id: string;
+  reconciliationDate: string;
+  cashierId?: string | null;
+  cashierName: string;
+  cashOnHand: number;
+  totalReportedSales: number;
+  discrepancyAmount: number;
+  hasFlaggedInconsistency: boolean;
+  notes?: string | null;
+  reconciledAt: string;
+}
+
 export interface TransactionItem {
   productId?: string;
   product: string;

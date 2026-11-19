@@ -1023,7 +1023,7 @@ export default function InventoryPage({
                           </button></AppTooltip>
 
                           {/* More Action Dropdown - ADMIN, FRONT DESK, CASHIER */}
-                          {(canEditProduct || canAddBatch || canRecordStockIn || canRecordStockOut) && (
+                          {(canEditProduct || canRecordStockOut) && (
                             <DropdownMenuPrimitive.Root>
                               <DropdownMenuPrimitive.Trigger asChild>
                                 <AppTooltip content={"More actions"}><button
@@ -1049,33 +1049,6 @@ export default function InventoryPage({
                                       aria-label="Edit product information"
                                       data-testid={`button-edit-${product.id}`}>
                                       <Pencil size={12} /> Edit
-                                    </DropdownMenuPrimitive.Item>
-                                  )}
-
-                                  {/* Add Batch / Add Expiry Date - ADMIN & FRONT DESK */}
-                                  {canAddBatch && (
-                                    <DropdownMenuPrimitive.Item
-                                      className="action-dropdown-item"
-                                      onSelect={() => handleOpenAddBatch(product)}
-                                      aria-label={
-                                        canAddFullBatchInfo
-                                          ? "Add product batch information"
-                                          : "Add batch expiry date"
-                                      }
-                                      data-testid={`button-batch-${product.id}`}>
-                                      <Plus size={12} />{" "}
-                                      {canAddFullBatchInfo ? "Batch" : "Expiry"}
-                                    </DropdownMenuPrimitive.Item>
-                                  )}
-
-                                  {/* Stock In - ADMIN & CASHIER */}
-                                  {canRecordStockIn && (
-                                    <DropdownMenuPrimitive.Item
-                                      className="action-dropdown-item"
-                                      onSelect={() => handleOpenStockIn(product)}
-                                      aria-label="Record Stock In"
-                                      data-testid={`button-stock-in-${product.id}`}>
-                                      <ArrowDownLeft size={12} /> In
                                     </DropdownMenuPrimitive.Item>
                                   )}
 

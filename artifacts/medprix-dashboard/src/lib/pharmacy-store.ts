@@ -1,6 +1,6 @@
 import { safeError, readResponse } from "./feedback";
 import { useState, useEffect, useCallback, useSyncExternalStore } from "react";
-import type { ProductItem, ShiftReceipt, SystemLog, UserActivity } from "./types";
+import type { ProductItem, ShiftReceipt, SystemLog, UserActivity, CashReconciliationRecord } from "./types";
 
 const formatPeso = (amount: number) =>
   `₱${amount.toLocaleString("en-PH", {
@@ -245,6 +245,84 @@ export async function fetchAuditRecords(force = false): Promise<{ logs: SystemLo
   })();
   auditInFlight = requestPromise;
   return requestPromise;
+}
+
+export interface CashReconciliationRecord {
+  id: string;
+  reconciliationDate: string;
+  cashierId?: string | null;
+  cashierName: string;
+  cashOnHand: number;
+  totalReportedSales: number;
+  discrepancyAmount: number;
+  hasFlaggedInconsistency: boolean;
+  notes?: string;
+  reconciledAt: string;
+}
+
+let globalCashReconciliations: CashReconciliationRecord[] | null = getCachedAuditList<CashReconciliationRecord>("medprix_cash_reconciliations");
+let cashReconciliationsInFlight: Promise<CashReconciliationRecord[]> | null = null;
+let lastCashReconciliationsFetchedAt = 0;
+const cashReconciliationListeners = new Set<() => void>();
+
+export async function fetchCashReconciliations(force = false): Promise<CashReconciliationRecord[]> {
+  if (!force && globalCashReconciliations && Date.now() - lastCashReconciliationsFetchedAt < CACHE_TTL_MS) {
+    return globalCashReconciliations;
+  }
+  if (!force && cashReconciliationsInFlight) {
+    return cashReconciliationsInFlight;
+  }
+  const requestPromise = (async () => {
+    try {
+      const res = await fetch("/api/admin/cash-reconciliations", { credentials: "include" });
+      const data = await readResponse(res, "Cash reconciliation records are unavailable.");
+      if (Array.isArray(data)) {
+        globalCashReconciliations = data;
+        lastCashReconciliationsFetchedAt = Date.now();
+        saveCachedAuditList("medprix_cash_reconciliations", data);
+        cashReconciliationListeners.forEach((fn) => {
+          try { fn(); } catch {}
+        });
+        return data;
+      }
+      return globalCashReconciliations ?? [];
+    } catch {
+      return globalCashReconciliations ?? [];
+    } finally {
+      cashReconciliationsInFlight = null;
+    }
+  })();
+  cashReconciliationsInFlight = requestPromise;
+  return requestPromise;
+}
+
+export function usePharmacyCashReconciliations() {
+  const [records, setRecords] = useState<CashReconciliationRecord[]>(() => globalCashReconciliations ?? []);
+  const [loading, setLoading] = useState<boolean>(() => globalCashReconciliations === null);
+
+  useEffect(() => {
+    let mounted = true;
+    const handler = () => {
+      if (mounted) {
+        setRecords(globalCashReconciliations ?? []);
+        setLoading(false);
+      }
+    };
+    cashReconciliationListeners.add(handler);
+    fetchCashReconciliations().then((data) => {
+      if (mounted) {
+        setRecords(data);
+        setLoading(false);
+      }
+    });
+    return () => {
+      mounted = false;
+      cashReconciliationListeners.delete(handler);
+    };
+  }, []);
+
+  const refresh = useCallback(() => fetchCashReconciliations(true), []);
+  return { records, loading, refresh };
 }
 
 export async function fetchInventoryData(force = false): Promise<ProductItem[]> {

@@ -7,16 +7,20 @@ export async function readRetailSales(
 ) {
   const result = await query(
     `SELECT t.*,r.receipt_number,r.merchant_name_at_issue,
+    COALESCE(t.cashier_name_at_sale, u.full_name, u.username, 'Cashier') AS cashier_name,
     cust.customer_name AS customer_name,applied.discount_type AS applied_discount_type,applied.holder_name AS discount_holder_name,applied.holder_id_number AS discount_holder_id,
     COALESCE((SELECT jsonb_agg(lines ORDER BY lines.product_id) FROM (
-      SELECT product_id,product_name_at_sale AS product,is_vat_exempt_at_sale,vat_rate_at_sale::text AS vat_rate,unit_price_at_sale::text AS unit_price,
-        sum(quantity)::int AS quantity,sum(subtotal)::text AS subtotal,sum(vat_amount)::text AS vat,
-        sum(discount_amount)::text AS discount,sum(net_amount)::text AS net,
-        (sum(subtotal)-sum(discount_amount)-sum(net_amount))::text AS relief
-      FROM transaction_items WHERE transaction_id=t.id
-      GROUP BY product_id,product_name_at_sale,unit_price_at_sale,is_vat_exempt_at_sale,vat_rate_at_sale
+      SELECT ti.product_id, COALESCE(ti.product_name_at_sale, p.product_name) AS product, ti.is_vat_exempt_at_sale, ti.vat_rate_at_sale::text AS vat_rate, ti.unit_price_at_sale::text AS unit_price,
+        sum(ti.quantity)::int AS quantity, sum(ti.subtotal)::text AS subtotal, sum(ti.vat_amount)::text AS vat,
+        sum(ti.discount_amount)::text AS discount, sum(ti.net_amount)::text AS net,
+        (sum(ti.subtotal)-sum(ti.discount_amount)-sum(ti.net_amount))::text AS relief
+      FROM transaction_items ti
+      LEFT JOIN products p ON p.id = ti.product_id
+      WHERE ti.transaction_id=t.id
+      GROUP BY ti.product_id, ti.product_name_at_sale, p.product_name, ti.unit_price_at_sale, ti.is_vat_exempt_at_sale, ti.vat_rate_at_sale
     ) lines),'[]'::jsonb) AS receipt_items
     FROM transactions t JOIN receipts r ON r.transaction_id=t.id
+    LEFT JOIN users u ON u.id=t.cashier_id
     LEFT JOIN customers cust ON cust.id=t.customer_id
     -- The Senior/PWD discount row (older seeded sales also hold a separate "VAT Exemption" row).
     LEFT JOIN LATERAL (SELECT d.discount_type,d.holder_name,d.holder_id_number FROM discounts d
@@ -34,7 +38,7 @@ export async function readRetailSales(
     createdAt: row.created_at,
     transactionNumber: row.receipt_number,
     dateTime: new Date(row.transaction_date).toISOString(),
-    user: row.cashier_name_at_sale ?? "Cashier name not recorded",
+    user: row.cashier_name,
     businessType: "Retail",
     customer: row.customer_name ?? "Walk-in Customer",
     total: peso(row.net_amount),

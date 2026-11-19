@@ -1,6 +1,6 @@
 import type { FinanceSummary } from "@workspace/api-client-react";
 import { formatCalendarDate, localDateKey, parseCalendarDate, recordsOnDate, transactionDateKey } from "./business-date";
-import type { CashMismatch, MovementItem, ProductItem, ReportType } from "./types";
+import type { CashMismatch, CashReconciliationRecord, MovementItem, ProductItem, ReportType } from "./types";
 
 export const parseMoney = (val: unknown): number => {
   if (typeof val === "number") return Number.isFinite(val) ? val : 0;
@@ -22,6 +22,45 @@ export const formatSignedPeso = (val: number): string => {
   return abs;
 };
 
+export function isExcludedProduct(name: unknown): boolean {
+  const lower = String(name || "").trim().toLowerCase();
+  if (!lower) return true;
+  return (
+    lower.includes("not recorded") ||
+    lower.includes("historical product") ||
+    lower.includes("wholesale sample pack") ||
+    lower.includes("wholesale rounding sample") ||
+    lower.includes("sample pack") ||
+    lower.includes("rounding sample") ||
+    lower === "sample" ||
+    lower === "unnamed product" ||
+    lower === "item"
+  );
+}
+
+export function getLocalTodayTillRecord(dateKey: string): CashReconciliationRecord | null {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return null;
+    const raw = localStorage.getItem(`medprix_till_count_${dateKey}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed.variance !== "number") return null;
+    return {
+      id: `local-till-${dateKey}`,
+      reconciliationDate: dateKey,
+      cashierName: "Current Cashier",
+      cashOnHand: Number(parsed.countedCash) || 0,
+      totalReportedSales: Number(parsed.expectedCash) || 0,
+      discrepancyAmount: Number(parsed.variance) || 0,
+      hasFlaggedInconsistency: Math.abs(Number(parsed.variance) || 0) >= 50,
+      notes: parsed.notes || `Till status: ${parsed.status}`,
+      reconciledAt: parsed.updatedAt || new Date().toISOString(),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function getProductStock(product: any): number {
   if (Array.isArray(product?.batches)) {
     return product.batches.reduce(
@@ -39,6 +78,7 @@ export interface LiveCashMismatch extends CashMismatch {
   recordedNum: number;
   differenceNum: number;
   transactionCount: number;
+  notes?: string;
   discrepantTransactions: {
     transactionNumber: string;
     time: string;
@@ -292,6 +332,7 @@ export function computeDashboardAnalytics(
   inventoryProducts: ProductItem[] = [],
   salesDate = new Date(),
   finance?: DashboardFinanceInput,
+  reconciliations: CashReconciliationRecord[] = [],
 ): DashboardAnalytics {
   const safeTransactions = Array.isArray(allTransactions) ? allTransactions : [];
   const safeProducts = Array.isArray(inventoryProducts) ? inventoryProducts : [];
@@ -328,10 +369,11 @@ export function computeDashboardAnalytics(
   const mayaTxs = dailyCompleted.filter((t) => isMaya(String(t.payment || "")));
   const walletTxs = dailyCompleted.filter((t) => isWallet(String(t.payment || "")));
 
-  // 2. Inventory & Stock Valuation
+  // 2. Inventory & Stock Valuation (strictly valid products from inventory)
+  const validProducts = safeProducts.filter((p: any) => !isExcludedProduct(p.name));
   const stockByName = new Map<string, { stock: number; sku: string; category: string }>();
 
-  const inventoryRows = safeProducts.map((p: any) => {
+  const inventoryRows = validProducts.map((p: any) => {
     const stock = getProductStock(p);
     const reorder = Number(p.reorder) || 10;
     const price = parseMoney(p.price);
@@ -369,18 +411,25 @@ export function computeDashboardAnalytics(
   const totalCostValue = inventoryRows.reduce((sum, r) => sum + r.costValue, 0);
 
   // 3. Product Movement across all Completed Transactions
+  // ONLY include active products from inventory, remove historical unrecorded & wholesale sample fixtures
   const allCompleted = safeTransactions.filter((t) => t.status === "Completed");
 
   const movementMap = new Map<string, LiveMovementItem>();
+  const movementById = new Map<string, LiveMovementItem>();
   for (const row of inventoryRows) {
-    movementMap.set(row.name.trim().toLowerCase(), {
+    if (isExcludedProduct(row.name)) continue;
+    const item: LiveMovementItem = {
       name: row.name,
       sku: row.sku,
       category: row.category,
       units: 0,
       revenue: 0,
       stock: row.stock,
-    });
+    };
+    movementMap.set(row.name.trim().toLowerCase(), item);
+    if (row.id) {
+      movementById.set(String(row.id), item);
+    }
   }
 
   const completedDateKeys: string[] = [];
@@ -391,26 +440,25 @@ export function computeDashboardAnalytics(
 
     if (Array.isArray(tx.items) && tx.items.length > 0) {
       for (const item of tx.items) {
+        const prodName = String(item.product || "").trim();
         const qty = Number(item.quantity) || 1;
-        const prodName = String(item.product || "Item").trim();
-        const nameKey = prodName.toLowerCase();
         const itemRevenue = parseMoney(item.subtotal) || parseMoney(item.unitPrice) * qty;
 
-        const existing = movementMap.get(nameKey);
-        if (existing) {
-          existing.units += qty;
-          existing.revenue += itemRevenue;
-        } else {
-          const stockInfo = stockByName.get(nameKey);
-          movementMap.set(nameKey, {
-            name: prodName,
-            sku: stockInfo?.sku ?? "—",
-            category: stockInfo?.category ?? "Pharmacy",
-            units: qty,
-            revenue: itemRevenue,
-            stock: stockInfo?.stock ?? 0,
-          });
+        let existing: LiveMovementItem | undefined;
+        if (prodName && !isExcludedProduct(prodName)) {
+          existing = movementMap.get(prodName.toLowerCase());
         }
+        if (!existing && item.productId) {
+          existing = movementById.get(String(item.productId));
+        }
+
+        if (!existing || isExcludedProduct(existing.name)) {
+          // Strictly only include products from inventory! Do not add non-inventory items.
+          continue;
+        }
+
+        existing.units += qty;
+        existing.revenue += itemRevenue;
       }
     }
   }
@@ -426,7 +474,9 @@ export function computeDashboardAnalytics(
       : salesDateLabel;
 
   // 4. Fast & Slow Moving Products
-  const allMovementItems = Array.from(movementMap.values());
+  const allMovementItems = Array.from(movementMap.values()).filter(
+    (item) => !isExcludedProduct(item.name)
+  );
   const totalUnitsSold = allMovementItems.reduce((sum, item) => sum + item.units, 0);
 
   const sortedDesc = [...allMovementItems].sort(
@@ -442,104 +492,91 @@ export function computeDashboardAnalytics(
   const slowMovers = sortedAsc.slice(0, 10);
   const chartSlow = sortedAsc.slice(0, 3);
 
-  // 5. Cash Mismatch Detection from Live Cash Transactions
-  const shiftGroups = new Map<
-    string,
-    {
-      dateKey: string;
-      shift: "Morning" | "Afternoon" | "Evening";
-      completedCash: number;
-      voidedCash: number;
-      cancelledCash: number;
-      txCount: number;
-      discrepantTransactions: LiveCashMismatch["discrepantTransactions"];
-    }
-  >();
-
-  for (const tx of safeTransactions) {
-    const paymentStr = String(tx.payment || "");
-    if (!isCash(paymentStr)) continue;
-    const dk = transactionDateKey(tx.dateTime || tx.createdAt);
-    if (!dk) continue;
-    const { shift, timeLabel } = getManilaShift(tx.dateTime || tx.createdAt);
-    const groupKey = `${dk}__${shift}`;
-    let group = shiftGroups.get(groupKey);
-    if (!group) {
-      group = {
-        dateKey: dk,
-        shift,
-        completedCash: 0,
-        voidedCash: 0,
-        cancelledCash: 0,
-        txCount: 0,
-        discrepantTransactions: [],
-      };
-      shiftGroups.set(groupKey, group);
-    }
-
-    const totalNum = parseMoney(tx.total);
-    group.txCount += 1;
-
-    if (tx.status === "Completed") {
-      group.completedCash += totalNum;
-    } else if (tx.status === "Voided") {
-      group.voidedCash += totalNum;
-      group.discrepantTransactions.push({
-        transactionNumber: String(tx.transactionNumber || tx.id),
-        time: timeLabel,
-        user: String(tx.user || "Cashier"),
-        status: String(tx.status),
-        total: formatPeso(totalNum),
-        amountReceived: String(tx.amountReceived || formatPeso(totalNum)),
-        change: String(tx.change || "₱0.00"),
-      });
+  // 5. Cash Mismatch Detection from Till Status & Shift Reconciliations across the entire year
+  const localTodayRecord = getLocalTodayTillRecord(salesDateKey) || getLocalTodayTillRecord(localDateKey(new Date()));
+  const mergedReconciliations = [...reconciliations];
+  if (localTodayRecord) {
+    const existingIdx = mergedReconciliations.findIndex(
+      (r) => r.reconciliationDate === localTodayRecord.reconciliationDate
+    );
+    if (existingIdx >= 0) {
+      mergedReconciliations[existingIdx] = localTodayRecord;
     } else {
-      group.cancelledCash += totalNum;
-      group.discrepantTransactions.push({
-        transactionNumber: String(tx.transactionNumber || tx.id),
-        time: timeLabel,
-        user: String(tx.user || "Cashier"),
-        status: String(tx.status || "Cancelled"),
-        total: formatPeso(totalNum),
-        amountReceived: String(tx.amountReceived || "₱0.00"),
-        change: String(tx.change || "₱0.00"),
-      });
+      mergedReconciliations.unshift(localTodayRecord);
     }
   }
 
-  const shiftOrder = { Evening: 3, Afternoon: 2, Morning: 1 };
   const mismatches: LiveCashMismatch[] = [];
 
-  for (const group of shiftGroups.values()) {
-    const expectedNum = group.completedCash + group.cancelledCash;
-    const recordedNum = group.completedCash + group.voidedCash;
-    const differenceNum = Number((recordedNum - expectedNum).toFixed(2));
+  if (mergedReconciliations.length > 0) {
+    for (const rec of mergedReconciliations) {
+      const diffNum = Number(rec.discrepancyAmount) || 0;
+      if (Math.abs(diffNum) < 0.01) continue; // Only inconsistencies (Over / Short)
 
-    if (Math.abs(differenceNum) >= 0.01) {
-      const parsedDate = parseCalendarDate(group.dateKey);
+      const dateKey = rec.reconciliationDate;
+      const parsedDate = parseCalendarDate(dateKey);
+      const dateLabel = formatShortDate(dateKey);
+      const fullDateLabel = parsedDate ? formatCalendarDate(parsedDate) : dateKey;
+      const shiftInfo = getManilaShift(rec.reconciledAt);
+      const cashierName = rec.cashierName || "Cashier";
+      const shift = `${cashierName} · ${shiftInfo.shift}`;
+
+      const txsOnDate = safeTransactions.filter((tx) => {
+        const txDk = transactionDateKey(tx.dateTime || tx.createdAt);
+        return txDk === dateKey && isCash(String(tx.payment || ""));
+      });
+      const problemTxs = txsOnDate.filter(
+        (tx) => tx.status === "Voided" || tx.status === "Cancelled"
+      );
+
+      let discrepantTransactions = problemTxs.map((tx) => {
+        const { timeLabel } = getManilaShift(tx.dateTime || tx.createdAt);
+        return {
+          transactionNumber: String(tx.transactionNumber || tx.id),
+          time: timeLabel,
+          user: String(tx.user || cashierName),
+          status: String(tx.status),
+          total: formatPeso(parseMoney(tx.total)),
+          amountReceived: String(tx.amountReceived || formatPeso(parseMoney(tx.total))),
+          change: String(tx.change || "₱0.00"),
+        };
+      });
+
+      if (discrepantTransactions.length === 0) {
+        discrepantTransactions = [
+          {
+            transactionNumber: `TILL-${String(rec.id).replace(/-/g, "").slice(0, 8).toUpperCase()}`,
+            time: shiftInfo.timeLabel,
+            user: cashierName,
+            status: rec.notes || (diffNum < 0 ? "Drawer Short" : "Drawer Over"),
+            total: formatSignedPeso(diffNum),
+            amountReceived: formatPeso(rec.cashOnHand),
+            change: "—",
+          },
+        ];
+      }
+
       mismatches.push({
-        dateKey: group.dateKey,
-        date: formatShortDate(group.dateKey),
-        fullDateLabel: parsedDate ? formatCalendarDate(parsedDate) : group.dateKey,
-        shift: group.shift,
-        expected: formatPeso(expectedNum),
-        recorded: formatPeso(recordedNum),
-        difference: formatSignedPeso(differenceNum),
-        type: differenceNum < 0 ? "short" : "over",
-        expectedNum,
-        recordedNum,
-        differenceNum,
-        transactionCount: group.txCount,
-        discrepantTransactions: group.discrepantTransactions,
+        dateKey,
+        date: dateLabel,
+        fullDateLabel,
+        shift,
+        expected: formatPeso(rec.totalReportedSales),
+        recorded: formatPeso(rec.cashOnHand),
+        difference: formatSignedPeso(diffNum),
+        type: diffNum < 0 ? "short" : "over",
+        expectedNum: rec.totalReportedSales,
+        recordedNum: rec.cashOnHand,
+        differenceNum: diffNum,
+        transactionCount: txsOnDate.length || 1,
+        notes: rec.notes || undefined,
+        discrepantTransactions,
       });
     }
-  }
 
-  mismatches.sort(
-    (a, b) =>
-      b.dateKey.localeCompare(a.dateKey) ||
-      shiftOrder[b.shift as keyof typeof shiftOrder] - shiftOrder[a.shift as keyof typeof shiftOrder],
-  );
+    // Sort by date descending across the entire year
+    mismatches.sort((a, b) => b.dateKey.localeCompare(a.dateKey));
+  }
 
   const totalShortAmount = mismatches
     .filter((m) => m.type === "short")
