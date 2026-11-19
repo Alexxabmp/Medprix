@@ -332,10 +332,20 @@ router.delete("/inventory/products/:id", requireAuth, requireRoles("Admin"), asy
   try {
     await withTransaction(async query => {
       await query("SELECT id FROM products WHERE id=$1 FOR UPDATE", [product.id]);
-      const { rows: references } = await query(
-        "SELECT id FROM wholesale_order_items WHERE product_id=$1 LIMIT 1", [product.id],
+      // A medicine with any sales, purchasing or contract history stays (records point to it); one with stock on hand must be
+      // stocked out first, so stock never disappears without a movement record.
+      const { rows: [history] } = await query(
+        `SELECT
+          EXISTS (SELECT 1 FROM transaction_items WHERE product_id=$1) AS retail,
+          EXISTS (SELECT 1 FROM wholesale_order_items WHERE product_id=$1) OR EXISTS (SELECT 1 FROM delivery_receipt_items WHERE product_id=$1) AS wholesale,
+          EXISTS (SELECT 1 FROM po_items WHERE product_id=$1) OR EXISTS (SELECT 1 FROM delivery_items WHERE product_id=$1) OR EXISTS (SELECT 1 FROM delivery_rejections WHERE product_id=$1) AS purchasing,
+          EXISTS (SELECT 1 FROM client_contract_items WHERE product_id=$1) OR EXISTS (SELECT 1 FROM wholesale_price_overrides WHERE product_id=$1) AS contracts,
+          coalesce((SELECT sum(quantity_remaining) FROM batch_info WHERE product_id=$1), 0)::int AS stock`,
+        [product.id],
       );
-      if (references.length) throw new CheckoutError(409, "This product has wholesale order history and cannot be deleted.");
+      const kept = [history.retail && "retail sales", history.wholesale && "wholesale orders", history.purchasing && "purchase orders", history.contracts && "client contracts"].filter(Boolean);
+      if (kept.length) throw new CheckoutError(409, `This product has ${kept.join(", ")} on record and can't be deleted. Those records need it.`);
+      if (history.stock > 0) throw new CheckoutError(409, `This product still has ${history.stock} unit(s) in stock. Record a stock out first, then delete it.`);
       await query("DELETE FROM batch_info WHERE product_id=$1", [product.id]);
       await query("DELETE FROM stock_movements WHERE product_id=$1", [product.id]);
       await query("DELETE FROM products WHERE id=$1", [product.id]);

@@ -4,6 +4,7 @@ import { createWholesaleOverview } from "../lib/wholesale-overview";
 import { createWholesaleCollections } from "../lib/wholesale-collections";
 import { createWholesaleDelivery } from "../lib/wholesale-delivery";
 import { createWholesaleConfirmation } from "../lib/wholesale-confirmation";
+import { createWholesaleCredit } from "../lib/wholesale-credit";
 import {
   Router,
   type IRouter,
@@ -23,6 +24,7 @@ const overview = createWholesaleOverview(queryDb);
 const collections = createWholesaleCollections(queryDb, withTransaction);
 const delivery = createWholesaleDelivery(queryDb, withTransaction);
 const confirmation = createWholesaleConfirmation(queryDb, withTransaction);
+const credit = createWholesaleCredit(queryDb, withTransaction);
 
 router.use(
   "/wholesale",
@@ -406,4 +408,25 @@ router.post(
     );
   }),
 );
+
+// Credit hold: the client's overdue balance, and Admin decisions bound to the order revision.
+router.get("/wholesale/orders/:id/credit", handle(async (req, res) => {
+  res.json(await credit.status(res.locals.user!, String(req.params.id)));
+}));
+router.get("/wholesale/clients/:id/credit", handle(async (req, res) => {
+  res.json(await credit.forClient(res.locals.user!, String(req.params.id)));
+}));
+router.post("/wholesale/orders/:id/credit-approvals", handle(async (req, res) => {
+  res.json(await credit.request(res.locals.user!, req.get("Idempotency-Key"), String(req.params.id), req.body));
+}));
+router.post("/wholesale/credit-approvals/:id/decision", requireRoles("Admin"), handle(async (req, res) => {
+  res.json(await credit.decide(res.locals.user!, req.get("Idempotency-Key"), String(req.params.id), req.body));
+}));
+// Statement of account (PDF is drawn in the browser) and the pharmacy's own official receipt number for a payment.
+router.get("/wholesale/clients/:id/statement", handle(async (req, res) => {
+  res.json(await collections.statement(res.locals.user!, String(req.params.id)));
+}));
+router.patch("/wholesale/payments/:id/official-receipt", handle(async (req, res) => {
+  res.json(await collections.setOfficialReceipt(res.locals.user!, String(req.params.id), req.body));
+}));
 export default router;

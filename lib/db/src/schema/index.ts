@@ -13,3 +13,4 @@ export * from "./wholesale-installments";
 export * from "./payment-plan";
 export * from "./wholesale-terms";
 export * from "./expenses";
+export * from "./wholesale-receipts";

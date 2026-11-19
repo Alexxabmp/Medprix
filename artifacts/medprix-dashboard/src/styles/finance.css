@@ -70,3 +70,19 @@
 .customers-dialog .customers-row { cursor: pointer; }
 .customer-profile-panel.is-inline { width: 100%; height: auto; padding: 0; box-shadow: none; overflow: visible; background: transparent; }
 @media (max-width: 560px) { .customers-card .button { width: 100%; } }
+
+/* ─── Wholesale: failed deliveries, credit hold, receipts ─────────────────────────────────────── */
+.summary-strip.wholesale-summary-strip > :nth-child(odd):last-child { grid-column: 1 / -1; }
+.wholesale-credit-banner { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 12px; font-size: var(--text-sm); background: #eaf2ff; color: #0a3c8a; }
+.wholesale-credit-banner.is-hold { background: #ffe4e1; color: #7a1010; }
+.wholesale-credit-banner.is-warning { background: #fff1d6; color: #6b3500; margin-bottom: 10px; }
+.wholesale-credit-hold { display: flex; flex-direction: column; gap: 10px; }
+.wholesale-receipt-ready { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 12px 14px; border-radius: 12px; background: #e3f6e8; color: #145c2c; font-size: var(--text-sm); margin-bottom: 12px; }
+.wholesale-receipt-reversed { text-decoration: line-through; color: hsl(var(--muted)); }
+.wholesale-or-form { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.wholesale-or-form input { min-width: 0; width: 120px; height: 34px; border-radius: 8px; border: 1px solid hsl(var(--border)); padding: 0 8px; }
+.wholesale-client-credit { margin-top: 6px; }
+.dark .wholesale-credit-banner { background: #14274a; color: #cfe0ff; }
+.dark .wholesale-credit-banner.is-hold { background: #4a1414; color: #ffd6d0; }
+.dark .wholesale-credit-banner.is-warning { background: #4a3210; color: #ffe2b3; }
+.dark .wholesale-receipt-ready { background: #123a22; color: #c9f2d6; }

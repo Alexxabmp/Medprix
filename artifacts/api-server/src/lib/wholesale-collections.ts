@@ -70,6 +70,10 @@ async function account(query: WholesaleQuery, id: string) {
     throw new WholesaleError(404, "A delivered order receivable is required.");
   return row;
 }
+function pharmacyDateMinus(day: string, daysBack: number) {
+  const [y, m, d] = day.split("-").map(Number) as [number, number, number];
+  return new Date(Date.UTC(y, m - 1, d - daysBack)).toISOString().slice(0, 10);
+}
 export function createWholesaleCollections(
   read: WholesaleQuery,
   transaction: WholesaleTransaction,
@@ -121,7 +125,7 @@ export function createWholesaleCollections(
         [search.trim(), today],
       );
       const { rows: items } = await read(
-        `SELECT a.id,o.order_number AS "orderNumber",
+        `SELECT a.id,o.order_number AS "orderNumber",o.client_id AS "clientId",
         f.snapshot->>'clientName' AS "clientName",a.total_owed::text AS total,
         a.total_paid::text AS paid,a.balance::text,${wholesalePaymentStatus} AS status,a.due_date::text AS "dueDate",f.delivered_at AS "deliveredAt",
         o.payment_plan AS "paymentPlan",$3::date::text AS "asOfDate",credit.overdue_amount::numeric(12,2)::text AS "overdueAmount",
@@ -141,6 +145,7 @@ export function createWholesaleCollections(
         return {
           id,
           orderNumber: row.order_number,
+          clientId: row.client_id,
           clientName: row.client_name,
           total: row.total_owed,
           paid: row.total_paid,
@@ -166,6 +171,7 @@ export function createWholesaleCollections(
         "reference",
         "collectedAt",
         "notes",
+        "officialReceiptNumber",
       ]);
       const id = requireUuid(arId);
       const amount = wholesaleMoney(input.amount);
@@ -187,6 +193,12 @@ export function createWholesaleCollections(
         );
       const collectedAt = instant(input.collectedAt);
       const notes = wholesaleText(input.notes, "payment notes", 500, false);
+      const officialReceiptNumber = wholesaleText(
+        input.officialReceiptNumber,
+        "the pharmacy's official receipt or invoice number",
+        100,
+        false,
+      );
       return operation(
         actor,
         key,
@@ -198,6 +210,7 @@ export function createWholesaleCollections(
           reference,
           collectedAt,
           notes,
+          ...(officialReceiptNumber ? { officialReceiptNumber } : {}),
         },
         async (query) => {
           if (Date.parse(collectedAt) > clock().getTime())
@@ -252,6 +265,15 @@ export function createWholesaleCollections(
               [payment.id, id, allocation.sequenceNumber, allocation.amount],
             );
           }
+          // Collection receipt, numbered in the same transaction so a retry or double-click never makes two.
+          const {
+            rows: [seq],
+          } = await query("SELECT nextval('wholesale_collection_receipt_seq') AS n");
+          const receiptNumber = `CR-${pharmacyDate(new Date(collectedAt)).slice(0, 4)}-${String(seq.n).padStart(4, "0")}`;
+          await query(
+            "INSERT INTO wholesale_collection_receipts(collection_id,receipt_number,official_receipt_number) VALUES($1,$2,$3)",
+            [payment.id, receiptNumber, officialReceiptNumber],
+          );
           const balance = money(cents(row.balance) - cents(amount));
           await query(
             "UPDATE accounts_receivable SET total_paid=total_paid+$2,balance=balance-$2 WHERE id=$1",
@@ -273,11 +295,94 @@ export function createWholesaleCollections(
               "; " +
               amount +
               " " +
-              method,
+              method +
+              "; receipt " +
+              receiptNumber,
           );
-          return { id: payment.id, arId: id, balance, allocations };
+          return { id: payment.id, arId: id, balance, allocations, receiptNumber };
         },
       );
+    },
+    /** The pharmacy's own official receipt / invoice number can be added once, after the payment. */
+    async setOfficialReceipt(actor: AuditActor, paymentId: unknown, input: any) {
+      access(actor);
+      wholesaleFields(input, ["officialReceiptNumber"]);
+      const id = requireUuid(paymentId);
+      const number = wholesaleText(input.officialReceiptNumber, "the pharmacy's official receipt or invoice number", 100)!;
+      return transaction(async (query) => {
+        const {
+          rows: [receipt],
+        } = await query(
+          "SELECT receipt_number,official_receipt_number FROM wholesale_collection_receipts WHERE collection_id=$1 FOR UPDATE",
+          [id],
+        );
+        if (!receipt) throw new WholesaleError(404, "Receipt not found.");
+        if (receipt.official_receipt_number)
+          throw new WholesaleError(409, `This receipt already has official receipt no. ${receipt.official_receipt_number}.`);
+        await query(
+          "UPDATE wholesale_collection_receipts SET official_receipt_number=$2 WHERE collection_id=$1",
+          [id, number],
+        );
+        await wholesaleAudit(query, actor, "WHOLESALE_RECEIPT_UPDATED", `Receipt ${receipt.receipt_number}: official receipt no. ${number}`);
+        return { id, receiptNumber: receipt.receipt_number, officialReceiptNumber: number };
+      });
+    },
+    /**
+     * Statement of account for one client: open orders with their installments, payments in the last 90 days with
+     * receipt numbers, and how late the unpaid installments are. Uses the same overdue rule as receivables and Finance.
+     */
+    async statement(actor: AuditActor, clientId: unknown) {
+      access(actor);
+      const id = requireUuid(clientId);
+      const today = pharmacyDate(clock());
+      return transaction(async (query) => {
+        const {
+          rows: [client],
+        } = await query(
+          "SELECT id,client_name AS name,contact_person AS \"contactPerson\",contact_number AS \"contactNumber\",email,address FROM wholesale_clients WHERE id=$1",
+          [id],
+        );
+        if (!client) throw new WholesaleError(404, "Client not found.");
+        const { rows: ids } = await query(
+          `SELECT a.id FROM accounts_receivable a JOIN wholesale_orders o ON o.id=a.order_id JOIN wholesale_fulfillments f ON f.ar_id=a.id
+          WHERE o.client_id=$1 AND (a.balance>0 OR EXISTS (SELECT 1 FROM ar_payments p WHERE p.ar_id=a.id AND p.payment_date >= ($2::date - 90)))
+          ORDER BY f.delivered_at,a.id`,
+          [id, today],
+        );
+        const days = (due: string) => Math.round((Date.parse(today) - Date.parse(due)) / 86_400_000);
+        const aging = { current: 0n, d1_30: 0n, d31_60: 0n, d61_90: 0n, d90plus: 0n };
+        const orders: any[] = [];
+        const payments: any[] = [];
+        let billed = 0n, paid = 0n, balance = 0n, overdue = 0n;
+        for (const { id: arId } of ids) {
+          const row = await account(query, arId);
+          const ledger = await wholesaleAccountLedger(query, row);
+          if (cents(row.balance) > 0n) {
+            billed += cents(row.total_owed); paid += cents(row.total_paid); balance += cents(row.balance);
+            const installments = ledger.installments.map((entry: any) => {
+              const left = cents(entry.balance);
+              const late = entry.dueDate < today && left > 0n ? days(entry.dueDate) : 0;
+              if (left > 0n) {
+                if (!late) aging.current += left;
+                else { overdue += left; if (late <= 30) aging.d1_30 += left; else if (late <= 60) aging.d31_60 += left; else if (late <= 90) aging.d61_90 += left; else aging.d90plus += left; }
+              }
+              return { sequenceNumber: entry.sequenceNumber, dueDate: entry.dueDate, amount: entry.amount, paid: money(cents(entry.amount) - left), balance: entry.balance, daysLate: late };
+            });
+            orders.push({ arId, orderNumber: row.order_number, paymentPlan: row.payment_plan, deliveredAt: row.delivered_at, total: row.total_owed, paid: row.total_paid, balance: row.balance, installments });
+          }
+          for (const payment of ledger.payments as any[]) {
+            if (pharmacyDate(new Date(payment.collectedAt)) >= pharmacyDateMinus(today, 90))
+              payments.push({ orderNumber: row.order_number, receiptNumber: payment.receiptNumber, collectedAt: payment.collectedAt, amount: payment.amount,
+                method: payment.method, reference: payment.reference, reversed: Boolean(payment.reversalId) });
+          }
+        }
+        payments.sort((a, b) => String(b.collectedAt).localeCompare(String(a.collectedAt)));
+        return {
+          client, asOf: today, orders, payments,
+          totals: { billed: money(billed), paid: money(paid), balance: money(balance), overdue: money(overdue) },
+          aging: { current: money(aging.current), days1to30: money(aging.d1_30), days31to60: money(aging.d31_60), days61to90: money(aging.d61_90), over90: money(aging.d90plus) },
+        };
+      });
     },
     async reverse(
       actor: AuditActor,

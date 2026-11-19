@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from "react";
+import { planLabel } from "@/lib/wholesale-documents";
 import { Eye, Pencil, Plus, Trash2, FileText, ChevronDown } from "lucide-react";
 import { pharmacyDate, wholesaleAmountSchema } from "@workspace/api-zod";
 import { DateField } from "./custom-ui/date-field";
@@ -46,7 +47,7 @@ function WholesaleContractDetails({
       <dl className="wholesale-review-summary wholesale-account-summary">
         <div>
           <dt>Payment terms</dt>
-          <dd>{contract.paymentPlan === "Net60" ? "Net 60" : "Net 30"}</dd>
+          <dd>{planLabel(contract.paymentPlan)}</dd>
         </div>
         <div>
           <dt>Status</dt>
@@ -186,9 +187,7 @@ export function WholesaleClientInformation({
                               <ModalTableValue value={contract.title} />
                             </td>
                             <td data-label="Payment terms">
-                              {contract.paymentPlan === "Net60"
-                                ? "Net 60"
-                                : "Net 30"}
+                              {planLabel(contract.paymentPlan)}
                             </td>
                             <td data-label="Status">
                               <span
@@ -307,11 +306,9 @@ export function WholesaleContracts({
                   {formatDisplayDate(item.expiryDate)}
                 </td>
                 <td>
-                  {item.paymentPlan === "Net30"
-                    ? "Net 30"
-                    : item.paymentPlan === "Net60"
-                      ? "Net 60"
-                      : "Needs review"}
+                  {item.paymentPlan === "Net30" || item.paymentPlan === "Net60"
+                    ? planLabel(item.paymentPlan)
+                    : "Needs review"}
                 </td>
                 <td>{item.items.length}</td>
                 <td>

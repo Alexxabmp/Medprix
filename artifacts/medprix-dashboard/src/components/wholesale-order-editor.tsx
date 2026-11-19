@@ -1,12 +1,13 @@
 import { pharmacyDate } from "@workspace/api-zod";
 import { SelectField } from "./custom-ui/select-field";
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { WholesalePaymentPlan } from "@workspace/api-zod";
 import { Plus, Trash2 } from "lucide-react";
 import { WholesaleDialog } from "./wholesale-dialog";
 import { wholesaleDraftPreview } from "@/lib/wholesale-draft-preview";
 import "@/styles/wholesale-workflow.css";
 import {
+  wholesaleGet,
   wholesalePeso,
   type WholesaleClient,
   type WholesaleContract,
@@ -46,6 +47,17 @@ export function WholesaleOrderEditor({
   const form = useRef<HTMLFormElement>(null);
   const formId = useId();
   const [clientId, setClientId] = useState(order?.clientId ?? "");
+  // Heads-up as soon as a client with an overdue balance is picked (confirming will need Admin approval).
+  const [clientCredit, setClientCredit] = useState<{ overdueAmount: string; daysLate: number; message: string | null } | null>(null);
+  useEffect(() => {
+    setClientCredit(null);
+    if (!clientId) return;
+    let live = true;
+    wholesaleGet<{ overdueAmount: string; daysLate: number; message: string | null }>(`/clients/${clientId}/credit`, true)
+      .then((value) => { if (live) setClientCredit(value); })
+      .catch(() => { /* confirmation checks again */ });
+    return () => { live = false; };
+  }, [clientId]);
   const [contractId, setContractId] = useState(order?.contractId ?? "");
   const contract = contracts.find((item) => item.id === contractId);
   const products = standardProducts.map((product) => ({
@@ -180,8 +192,8 @@ export function WholesaleOrderEditor({
                 }}
               >
                 <option value="">Select payment plan</option>
-                <option value="Net30">Net 30: One Payment Deadline</option>
-                <option value="Net60">Net 60: Two Installments</option>
+                <option value="Net30">Net 30 · 1 payment</option>
+                <option value="Net60">Net 60 · 2 installments</option>
               </SelectField>
             </div>
           </div>
@@ -223,6 +235,12 @@ export function WholesaleOrderEditor({
                 : "Choose a contract to use this client's agreed product prices and payment terms."}
             </span>
           </div>
+          {clientCredit && Number(clientCredit.overdueAmount) > 0 && (
+            <div className="wholesale-credit-banner is-hold wholesale-client-credit" role="status">
+              <strong>This client has {wholesalePeso(clientCredit.overdueAmount)} overdue ({clientCredit.daysLate} day{clientCredit.daysLate === 1 ? "" : "s"} late).</strong>
+              <span>You can save this draft, but confirming it will need an Admin's approval.</span>
+            </div>
+          )}
           {clientId && (
             <section
               className="wholesale-context"
