@@ -2,6 +2,7 @@ import { ReadDialog, useReadDialog } from "./read-dialog";
 import { SourceTableBody, SourceFeedback, SourceRefreshButton } from "./custom-ui/source-state";
 import { createPortal } from "react-dom";
 import { SelectField } from "@/components/custom-ui/select-field";
+import { DateTimeField } from "@/components/custom-ui/date-time-field";
 import { formatDisplayDate } from "@/lib/business-date";
 import {
   PageTableValue,
@@ -686,10 +687,9 @@ export function WholesaleReceivables({
                         <label htmlFor="wholesale-payment-time">
                           Collected at (Manila) *
                         </label>
-                        <input
+                        <DateTimeField
                           id="wholesale-payment-time"
                           name="collectedAt"
-                          type="datetime-local"
                           step="0.001"
                           defaultValue={wholesaleManilaInput()}
                           required

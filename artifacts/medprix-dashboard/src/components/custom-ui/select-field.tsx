@@ -51,6 +51,7 @@ export function SelectField({
   const [validationMessage, setValidationMessage] = useState("");
   const [uncontrolled, setUncontrolled] = useState("");
   const [open, setOpen] = useState(false);
+  const [itemsReady, setItemsReady] = useState(false);
   const [layout, setLayout] = useState<CSSProperties>({});
   const [layer, setLayer] = useState(1100);
   const preserveFocus = useRef(false);
@@ -80,21 +81,27 @@ export function SelectField({
     setLayer(Math.max(1100, Number.isFinite(ownerLayer) ? ownerLayer + 1 : 0));
     const style = getComputedStyle(select);
     const inline = Boolean(select.closest("td"));
-    const context = document.createElement("canvas").getContext("2d")!;
-    context.font =
-      style.font || `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-    const optionWidth = Math.max(
-      0,
-      ...next.map((option) => context.measureText(option.label).width),
-    );
-    const protectedWidth = Math.ceil(
-      optionWidth +
-        parseFloat(style.paddingLeft) +
-        parseFloat(style.paddingRight) +
-        parseFloat(style.borderLeftWidth) +
-        parseFloat(style.borderRightWidth) +
-        24,
-    );
+    let protectedWidth: number | undefined;
+    // Only table-cell selects need an intrinsic width. Measuring every option
+    // in a form select blocks opening calendars with long year lists.
+    if (inline) {
+      const context = document.createElement("canvas").getContext("2d")!;
+      context.font =
+        style.font ||
+        `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+      const optionWidth = Math.max(
+        0,
+        ...next.map((option) => context.measureText(option.label).width),
+      );
+      protectedWidth = Math.ceil(
+        optionWidth +
+          parseFloat(style.paddingLeft) +
+          parseFloat(style.paddingRight) +
+          parseFloat(style.borderLeftWidth) +
+          parseFloat(style.borderRightWidth) +
+          24,
+      );
+    }
     setLayout({
       height: style.height === "auto" ? undefined : style.height,
       padding: style.padding === "0px" ? undefined : style.padding,
@@ -253,9 +260,14 @@ export function SelectField({
             aria-invalid={invalid}
             aria-describedby={describedBy}
             aria-busy={props["aria-busy"]}
-            onFocus={
-              props.onFocus as ComponentPropsWithoutRef<"button">["onFocus"]
-            }
+            onFocus={(event) => {
+              // Keep closed-trigger typeahead once the user focuses this select,
+              // without mounting every hidden item when its parent first opens.
+              setItemsReady(true);
+              (
+                props.onFocus as ComponentPropsWithoutRef<"button">["onFocus"]
+              )?.(event);
+            }}
             onBlur={
               props.onBlur as ComponentPropsWithoutRef<"button">["onBlur"]
             }
@@ -283,17 +295,18 @@ export function SelectField({
               preserveFocus.current = false;
             }}
           >
-            {options.map((option, index) =>
-              option.id === "" && option.disabled ? null : (
-                <SelectItem
-                  key={`${option.id}-${index}`}
-                  value={`option-${index}`}
-                  disabled={option.disabled}
-                >
-                  {option.label}
-                </SelectItem>
-              ),
-            )}
+            {(open || itemsReady) &&
+              options.map((option, index) =>
+                option.id === "" && option.disabled ? null : (
+                  <SelectItem
+                    key={`${option.id}-${index}`}
+                    value={`option-${index}`}
+                    disabled={option.disabled}
+                  >
+                    {option.label}
+                  </SelectItem>
+                ),
+              )}
           </SelectContent>
         </Select>
       )}

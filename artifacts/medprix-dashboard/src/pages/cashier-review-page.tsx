@@ -79,12 +79,11 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       <PageHeading
+        className="date-page-heading"
         title="Shift review & register operations"
         description="Select any of the 4 register features to view shift sales, drawer balance, handled transactions, or till status."
         action={
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <DateControl date={shiftDate} onDateChange={selectDate} />
-          </div>
+          <DateControl date={shiftDate} onDateChange={selectDate} />
         }
       />
 

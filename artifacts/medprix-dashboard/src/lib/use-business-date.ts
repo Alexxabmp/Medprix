@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { localDateKey } from "./business-date";
 
-/** Shared page state keeps the native input and its filtered data on the same day. */
+/** Shared page state keeps the date picker and its filtered data on the same day. */
 export function useBusinessDate() {
   const [date, setDate] = useState(() => new Date());
   const [followingToday, setFollowingToday] = useState(true);
