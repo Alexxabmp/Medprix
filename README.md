@@ -176,6 +176,48 @@ npm run dev
 
 `down -v` deletes the local Postgres volume. Ordinary `docker compose down` keeps your data.
 
+### Deployed database: run migrations after every merge that adds one
+
+The deployed app refuses requests ("Database storage is not ready") until its database has every migration. After merging a change that adds a file to `lib/db/drizzle`, point the migration command at the deployed database once:
+
+```sh
+DATABASE_URL="<deployed database URL>" npm run db:migrate -- status
+DATABASE_URL="<deployed database URL>" npm run db:migrate -- apply
+```
+
+Never run `db:seed` against the deployed database.
+
+### Primary admin
+
+Exactly one active administrator is the **primary admin** (migration `0020_primary_admin`). Only the primary admin can create, edit, deactivate, change the role of, or reset the password of another administrator, or make someone an administrator. Other administrators manage Cashier and Front Desk accounts. The primary admin hands the role over from **User Management → Transfer primary admin**.
+
+When migration 0020 runs, the oldest active administrator becomes the primary admin. To see who that will be before applying it, run this in the database's SQL editor:
+
+```sql
+SELECT username, full_name, created_at FROM users
+WHERE role = 'Admin' AND is_active ORDER BY created_at, id LIMIT 1;
+```
+
+### Temporary passwords and My account
+
+When an administrator creates an account or resets someone else's password, that password is temporary (migration `0021_password_change_required`): at the next sign-in the person must choose their own before the workspace opens, and the API refuses every other request until they do. Everyone can edit their own name and mobile number and change their password from the avatar menu → **My account**. Usernames and roles stay with the administrators.
+
+### Login lockout
+
+Five wrong passwords within 15 minutes lock that account for 15 minutes (migration `0022_login_lockout`), for every role. While it is locked even the right password is refused. The lock ends by itself, or an administrator clicks **Unlock** (or resets the password) in User Management; only the primary admin can unlock another administrator. From the third wrong password in a row, attempts are flagged **Suspicious** in User activity, and the admin dashboard's **Security & access** card shows today's failed sign-ins and anyone locked right now. If the primary admin is locked out and can't wait, clear it in the SQL editor:
+
+```sql
+UPDATE users SET failed_login_count = 0, last_failed_login_at = NULL, locked_until = NULL WHERE is_primary_admin;
+```
+
+**If the primary admin forgets their password**, no other administrator can reset it in the app. Someone with database access sets a temporary password in the SQL editor (pgcrypto is enabled on Supabase; the local database needs the `CREATE EXTENSION` line once), then the primary admin signs in and changes it from User Management:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+UPDATE users SET password_hash = crypt('Temporary-Pass-2026', gen_salt('bf', 12)), updated_at = now()
+WHERE is_primary_admin;
+```
+
 ## Troubleshooting
 
 - **Docker cannot connect:** Start Docker Desktop, then retry `docker compose up -d --wait`.

@@ -16,6 +16,8 @@ declare global {
   }
 }
 
+const PASSWORD_CHANGE_PATHS = /\/(me|account|account\/password)\/?$/;
+
 export async function requireAuth(
   req: Request,
   res: Response,
@@ -42,6 +44,7 @@ export async function requireAuth(
         username: usersTable.username,
         role: usersTable.role,
         isActive: usersTable.isActive,
+        mustChangePassword: usersTable.mustChangePassword,
       })
       .from(usersTable)
       .where(
@@ -50,6 +53,12 @@ export async function requireAuth(
 
     if (!user || user.isActive === false) {
       return res.status(401).json({ error: "Authentication required." });
+    }
+
+    // Until a temporary password is replaced, only My account, its password route and /me answer.
+    // The server enforces this so the rule holds even if the page is bypassed.
+    if (user.mustChangePassword && !PASSWORD_CHANGE_PATHS.test(req.originalUrl.split("?")[0])) {
+      return res.status(403).json({ error: "Set your own password before continuing.", code: "password_change_required" });
     }
 
     res.locals.user = user as SessionUser;

@@ -27,6 +27,7 @@ export const pageTablePolicies: Record<string, PageTablePolicy> = {
   "purchase-orders": { label: "Purchase order monitoring", columns: [plain, text, plain, number, number, plain, actions] },
   receiving: { label: "Receiving report management", kind: "receiving", columns: [plain, text, product, plain, number, plain, plain, plain, actions] },
   "purchase-invoices": { label: "Purchase invoice monitoring", columns: [plain, plain, text, plain, number, plain, actions] },
+  customers: { label: "Customers", columns: [text, plain, plain, plain, plain, plain, plain] },
   users: { label: "User accounts", columns: [text, controlHelp, plain, controlHelp, plain, actions] },
   "pos-cart": { label: "Transaction items", localScroll: true, columns: [product, { numeric: true, align: "center" }, number, number, actions] },
   "pos-receipts": { label: "Recent shift receipts", separateToolbar: true, columns: [plain, plain, product, plain, number, plain, actions] },

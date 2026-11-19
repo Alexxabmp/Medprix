@@ -1,322 +1,68 @@
 import { Router, type IRouter } from "express";
-import { db, usersTable } from "@workspace/db";
-import { hashPassword, validatePassword } from "../lib/password";
+import { queryDb, withTransaction } from "@workspace/db";
+import { hashPassword, validatePassword, verifyPassword } from "../lib/password";
 import { requireAuth, requireRole } from "../middleware/auth";
-import { eq, sql } from "drizzle-orm";
-import { identifierConflict } from "../lib/identifier-conflicts";
+import { createUserStore, UserError } from "../lib/user-store";
 
-const router: IRouter = Router();
-
-const VALID_ROLES = ["Admin", "Cashier", "FrontDesk"] as const;
-
-const uuidRegex =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function isValidUuid(value: string): boolean {
-  return typeof value === "string" && uuidRegex.test(value);
-}
-
-router.use("/users", requireAuth, requireRole("Admin"));
-
-router.get("/users", async (_req, res) => {
-  try {
-    const users = await db
-      .select({
-        id: usersTable.id,
-        username: usersTable.username,
-        fullName: usersTable.fullName,
-        contactNumber: usersTable.contactNumber,
-        role: usersTable.role,
-        isActive: usersTable.isActive,
-        createdAt: usersTable.createdAt,
-        lastLogin: usersTable.lastLogin,
-      })
-      .from(usersTable);
-
-    return res.json(users);
-  } catch {
-    return res.status(500).json({ error: "Failed to fetch users." });
-  }
-});
-
-function normalizeRole(roleInput: any): "Admin" | "Cashier" | "FrontDesk" | null {
-  if (typeof roleInput !== "string") return null;
-  const lower = roleInput.trim().toLowerCase().replace(/[\s_-]/g, "");
-  if (lower === "admin" || lower === "administrator") return "Admin";
-  if (lower === "cashier") return "Cashier";
-  if (lower === "frontdesk" || lower === "frontdeskstaff") return "FrontDesk";
-  return null;
-}
-
-function normalizePhone(phoneInput: any): string | null {
-  if (
-    phoneInput === undefined ||
-    phoneInput === null ||
-    phoneInput === "" ||
-    phoneInput === "—" ||
-    phoneInput === "\u2014"
-  ) {
-    return null;
-  }
-  if (typeof phoneInput !== "string") return null;
-  const cleaned = phoneInput.trim();
-  const digits = cleaned.replace(/\D/g, "");
-  if (digits.startsWith("639") && digits.length === 12) {
-    return `+${digits}`;
-  }
-  if (digits.startsWith("09") && digits.length === 11) {
-    return `+63${digits.slice(1)}`;
-  }
-  if (digits.startsWith("9") && digits.length === 10) {
-    return `+63${digits}`;
-  }
-  if (/^\+639\d{9}$/.test(cleaned)) {
-    return cleaned;
-  }
-  return null;
-}
-
-router.post("/users", async (req, res) => {
-  const {
-    username,
-    password,
-    role,
-    fullName,
-    contactNumber,
-  } = req.body ?? {};
-
-  const normalizedUsername =
-    typeof username === "string" ? username.trim() : "";
-
-  if (!normalizedUsername || typeof password !== "string" || !role) {
-    return res.status(400).json({
-      error: "username, password, and role are required.",
-    });
-  }
-  if (normalizedUsername.length > 100) return res.status(400).json({ error: "Username must be 100 characters or fewer." });
-
-  const passwordError = validatePassword(password);
-  if (passwordError) {
-    return res.status(400).json({ error: passwordError });
-  }
-
-  const validRole = normalizeRole(role);
-  if (!validRole) {
-    return res.status(400).json({
-      error: "Invalid user role. Choose Administrator, Cashier, or Front Desk.",
-    });
-  }
-
-  try {
-    const displayName =
-      typeof fullName === "string" && fullName.trim()
-        ? fullName.trim()
-        : normalizedUsername;
-
-    const passwordHash = await hashPassword(password);
-
-    const [result] = await db
-      .insert(usersTable)
-      .values({
-        username: normalizedUsername,
-        password: passwordHash,
-        role: validRole,
-        fullName: displayName,
-        contactNumber: normalizePhone(contactNumber),
-        isActive: true,
-      })
-      .returning();
-
-    return res.status(201).json({
-      id: result.id,
-      username: result.username,
-      fullName: result.fullName,
-      contactNumber: result.contactNumber,
-      role: result.role,
-      isActive: result.isActive,
-    });
-  } catch (error) {
-    if (!identifierConflict(error, ['users_username_key','uq_users_username_ci']))
-      return res.status(503).json({ error: "Could not create the account. Please try again." });
-    return res.status(409).json({
-      error: "Username is already taken.",
-    });
-  }
-});
-
-async function findUser(userIdOrUsername: string) {
-  const clean = String(userIdOrUsername || "").trim();
-  if (!clean) return null;
-
-  const [direct] = await db
-    .select()
-    .from(usersTable)
-    .where(
-      isValidUuid(clean)
-        ? eq(usersTable.id, clean)
-        : sql`lower(btrim(${usersTable.username})) = lower(${clean})`,
-    );
-  if (direct) return direct;
-
-  const all = await db.select().from(usersTable);
-  return (
-    all.find(
-      (u) =>
-        u.id.toLowerCase() === clean.toLowerCase() ||
-        u.username.toLowerCase() === clean.toLowerCase(),
-    ) || null
-  );
-}
-
-const handleUpdateUser = async (req: any, res: any) => {
-  const userId = req.params.id;
-
-  const {
-    username,
-    role,
-    fullName,
-    contactNumber,
-    isActive,
-  } = req.body ?? {};
-
-  // Check target user
-  const targetUser = await findUser(userId);
-
-  if (!targetUser) {
-    return res.status(404).json({ error: "User not found." });
-  }
-
-  // Prevent admin from deactivating or demoting self
-  if (
-    targetUser.username === res.locals.user?.username ||
-    targetUser.id === res.locals.user?.id
-  ) {
-    if (role !== undefined) {
-      const parsedRole = normalizeRole(role);
-      if (parsedRole && parsedRole !== res.locals.user.role) {
-        return res.status(400).json({
-          error: "You cannot change your own role.",
-        });
-      }
+/**
+ * Staff accounts. /users is for admins only (the primary-admin rules live in ../lib/user-store.ts).
+ * /account is "My account" for every signed-in role: their own details and password.
+ */
+export function createUsersRouter(
+  store = createUserStore(withTransaction, queryDb, { validate: validatePassword, hash: hashPassword, verify: verifyPassword }),
+): IRouter {
+  const router = Router();
+  router.use("/users", requireAuth, requireRole("Admin"), (_req, res, next) => { res.set("Cache-Control", "no-store"); next(); });
+  const actorOf = (req: any, res: any) => ({ ...res.locals.user!, deviceIp: String(req.ip || "").slice(0, 50) });
+  const fail = (req: any, res: any, error: unknown, fallback: string, attempted?: string) => {
+    if (error instanceof UserError) {
+      if (error.status === 403 && attempted)
+        void store.recordRefused(actorOf(req, res), attempted, req.params?.id ? String(req.params.id) : null, error.message)
+          .catch((err) => req.log?.error({ err }, "Could not record a refused account change"));
+      return res.status(error.status).json({ error: error.message });
     }
+    req.log?.error({ err: error }, fallback);
+    return res.status(503).json({ error: `${fallback} Please try again.` });
+  };
 
-    if (isActive === false) {
-      return res.status(400).json({
-        error: "You cannot deactivate your own account.",
-      });
-    }
-  }
-
-  let finalRole = undefined;
-  if (role !== undefined) {
-    finalRole = normalizeRole(role);
-    if (!finalRole) {
-      return res.status(400).json({
-        error: "Invalid user role.",
-      });
-    }
-  }
-
-  if (username !== undefined) {
-    if (typeof username !== "string" || !username.trim()) {
-      return res.status(400).json({
-        error: "Username is required.",
-      });
-    }
-    if (username.trim().length > 100) return res.status(400).json({ error: "Username must be 100 characters or fewer." });
-  }
-
-  try {
-    const [updatedUser] = await db
-      .update(usersTable)
-      .set({
-        ...(username !== undefined
-          ? { username: username.trim() }
-          : {}),
-        ...(finalRole !== undefined
-          ? { role: finalRole }
-          : {}),
-        ...(fullName !== undefined
-          ? { fullName: fullName.trim() }
-          : {}),
-        ...(contactNumber !== undefined
-          ? { contactNumber: normalizePhone(contactNumber) }
-          : {}),
-        ...(isActive !== undefined
-          ? { isActive: Boolean(isActive) }
-          : {}),
-        updatedAt: new Date(),
-      })
-      .where(eq(usersTable.id, targetUser.id))
-      .returning({
-        id: usersTable.id,
-        username: usersTable.username,
-        fullName: usersTable.fullName,
-        contactNumber: usersTable.contactNumber,
-        role: usersTable.role,
-        isActive: usersTable.isActive,
-        lastLogin: usersTable.lastLogin,
-      });
-
-    return res.json(updatedUser);
-  } catch (error) {
-    if (!identifierConflict(error, ['users_username_key','uq_users_username_ci']))
-      return res.status(503).json({ error: "Could not update the account. Please try again." });
-    return res.status(409).json({
-      error: "Username is already taken.",
-    });
-  }
-};
-
-router.patch("/users/:id", handleUpdateUser);
-router.put("/users/:id", handleUpdateUser);
-
-router.patch("/users/:id/password", async (req, res) => {
-  const userId = req.params.id;
-  const { password } = req.body ?? {};
-
-  const targetUser = await findUser(userId);
-  if (!targetUser) {
-    return res.status(404).json({
-      error: "User not found.",
-    });
-  }
-
-  if (typeof password !== "string") {
-    return res.status(400).json({
-      error: "Password is required.",
-    });
-  }
-
-  const passwordError = validatePassword(password);
-  if (passwordError) {
-    return res.status(400).json({
-      error: passwordError,
-    });
-  }
-
-  try {
-    const passwordHash = await hashPassword(password);
-
-    await db
-      .update(usersTable)
-      .set({
-        password: passwordHash,
-        updatedAt: new Date(),
-      })
-      .where(eq(usersTable.id, targetUser.id));
-
-    return res.status(204).send();
-  } catch {
-    return res.status(500).json({
-      error: "Failed to reset password.",
-    });
-  }
-});
-
-// Accounts are retained so audit and transaction relationships stay intact.
-router.delete("/users/:id", (_req, res) => {
-  return res.status(409).json({ error: "Accounts cannot be deleted. Deactivate the account instead." });
-});
-
-export default router;
+  router.get("/users", async (req, res) => {
+    try { return res.json(await store.list()); } catch (error) { return fail(req, res, error, "Could not load accounts."); }
+  });
+  router.post("/users", async (req, res) => {
+    try { return res.status(201).json(await store.create(req.body ?? {}, actorOf(req, res))); }
+    catch (error) { return fail(req, res, error, "Could not create the account.", "create an account"); }
+  });
+  const update = async (req: any, res: any) => {
+    try { return res.json(await store.update(String(req.params.id), req.body ?? {}, actorOf(req, res))); }
+    catch (error) { return fail(req, res, error, "Could not update the account.", "change an account"); }
+  };
+  router.patch("/users/:id", update);
+  router.put("/users/:id", update);
+  router.patch("/users/:id/password", async (req, res) => {
+    try { await store.resetPassword(String(req.params.id), req.body ?? {}, actorOf(req, res)); return res.status(204).send(); }
+    catch (error) { return fail(req, res, error, "Could not reset the password.", "reset a password"); }
+  });
+  router.post("/users/:id/unlock", async (req, res) => {
+    try { return res.json(await store.unlock(String(req.params.id), actorOf(req, res))); }
+    catch (error) { return fail(req, res, error, "Could not unlock the account.", "unlock an account"); }
+  });
+  router.post("/users/:id/transfer-primary", async (req, res) => {
+    try { return res.json(await store.transferPrimary(String(req.params.id), req.body ?? {}, actorOf(req, res))); }
+    catch (error) { return fail(req, res, error, "Could not hand over the primary admin role.", "hand over the primary admin role"); }
+  });
+  router.get("/account", requireAuth, async (req, res) => {
+    res.set("Cache-Control", "no-store");
+    try { return res.json(await store.getOwnAccount(actorOf(req, res))); } catch (error) { return fail(req, res, error, "Could not load your account."); }
+  });
+  router.patch("/account", requireAuth, async (req, res) => {
+    try { return res.json(await store.updateOwnProfile(req.body ?? {}, actorOf(req, res))); } catch (error) { return fail(req, res, error, "Could not save your details."); }
+  });
+  router.post("/account/password", requireAuth, async (req, res) => {
+    try { await store.changeOwnPassword(req.body ?? {}, actorOf(req, res)); return res.status(204).send(); }
+    catch (error) { return fail(req, res, error, "Could not change your password."); }
+  });
+  // Accounts are retained so audit and transaction relationships stay intact.
+  router.delete("/users/:id", (_req, res) => res.status(409).json({ error: "Accounts cannot be deleted. Deactivate the account instead." }));
+  return router;
+}
+export default createUsersRouter();

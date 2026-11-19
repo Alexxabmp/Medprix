@@ -38,6 +38,9 @@ export default function LoginPage({ onLogin }: { onLogin: () => void }) {
       localStorage.setItem("medprix-role", data.role);
       localStorage.setItem("medprix-username", data.username ?? username);
       localStorage.setItem("medprix-fullname", data.fullName ?? username);
+      // An admin just created this account or reset its password: set your own before the workspace opens.
+      if (data.mustChangePassword) localStorage.setItem("medprix-must-change", "1");
+      else localStorage.removeItem("medprix-must-change");
       onLogin();
     } catch {
       setError("Could not reach the server. Is the backend running?");

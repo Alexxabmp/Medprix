@@ -18,7 +18,14 @@ export interface UserRecord {
   role: string;
   status: "Active" | "Inactive";
   lastActive: string;
+  /** 09XXXXXXXXX, or "" when none is saved. */
   phone: string;
+  /** The one administrator who may change other administrators' accounts. */
+  isPrimary?: boolean;
+  /** Still using a temporary password from an administrator. */
+  tempPassword?: boolean;
+  /** ISO time the lockout ends, while the account is locked after too many wrong passwords. */
+  lockedUntil?: string | null;
 }
 
 export interface ProductBatch {
@@ -123,7 +130,7 @@ export interface UserTransaction {
   amountReceived: string;
   change: string;
   payment: string;
-  status: "Completed" | "Voided" | "Refunded" | "Pending";
+  status: "Completed" | "Voided" | "Cancelled" | "Refunded" | "Pending";
   items: TransactionItem[];
 }
 

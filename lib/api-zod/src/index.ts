@@ -11,3 +11,4 @@ export * from "./payment-reference";
 export * from "./discount-holder";
 export * from "./customer-profile";
 export * from "./supplier-terms";
+export * from "./staff-account";

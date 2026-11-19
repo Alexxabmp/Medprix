@@ -248,6 +248,8 @@ export function buildData(passwordHash: string) {
     { username: "frontdesk", full_name: "John Cruz", role: "FrontDesk", code: "EMP-003", ip: "192.168.1.20" },
     { username: "cashier1", full_name: "Jose Dela Cruz", role: "Cashier", code: "EMP-004", ip: "192.168.1.12" },
     { username: "frontdesk1", full_name: "Grace Villanueva", role: "FrontDesk", code: "EMP-005", ip: "192.168.1.21" },
+    // A second administrator, for trying the primary-admin rules (only "admin" is the primary admin).
+    { username: "admin2", full_name: "Paolo Mendoza", role: "Admin", code: "EMP-006", ip: "192.168.1.13" },
   ] as const;
   const users = userDefs.map((u) => ({ ...u, id: randomUUID() }));
   const admin = users[0]!;
@@ -256,7 +258,8 @@ export function buildData(passwordHash: string) {
     T.users.push({
       id: u.id, username: u.username, password_hash: passwordHash, full_name: u.full_name,
       contact_number: phone(), employee_code: u.code,
-      role: u.role, is_active: true, created_at: day0, last_login: null, updated_at: day0,
+      role: u.role, is_active: true, is_primary_admin: u.username === "admin",
+      created_at: day0, last_login: null, updated_at: day0,
     });
   }
 

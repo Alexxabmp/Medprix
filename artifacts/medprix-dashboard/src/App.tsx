@@ -12,8 +12,10 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppShell } from "@/components/custom-ui/app-shell";
 import LoginPage from "@/pages/login";
+import SetPasswordPage from "@/pages/set-password";
 import { getAllowedHrefs, getDefaultRoute } from "@/lib/data";
 import type { ToastFn, UserRecord } from "@/lib/types";
+import { toDisplayStaffMobile } from "@workspace/api-zod";
 
 const queryClient = new QueryClient();
 
@@ -37,6 +39,10 @@ function AppContent() {
   );
   const [role, setRole] = useState(
     () => localStorage.getItem("medprix-role") || "",
+  );
+  // True while the signed-in person still has the temporary password an admin gave them.
+  const [mustChangePassword, setMustChangePassword] = useState(
+    () => localStorage.getItem("medprix-must-change") === "1",
   );
   const [dark, setDark] = useState(
     () => localStorage.getItem("medprix-theme") === "dark",
@@ -98,7 +104,10 @@ function AppContent() {
             lastActive: user.lastLogin
               ? formatDisplayDateTime(user.lastLogin)
               : "Never",
-            phone: user.contactNumber || "",
+            phone: toDisplayStaffMobile(user.contactNumber),
+            isPrimary: user.isPrimaryAdmin === true,
+            tempPassword: user.mustChangePassword === true,
+            lockedUntil: user.lockedUntil ?? null,
           };
         });
         setUsers(mapped);
@@ -117,10 +126,11 @@ function AppContent() {
   };
 
   useEffect(() => {
-    if (!session || role !== "Admin") return;
+    // Waits until a temporary password is replaced; the server refuses other requests until then.
+    if (!session || role !== "Admin" || mustChangePassword) return;
     fetchUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, role]);
+  }, [session, role, mustChangePassword]);
 
   useEffect(() => {
     if (!session) return;
@@ -139,6 +149,10 @@ function AppContent() {
           localStorage.setItem("medprix-role", data.role);
           localStorage.setItem("medprix-username", data.username);
           setRole(data.role);
+          const mustChange = data.mustChangePassword === true;
+          if (mustChange) localStorage.setItem("medprix-must-change", "1");
+          else localStorage.removeItem("medprix-must-change");
+          setMustChangePassword(mustChange);
         }
       })
       .catch((err) => {
@@ -176,6 +190,27 @@ function AppContent() {
 
   const notify: ToastFn = notifications.notify;
 
+  const logout = () => {
+    clearTransactionSession();
+    // Sent before the token is cleared, so the server can record who logged out.
+    const token = localStorage.getItem("medprix-token");
+    localStorage.removeItem("medprix-token");
+    fetch("/api/logout", {
+      method: "POST",
+      credentials: "include",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }).catch(() => { });
+    localStorage.removeItem("medprix-session");
+    localStorage.removeItem("medprix-role");
+    localStorage.removeItem("medprix-username");
+    localStorage.removeItem("medprix-fullname");
+    localStorage.removeItem("medprix-must-change");
+    setSession(false);
+    setRole("");
+    setMustChangePassword(false);
+    setLocation("/login");
+  };
+
   if (location === "/login") {
     return (
       <LoginPage
@@ -183,10 +218,24 @@ function AppContent() {
           clearTransactionSession();
           const loggedInRole = localStorage.getItem("medprix-role") || "";
           localStorage.setItem("medprix-session", "active");
+          setMustChangePassword(localStorage.getItem("medprix-must-change") === "1");
           setRole(loggedInRole);
           setSession(true);
           setLocation(getDefaultRoute(loggedInRole));
         }}
+      />
+    );
+  }
+
+  if (session && mustChangePassword) {
+    return (
+      <SetPasswordPage
+        onDone={() => {
+          localStorage.removeItem("medprix-must-change");
+          setMustChangePassword(false);
+          notify("Your new password is set. Welcome to Medprix.");
+        }}
+        onLogout={logout}
       />
     );
   }
@@ -199,21 +248,7 @@ function AppContent() {
           setDark={setDark}
           onToast={notify}
           role={role}
-          onLogout={() => {
-            clearTransactionSession();
-            localStorage.removeItem("medprix-token");
-            fetch("/api/logout", {
-              method: "POST",
-              credentials: "include",
-            }).catch(() => { });
-            localStorage.removeItem("medprix-session");
-            localStorage.removeItem("medprix-role");
-            localStorage.removeItem("medprix-username");
-            localStorage.removeItem("medprix-fullname");
-            setSession(false);
-            setRole("");
-            setLocation("/login");
-          }}
+          onLogout={logout}
           users={users}
           setUsers={setUsers}
           refreshUsers={fetchUsers}

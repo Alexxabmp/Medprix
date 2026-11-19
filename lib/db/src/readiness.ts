@@ -42,8 +42,11 @@ export class SchemaReadinessError extends Error {
     this.name = "SchemaReadinessError";
   }
 }
-export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | "cashier" | "legacy-runtime" | "audit-runtime" | "identifier-runtime" | "pre-retail-runtime" | "pre-retirement-runtime" | "pre-delivery-runtime" | "pre-wholesale-runtime" | "wholesale-draft-runtime" | "wholesale-reservation-runtime" | "wholesale-fulfillment-runtime" | "wholesale-collections-runtime" | "pre-category-runtime" | "pre-payment-reference-runtime" | "pre-discount-holder-runtime" | "pre-returning-customer-runtime" | "pre-prescription-runtime" | "pre-payment-plan-runtime" | "pre-wholesale-terms-runtime" | "pre-procurement-workflow-runtime" | "runtime" = "runtime", namespace = "public", existingTablesOnly = false) {
-  const procurementWorkflow = scope === "runtime";
+export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | "cashier" | "legacy-runtime" | "audit-runtime" | "identifier-runtime" | "pre-retail-runtime" | "pre-retirement-runtime" | "pre-delivery-runtime" | "pre-wholesale-runtime" | "wholesale-draft-runtime" | "wholesale-reservation-runtime" | "wholesale-fulfillment-runtime" | "wholesale-collections-runtime" | "pre-category-runtime" | "pre-payment-reference-runtime" | "pre-discount-holder-runtime" | "pre-returning-customer-runtime" | "pre-prescription-runtime" | "pre-payment-plan-runtime" | "pre-wholesale-terms-runtime" | "pre-procurement-workflow-runtime" | "pre-primary-admin-runtime" | "pre-password-change-runtime" | "pre-login-lockout-runtime" | "runtime" = "runtime", namespace = "public", existingTablesOnly = false) {
+  const loginLockout = scope === "runtime";
+  const passwordChange = loginLockout || scope === "pre-login-lockout-runtime";
+  const primaryAdmin = passwordChange || scope === "pre-password-change-runtime";
+  const procurementWorkflow = primaryAdmin || scope === "pre-primary-admin-runtime";
   const revisedTerms = procurementWorkflow || scope === "pre-procurement-workflow-runtime";
   const sharedPaymentPlan = revisedTerms || scope === "pre-wholesale-terms-runtime";
   const prescriptions = sharedPaymentPlan || scope === "pre-payment-plan-runtime";
@@ -59,7 +62,7 @@ export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | 
   const calendar = wholesale || scope === "pre-wholesale-runtime";
   const retiredSales = calendar || scope === "pre-delivery-runtime";
   const retail = retiredSales || scope === "pre-retirement-runtime";
-  if (["pre-retail-runtime", "pre-retirement-runtime", "pre-delivery-runtime", "pre-wholesale-runtime", "wholesale-draft-runtime", "wholesale-reservation-runtime", "wholesale-fulfillment-runtime", "wholesale-collections-runtime", "pre-category-runtime", "pre-payment-reference-runtime", "pre-discount-holder-runtime", "pre-returning-customer-runtime", "pre-prescription-runtime", "pre-payment-plan-runtime", "pre-wholesale-terms-runtime", "pre-procurement-workflow-runtime"].includes(scope)) scope = "runtime";
+  if (["pre-retail-runtime", "pre-retirement-runtime", "pre-delivery-runtime", "pre-wholesale-runtime", "wholesale-draft-runtime", "wholesale-reservation-runtime", "wholesale-fulfillment-runtime", "wholesale-collections-runtime", "pre-category-runtime", "pre-payment-reference-runtime", "pre-discount-holder-runtime", "pre-returning-customer-runtime", "pre-prescription-runtime", "pre-payment-plan-runtime", "pre-wholesale-terms-runtime", "pre-procurement-workflow-runtime", "pre-primary-admin-runtime", "pre-password-change-runtime", "pre-login-lockout-runtime"].includes(scope)) scope = "runtime";
   const actual = await inspectSchema(query, namespace);
   const issues: string[] = [];
   const normalize = (v: unknown) => typeof v === "string" ? v.replaceAll(`"${namespace}".`, "public.").replaceAll(`${namespace}.`, "public.") : v;
@@ -155,6 +158,36 @@ export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | 
   if (reservations) await assertWholesaleReservationsReady(query, actual, namespace, existingTablesOnly, issues);
   if (fulfillment) await assertWholesaleFulfillmentReady(query, actual, namespace, existingTablesOnly, issues);
   if (collections) await assertWholesaleCollectionsReady(query, actual, namespace, existingTablesOnly, issues);
+  if (primaryAdmin && !existingTablesOnly) {
+    // Migration 0023: one primary admin, who must be an active Admin.
+    if (!actual.columns.some(column => column.table_name === "users" && column.name === "is_primary_admin" && column.type === "boolean" && column.not_null && normalize(column.default_value ?? "") === "false"))
+      issues.push("missing/incompatible primary admin column users.is_primary_admin");
+    const primaryCheck = actual.constraints.find(constraint => constraint.table_name === "users" && constraint.name === "users_primary_admin_check");
+    if (!primaryCheck || !primaryCheck.validated || normalize(primaryCheck.definition) !== "CHECK (NOT is_primary_admin OR role = 'Admin'::user_role_enum AND is_active)")
+      issues.push("missing/incompatible primary admin constraint users_primary_admin_check");
+    const primaryIndex = actual.indexes.find(index => index.table_name === "users" && index.name === "uq_users_single_primary_admin");
+    if (!primaryIndex || !primaryIndex.valid || !primaryIndex.ready || normalize(primaryIndex.definition) !== "CREATE UNIQUE INDEX uq_users_single_primary_admin ON public.users USING btree (is_primary_admin) WHERE is_primary_admin")
+      issues.push("missing/incompatible primary admin index uq_users_single_primary_admin");
+  }
+  if (passwordChange && !existingTablesOnly) {
+    // Migration 0024: temporary-password flag.
+    if (!actual.columns.some(column => column.table_name === "users" && column.name === "must_change_password" && column.type === "boolean" && column.not_null && normalize(column.default_value ?? "") === "false"))
+      issues.push("missing/incompatible temporary password column users.must_change_password");
+  }
+  if (loginLockout && !existingTablesOnly) {
+    // Migration 0025: failed-attempt counter and temporary lock.
+    const column = (name: string) => actual.columns.find(c => c.table_name === "users" && c.name === name);
+    const count = column("failed_login_count");
+    if (!count || count.type !== "integer" || !count.not_null || normalize(count.default_value ?? "") !== "0")
+      issues.push("missing/incompatible lockout column users.failed_login_count");
+    for (const name of ["last_failed_login_at", "locked_until"]) {
+      const found = column(name);
+      if (!found || found.type !== "timestamp with time zone" || found.not_null) issues.push(`missing/incompatible lockout column users.${name}`);
+    }
+    const countCheck = actual.constraints.find(c => c.table_name === "users" && c.name === "users_failed_login_count_check");
+    if (!countCheck || !countCheck.validated || normalize(countCheck.definition) !== "CHECK (failed_login_count >= 0)")
+      issues.push("missing/incompatible lockout constraint users_failed_login_count_check");
+  }
   if (procurementWorkflow && !existingTablesOnly) {
     // Migration 0021: procurement workflow columns and tables.
     for (const [table, name, type] of [

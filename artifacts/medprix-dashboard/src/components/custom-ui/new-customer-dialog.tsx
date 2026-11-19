@@ -18,8 +18,10 @@ import { useDialogAccessibility } from "@/lib/use-dialog-accessibility";
 export type UsualLine = { productId: string; name: string; quantity: number; controlled: boolean };
 
 /** Saves a returning customer with their consent; the usual order starts from the current cart. */
-export function NewCustomerDialog({ open, initial, cartLines, onSaved, onClose }: {
+export function NewCustomerDialog({ open, initial, cartLines, onSaved, onClose, fromRecords = false }: {
   open: boolean;
+  /** Opened from the Customers page (no cart): the wording points to the profile for the usual order. */
+  fromRecords?: boolean;
   initial: { name: string; discountType: CustomerDiscount; idNumber: string };
   cartLines: UsualLine[];
   onSaved: (customer: Customer) => void;
@@ -70,7 +72,7 @@ export function NewCustomerDialog({ open, initial, cartLines, onSaved, onClose }
       <div className="modal dialog new-customer-dialog" onClick={(event) => event.stopPropagation()} style={{ maxWidth: 520, width: "94%" }}>
         <div className="modal-header">
           <div>
-            <h2>Save returning customer</h2>
+            <h2>{fromRecords ? "Add customer" : "Save returning customer"}</h2>
             <p className="modal-sub">Next time, find them by name, mobile or ID.</p>
           </div>
           <button type="button" className="modal-close" aria-label="Close" disabled={saving} onClick={onClose}><X size={16} /></button>
@@ -123,7 +125,7 @@ export function NewCustomerDialog({ open, initial, cartLines, onSaved, onClose }
                   </li>
                 ))}
               </ul>
-            ) : <p className="customer-field-note">No usual order. You can add one later with "Save cart as usual order".</p>}
+            ) : <p className="customer-field-note">{fromRecords ? "No usual order yet. After saving, add their regular medicines from their profile." : 'No usual order. You can add one later with "Save cart as usual order".'}</p>}
             {controlled.length > 0 && <p className="customer-field-note">Left out (controlled, needs a new prescription each time): {controlled.map((line) => line.name).join(", ")}.</p>}
           </div>
 

@@ -11,6 +11,9 @@ export type Customer = {
   consentAt: string | null;
   createdAt?: string;
   usualItems: { productId: string; quantity: number }[];
+  /** Completed sales linked to this customer, and when the latest one was. */
+  visitCount?: number;
+  lastVisitAt?: string | null;
 };
 
 export type NewCustomer = {

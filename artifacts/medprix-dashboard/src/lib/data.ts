@@ -6,6 +6,7 @@ import {
   Receipt,
   Settings2,
   ShoppingCart,
+  UserRound,
   Users,
 } from "lucide-react";
 
@@ -36,6 +37,13 @@ export const navGroups = [
         label: "Inventory",
         icon: Boxes,
         roles: ["Admin", "FrontDesk", "Cashier"],
+      },
+      {
+        // Cashiers reach the same customer records from the POS.
+        href: "/customers",
+        label: "Customers",
+        icon: UserRound,
+        roles: ["Admin", "FrontDesk"],
       },
       {
         href: "/supplier",

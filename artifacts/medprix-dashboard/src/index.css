@@ -5437,3 +5437,297 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
   background: #12233d;
   color: #cfe1ff;
 }
+
+/* ── User Management: primary admin (Part A) ─────────────────────────────── */
+.um-heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.um-primary-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: -8px 0 18px;
+  padding: 10px 14px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  background: hsl(var(--surface-soft));
+  color: hsl(var(--muted));
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.um-primary-note > svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--success-text);
+}
+
+.um-primary-note strong {
+  color: hsl(var(--foreground));
+}
+
+.um-primary-pill {
+  gap: 4px;
+  margin-left: 8px;
+  padding: 2px 7px;
+  vertical-align: 1px;
+}
+
+.um-primary-pill > svg {
+  color: var(--success-text);
+}
+
+.um-you {
+  margin-left: 6px;
+  color: hsl(var(--muted));
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.um-lock-note {
+  margin-top: 5px;
+  font-size: 12px;
+}
+
+.um-password-field {
+  position: relative;
+}
+
+.um-password-field input {
+  padding-right: 38px;
+}
+
+.um-eye {
+  position: absolute;
+  right: 10px;
+  bottom: 9px;
+  padding: 2px;
+  border: 0;
+  background: none;
+  color: #a9a6b1;
+  cursor: pointer;
+}
+
+.um-confirm-body {
+  padding: 0 2px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.um-confirm-body p {
+  margin: 0 0 8px;
+}
+
+[data-page-table="users"] .button:disabled,
+[data-page-table="users"] select:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.form-grid + .um-confirm-body {
+  margin-top: 12px;
+}
+
+/* ── Set your own password / My account (Part B) ─────────────────────────── */
+.login-card .login-error {
+  margin: 10px 0 0;
+  color: #b34f45;
+  font-size: 12px;
+}
+
+.login-submit {
+  margin-top: 22px;
+}
+
+.sp-logout {
+  display: block;
+  margin: 14px auto 0;
+  padding: 4px;
+  border: 0;
+  background: none;
+  color: hsl(var(--muted));
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.account-section + .account-section {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid hsl(var(--border));
+}
+
+.account-section h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+
+.account-section > p {
+  margin: 0 0 12px;
+  color: hsl(var(--muted));
+  font-size: 12px;
+}
+
+.account-readonly {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.account-readonly span {
+  display: block;
+  color: hsl(var(--muted));
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.account-section .section-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.account-success {
+  margin: 8px 0 0;
+  color: var(--success-text);
+  font-size: 12px;
+}
+
+.um-temp-pill {
+  margin-left: 6px;
+}
+
+.um-inactive-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: hsl(var(--muted));
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* ── Customers page (Part C) ─────────────────────────────────────────────── */
+.customers-row {
+  cursor: pointer;
+}
+
+.customers-row:hover td,
+.customers-row:focus-visible td {
+  background: hsl(var(--surface-soft));
+}
+
+.customers-row:focus-visible {
+  outline: 2px solid hsl(var(--foreground));
+  outline-offset: -2px;
+}
+
+.customers-table .customer-avatar {
+  flex: none;
+}
+
+.customers-sub {
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.account-tabs {
+  display: inline-flex;
+  gap: 4px;
+  margin-bottom: 14px;
+  padding: 4px;
+  border-radius: 12px;
+  background: hsl(var(--surface-soft));
+  border: 1px solid hsl(var(--border));
+}
+
+.account-tabs button {
+  padding: 7px 16px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: hsl(var(--muted));
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.account-tabs button.is-active {
+  background: hsl(var(--surface));
+  color: hsl(var(--foreground));
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.account-span {
+  grid-column: 1 / -1;
+}
+
+.dialog[data-testid="dialog-my-account"] {
+  width: min(520px, calc(100vw - 32px));
+}
+
+/* ── Admin dashboard: Security & access (Part D) ─────────────────────────── */
+.security-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 4px 0 12px;
+}
+
+@media (max-width: 760px) {
+  .security-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.security-stat {
+  padding: 12px 14px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  background: hsl(var(--surface-soft));
+}
+
+.security-stat strong {
+  display: block;
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.security-stat span {
+  color: hsl(var(--muted));
+  font-size: 12px;
+}
+
+.security-stat.is-alert strong {
+  color: #b02020;
+}
+
+.security-locked {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0 0 10px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: hsl(var(--peach));
+  color: #8a1c1c;
+  font-size: 13px;
+}
+
+.security-locked > svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.security-when {
+  flex: none;
+  font-size: 12px;
+  white-space: nowrap;
+}
