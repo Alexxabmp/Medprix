@@ -221,12 +221,25 @@ ap_facts AS (
   FROM supplier_invoices i
   LEFT JOIN accounts_payable a ON a.invoice_id = i.id
   LEFT JOIN ap_history h ON h.ap_id = a.id
+  -- Invoices billed before delivery have no payable until verified (procurement rule); they are reported separately.
+  WHERE a.id IS NOT NULL OR i.status = 'Verified'
+),
+ap_pending AS (
+  SELECT COUNT(*)::int AS pending_count, COALESCE(SUM(i.invoice_amount), 0)::text AS pending_amount
+  FROM supplier_invoices i
+  LEFT JOIN accounts_payable a ON a.invoice_id = i.id
+  WHERE a.id IS NULL AND i.status = 'PendingVerification'
+),
+period_expenses AS (
+  SELECT COALESCE(SUM(amount), 0)::text AS total, COUNT(*)::int AS entries
+  FROM operating_expenses
+  WHERE voided_at IS NULL AND expense_date BETWEEN $1::date AND $2::date
 ),
 ap_warnings AS (
   SELECT COUNT(*)::int AS missing_payable_count
   FROM supplier_invoices i
   LEFT JOIN accounts_payable a ON a.invoice_id = i.id
-  WHERE a.id IS NULL
+  WHERE a.id IS NULL AND i.status = 'Verified'
 ),
 ar_totals AS (
   SELECT
@@ -270,9 +283,13 @@ SELECT
   ap_totals.overdue_count AS ap_overdue_count,
   ap_totals.review_count AS ap_review_count,
   ap_totals.review_amount AS ap_review_amount
-  , ap_warnings.missing_payable_count AS ap_missing_payable_count
+  , ap_warnings.missing_payable_count AS ap_missing_payable_count,
+  ap_pending.pending_count AS ap_pending_count,
+  ap_pending.pending_amount AS ap_pending_amount,
+  period_expenses.total AS expenses_total,
+  period_expenses.entries AS expenses_entries
 FROM retail, wholesale, wholesale_revenue, wholesale_snapshot_warnings,
-  period_ar_payments, period_supplier_payments, ar_totals, ar_warnings, ap_totals,
+  period_ar_payments, period_supplier_payments, ar_totals, ar_warnings, ap_totals, ap_pending, period_expenses,
   ap_warnings
 `;
 
@@ -293,6 +310,8 @@ export async function readFinanceSummary(
   const revenue = retailRevenue + wholesaleRevenue;
   const cogs = retailCogs + wholesaleCogs;
   const grossProfit = revenue - cogs;
+  const expenses = moneyCents(row.expenses_total);
+  const netIncome = grossProfit - expenses;
   const missingCostItems =
     Number(row.retail_missing_cost_items ?? 0) +
     Number(row.wholesale_missing_cost_items ?? 0);
@@ -337,6 +356,12 @@ export async function readFinanceSummary(
       `${arMissingFulfillmentCount} receivable record(s) have no delivered wholesale fulfillment.`,
     );
   }
+  const apPendingCount = Number(row.ap_pending_count ?? 0);
+  if (apPendingCount) {
+    warnings.push(
+      `${apPendingCount} supplier invoice(s) billed before delivery are awaiting verification and are not yet counted as payables.`,
+    );
+  }
   if (apMissingPayableCount) {
     warnings.push(
       `${apMissingPayableCount} supplier invoice(s) have no payable record.`,
@@ -356,8 +381,15 @@ export async function readFinanceSummary(
     costOfGoodsSold: money(cogs),
     grossProfit: money(grossProfit),
     grossMargin: revenue === 0n ? null : Number(grossProfit) / Number(revenue),
+    operatingExpenses: money(expenses),
+    operatingExpenseEntries: Number(row.expenses_entries ?? 0),
+    netIncome: money(netIncome),
+    netMargin: revenue === 0n ? null : Number(netIncome) / Number(revenue),
+    // "Collected" covers every payment method (cash, GCash, Maya, card), not only physical cash.
     cashCollected: money(retailRevenue + moneyCents(row.wholesale_collected)),
-    cashPaid: money(moneyCents(row.supplier_paid)),
+    cashPaid: money(moneyCents(row.supplier_paid) + expenses),
+    moneyIn: { retailSales: money(retailRevenue), wholesaleCollections: money(moneyCents(row.wholesale_collected)), total: money(retailRevenue + moneyCents(row.wholesale_collected)) },
+    moneyOut: { supplierPayments: money(moneyCents(row.supplier_paid)), operatingExpenses: money(expenses), total: money(moneyCents(row.supplier_paid) + expenses) },
     accountsReceivable: {
       outstanding: money(moneyCents(row.ar_outstanding)),
       overdue: money(moneyCents(row.ar_overdue)),
@@ -371,6 +403,8 @@ export async function readFinanceSummary(
       overdueCount: Number(row.ap_overdue_count ?? 0),
       needsReviewCount: apReviewCount,
       needsReviewAmount: money(apReviewAmount),
+      pendingVerificationCount: Number(row.ap_pending_count ?? 0),
+      pendingVerificationAmount: money(moneyCents(row.ap_pending_amount)),
     },
     itemsMissingCost: {
       count: missingCostItems,
@@ -379,11 +413,64 @@ export async function readFinanceSummary(
     },
     warnings,
     costBasis: "current-product-cost-excluding-missing-cost-lines",
-    operatingExpensesIncluded: false,
+    operatingExpensesIncluded: true,
     operatingExpensesNote:
-      "Operating expenses are not included; this metric is cost of goods sold only.",
+      "Net income = gross profit minus operating expenses recorded for the period. Supplier purchases are counted through cost of goods sold when the stock is sold, not as expenses.",
     balanceScope: "current-as-of-asOf-not-from-to",
   };
 }
 
 export const financeQuery = queryDb as FinanceQuery;
+
+
+/**
+ * Detail for the Finance page: overdue receivables and payables (as of today), expenses by category and
+ * regulated sales (senior/PWD discounts, prescription and dangerous-drug items) for the period.
+ */
+export async function readFinanceDetails(query: FinanceQuery, from: unknown, to: unknown) {
+  const range = validateDateRange(from, to);
+  const today = "(now() AT TIME ZONE 'Asia/Manila')::date";
+  const [overdueAr, overdueAp, expenseRows, discountRows, regulatedRows] = await Promise.all([
+    query(`SELECT a.id, c.client_name AS name, o.order_number AS reference, a.balance::text AS balance,
+        credit.overdue_amount::text AS overdue, credit.next_due_date::text AS "oldestDue",
+        (${today} - credit.next_due_date)::int AS "daysOverdue"
+      FROM accounts_receivable a
+      JOIN wholesale_clients c ON c.id = a.client_id
+      LEFT JOIN wholesale_orders o ON o.id = a.order_id
+      ${wholesaleCreditJoin()}
+      WHERE a.balance > 0 AND credit.overdue_amount > 0
+      ORDER BY credit.next_due_date, credit.overdue_amount DESC LIMIT 10`),
+    query(`SELECT a.id, s.supplier_name AS name, i.invoice_number AS reference, a.balance::text AS balance,
+        a.balance::text AS overdue, i.due_date::text AS "oldestDue", (${today} - i.due_date)::int AS "daysOverdue"
+      FROM accounts_payable a JOIN supplier_invoices i ON i.id = a.invoice_id JOIN suppliers s ON s.id = a.supplier_id
+      WHERE a.balance > 0 AND i.due_date < ${today}
+      ORDER BY i.due_date, a.balance DESC LIMIT 10`),
+    query(`SELECT category, COALESCE(SUM(amount),0)::text AS total, COUNT(*)::int AS entries
+      FROM operating_expenses WHERE voided_at IS NULL AND expense_date BETWEEN $1::date AND $2::date
+      GROUP BY category ORDER BY SUM(amount) DESC`, [range.from, range.to]),
+    query(`SELECT d.discount_type AS type, COUNT(DISTINCT d.transaction_id)::int AS transactions,
+        COALESCE(SUM(d.discount_amount),0)::text AS amount
+      FROM discounts d JOIN transactions t ON t.id = d.transaction_id
+      WHERE t.status = 'Completed'
+        AND (t.transaction_date AT TIME ZONE 'Asia/Manila')::date BETWEEN $1::date AND $2::date
+      GROUP BY d.discount_type ORDER BY d.discount_type`, [range.from, range.to]),
+    query(`SELECT p.id, COALESCE(ti.product_name_at_sale, p.product_name) AS name, p.sku,
+        p.is_dangerous_drug AS "dangerousDrug", p.requires_prescription AS "prescription",
+        COUNT(DISTINCT t.id)::int AS transactions, SUM(ti.quantity)::int AS units, COALESCE(SUM(ti.net_amount), SUM(ti.subtotal), 0)::text AS sales
+      FROM transaction_items ti JOIN transactions t ON t.id = ti.transaction_id JOIN products p ON p.id = ti.product_id
+      WHERE t.status = 'Completed' AND (p.is_dangerous_drug OR p.requires_prescription)
+        AND (t.transaction_date AT TIME ZONE 'Asia/Manila')::date BETWEEN $1::date AND $2::date
+      GROUP BY p.id, COALESCE(ti.product_name_at_sale, p.product_name), p.sku, p.is_dangerous_drug, p.requires_prescription
+      ORDER BY p.is_dangerous_drug DESC, SUM(ti.quantity) DESC LIMIT 50`, [range.from, range.to]),
+  ]);
+  return {
+    success: true,
+    from: range.from,
+    to: range.to,
+    overdueReceivables: overdueAr.rows,
+    overduePayables: overdueAp.rows,
+    expensesByCategory: expenseRows.rows,
+    discounts: discountRows.rows,
+    regulatedItems: regulatedRows.rows,
+  };
+}

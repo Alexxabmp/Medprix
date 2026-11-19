@@ -235,11 +235,6 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
   const invalidQuantityMessage = { message: "Enter a valid quantity of at least 1.", variant: "warning" as const };
   const stockLimitMessage = (name: string, available: number, inCart: number) =>
     `Only ${available} unit(s) of ${name} available${inCart ? ` (${inCart} already in cart)` : ""}.`;
-  // After adding, reopen product search so the next item can be scanned or typed straight away.
-  const focusProductSearch = () => {
-    setProductSearch("");
-    requestAnimationFrame(() => document.getElementById("pos-product-select")?.click());
-  };
   const previousAvailability = useRef({ id: "", status: "" });
   useEffect(() => {
     if (stockChecking || productLoadError) return;
@@ -421,7 +416,8 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
     }
     onToast(`Added ${prod.name} (x${qty}) to cart`);
     setQty(1);
-    focusProductSearch();
+    // Clear the search text only; the product list stays closed until the cashier opens it.
+    setProductSearch("");
   };
 
   const handleRemoveFromCart = (id: string) => {
@@ -1228,10 +1224,13 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
             {rxInCart.length > 0 && (
               <div className="pos-rx-reminder" role="note">
                 <ClipboardList size={18} aria-hidden="true" style={{ flex: "none", marginTop: 1 }} />
-                <span>
+                <div>
                   <strong>{rxInCart.length} {rxInCart.length === 1 ? "item needs" : "items need"} a prescription.</strong>{" "}
-                  Check the customer's prescription for {rxInCart.map((item) => item.name).join(", ")} before payment.
-                </span>
+                  Check the customer's prescription before payment for:
+                  <ul className="pos-rx-list">
+                    {rxInCart.map((item) => <li key={item.id}>{item.name}</li>)}
+                  </ul>
+                </div>
               </div>
             )}
 

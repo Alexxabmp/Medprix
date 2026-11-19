@@ -18,7 +18,7 @@ export const navGroups = [
         href: "/dashboard",
         label: "Dashboard",
         icon: LayoutDashboard,
-        roles: ["Admin"],
+        roles: ["Admin", "FrontDesk"],
       },
       {
         href: "/pos",
@@ -63,6 +63,7 @@ export const navGroups = [
         icon: Receipt,
         roles: ["Admin", "FrontDesk"],
       },
+
     ],
   },
   {
@@ -71,12 +72,14 @@ export const navGroups = [
       {
         href: "/system-ad",
         label: "System Administration",
+        short: "System Admin",
         icon: Settings2,
         roles: ["Admin"],
       },
       {
         href: "/user-management",
         label: "User Management",
+        short: "Users",
         icon: Users,
         roles: ["Admin"],
       },
@@ -92,6 +95,5 @@ export function getAllowedHrefs(role: string): string[] {
 }
 
 export function getDefaultRoute(role: string): string {
-  if (role === "FrontDesk") return "/wholesale";
   return getAllowedHrefs(role)[0] ?? "/login";
 }

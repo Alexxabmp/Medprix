@@ -1,5 +1,5 @@
 import type { SourceState } from "./source-state";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { PageTables } from "@/components/page-tables";
 import { Link, Route, Switch, useLocation } from "wouter";
 import { Moon, Pill, Sun, UserRound, X } from "lucide-react";
@@ -24,6 +24,7 @@ import WholesalePage from "@/pages/wholesale";
 import SystemAdminPage from "@/pages/system-admin";
 import UserManagementPage from "@/pages/user-management";
 import CustomersPage from "@/pages/customers";
+import FrontDeskDashboardPage from "@/pages/front-desk-dashboard";
 
 export function AppShell({
   dark,
@@ -49,6 +50,16 @@ export function AppShell({
   const [location] = useLocation();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
+  // Keep the current page's tab visible when the menu is wider than the screen (scrolls the menu only, never the page).
+  const navRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const nav = navRef.current;
+    const active = nav?.querySelector<HTMLElement>(".top-nav-item.active");
+    if (!nav || !active) return;
+    const left = active.offsetLeft - nav.offsetLeft;
+    if (left < nav.scrollLeft || left + active.offsetWidth > nav.scrollLeft + nav.clientWidth)
+      nav.scrollTo({ left: Math.max(0, left - 16), behavior: "smooth" });
+  }, [location]);
 
   useEffect(() => {
     prefetchPharmacyData(role);
@@ -110,6 +121,7 @@ export function AppShell({
             </Link>
           </div>
           <nav
+            ref={navRef}
             className="top-nav"
             aria-label="Primary navigation"
             data-testid="nav-primary"
@@ -117,14 +129,15 @@ export function AppShell({
             {navGroups
               .flatMap((group) => group.items)
               .filter((item) => item.roles.includes(role))
-              .map(({ href, label }) => (
+              .map((item) => (
                 <Link
-                  key={href}
-                  href={href}
-                  data-testid={`link-${label.toLowerCase().replaceAll(" ", "-")}`}
-                  className={`top-nav-item ${location === href ? "active" : ""}`}
+                  key={item.href}
+                  href={item.href}
+                  title={item.label}
+                  data-testid={`link-${item.label.toLowerCase().replaceAll(" ", "-")}`}
+                  className={`top-nav-item ${location === item.href ? "active" : ""}`}
                 >
-                  {label}
+                  {(item as { short?: string }).short ?? item.label}
                 </Link>
               ))}
           </nav>
@@ -210,6 +223,8 @@ export function AppShell({
             <Route path="/">
               {roleKey === "admin" ? (
                 <DashboardPage onToast={onToast} />
+              ) : roleKey === "frontdesk" ? (
+                <FrontDeskDashboardPage onToast={onToast} />
               ) : roleKey === "cashier" ? (
                 <CashierDashboardPage onToast={onToast} />
               ) : null}
@@ -217,6 +232,8 @@ export function AppShell({
             <Route path="/dashboard">
               {roleKey === "admin" ? (
                 <DashboardPage onToast={onToast} />
+              ) : roleKey === "frontdesk" ? (
+                <FrontDeskDashboardPage onToast={onToast} />
               ) : roleKey === "cashier" ? (
                 <CashierDashboardPage onToast={onToast} />
               ) : null}

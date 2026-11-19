@@ -1992,7 +1992,7 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
 .top-nav {
   flex: 0 1 auto;
   min-width: 0;
-  max-width: 850px;
+  max-width: none;
   margin: 0 auto;
   display: flex;
   align-items: center;
@@ -5431,6 +5431,14 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
   color: #0a3d8a;
   font-size: 13px;
   line-height: 1.5;
+}
+
+.pos-rx-list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .dark .pos-rx-reminder {

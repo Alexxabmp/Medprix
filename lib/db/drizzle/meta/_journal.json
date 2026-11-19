@@ -33,6 +33,7 @@
     { "idx": 22, "version": "7", "when": 1795305600000, "tag": "0022_procurement_workflow", "breakpoints": true },
     { "idx": 23, "version": "7", "when": 1795392000000, "tag": "0023_primary_admin", "breakpoints": true },
     { "idx": 24, "version": "7", "when": 1795478400000, "tag": "0024_password_change_required", "breakpoints": true },
-    { "idx": 25, "version": "7", "when": 1795564800000, "tag": "0025_login_lockout", "breakpoints": true }
+    { "idx": 25, "version": "7", "when": 1795564800000, "tag": "0025_login_lockout", "breakpoints": true },
+    { "idx": 26, "version": "7", "when": 1795651200000, "tag": "0026_operating_expenses", "breakpoints": true }
   ]
 }
