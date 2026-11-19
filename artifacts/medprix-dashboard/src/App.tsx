@@ -14,6 +14,8 @@ import { AppShell } from "@/components/custom-ui/app-shell";
 import LoginPage from "@/pages/login";
 import SetPasswordPage from "@/pages/set-password";
 import { getAllowedHrefs, getDefaultRoute } from "@/lib/data";
+import { clearProcurementCache } from "@/lib/procurement-api";
+import { resetFinance } from "@/lib/finance-store";
 import type { ToastFn, UserRecord } from "@/lib/types";
 import { toDisplayStaffMobile } from "@workspace/api-zod";
 
@@ -192,6 +194,8 @@ function AppContent() {
 
   const logout = () => {
     clearTransactionSession();
+    clearProcurementCache();
+    resetFinance();
     // Sent before the token is cleared, so the server can record who logged out.
     const token = localStorage.getItem("medprix-token");
     localStorage.removeItem("medprix-token");

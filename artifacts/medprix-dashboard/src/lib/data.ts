@@ -39,13 +39,6 @@ export const navGroups = [
         roles: ["Admin", "FrontDesk", "Cashier"],
       },
       {
-        // Cashiers reach the same customer records from the POS.
-        href: "/customers",
-        label: "Customers",
-        icon: UserRound,
-        roles: ["Admin", "FrontDesk"],
-      },
-      {
         href: "/supplier",
         label: "Supplier",
         icon: Building2,

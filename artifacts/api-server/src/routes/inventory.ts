@@ -15,7 +15,7 @@ const stockMutations = createStockMutations(withTransaction);
 const NOW = () => new Date();
 const MAX_STOCK_MOVEMENT_QUANTITY = 1_000_000;
 
-router.get("/inventory/categories", async (_req, res) => {
+router.get("/inventory/categories", requireAuth, async (_req, res) => {
   return res.json({ categories: await db.select().from(productCategoriesTable).orderBy(asc(productCategoriesTable.name)) });
 });
 
@@ -165,7 +165,7 @@ async function fetchProductWithBatches(productId: string) {
   return toApiProduct(product, batches, await reservedByBatch(queryDb, [product.id]));
 }
 
-router.get("/inventory", async (_req: Request, res: Response) => {
+router.get("/inventory", requireAuth, async (_req: Request, res: Response) => {
   const now = NOW();
   const allProducts = await db
     .select()
@@ -207,7 +207,7 @@ function duplicateSku(error: unknown): boolean {
   return Boolean(err && ((err.code === "23505" && [err.constraint, err.constraint_name].some(name => name === "uq_products_sku" || name === "uq_products_sku_ci")) || (err.cause && duplicateSku(err.cause))));
 }
 
-router.post("/inventory/products", async (req: Request, res: Response) => {
+router.post("/inventory/products", requireAuth, requireRoles("Admin", "FrontDesk"), async (req: Request, res: Response) => {
   const body = req.body ?? {};
   const errors = validateProductInput(body, { batch: true });
   if (Object.keys(errors).length) return res.status(400).json({ success: false, error: Object.values(errors)[0], errors });
@@ -262,7 +262,7 @@ router.post("/inventory/products", async (req: Request, res: Response) => {
   }
 });
 
-router.put("/inventory/products/:id", async (req: Request, res: Response) => {
+router.put("/inventory/products/:id", requireAuth, requireRoles("Admin", "FrontDesk"), async (req: Request, res: Response) => {
   const product = await findProduct(asId(req.params.id));
   if (!product) return res.status(404).json({ success: false, error: "Product not found." });
   const body = req.body ?? {};
@@ -298,7 +298,8 @@ function validStockDate(value: unknown): value is string {
 }
 
 for (const kind of ["batches", "stock-in", "stock-out"] as const) {
-  const roles: Array<"Admin" | "FrontDesk" | "Cashier"> = kind === "batches" ? ["Admin", "FrontDesk"] : ["Admin", "Cashier"];
+  // Add batch = opening stock or a correction (Admin, backlog story 17); supplier deliveries add lots through Procurement.
+  const roles: Array<"Admin" | "FrontDesk" | "Cashier"> = kind === "batches" ? ["Admin"] : ["Admin", "Cashier"];
   router.post(`/inventory/products/:id/${kind}`, requireAuth, requireRoles(...roles), async (req: Request, res: Response) => {
     const body = req.body ?? {};
     if (["batchNumber", "reason", "supplier"].some((key) => body[key] != null && typeof body[key] !== "string")) return res.status(400).json({ error: "Enter valid stock movement details." });
@@ -311,6 +312,7 @@ for (const kind of ["batches", "stock-in", "stock-out"] as const) {
     if (kind === "stock-in" && ["expiryDate", "mfgDate", "supplier"].some(key => body[key] != null && body[key] !== "")) return res.status(400).json({ error: "Record Stock In uses the existing batch details. Use Add Batch to create a different lot." });
     if ((kind === "batches" && !validStockDate(body.expiryDate)) || (body.date && !validStockDate(body.date)) || (body.dateReceived && !validStockDate(body.dateReceived)) || (body.mfgDate && !validStockDate(body.mfgDate))) return res.status(400).json({ error: "Enter valid stock movement dates." });
     if (String(body.reason || "").length > 500 || String(body.supplier || "").length > 255) return res.status(400).json({ error: "Stock movement details are too long." });
+    if (kind === "batches" && String(body.reason || "").trim().length < 3) return res.status(400).json({ error: "Say why this batch is added here (for example: opening stock, count correction)." });
     try {
       const input = { quantity: quantity.quantity, batchNumber, reason: body.reason, date: body.date || body.dateReceived,
         ...(kind === "batches" ? { newBatch: { expiryDate: body.expiryDate, mfgDate: body.mfgDate, supplier: body.supplier } } : {}) };

@@ -1,3 +1,4 @@
+import { pharmacyDate } from "@workspace/api-zod";
 import type { Query } from "./atomic-checkout";
 
 interface StockDiscrepancy {
@@ -18,7 +19,7 @@ interface MovementDiscrepancy {
 /** Read-only diagnostics. Physical stock includes expired lots; this does not define POS eligibility. */
 export async function auditStockConsistency(
   query: Query,
-  today = new Date().toISOString().slice(0, 10),
+  today = pharmacyDate(),
 ) {
   const { rows: products }: { rows: StockDiscrepancy[] } = await query(
     `

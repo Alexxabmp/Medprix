@@ -3,6 +3,7 @@ import { queryDb } from "@workspace/db";
 import { createPaymentStore } from "../lib/cashier-payments";
 import { requireAuth, requireRoles } from "../middleware/auth";
 import { createAuditRouter } from "./admin-operations";
+import { readWholesaleTransactions } from "../lib/wholesale-transaction-read-model";
 
 const router: IRouter = Router();
 const paymentStore = createPaymentStore(queryDb);
@@ -37,7 +38,7 @@ export interface UserTransaction {
   amountReceived: string;
   change: string;
   payment: string;
-  status: "Completed" | "Voided" | "Refunded" | "Pending";
+  status: "Completed" | "Voided" | "Refunded" | "Pending" | "Cancelled";
   items: TransactionItem[];
 }
 
@@ -65,7 +66,11 @@ export interface UserActivity {
 }
 
 async function refreshPayments(actor: {id:string; role:string}) {
-  return paymentStore.list(actor);
+  const retail = await paymentStore.list(actor);
+  // Admins also see Front desk's wholesale orders (backlog story 9); cashiers keep seeing only their own retail sales.
+  if (actor.role !== "Admin") return retail;
+  const wholesale = await readWholesaleTransactions(queryDb);
+  return [...retail, ...wholesale].sort((a, b) => b.dateTime.localeCompare(a.dateTime));
 }
 
 // GET /api/admin/transactions

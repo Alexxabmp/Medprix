@@ -7,6 +7,7 @@ import { MyAccountDialog } from "@/components/custom-ui/my-account-dialog";
 import { getDefaultRoute, navGroups } from "@/lib/data";
 import type { ToastFn, UserRecord } from "@/lib/types";
 import { prefetchPharmacyData } from "@/lib/pharmacy-store";
+import { loadProcurementList } from "@/lib/procurement-api";
 import {
   fetchAccountsPayable,
   fetchSupplierRecords,
@@ -23,7 +24,6 @@ import ProcurementPage from "@/pages/procurement";
 import WholesalePage from "@/pages/wholesale";
 import SystemAdminPage from "@/pages/system-admin";
 import UserManagementPage from "@/pages/user-management";
-import CustomersPage from "@/pages/customers";
 import FrontDeskDashboardPage from "@/pages/front-desk-dashboard";
 
 export function AppShell({
@@ -67,6 +67,7 @@ export function AppShell({
       const t1 = window.setTimeout(() => {
         void fetchSupplierRecords().catch(() => undefined);
         void fetchAccountsPayable().catch(() => undefined);
+        void loadProcurementList().catch(() => undefined);
       }, 300);
       const t2 = window.setTimeout(() => {
         prefetchWholesaleData();
@@ -79,7 +80,7 @@ export function AppShell({
     return undefined;
   }, [role]);
   const roleKey = role.toLowerCase();
-  const tablePage = ["/supplier", "/wholesale", "/system-ad", "/inventory", "/procurement", "/user-management", "/pos", "/customers"].includes(location)
+  const tablePage = ["/supplier", "/wholesale", "/system-ad", "/inventory", "/procurement", "/user-management", "/pos"].includes(location)
     || ((location === "/" || location === "/dashboard") && roleKey === "cashier");
   const homeHref = getDefaultRoute(role);
 
@@ -262,9 +263,6 @@ export function AppShell({
             </Route>
             <Route path="/system-ad">
               <SystemAdminPage onToast={onToast} />
-            </Route>
-            <Route path="/customers">
-              <CustomersPage onToast={onToast} />
             </Route>
             <Route path="/user-management">
               <UserManagementPage

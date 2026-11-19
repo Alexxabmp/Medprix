@@ -148,26 +148,40 @@
 .page-tables [data-page-table] .page-table-event .pill {
   flex-shrink: 0;
 }
-.page-tables .inventory-product-description:has(> .pill.danger) {
+/* Medicines with a DD and/or Rx badge: name and generic name on the left, badges in their own column on the right,
+   so a long name never pushes a badge out of view and the Rx tag never stretches across a row. */
+.page-tables .inventory-product-description:has(> .pill.danger),
+.page-tables .inventory-product-description:has(> .rx-tag) {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   column-gap: 6px;
+  padding-right: 2px;
 }
 .page-tables .inventory-product-description > strong {
   grid-column: 1;
   grid-row: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .page-tables .inventory-product-description > .muted {
   grid-column: 1;
   grid-row: 2;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.page-tables .inventory-product-description > .pill.danger {
+.page-tables .inventory-product-description > .pill.danger,
+.page-tables .inventory-product-description > .rx-tag {
   grid-column: 2;
   grid-row: 1 / span 2;
   align-self: center;
+  justify-self: center;
   margin-left: 0 !important;
 }
+/* Both badges: DD on top, Rx below. */
+.page-tables .inventory-product-description:has(> .pill.danger):has(> .rx-tag) > .pill.danger { grid-row: 1; align-self: end; }
+.page-tables .inventory-product-description:has(> .pill.danger):has(> .rx-tag) > .rx-tag { grid-row: 2; align-self: start; }
 .page-tables .search-wrap {
   min-height: 36px;
   flex-shrink: 0;

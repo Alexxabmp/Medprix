@@ -1,3 +1,4 @@
+import { pharmacyDate } from "@workspace/api-zod";
 import { reservedByBatch, freeBatchQuantity } from "./reserved-stock";
 import { CheckoutError, type Transaction } from "./atomic-checkout";
 
@@ -61,7 +62,7 @@ export function createStockMutations(transaction: Transaction) {
                 input.newBatch!.expiryDate,
                 input.quantity,
                 input.newBatch?.mfgDate || null,
-                input.date || new Date().toISOString().slice(0, 10),
+                input.date || pharmacyDate(),
                 input.newBatch?.supplier || null,
               ],
             )

@@ -1,4 +1,5 @@
 import { DateField } from "@/components/custom-ui/date-field";
+import { pharmacyDate } from "@workspace/api-zod";
 import { SourceProgress } from "@/components/custom-ui/source-state";
 import { SelectField } from "@/components/custom-ui/select-field";
 import type { ProductCategory } from "@/lib/types";
@@ -244,7 +245,8 @@ export default function InventoryPage({
   const canViewAlerts = isAdmin || isFrontDesk;
   const canAddProduct = isAdmin || isFrontDesk;
   const canEditProduct = isAdmin || isFrontDesk;
-  const canAddBatch = isAdmin || isFrontDesk;
+  // Opening stock and corrections only (backlog story 17: Admin). Supplier deliveries add batches through Procurement → Receive delivery.
+  const canAddBatch = isAdmin;
   const canAddFullBatchInfo = isAdmin;
   const canRecordStockIn = isAdmin || isCashier;
   const canRecordStockOut = isAdmin || isCashier;
@@ -329,21 +331,22 @@ export default function InventoryPage({
     quantity: "",
     expiryDate: "",
     mfgDate: "",
-    dateReceived: new Date().toISOString().slice(0, 10),
+    dateReceived: pharmacyDate(),
     supplier: "",
+    reason: "",
   });
 
   const [stockInData, setStockInData] = useState({
     batchNumber: "",
     quantity: "",
-    date: new Date().toISOString().slice(0, 10),
+    date: pharmacyDate(),
     reason: "Procurement Delivery",
   });
 
   const [stockOutData, setStockOutData] = useState({
     batchNumber: "",
     quantity: "",
-    date: new Date().toISOString().slice(0, 10),
+    date: pharmacyDate(),
     reason: "Dispensed / Sales",
   });
 
@@ -536,8 +539,9 @@ export default function InventoryPage({
       quantity: "",
       expiryDate: "",
       mfgDate: "",
-      dateReceived: new Date().toISOString().slice(0, 10),
+      dateReceived: pharmacyDate(),
       supplier: "",
+      reason: "",
     });
     setMovementError("");
     setBatchProduct(product);
@@ -561,6 +565,10 @@ export default function InventoryPage({
       setMovementError("Expiry date is required.");
       return;
     }
+    if (newBatchData.reason.trim().length < 3) {
+      setMovementError("Say why this batch is added here (for example: opening stock, count correction).");
+      return;
+    }
     const parsedQty = validation.quantity;
     const newBatch = {
       batchNumber: newBatchData.batchNumber.trim().toUpperCase(),
@@ -569,6 +577,7 @@ export default function InventoryPage({
       mfgDate: newBatchData.mfgDate,
       dateReceived: newBatchData.dateReceived,
       supplier: newBatchData.supplier,
+      reason: newBatchData.reason.trim(),
     };
 
     movementBusy.current = true; setMovementSaving(true);
@@ -598,7 +607,7 @@ export default function InventoryPage({
     setStockInData({
       batchNumber: "",
       quantity: "",
-      date: new Date().toISOString().slice(0, 10),
+      date: pharmacyDate(),
       reason: "Procurement Delivery",
     });
     setMovementError("");
@@ -657,7 +666,7 @@ export default function InventoryPage({
     setStockOutData({
       batchNumber: firstAvailable,
       quantity: "5",
-      date: new Date().toISOString().slice(0, 10),
+      date: pharmacyDate(),
       reason: "Dispensed / OTC",
     });
     setMovementError("");
@@ -901,7 +910,7 @@ export default function InventoryPage({
                               scrollbarWidth: "thin",
                               paddingBottom: 2,
                             }}>
-                            <strong><PageTableValue value={product.name} /></strong>
+                            <strong title={product.name}><PageTableValue value={product.name} /></strong>
                             {product.isDangerousDrug && (
                               <span
                                 className="pill danger"
@@ -1399,12 +1408,10 @@ export default function InventoryPage({
               <div className="modal-header">
                 <div>
                   <h2>
-                    {isAdmin
-                      ? "Add Product Batch Information"
-                      : "Add Batch Expiry Date"}
+                    Add batch (opening stock or correction)
                   </h2>
                   <p className="modal-sub">
-                    For {batchProduct.name} ({batchProduct.sku})
+                    For {batchProduct.name} ({batchProduct.sku}). Supplier deliveries go through Procurement → Receive delivery, so they stay tied to the purchase order.
                   </p>
                 </div>
                 <button
@@ -1431,6 +1438,17 @@ export default function InventoryPage({
                           batchNumber: e.target.value,
                         })
                       }
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="batch-reason">Reason *</label>
+                    <input
+                      id="batch-reason"
+                      required
+                      maxLength={500}
+                      placeholder="e.g. Opening stock, count correction"
+                      value={newBatchData.reason}
+                      onChange={(e) => setNewBatchData({ ...newBatchData, reason: e.target.value })}
                     />
                   </div>
                   <div className="field">
