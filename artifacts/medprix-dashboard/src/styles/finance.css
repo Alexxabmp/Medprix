@@ -1,0 +1,58 @@
+/* ─── Finance section on the dashboard (Admin and Front desk) + Financial summary report ─────────── */
+.finance-section { padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.fin-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.fin-head .card-title { margin: 0; }
+.fin-period { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.fin-custom { display: inline-flex; align-items: center; gap: 8px; }
+.fin-custom > * { min-width: 150px; }
+.fin-custom .muted { min-width: 0; }
+.fin-updated { margin-left: auto; }
+.proc-tasks.fin-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; }
+.fin-kpi { cursor: default; }
+.fin-kpi:hover { transform: none; }
+.fin-kpi.danger .proc-task-value { color: #b02020; }
+.fin-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.fin-card { border: 1px solid hsl(var(--border)); border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.fin-card h3, .fin-report h3 { margin: 0; font-size: var(--text-sm); font-weight: 700; color: hsl(var(--foreground)); }
+.fin-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.fin-line { display: flex; justify-content: space-between; gap: 12px; font-size: var(--text-sm); padding: 4px 0; border-bottom: 1px solid hsl(var(--border)); }
+.fin-line:last-of-type { border-bottom: none; }
+.fin-line > span:last-child { white-space: nowrap; }
+
+/* Shared tables carry a 650px minimum for full pages; inside finance cards they must fit the card. */
+.fin-card .data-table.fin-statement, .fin-report .data-table.fin-statement { min-width: 0; width: 100%; }
+.fin-card .table-scroll, .fin-report .table-scroll { max-width: 100%; overflow-x: auto; }
+.fin-statement td { border-bottom: 1px solid hsl(var(--border)); }
+.fin-statement .fin-sub td:first-child { padding-left: 26px !important; color: hsl(var(--muted)); }
+.fin-statement .fin-total td { font-weight: 700; }
+.fin-statement .fin-net td { font-size: var(--text-base, 15px); border-top: 2px solid hsl(var(--foreground)); border-bottom: none; }
+.fin-statement .fin-net.negative td:last-child { color: #b02020; }
+
+.fin-flow, .fin-discounts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.fin-discounts { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.fin-flow > div, .fin-discounts > div {
+  display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 12px;
+  background: hsl(var(--surface-muted, var(--background)));
+  border: 1px solid hsl(var(--border));
+}
+.fin-flow span, .fin-discounts span { font-size: var(--text-xs); color: hsl(var(--muted)); }
+.fin-flow strong, .fin-discounts strong { font-family: var(--app-font-display); font-size: 19px; }
+.fin-flow small, .fin-discounts small { font-size: var(--text-xs); color: hsl(var(--muted)); }
+.fin-flow small.proc-danger-text { color: #b02020; }
+
+.fin-voided td { color: hsl(var(--muted)); text-decoration: line-through; }
+.fin-voided td .proc-danger-text, .fin-voided td:last-child { text-decoration: none; }
+.fin-notes { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; }
+
+/* Financial summary report pop-up body */
+.fin-report { display: flex; flex-direction: column; gap: 12px; }
+.fin-report .report-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+.dark .fin-kpi.danger .proc-task-value, .dark .fin-statement .fin-net.negative td:last-child, .dark .fin-flow small.proc-danger-text { color: #ff8a8a; }
+@media (max-width: 1100px) { .proc-tasks.fin-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .fin-grid { grid-template-columns: 1fr; } }
+@media (max-width: 560px) {
+  .finance-section { padding: 16px 14px; }
+  .proc-tasks.fin-kpis, .fin-flow, .fin-report .report-metrics { grid-template-columns: 1fr 1fr; }
+  .fin-updated { margin-left: 0; width: 100%; }
+  .fin-card .data-table.fin-statement td { padding: 7px 6px !important; }
+}

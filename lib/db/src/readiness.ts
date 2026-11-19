@@ -42,8 +42,9 @@ export class SchemaReadinessError extends Error {
     this.name = "SchemaReadinessError";
   }
 }
-export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | "cashier" | "legacy-runtime" | "audit-runtime" | "identifier-runtime" | "pre-retail-runtime" | "pre-retirement-runtime" | "pre-delivery-runtime" | "pre-wholesale-runtime" | "wholesale-draft-runtime" | "wholesale-reservation-runtime" | "wholesale-fulfillment-runtime" | "wholesale-collections-runtime" | "pre-category-runtime" | "pre-payment-reference-runtime" | "pre-discount-holder-runtime" | "pre-returning-customer-runtime" | "pre-prescription-runtime" | "pre-payment-plan-runtime" | "pre-wholesale-terms-runtime" | "pre-procurement-workflow-runtime" | "pre-primary-admin-runtime" | "pre-password-change-runtime" | "pre-login-lockout-runtime" | "runtime" = "runtime", namespace = "public", existingTablesOnly = false) {
-  const loginLockout = scope === "runtime";
+export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | "cashier" | "legacy-runtime" | "audit-runtime" | "identifier-runtime" | "pre-retail-runtime" | "pre-retirement-runtime" | "pre-delivery-runtime" | "pre-wholesale-runtime" | "wholesale-draft-runtime" | "wholesale-reservation-runtime" | "wholesale-fulfillment-runtime" | "wholesale-collections-runtime" | "pre-category-runtime" | "pre-payment-reference-runtime" | "pre-discount-holder-runtime" | "pre-returning-customer-runtime" | "pre-prescription-runtime" | "pre-payment-plan-runtime" | "pre-wholesale-terms-runtime" | "pre-procurement-workflow-runtime" | "pre-primary-admin-runtime" | "pre-password-change-runtime" | "pre-login-lockout-runtime" | "pre-expenses-runtime" | "runtime" = "runtime", namespace = "public", existingTablesOnly = false) {
+  const expenses = scope === "runtime";
+  const loginLockout = expenses || scope === "pre-expenses-runtime";
   const passwordChange = loginLockout || scope === "pre-login-lockout-runtime";
   const primaryAdmin = passwordChange || scope === "pre-password-change-runtime";
   const procurementWorkflow = primaryAdmin || scope === "pre-primary-admin-runtime";
@@ -62,7 +63,7 @@ export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | 
   const calendar = wholesale || scope === "pre-wholesale-runtime";
   const retiredSales = calendar || scope === "pre-delivery-runtime";
   const retail = retiredSales || scope === "pre-retirement-runtime";
-  if (["pre-retail-runtime", "pre-retirement-runtime", "pre-delivery-runtime", "pre-wholesale-runtime", "wholesale-draft-runtime", "wholesale-reservation-runtime", "wholesale-fulfillment-runtime", "wholesale-collections-runtime", "pre-category-runtime", "pre-payment-reference-runtime", "pre-discount-holder-runtime", "pre-returning-customer-runtime", "pre-prescription-runtime", "pre-payment-plan-runtime", "pre-wholesale-terms-runtime", "pre-procurement-workflow-runtime", "pre-primary-admin-runtime", "pre-password-change-runtime", "pre-login-lockout-runtime"].includes(scope)) scope = "runtime";
+  if (["pre-retail-runtime", "pre-retirement-runtime", "pre-delivery-runtime", "pre-wholesale-runtime", "wholesale-draft-runtime", "wholesale-reservation-runtime", "wholesale-fulfillment-runtime", "wholesale-collections-runtime", "pre-category-runtime", "pre-payment-reference-runtime", "pre-discount-holder-runtime", "pre-returning-customer-runtime", "pre-prescription-runtime", "pre-payment-plan-runtime", "pre-wholesale-terms-runtime", "pre-procurement-workflow-runtime", "pre-primary-admin-runtime", "pre-password-change-runtime", "pre-login-lockout-runtime", "pre-expenses-runtime"].includes(scope)) scope = "runtime";
   const actual = await inspectSchema(query, namespace);
   const issues: string[] = [];
   const normalize = (v: unknown) => typeof v === "string" ? v.replaceAll(`"${namespace}".`, "public.").replaceAll(`${namespace}.`, "public.") : v;
@@ -158,6 +159,11 @@ export async function assertSchemaReady(query: CatalogQuery, scope: "initial" | 
   if (reservations) await assertWholesaleReservationsReady(query, actual, namespace, existingTablesOnly, issues);
   if (fulfillment) await assertWholesaleFulfillmentReady(query, actual, namespace, existingTablesOnly, issues);
   if (collections) await assertWholesaleCollectionsReady(query, actual, namespace, existingTablesOnly, issues);
+  if (expenses && !existingTablesOnly) {
+    // Migration 0026: operating expenses.
+    for (const [name, type] of [["expense_date", "date"], ["category", "character varying(30)"], ["amount", "numeric(12,2)"], ["description", "character varying(500)"], ["voided_at", "timestamp with time zone"], ["void_reason", "character varying(500)"]])
+      if (!actual.columns.some(c => c.table_name === "operating_expenses" && c.name === name && c.type === type)) issues.push("missing/incompatible expense column operating_expenses." + name);
+  }
   if (primaryAdmin && !existingTablesOnly) {
     // Migration 0023: one primary admin, who must be an active Admin.
     if (!actual.columns.some(column => column.table_name === "users" && column.name === "is_primary_admin" && column.type === "boolean" && column.not_null && normalize(column.default_value ?? "") === "false"))

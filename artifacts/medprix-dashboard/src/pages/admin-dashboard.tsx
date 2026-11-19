@@ -23,6 +23,7 @@ import {
   formatPeso,
 } from "@/lib/dashboard-analytics";
 import { useDashboardAnalytics } from "@/lib/use-dashboard-analytics";
+import { FinanceKpi, FinanceSection } from "@/components/finance/finance-section";
 import type { ReportType, ToastFn } from "@/lib/types";
 
 export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
@@ -80,25 +81,7 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
           onClick={() => setReport("inventory")}
           testId="card-report-inventory"
         />
-        <Kpi
-          label="Financial · All Time"
-          busy={financial.status === "loading"}
-          value={
-            financial.status === "ready"
-              ? formatPeso(financial.data.revenue.total)
-              : financial.status === "loading"
-                ? <span className="financial-pending" role="status"><LoaderCircle size={24} className="spin action-spinner" aria-hidden="true" /><span className="sr-only">Loading financial summary…</span></span>
-                : "Unavailable"
-          }
-          change={
-            financial.status === "ready"
-              ? financialArReviewMessage(financial.data)
-              : <span className="financial-status">{financial.status === "error" && <CircleAlert size={13} aria-hidden="true" />}{financial.status === "loading" ? "Loading summary…" : "Open report to retry"}</span>
-          }
-          icon={CircleDollarSign}
-          onClick={() => setReport("financial")}
-          testId="card-report-financial"
-        />
+        <FinanceKpi onClick={() => setReport("financial")} />
         <PharmacyKpi source="inventory"
           label="Stock value"
           value={formatPeso(analytics.valuation.totalRetailValue)}
@@ -108,6 +91,8 @@ export default function AdminDashboardPage({ onToast }: { onToast: ToastFn }) {
           testId="card-report-valuation"
         />
       </section>
+
+      <FinanceSection onToast={onToast} onOpenReport={() => setReport("financial")} />
 
       <section
         className="surface-card chart-card"

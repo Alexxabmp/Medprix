@@ -13,6 +13,8 @@ import {
   type DashboardAnalytics,
 } from "@/lib/dashboard-analytics";
 import type { ReportType, ToastFn } from "@/lib/types";
+import { exportFinancialSummary, financePeriodSubtitle, financeReady, FinanceReportBody } from "@/components/finance/finance-section";
+import { useFinance } from "@/lib/finance-store";
 import { ModalTableValue, useModalTableStandard, ModalTableLayout, ModalTableBody, ModalTableFooter, ModalTableFrame, ModalTablePager, useModalTableRows, ModalTableContext } from "@/components/modal-table-layout";
 
 // --- Utility ---
@@ -203,6 +205,7 @@ export function ReportModal({
   }, []);
 
   const financial = analytics.financial;
+  useFinance(); // re-render the financial report when the shared figures refresh
   const cashMismatches = analytics.cash.mismatches;
   const cashPagination = useModalTableRows(cashMismatches, type);
   const activeCashRow =
@@ -222,9 +225,7 @@ export function ReportModal({
   const subtitle = activeCashRow
     ? `Shift reconciliation · ${activeCashRow.fullDateLabel} · Medprix Central`
     : type === "financial"
-      ? financial.status === "ready"
-        ? `Period: ${financialPeriodLabel(financial.data)} \u00b7 Medprix Central`
-        : "Financial summary"
+      ? financePeriodSubtitle()
       : type === "movement" || type === "cash"
         ? `Period: ${analytics.periodLabel} · Medprix Central`
         : `${analytics.salesDateLabel} · Medprix Central`;
@@ -351,62 +352,8 @@ export function ReportModal({
           </>
         )}
 
-        {/* Financial */}
-        {type === "financial" &&
-          (financial.status === "ready" ? (
-            <>
-              {financial.isRefreshing && (
-                <p role="status">Refreshing financial summary...</p>
-              )}
-              {financial.refreshError && (
-                <div className="inline-error" role="alert">
-                  <p>
-                    Refresh failed; showing the last successful financial
-                    summary. {financial.refreshError}
-                  </p>
-                  {onRetryFinance && (
-                    <button
-                      className="button soft"
-                      disabled={financial.isRefreshing}
-                      onClick={onRetryFinance}
-                    >
-                      Retry
-                    </button>
-                  )}
-                </div>
-              )}
-              <div className="report-metrics">
-                <ReportMetric
-                  label="Total revenue"
-                  value={formatPeso(financial.data.revenue.total)}
-                />
-                <ReportMetric
-                  label="Cost of goods sold (COGS)"
-                  value={formatPeso(financial.data.costOfGoodsSold)}
-                />
-                <ReportMetric
-                  label="Gross profit"
-                  value={formatPeso(financial.data.grossProfit)}
-                />
-              </div>
-              <ModalSection title="Summary">
-                {financialReportRows(financial.data).map(([label, value]) => (
-                  <ModalRow key={label} label={label} value={value} />
-                ))}
-              </ModalSection>
-            </>
-          ) : financial.status === "loading" ? (
-            <p role="status">Loading financial summary...</p>
-          ) : (
-            <div className="inline-error" role="alert">
-              <p>{financial.error}</p>
-              {onRetryFinance && (
-                <button className="button soft" onClick={onRetryFinance}>
-                  Retry
-                </button>
-              )}
-            </div>
-          ))}
+        {/* Financial: same period and figures as the dashboard's Finance section */}
+        {type === "financial" && <FinanceReportBody />}
 
         {/* Valuation */}
         {type === "valuation" && (
@@ -603,8 +550,8 @@ export function ReportModal({
           <button
             className="button dark"
             data-testid="button-export-report"
-            disabled={type === "financial" ? financial.status !== "ready" : !reportStatus.hasData}
-            onClick={() => exportReport(type, onToast, analytics)}>
+            disabled={type === "financial" ? !financeReady() : !reportStatus.hasData}
+            onClick={() => (type === "financial" ? exportFinancialSummary(onToast) : exportReport(type, onToast, analytics))}>
             <Download size={14} /> Export report
           </button>
         </div>
