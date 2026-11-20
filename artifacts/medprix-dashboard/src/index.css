@@ -1315,11 +1315,15 @@ a {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 13px;
+  align-items: start;
 }
 
 .field {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 6px;
+  justify-content: flex-start;
+  align-items: stretch;
 }
 
 .field.full-width {
@@ -1371,7 +1375,7 @@ a {
   color: hsl(var(--muted));
   font-size: var(--text-xs);
   font-weight: 600;
-  margin-bottom: 6px;
+  margin-bottom: 0;
   display: block;
 }
 
@@ -5480,11 +5484,19 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
   color: hsl(var(--foreground));
 }
 
+.um-user-headline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 .um-primary-pill {
+  display: inline-flex;
+  align-items: center;
   gap: 4px;
-  margin-left: 8px;
   padding: 2px 7px;
-  vertical-align: 1px;
+  vertical-align: middle;
 }
 
 .um-primary-pill > svg {
@@ -5492,7 +5504,6 @@ table:has(> tbody > tr:only-child > .empty-state-cell) {
 }
 
 .um-you {
-  margin-left: 6px;
   color: hsl(var(--muted));
   font-size: 12px;
   font-weight: 500;

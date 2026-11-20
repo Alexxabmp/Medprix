@@ -221,6 +221,18 @@
   }
 }
 
+.wholesale-dialog .form-grid {
+  align-items: start;
+}
+.wholesale-dialog .field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  justify-content: flex-start;
+}
+.wholesale-dialog .field label {
+  margin-bottom: 0;
+}
 .wholesale-dialog .wholesale-fields {
   grid-template-columns: minmax(0, 1fr);
 }

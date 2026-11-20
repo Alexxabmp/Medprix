@@ -8,6 +8,7 @@ import {
 import { computeDashboardAnalytics } from "./dashboard-analytics";
 import { safeError } from "./feedback";
 import {
+  usePharmacyCashReconciliations,
   usePharmacyInventory,
   usePharmacyTransactions,
 } from "./pharmacy-store";
@@ -55,6 +56,7 @@ function saveCachedFinanceSummary(data: FinanceSummary) {
 export function useDashboardAnalytics(salesDate: Date) {
   const { transactions } = usePharmacyTransactions();
   const { items: inventoryProducts } = usePharmacyInventory();
+  const { records: cashReconciliations, refresh: retryReconciliations } = usePharmacyCashReconciliations();
   const queryClient = useQueryClient();
   const [to, setTo] = useState(() => manilaDateKey());
   const params = useMemo(() => ({ from: "2000-01-01", to }), [to]);
@@ -131,12 +133,18 @@ export function useDashboardAnalytics(salesDate: Date) {
     : undefined;
   const analytics = useMemo(
     () =>
-      computeDashboardAnalytics(transactions, inventoryProducts, salesDate, {
-        data: finance.data,
-        isLoading: finance.isPending,
-        isRefreshing: finance.isFetching,
-        error: financeError,
-      }),
+      computeDashboardAnalytics(
+        transactions,
+        inventoryProducts,
+        salesDate,
+        {
+          data: finance.data,
+          isLoading: finance.isPending,
+          isRefreshing: finance.isFetching,
+          error: financeError,
+        },
+        cashReconciliations,
+      ),
     [
       transactions,
       inventoryProducts,
@@ -145,6 +153,7 @@ export function useDashboardAnalytics(salesDate: Date) {
       finance.isPending,
       finance.isFetching,
       financeError,
+      cashReconciliations,
     ],
   );
 
@@ -154,6 +163,9 @@ export function useDashboardAnalytics(salesDate: Date) {
     inventoryProducts,
     retryFinance: () => {
       void finance.refetch();
+    },
+    retryReconciliations: () => {
+      void retryReconciliations();
     },
   };
 }

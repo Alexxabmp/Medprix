@@ -75,6 +75,7 @@ export function OrderPanel({ orderId, isAdmin, suppliers, onClose, onChanged }: 
   const payTarget = (invoice: Invoice): PaymentTarget => ({
     apId: invoice.apId!, invoiceNumber: invoice.invoiceNumber, supplier: order.supplier.name, poNumber: order.poNumber,
     amount: invoice.amount, totalPaid: invoice.totalPaid, balance: invoice.balance, dueDate: invoice.dueDate, prepayment: invoice.status !== "Verified",
+    paymentTerms: invoice.terms || order.supplier.paymentTerms,
   });
   const runStep = () => {
     if (step === "submit") return quick(() => procurementApi.submit(order.id), d => `${d.order.poNumber} sent for approval.`);
@@ -139,19 +140,21 @@ export function OrderPanel({ orderId, isAdmin, suppliers, onClose, onChanged }: 
 
         {(step || editable || order.status === "Submitted") && (
           <div className="proc-action-bar">
-            {step && <button type="button" className="button primary-action" onClick={runStep} disabled={action.busy}>{action.busy ? "Saving…" : step === "approve" ? "Approve order" : NEXT_STEP_LABEL[step]}</button>}
-            {step === "approve" && <span className="muted proc-small">{order.createdBy ? `Created by ${order.createdBy}. ` : ""}Approving your own order is allowed and recorded.</span>}
-            <div className="proc-action-secondary">
-              {editable && <button type="button" className="button soft" onClick={() => setSub({ kind: "edit" })}><Pencil size={14} /> Edit</button>}
-              {order.status === "Pending" && <button type="button" className="button soft" onClick={() => setSub({ kind: "reason", action: "return" })}><RotateCcw size={14} /> Return for changes</button>}
-              {order.status === "Submitted" && unitsReceived === 0 && <button type="button" className="button soft" onClick={() => setSub({ kind: "send" })}>Update sending details</button>}
-              {order.status === "Submitted" && unitsReceived > 0 && <button type="button" className="button soft" onClick={() => setSub({ kind: "reason", action: "close" })}>Close short…</button>}
-              {["Submitted", "Fulfilled"].includes(order.status) && step !== "invoice" && step !== "verify" && !(order.status === "Fulfilled" && Number(detail.uninvoicedValue) === 0) && (
-                <button type="button" className="button soft" onClick={() => setSub({ kind: "invoice" })}>Record invoice</button>)}
-              {order.status === "Approved" && <button type="button" className="button soft" onClick={() => setSub({ kind: "invoice" })}>Record advance invoice</button>}
-              {["Draft", "Pending", "Approved"].includes(order.status) || (order.status === "Submitted" && unitsReceived === 0 && !anyInvoice)
-                ? <button type="button" className="button soft proc-danger-text" onClick={() => setSub({ kind: "reason", action: "cancel" })}>Cancel order</button> : null}
+            <div className="proc-action-row">
+              {step && <button type="button" className="button primary-action" onClick={runStep} disabled={action.busy}>{action.busy ? "Saving…" : step === "approve" ? "Approve order" : NEXT_STEP_LABEL[step]}</button>}
+              <div className="proc-action-secondary">
+                {editable && <button type="button" className="button soft" onClick={() => setSub({ kind: "edit" })}><Pencil size={14} /> Edit</button>}
+                {order.status === "Pending" && <button type="button" className="button soft" onClick={() => setSub({ kind: "reason", action: "return" })}><RotateCcw size={14} /> Return for changes</button>}
+                {order.status === "Submitted" && unitsReceived === 0 && <button type="button" className="button soft" onClick={() => setSub({ kind: "send" })}>Update sending details</button>}
+                {order.status === "Submitted" && unitsReceived > 0 && <button type="button" className="button soft" onClick={() => setSub({ kind: "reason", action: "close" })}>Close short…</button>}
+                {["Submitted", "Fulfilled"].includes(order.status) && step !== "invoice" && step !== "verify" && !(order.status === "Fulfilled" && Number(detail.uninvoicedValue) === 0) && (
+                  <button type="button" className="button soft" onClick={() => setSub({ kind: "invoice" })}>Record invoice</button>)}
+                {order.status === "Approved" && <button type="button" className="button soft" onClick={() => setSub({ kind: "invoice" })}>Record advance invoice</button>}
+                {["Draft", "Pending", "Approved"].includes(order.status) || (order.status === "Submitted" && unitsReceived === 0 && !anyInvoice)
+                  ? <button type="button" className="button soft proc-danger-text" onClick={() => setSub({ kind: "reason", action: "cancel" })}>Cancel order</button> : null}
+              </div>
             </div>
+            {step === "approve" && <div className="muted proc-small proc-approval-note">{order.createdBy ? `Created by ${order.createdBy}. ` : ""}Approving your own order is allowed and recorded.</div>}
           </div>
         )}
         {action.error && <Callout tone="danger">{action.error}</Callout>}

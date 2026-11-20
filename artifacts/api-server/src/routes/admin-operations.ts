@@ -72,6 +72,151 @@ export function createAuditRouter(read: Query = queryDb): IRouter {
       });
     } catch { return res.status(503).json({ error: "Security summary is temporarily unavailable." }); }
   });
+  // Cash drawer till status & shift reconciliations across recorded history
+  router.get("/admin/cash-reconciliations", requireRoles("Admin", "FrontDesk", "Cashier"), async (_req, res) => {
+    try {
+      const result = await read(`
+        SELECT 
+          c.id,
+          c.reconciliation_date,
+          c.cashier_id,
+          c.cash_on_hand,
+          c.total_reported_sales,
+          c.discrepancy_amount,
+          c.has_flagged_inconsistency,
+          c.notes,
+          c.reconciled_at,
+          u.full_name AS cashier_name,
+          u.username AS cashier_username
+        FROM cash_reconciliations c
+        LEFT JOIN users u ON u.id = c.cashier_id
+        ORDER BY c.reconciliation_date DESC, c.reconciled_at DESC
+      `);
+      return res.json(
+        result.rows.map((row) => ({
+          id: String(row.id),
+          reconciliationDate: row.reconciliation_date instanceof Date
+            ? row.reconciliation_date.toISOString().slice(0, 10)
+            : String(row.reconciliation_date || "").slice(0, 10),
+          cashierId: row.cashier_id ? String(row.cashier_id) : null,
+          cashierName: row.cashier_name || row.cashier_username || "Cashier",
+          cashOnHand: Number(row.cash_on_hand) || 0,
+          totalReportedSales: Number(row.total_reported_sales) || 0,
+          discrepancyAmount: Number(row.discrepancy_amount) || 0,
+          hasFlaggedInconsistency: Boolean(row.has_flagged_inconsistency),
+          notes: row.notes || "",
+          reconciledAt: row.reconciled_at ? iso(row.reconciled_at) : new Date().toISOString(),
+        }))
+      );
+    } catch {
+      return res.status(503).json({ error: "Cash reconciliation records are temporarily unavailable." });
+    }
+  });
+
+  router.post("/admin/cash-reconciliations", requireRoles("Admin"), async (req, res) => {
+    try {
+      const user = res.locals.user!;
+      const {
+        reconciliationDate,
+        cashierId,
+        cashOnHand,
+        totalReportedSales,
+        discrepancyAmount,
+        notes,
+      } = req.body || {};
+
+      const recDate = String(reconciliationDate || new Date().toISOString().slice(0, 10));
+      const targetCashierId = cashierId || user.id;
+      const onHand = Number(cashOnHand) || 0;
+      const reportedSales = Number(totalReportedSales) || 0;
+      const diff = discrepancyAmount !== undefined ? Number(discrepancyAmount) : Number((onHand - reportedSales).toFixed(2));
+      const flagged = Math.abs(diff) >= 50;
+      const noteStr = typeof notes === "string" && notes.trim().length > 0 ? notes.trim() : null;
+
+      const existing = await read(
+        `SELECT id FROM cash_reconciliations WHERE reconciliation_date = $1 AND cashier_id = $2`,
+        [recDate, targetCashierId]
+      );
+
+      let recordId: string;
+      if (existing.rows.length > 0) {
+        recordId = String(existing.rows[0].id);
+        await read(
+          `UPDATE cash_reconciliations SET
+            cash_on_hand = $1,
+            total_reported_sales = $2,
+            discrepancy_amount = $3,
+            has_flagged_inconsistency = $4,
+            notes = $5,
+            reconciled_at = now()
+           WHERE id = $6`,
+          [onHand, reportedSales, diff, flagged, noteStr, recordId]
+        );
+      } else {
+        const inserted = await read(
+          `INSERT INTO cash_reconciliations (
+            reconciliation_date, cashier_id, cash_on_hand, total_reported_sales, discrepancy_amount, has_flagged_inconsistency, notes, reconciled_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, now()) RETURNING id`,
+          [recDate, targetCashierId, onHand, reportedSales, diff, flagged, noteStr]
+        );
+        recordId = String(inserted.rows[0].id);
+      }
+
+      if (flagged) {
+        await read(
+          `INSERT INTO user_activities (user_id, activity, module, description, flag, timestamp)
+           VALUES ($1, 'Cash drawer discrepancy', 'Cash Reconciliation', $2, 'Flagged', now())`,
+          [targetCashierId, `Drawer ${diff < 0 ? "short" : "over"} by ₱${Math.abs(diff).toFixed(2)} on ${recDate}`]
+        );
+      }
+
+      return res.status(200).json({
+        id: recordId,
+        reconciliationDate: recDate,
+        cashierId: targetCashierId,
+        cashOnHand: onHand,
+        totalReportedSales: reportedSales,
+        discrepancyAmount: diff,
+        hasFlaggedInconsistency: flagged,
+        notes: noteStr,
+        reconciledAt: new Date().toISOString(),
+      });
+    } catch {
+      return res.status(500).json({ error: "Failed to record cash reconciliation." });
+    }
+  });
+
+  router.delete(
+    ["/admin/cash-reconciliations/:date", "/admin/cash-reconciliations"],
+    requireRoles("Admin"),
+    async (req, res) => {
+      try {
+        const dateParam =
+          req.params.date ||
+          req.query.date ||
+          req.body?.reconciliationDate ||
+          req.body?.date;
+        if (!dateParam) {
+          return res.status(400).json({ error: "Reconciliation date is required." });
+        }
+        const recDate = String(dateParam).slice(0, 10);
+        await read(
+          `DELETE FROM cash_reconciliations WHERE reconciliation_date = $1`,
+          [recDate]
+        );
+        await read(
+          `DELETE FROM user_activities 
+           WHERE module = 'Cash Reconciliation' 
+             AND description LIKE $1`,
+          [`%${recDate}%`]
+        );
+        return res.status(200).json({ ok: true, deletedDate: recDate });
+      } catch {
+        return res.status(500).json({ error: "Failed to reset cash reconciliation." });
+      }
+    }
+  );
+
   router.post(["/admin/system-logs", "/admin/user-activities"], (_req, res) =>
     res.status(409).json({ error: "Audit events are recorded by server operations. Direct audit creation is unavailable." }));
   return router;

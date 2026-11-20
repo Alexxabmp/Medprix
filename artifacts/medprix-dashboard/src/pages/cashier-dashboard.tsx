@@ -1517,16 +1517,32 @@ export default function CashierDashboardPage({ onToast }: { onToast: ToastFn }) 
                   </>
                 );
               })()}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                <span className="muted">Items Summary</span>
-                <span
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                <span className="muted" style={{ flexShrink: 0 }}>Items Summary</span>
+                <div
                   style={{
                     fontSize: 12,
                     textAlign: "right",
-                    maxWidth: 220,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 3,
+                    maxWidth: 260,
                   }}>
-                  {selectedReceipt.itemsSummary || `${selectedReceipt.items} item(s)`}
-                </span>
+                  {(() => {
+                    const lines = selectedReceipt.itemsList && selectedReceipt.itemsList.length > 0
+                      ? selectedReceipt.itemsList.map((item) => `${item.product || (item as any).name || "Item"} (${item.quantity ?? 1})`)
+                      : selectedReceipt.itemsSummary
+                      ? selectedReceipt.itemsSummary.includes("),")
+                        ? selectedReceipt.itemsSummary.split(/(?<=\))\s*,\s*/)
+                        : selectedReceipt.itemsSummary.split(", ")
+                      : [`${selectedReceipt.items} item(s)`];
+                    return lines.map((line, idx) => (
+                      <div key={idx} style={{ lineHeight: 1.4 }}>
+                        {line}
+                      </div>
+                    ));
+                  })()}
+                </div>
               </div>
               {receiptSummaryLines(selectedReceipt).map((line) => (
                 <div

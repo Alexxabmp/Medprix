@@ -4,10 +4,11 @@ import { ChevronLeft, ChevronRight, Package, Plus, RefreshCw, Search } from "luc
 import { SUPPLIER_TERMS_LABEL, type SupplierTerms } from "@workspace/api-zod";
 import { PageHeading } from "@/components/custom-ui/page-heading";
 import { TableEmptyState } from "@/components/custom-ui/empty-state";
+import { SelectField } from "@/components/custom-ui/select-field";
 import { OrderPanel } from "@/components/procurement/order-panel";
 import { OrderEditor, type SupplierOption } from "@/components/procurement/order-editor";
 import { Callout, shortDate } from "@/components/procurement/shared";
-import { procurementApi, peso, stageTone, NEXT_STEP_LABEL, type OrderSummary, getProcurementCache, loadProcurementList } from "@/lib/procurement-api";
+import { procurementApi, peso, stageTone, NEXT_STEP_LABEL, type OrderSummary, type OrderStage, getProcurementCache, loadProcurementList } from "@/lib/procurement-api";
 import type { ToastFn } from "@/lib/types";
 
 /** The previous procurement screen kept statuses, notes, expiries and payments in this browser only.
@@ -19,7 +20,7 @@ function clearLegacyProcurementStorage() {
   } catch { /* storage unavailable: nothing to clear */ }
 }
 
-type Filter = "open" | "all" | "approve" | "send" | "arriving" | "invoice" | "pay" | "closed";
+type TaskFilter = "approve" | "send" | "arriving" | "invoice" | "pay";
 const PAGE_SIZE = 12;
 
 /**
@@ -35,7 +36,8 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
   const [suppliers, setSuppliers] = useState<SupplierOption[]>(() => getProcurementCache()?.suppliers ?? []);
   const [loadError, setLoadError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
-  const [filter, setFilter] = useState<Filter>("open");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [taskFilter, setTaskFilter] = useState<TaskFilter | null>(null);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -71,21 +73,27 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
     const q = search.trim().toLowerCase();
     return (orders ?? []).filter(o => {
       if (q && !`${o.poNumber} ${o.supplier}`.toLowerCase().includes(q)) return false;
-      switch (filter) {
-        case "all": return true;
-        case "open": return !["Cancelled"].includes(o.stage) && !(["Received", "Closed short"].includes(o.stage) && !o.nextStep);
-        case "approve": return o.stage === "For approval" || o.stage === "Draft";
-        case "send": return o.stage === "Approved";
-        case "arriving": return o.stage === "Sent" || o.stage === "Partly received";
-        case "invoice": return o.nextStep === "invoice" || o.nextStep === "verify";
-        case "pay": return Number(o.balance) > 0;
-        case "closed": return o.stage === "Cancelled" || (["Received", "Closed short"].includes(o.stage) && !o.nextStep);
+      if (taskFilter) {
+        switch (taskFilter) {
+          case "approve": if (o.stage !== "For approval" && o.stage !== "Draft") return false; break;
+          case "send": if (o.stage !== "Approved") return false; break;
+          case "arriving": if (o.stage !== "Sent" && o.stage !== "Partly received") return false; break;
+          case "invoice": if (o.nextStep !== "invoice" && o.nextStep !== "verify") return false; break;
+          case "pay": if (!(Number(o.balance) > 0)) return false; break;
+        }
+      } else if (statusFilter !== "all") {
+        if (o.stage !== statusFilter) return false;
       }
+      return true;
     });
-  }, [orders, filter, search]);
+  }, [orders, taskFilter, statusFilter, search]);
   const pages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
   const shown = visible.slice((Math.min(page, pages) - 1) * PAGE_SIZE, Math.min(page, pages) * PAGE_SIZE);
-  const choose = (next: Filter) => { setFilter(next); setPage(1); };
+  const chooseTask = (next: TaskFilter) => {
+    setTaskFilter(current => (current === next ? null : next));
+    setStatusFilter("all");
+    setPage(1);
+  };
 
   const afterChange = (message?: string, warnings: string[] = []) => {
     if (message) onToast({ message, variant: warnings.length ? "warning" : "success" });
@@ -93,11 +101,11 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
     void load();
   };
 
-  const tasks: { id: Filter; label: string; value: number; caption: string; tone?: string }[] = [
+  const tasks: { id: TaskFilter; label: string; value: number; caption: string; tone?: string }[] = [
     { id: "approve", label: "Needs approval", value: counts.approve, caption: "Check quantities and cost", tone: counts.approve ? "warn" : "" },
-    { id: "send", label: "Ready to send", value: counts.send, caption: "Approved, not yet with the supplier" },
-    { id: "arriving", label: "Waiting for delivery", value: counts.arriving, caption: counts.late ? `${counts.late} late` : "Receive when it arrives", tone: counts.late ? "warn" : "" },
-    { id: "invoice", label: "Invoices to record", value: counts.invoice, caption: "Received, not yet billed or checked" },
+    { id: "send", label: "Ready to send", value: counts.send, caption: "Approved, not yet with the supplier", tone: "success" },
+    { id: "arriving", label: "Waiting for delivery", value: counts.arriving, caption: counts.late ? `${counts.late} late` : "Receive when it arrives", tone: counts.late ? "warn" : "success" },
+    { id: "invoice", label: "Invoices to record", value: counts.invoice, caption: "Received, not yet billed or checked", tone: "success" },
     { id: "pay", label: "We owe", value: counts.pay, caption: counts.overdue ? `${peso(counts.overdue)} overdue` : counts.pay ? `${peso(counts.owed)} open` : "Nothing owed", tone: counts.overdue ? "danger" : "" },
   ];
 
@@ -113,7 +121,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
 
       <div className="proc-tasks" role="group" aria-label="What needs doing">
         {tasks.map(t => (
-          <button key={t.id} type="button" className={`proc-task ${t.tone ?? ""}${filter === t.id ? " active" : ""}`} aria-pressed={filter === t.id} onClick={() => choose(filter === t.id ? "open" : t.id)}>
+          <button key={t.id} type="button" className={`proc-task ${t.tone ?? ""}${taskFilter === t.id ? " active" : ""}`} aria-pressed={taskFilter === t.id} onClick={() => chooseTask(t.id)}>
             <span className="proc-task-label">{t.label}</span>
             <span className="proc-task-value">{orders ? t.value : "—"}</span>
             <span className="proc-task-caption">{orders ? t.caption : "Loading…"}</span>
@@ -127,11 +135,27 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
             <Search size={15} aria-hidden="true" />
             <input type="search" aria-label="Search purchase orders" placeholder="Search PO number or supplier" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
           </div>
-          <div className="proc-filter-row" role="group" aria-label="Show">
-            {([["open", "Open"], ["all", "All"], ["closed", "Done"]] as [Filter, string][]).map(([id, label]) => (
-              <button key={id} type="button" className={`proc-filter${filter === id ? " active" : ""}`} aria-pressed={filter === id} onClick={() => choose(id)}>{label}</button>
-            ))}
-            {!["open", "all", "closed"].includes(filter) && <button type="button" className="proc-filter active" onClick={() => choose("open")}>{tasks.find(t => t.id === filter)?.label} ✕</button>}
+          <div className="table-tools-right">
+            <SelectField
+              className="select"
+              aria-label="Filter purchase orders by status"
+              value={statusFilter}
+              onChange={e => {
+                setStatusFilter(e.target.value);
+                setTaskFilter(null);
+                setPage(1);
+              }}
+            >
+              <option value="all">All statuses</option>
+              <option value="Draft">Draft</option>
+              <option value="For approval">For approval</option>
+              <option value="Approved">Approved</option>
+              <option value="Sent">Sent</option>
+              <option value="Partly received">Partly received</option>
+              <option value="Received">Received</option>
+              <option value="Closed short">Closed short</option>
+              <option value="Cancelled">Cancelled</option>
+            </SelectField>
           </div>
         </div>
         <div className="table-scroll">
@@ -139,7 +163,7 @@ export default function ProcurementPage({ onToast, currentRole }: { onToast: Toa
             <thead><tr><th>Order</th><th>Supplier</th><th>Ordered</th><th className="num">Total</th><th>Progress</th><th>Status</th><th className="table-action-head">Next step</th></tr></thead>
             <tbody>
               {!orders && !loadError && <tr><td colSpan={7} className="proc-loading-cell"><SourceProgress label="Loading purchase orders…" /></td></tr>}
-              {orders && shown.length === 0 && <tr><TableEmptyState colSpan={7} icon={Package}>{search || filter !== "all" ? "No orders here. Try another filter." : "No purchase orders yet. Create the first one."}</TableEmptyState></tr>}
+              {orders && shown.length === 0 && <tr><TableEmptyState colSpan={7} icon={Package}>{search || statusFilter !== "all" || taskFilter ? "No orders match the selected filter." : "No purchase orders yet. Create the first one."}</TableEmptyState></tr>}
               {shown.map(o => {
                 const pct = o.unitsOrdered ? Math.min(100, Math.round((o.unitsReceived / o.unitsOrdered) * 100)) : 0;
                 return (

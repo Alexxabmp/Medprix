@@ -3,8 +3,8 @@
  * when it is recorded, so changing a supplier's terms never moves an existing due date.
  * Wholesale clients keep their own Net30/Net60 installment plan (wholesale-payment-plan.ts).
  */
-export const SUPPLIER_TERMS = ["Immediate", "EndOfMonth", "EndOfNextMonth", "Net30", "Net60"] as const;
-export type SupplierTerms = (typeof SUPPLIER_TERMS)[number];
+export const SUPPLIER_TERMS = ["Immediate", "Net30", "Net60"] as const;
+export type SupplierTerms = (typeof SUPPLIER_TERMS)[number] | "EndOfMonth" | "EndOfNextMonth";
 
 /** Where the due date counts from. */
 export const SUPPLIER_TERMS_BASES = ["InvoiceDate", "DeliveryDate"] as const;
@@ -24,7 +24,7 @@ export const SUPPLIER_TERMS_BASIS_LABEL: Record<SupplierTermsBasis, string> = {
 };
 
 export function isSupplierTerms(value: unknown): value is SupplierTerms {
-  return typeof value === "string" && (SUPPLIER_TERMS as readonly string[]).includes(value);
+  return typeof value === "string" && (["Immediate", "Net30", "Net60", "EndOfMonth", "EndOfNextMonth"] as readonly string[]).includes(value);
 }
 
 export function isSupplierTermsBasis(value: unknown): value is SupplierTermsBasis {
@@ -76,8 +76,8 @@ export function describeSupplierTerms(terms: SupplierTerms, basis: SupplierTerms
   }
 }
 
-export const SUPPLIER_PAYMENT_MODES = ["Cash", "BankTransfer", "Check", "GCash", "Maya"] as const;
-export type SupplierPaymentMode = (typeof SUPPLIER_PAYMENT_MODES)[number];
+export const SUPPLIER_PAYMENT_MODES = ["Cash", "BankTransfer", "Check", "GCash"] as const;
+export type SupplierPaymentMode = (typeof SUPPLIER_PAYMENT_MODES)[number] | "Maya";
 export const SUPPLIER_PAYMENT_MODE_LABEL: Record<SupplierPaymentMode, string> = {
   Cash: "Cash", BankTransfer: "Bank transfer", Check: "Check", GCash: "GCash", Maya: "Maya",
 };

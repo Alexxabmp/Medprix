@@ -12,7 +12,13 @@ router.use("/admin", requireAuth, (_req, res, next) => { res.set("Cache-Control"
 const canonicalAudit = createAuditRouter();
 router.use((req, res, next) => {
   const auditPath = req.path.replace(/\/$/, "").toLowerCase();
-  if (auditPath === "/admin/system-logs" || auditPath === "/admin/user-activities" || auditPath === "/admin/security-summary")
+  if (
+    auditPath === "/admin/system-logs" ||
+    auditPath === "/admin/user-activities" ||
+    auditPath === "/admin/security-summary" ||
+    auditPath === "/admin/cash-reconciliations" ||
+    auditPath.startsWith("/admin/cash-reconciliations/")
+  )
     return canonicalAudit(req, res, next);
   return next();
 });
