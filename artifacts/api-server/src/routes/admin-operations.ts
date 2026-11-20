@@ -113,7 +113,7 @@ export function createAuditRouter(read: Query = queryDb): IRouter {
     }
   });
 
-  router.post("/admin/cash-reconciliations", requireRoles("Admin", "FrontDesk", "Cashier"), async (req, res) => {
+  router.post("/admin/cash-reconciliations", requireRoles("Admin"), async (req, res) => {
     try {
       const user = res.locals.user!;
       const {
@@ -188,7 +188,7 @@ export function createAuditRouter(read: Query = queryDb): IRouter {
 
   router.delete(
     ["/admin/cash-reconciliations/:date", "/admin/cash-reconciliations"],
-    requireRoles("Admin", "FrontDesk", "Cashier"),
+    requireRoles("Admin"),
     async (req, res) => {
       try {
         const dateParam =

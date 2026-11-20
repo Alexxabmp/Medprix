@@ -243,7 +243,7 @@ export function AppShell({
               <CashierDashboardPage onToast={onToast} />
             </Route>
             <Route path="/review">
-              <CashierReviewPage onToast={onToast} />
+              <CashierReviewPage onToast={onToast} currentRole={role} />
             </Route>
             <Route path="/inventory">
               <InventoryPage onToast={onToast} currentRole={role} />

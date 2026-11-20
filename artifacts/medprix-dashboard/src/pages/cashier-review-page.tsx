@@ -65,7 +65,15 @@ const formatPeso = (amount: number) =>
     maximumFractionDigits: 2,
   })}`;
 
-export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
+export default function CashierReviewPage({
+  onToast,
+  currentRole,
+}: {
+  onToast: ToastFn;
+  currentRole?: string;
+}) {
+  const role = (currentRole || localStorage.getItem("medprix-role") || "").toLowerCase();
+  const isAdmin = role === "admin" || role === "administrator";
   const [activeModal, setActiveModal] = useState<"sales" | "drawer" | "transactions" | "till" | null>(null);
   const { receipts } = usePharmacyTransactions();
   const { records: cashReconciliations } = usePharmacyCashReconciliations();
@@ -174,6 +182,10 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
   const isShort = variance !== null && variance <= -0.01;
 
   const handleSaveFloat = () => {
+    if (!isAdmin) {
+      onToast("Only administrators can record or edit cash float.");
+      return;
+    }
     setCashFloatCounts(floatEditCounts);
     try {
       localStorage.setItem(`medprix_cash_float_${dateKey}`, JSON.stringify(floatEditCounts));
@@ -183,6 +195,10 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
   };
 
   const handleClearFloat = () => {
+    if (!isAdmin) {
+      onToast("Only administrators can clear cash float.");
+      return;
+    }
     setCashFloatCounts({});
     setFloatEditCounts({});
     try {
@@ -193,6 +209,10 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
   };
 
   const handleSaveTillCount = () => {
+    if (!isAdmin) {
+      onToast("Only administrators can record till reconciliations.");
+      return;
+    }
     if (enteredCashNum === null || isNaN(enteredCashNum)) {
       onToast("Please enter the actual physical cash amount.");
       return;
@@ -236,6 +256,10 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
   };
 
   const handleClearTillCount = async () => {
+    if (!isAdmin) {
+      onToast("Only administrators can reset till reconciliations.");
+      return;
+    }
     setActualCashInput("");
     setTillNotes("");
     setIsCountSaved(false);
@@ -595,23 +619,29 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                       Initial cash placed in the register for change (panukli) at the start of shift.
                     </p>
                   </div>
-                  {!isAddingFloat && (
-                    <button
-                      type="button"
-                      className="button primary-action"
-                      style={{ fontSize: 12, padding: "6px 14px", display: "inline-flex", alignItems: "center", gap: 6 }}
-                      onClick={() => {
-                        setFloatEditCounts({ ...cashFloatCounts });
-                        setIsAddingFloat(true);
-                      }}
-                    >
-                      {hasRecordedFloat ? <Pencil size={13} /> : <Plus size={13} />}
-                      {hasRecordedFloat ? "Edit cash float" : "Add cash float"}
-                    </button>
+                  {isAdmin ? (
+                    !isAddingFloat && (
+                      <button
+                        type="button"
+                        className="button primary-action"
+                        style={{ fontSize: 12, padding: "6px 14px", display: "inline-flex", alignItems: "center", gap: 6 }}
+                        onClick={() => {
+                          setFloatEditCounts({ ...cashFloatCounts });
+                          setIsAddingFloat(true);
+                        }}
+                      >
+                        {hasRecordedFloat ? <Pencil size={13} /> : <Plus size={13} />}
+                        {hasRecordedFloat ? "Edit cash float" : "Add cash float"}
+                      </button>
+                    )
+                  ) : (
+                    <span className="pill neutral" style={{ fontSize: 11, padding: "4px 10px" }}>
+                      Admin only
+                    </span>
                   )}
                 </div>
 
-                {isAddingFloat ? (
+                {isAdmin && isAddingFloat ? (
                   /* Form to input Philippine bills and coins */
                   <div style={{ background: "hsl(var(--surface-soft))", border: "1px solid hsl(var(--border))", borderRadius: 12, padding: 14, marginTop: 8 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
@@ -814,7 +844,11 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                       </div>
                     ) : (
                       <div style={{ background: "hsl(var(--surface-soft))", borderRadius: 8, padding: "10px 14px", marginTop: 8, fontSize: 12 }} className="muted">
-                        No cash float has been recorded for {dateLabel}. Click <strong>Add cash float</strong> above to record starting bills and coins.
+                        {isAdmin ? (
+                          <>No cash float has been recorded for {dateLabel}. Click <strong>Add cash float</strong> above to record starting bills and coins.</>
+                        ) : (
+                          <>No cash float has been recorded for {dateLabel}. Only administrators can record or edit starting cash float.</>
+                        )}
                       </div>
                     )}
                   </div>
@@ -984,7 +1018,12 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
           <div className="modal dialog" style={{ width: "min(680px, 100%)", maxHeight: "calc(100vh - 40px)", display: "flex", flexDirection: "column" }}>
             <div className="modal-header" style={{ flexShrink: 0 }}>
               <div>
-                <h2>Till Status &amp; Cash Reconciliation</h2>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <h2>Till Status &amp; Cash Reconciliation</h2>
+                  {!isAdmin && (
+                    <span className="pill neutral" style={{ fontSize: 11 }}>Read-only</span>
+                  )}
+                </div>
                 <p className="modal-sub">Date: {dateLabel} · Terminal #01 Cash Audit &amp; Balance Verification</p>
               </div>
               <button
@@ -1015,14 +1054,16 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                   <label htmlFor="actual-cash-input" style={{ fontSize: 13, fontWeight: 600 }}>
                     Physical Cash Counted in Drawer (₱)
                   </label>
-                  <button
-                    type="button"
-                    className="button soft"
-                    style={{ fontSize: 11, padding: "3px 8px" }}
-                    onClick={() => setActualCashInput(expectedCashInDrawer.toFixed(2))}
-                  >
-                    Match expected ({formatPeso(expectedCashInDrawer)})
-                  </button>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      className="button soft"
+                      style={{ fontSize: 11, padding: "3px 8px" }}
+                      onClick={() => setActualCashInput(expectedCashInDrawer.toFixed(2))}
+                    >
+                      Match expected ({formatPeso(expectedCashInDrawer)})
+                    </button>
+                  )}
                 </div>
 
                 <div style={{ position: "relative" }}>
@@ -1035,38 +1076,45 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
                     placeholder="0.00"
                     value={actualCashInput}
                     onChange={(e) => setActualCashInput(e.target.value)}
+                    disabled={!isAdmin}
+                    readOnly={!isAdmin}
                     style={{
                       width: "100%",
                       paddingLeft: 32,
                       fontSize: 18,
                       fontWeight: 700,
                       height: 44,
-                      background: "hsl(var(--background))",
+                      background: isAdmin ? "hsl(var(--background))" : "hsl(var(--surface-soft))",
                       border: "1px solid hsl(var(--border))",
                       borderRadius: 10,
+                      cursor: isAdmin ? "text" : "not-allowed",
                     }}
                   />
                 </div>
 
                 <div style={{ marginTop: 10, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
                   <span className="muted" style={{ fontSize: 12 }}>
-                    Enter the counted cash to calculate if the till is Balanced, Over, or Short.
+                    {isAdmin
+                      ? "Enter the counted cash to calculate if the till is Balanced, Over, or Short."
+                      : "Physical cash count and reconciliation can only be entered by an administrator."}
                   </span>
-                  <button
-                    type="button"
-                    className="button soft"
-                    style={{ fontSize: 11, padding: "3px 8px", display: "inline-flex", alignItems: "center", gap: 4 }}
-                    onClick={() => {
-                      setTillDenomCounts({ ...cashFloatCounts });
-                      setShowTillDenominations(!showTillDenominations);
-                    }}
-                  >
-                    <Coins size={12} /> {showTillDenominations ? "Hide bill breakdown" : "Count with bills & coins"}
-                  </button>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      className="button soft"
+                      style={{ fontSize: 11, padding: "3px 8px", display: "inline-flex", alignItems: "center", gap: 4 }}
+                      onClick={() => {
+                        setTillDenomCounts({ ...cashFloatCounts });
+                        setShowTillDenominations(!showTillDenominations);
+                      }}
+                    >
+                      <Coins size={12} /> {showTillDenominations ? "Hide bill breakdown" : "Count with bills & coins"}
+                    </button>
+                  )}
                 </div>
 
                 {/* Optional Denominations Counter for Till */}
-                {showTillDenominations && (
+                {isAdmin && showTillDenominations && (
                   <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid hsl(var(--border))" }}>
                     <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>Count by Philippine Denominations:</div>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 6 }}>
@@ -1183,38 +1231,56 @@ export default function CashierReviewPage({ onToast }: { onToast: ToastFn }) {
               {/* Auditor Note */}
               <div style={{ marginBottom: 12 }}>
                 <label htmlFor="till-notes" style={{ display: "block", fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
-                  Auditor / Supervisor Verification Notes (Optional)
+                  Auditor / Supervisor Verification Notes {isAdmin ? "(Optional)" : ""}
                 </label>
                 <input
                   id="till-notes"
                   type="text"
-                  placeholder="e.g. Verified by Admin at shift close"
+                  placeholder={isAdmin ? "e.g. Verified by Admin at shift close" : "No supervisor notes entered."}
                   value={tillNotes}
                   onChange={(e) => setTillNotes(e.target.value)}
-                  style={{ width: "100%", fontSize: 12, padding: "8px 12px" }}
+                  disabled={!isAdmin}
+                  readOnly={!isAdmin}
+                  style={{
+                    width: "100%",
+                    fontSize: 12,
+                    padding: "8px 12px",
+                    background: isAdmin ? "hsl(var(--background))" : "hsl(var(--surface-soft))",
+                    cursor: isAdmin ? "text" : "not-allowed",
+                  }}
                 />
               </div>
             </div>
 
-            <div className="modal-actions" style={{ flexShrink: 0, marginTop: 14, paddingTop: 12, borderTop: "1px solid hsl(var(--border))", display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              {isCountSaved && (
-                <button
-                  type="button"
-                  className="button soft"
-                  style={{ color: "hsl(var(--destructive))", marginRight: "auto" }}
-                  onClick={handleClearTillCount}
-                >
-                  <Trash2 size={13} /> Reset count
-                </button>
+            <div className="modal-actions" style={{ flexShrink: 0, marginTop: 14, paddingTop: 12, borderTop: "1px solid hsl(var(--border))", display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
+              {isAdmin ? (
+                <>
+                  {isCountSaved && (
+                    <button
+                      type="button"
+                      className="button soft"
+                      style={{ color: "hsl(var(--destructive))", marginRight: "auto" }}
+                      onClick={handleClearTillCount}
+                    >
+                      <Trash2 size={13} /> Reset count
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="button primary-action"
+                    onClick={handleSaveTillCount}
+                    disabled={enteredCashNum === null || isNaN(enteredCashNum)}
+                  >
+                    <Check size={14} /> Save Till Reconciliation
+                  </button>
+                </>
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+                  <span className="muted" style={{ fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    <ShieldCheck size={14} /> Read-only mode · Only an administrator can record or edit till reconciliations.
+                  </span>
+                </div>
               )}
-              <button
-                type="button"
-                className="button primary-action"
-                onClick={handleSaveTillCount}
-                disabled={enteredCashNum === null || isNaN(enteredCashNum)}
-              >
-                <Check size={14} /> Save Till Reconciliation
-              </button>
             </div>
           </div>
         </div>,
