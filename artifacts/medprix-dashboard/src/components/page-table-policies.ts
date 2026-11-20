@@ -11,7 +11,7 @@ const controlHelp: Column = { wrap: true };
 /** Explicit page-only opt-ins. Display headings never determine data type or alignment. */
 export const pageTablePolicies: Record<string, PageTablePolicy> = {
   "wholesale-deliveries": { label: "Wholesale deliveries", columns: [plain, text, number, plain, plain, actions] },
-  "supplier-directory": { label: "Supplier directory", columns: [text, text, number, number, plain, actions] },
+  "supplier-directory": { label: "Supplier directory", columns: [text, plain, text, number, number, plain, actions] },
   "supplier-payables": { label: "Supplier accounts payable", columns: [text, plain, plain, number, number, number, plain, actions] },
   "wholesale-orders": { label: "Wholesale orders", columns: [plain, text, number, plain, actions] },
   "wholesale-contracts": { label: "Client contracts", columns: [text, plain, plain, number, plain, actions] },
