@@ -224,11 +224,14 @@
 .wholesale-dialog .form-grid {
   align-items: start;
 }
-.wholesale-dialog .field {
+.wholesale-dialog .field,
+.wholesale-dialog .wholesale-fields .field {
   display: flex;
   flex-direction: column;
   gap: 6px;
   justify-content: flex-start;
+  align-items: stretch;
+  min-width: 0;
 }
 .wholesale-dialog .field label {
   margin-bottom: 0;
